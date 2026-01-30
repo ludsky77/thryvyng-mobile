@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { supabase } from '../supabase';
+import { supabase } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
 
 import LoginScreen from '../screens/LoginScreen';

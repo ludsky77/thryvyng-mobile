@@ -7,6 +7,7 @@ import { Session } from '@supabase/supabase-js';
 
 import LoginScreen from '../screens/LoginScreen';
 import DashboardScreen from '../screens/DashboardScreen';
+import TeamChatScreen from '../screens/TeamChatScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -42,8 +43,11 @@ export default function AppNavigator() {
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {session ? (
-          <Stack.Screen name="Dashboard" component={DashboardScreen} />
+      {session ? (
+          <>
+            <Stack.Screen name="Dashboard" component={DashboardScreen} />
+            <Stack.Screen name="TeamChat" component={TeamChatScreen} />
+          </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} />
         )}

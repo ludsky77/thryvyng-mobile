@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 
-export default function DashboardScreen() {
+export default function DashboardScreen({ navigation }: any) {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [roles, setRoles] = useState<any[]>([]);
@@ -22,12 +22,10 @@ export default function DashboardScreen() {
 
   async function loadUserData() {
     try {
-      // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
 
       if (user) {
-        // Get profile
         const { data: profileData } = await supabase
           .from('profiles')
           .select('*')
@@ -35,14 +33,12 @@ export default function DashboardScreen() {
           .single();
         setProfile(profileData);
 
-        // Get roles
         const { data: rolesData } = await supabase
           .from('user_roles')
           .select('*')
           .eq('user_id', user.id);
         setRoles(rolesData || []);
 
-        // If user is a parent, get their players
         const parentRole = rolesData?.find(r => r.role === 'parent');
         if (parentRole || user.email) {
           const { data: playersData } = await supabase
@@ -73,7 +69,6 @@ export default function DashboardScreen() {
     await supabase.auth.signOut();
   }
 
-  // Check if user has a specific role
   const hasRole = (roleName: string) => {
     return roles.some(r => r.role === roleName);
   };
@@ -96,7 +91,6 @@ export default function DashboardScreen() {
         <Text style={styles.email}>{user?.email}</Text>
       </View>
 
-      {/* Role Badges */}
       <View style={styles.rolesContainer}>
         {roles.map((role, index) => (
           <View key={index} style={styles.roleBadge}>
@@ -107,7 +101,6 @@ export default function DashboardScreen() {
         ))}
       </View>
 
-      {/* Parent Section - Show Players */}
       {players.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>🎽 Your Players</Text>
@@ -118,25 +111,17 @@ export default function DashboardScreen() {
               </Text>
               {player.teams && (
                 <>
-                  <Text style={styles.teamName}>
-                    ⚽ {player.teams.name}
-                  </Text>
+                  <Text style={styles.teamName}>⚽ {player.teams.name}</Text>
                   {player.teams.clubs && (
-                    <Text style={styles.clubName}>
-                      🏆 {player.teams.clubs.name}
-                    </Text>
+                    <Text style={styles.clubName}>🏆 {player.teams.clubs.name}</Text>
                   )}
                 </>
-              )}
-              {player.position && (
-                <Text style={styles.position}>Position: {player.position}</Text>
               )}
             </View>
           ))}
         </View>
       )}
 
-      {/* Quick Actions */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>⚡ Quick Actions</Text>
         
@@ -144,13 +129,14 @@ export default function DashboardScreen() {
           <Text style={styles.actionButtonText}>📚 Browse Courses</Text>
         </TouchableOpacity>
         
-        {players.length > 0 && (
-          <TouchableOpacity style={styles.actionButton}>
-            <Text style={styles.actionButtonText}>📊 View Evaluations</Text>
-          </TouchableOpacity>
-        )}
-        
         <TouchableOpacity style={styles.actionButton}>
+          <Text style={styles.actionButtonText}>📊 View Evaluations</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.actionButton}
+          onPress={() => navigation.navigate('TeamChat')}
+        >
           <Text style={styles.actionButtonText}>💬 Team Chat</Text>
         </TouchableOpacity>
         
@@ -159,7 +145,6 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Admin Section */}
       {(hasRole('platform_admin') || hasRole('club_admin') || hasRole('team_manager')) && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>🔧 Admin Tools</Text>
@@ -184,7 +169,6 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* Sign Out */}
       <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>
@@ -276,11 +260,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#888',
     marginTop: 2,
-  },
-  position: {
-    fontSize: 14,
-    color: '#888',
-    marginTop: 4,
   },
   actionButton: {
     backgroundColor: '#2a2a4e',

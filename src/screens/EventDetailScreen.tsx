@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,11 +6,14 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
+import { useUserTeams } from '../hooks/useUserTeams';
 import { supabase } from '../lib/supabase';
 import { openInMaps } from '../lib/maps';
 import { getEventTypeConfig } from '../types';
+import type { CalendarEvent } from '../types';
 
 function formatTime(time: string | null): string {
   if (!time) return '';
@@ -22,10 +25,46 @@ function formatTime(time: string | null): string {
 }
 
 export default function EventDetailScreen({ route, navigation }: any) {
-  const { event, onRefetch } = route.params;
+  const { event: eventParam, eventId, onRefetch } = route.params || {};
   const { user } = useAuth();
+  const { canManageTeam } = useUserTeams();
+  const [event, setEvent] = useState<CalendarEvent | null>(eventParam || null);
+  const [loading, setLoading] = useState(!eventParam && !!eventId);
   const [rsvpLoading, setRsvpLoading] = useState(false);
-  const typeConfig = getEventTypeConfig(event.event_type);
+
+  useEffect(() => {
+    if (eventParam || !eventId) return;
+
+    const fetchEvent = async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('cal_events')
+        .select('*')
+        .eq('id', eventId)
+        .single();
+
+      if (!error && data) {
+        const eventIds = [data.id];
+        const { data: rsvpsData } = await supabase
+          .from('cal_event_rsvps')
+          .select('*')
+          .in('event_id', eventIds);
+
+        const rsvps = rsvpsData || [];
+        const rsvp_counts = {
+          yes: rsvps.filter((r: any) => r.status === 'yes').length,
+          no: rsvps.filter((r: any) => r.status === 'no').length,
+          maybe: rsvps.filter((r: any) => r.status === 'maybe').length,
+        };
+        setEvent({ ...data, rsvp_counts } as CalendarEvent);
+      }
+      setLoading(false);
+    };
+
+    fetchEvent();
+  }, [eventId, eventParam]);
+
+  const typeConfig = event ? getEventTypeConfig(event.event_type) : getEventTypeConfig('other_event');
 
   const handleRsvp = async (status: 'yes' | 'maybe' | 'no') => {
     if (!user) return;
@@ -78,8 +117,24 @@ export default function EventDetailScreen({ route, navigation }: any) {
   };
 
   const handleOpenMaps = () => {
+    if (!event) return;
     openInMaps(event.location_address || '', event.location_name || undefined);
   };
+
+  if (loading || !event) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        {loading ? (
+          <>
+            <ActivityIndicator size="large" color="#8b5cf6" />
+            <Text style={{ color: '#888', marginTop: 12 }}>Loading event...</Text>
+          </>
+        ) : (
+          <Text style={{ color: '#888', fontSize: 16 }}>Event not found</Text>
+        )}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -219,6 +274,18 @@ export default function EventDetailScreen({ route, navigation }: any) {
             <Text style={styles.rsvpButtonText}>✗ Can't Go</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Take Attendance - coaches/managers only */}
+        {event.team_id && canManageTeam(event.team_id) && (
+          <TouchableOpacity
+            style={styles.attendanceButton}
+            onPress={() =>
+              navigation.navigate('Attendance', { event_id: event.id })
+            }
+          >
+            <Text style={styles.attendanceButtonText}>📋 Take Attendance</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Delete Button */}
         <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
@@ -381,6 +448,21 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
     fontSize: 13,
+  },
+  attendanceButton: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 14,
+    borderRadius: 10,
+    backgroundColor: '#3a3a6e',
+    borderWidth: 1,
+    borderColor: '#8b5cf6',
+    alignItems: 'center',
+  },
+  attendanceButtonText: {
+    color: '#8b5cf6',
+    fontSize: 16,
+    fontWeight: '600',
   },
   deleteButton: {
     marginHorizontal: 16,

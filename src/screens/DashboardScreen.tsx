@@ -1,59 +1,49 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  ScrollView,
 } from 'react-native';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotifications } from '../hooks/useNotifications';
 import { RoleSwitcher } from '../components/RoleSwitcher';
+import PlayerDashboard from '../components/dashboards/PlayerDashboard';
+import CoachDashboard from '../components/dashboards/CoachDashboard';
+import ClubAdminDashboard from '../components/dashboards/ClubAdminDashboard';
 
 export default function DashboardScreen({ navigation }: any) {
-  const { user, profile, roles, loading: authLoading } = useAuth();
-  const [players, setPlayers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user, profile, currentRole, loading: authLoading } = useAuth();
+  const { unreadCount } = useNotifications();
 
-  useEffect(() => {
-    loadUserData();
-  }, [user, roles]);
+  const renderDashboard = () => {
+    const role = currentRole?.role;
+    const entityId = currentRole?.entity_id;
 
-  async function loadUserData() {
-    try {
-      if (!user) return;
-
-      const parentRole = roles?.find((r: any) => r.role === 'parent');
-      if (parentRole || user.email) {
-        const { data: playersData } = await supabase
-            .from('players')
-            .select(`
-              *,
-              teams (
-                id,
-                name,
-                clubs (
-                  id,
-                  name
-                )
-              )
-            `)
-            .or(`parent_email.eq.${user.email},secondary_parent_email.eq.${user.email}`);
-        setPlayers(playersData || []);
-      }
-    } catch (error) {
-      console.error('Error loading user data:', error);
-    } finally {
-      setLoading(false);
+    switch (role) {
+      case 'player':
+      case 'parent':
+        return <PlayerDashboard playerId={entityId} navigation={navigation} />;
+      case 'head_coach':
+      case 'assistant_coach':
+      case 'team_manager':
+        return <CoachDashboard teamId={entityId} navigation={navigation} />;
+      case 'club_admin':
+        return <ClubAdminDashboard clubId={entityId} navigation={navigation} />;
+      default:
+        return (
+          <View style={styles.selectRoleContainer}>
+            <Text style={styles.selectRoleText}>Select a role</Text>
+            <Text style={styles.selectRoleHint}>
+              Use the role switcher above to view your dashboard
+            </Text>
+          </View>
+        );
     }
-  }
-
-  const hasRole = (roleName: string) => {
-    return (roles || []).some((r: any) => r.role === roleName);
   };
 
-  if (authLoading || loading) {
+  if (authLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#8b5cf6" />
@@ -62,109 +52,39 @@ export default function DashboardScreen({ navigation }: any) {
     );
   }
 
+  if (!user) {
+    return null;
+  }
+
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.greeting}>
-          Hello, {profile?.full_name?.split(' ')[0] || 'there'}! 👋
-        </Text>
-        <Text style={styles.email}>{user?.email}</Text>
-      </View>
-
-      <RoleSwitcher />
-
-      {/* Show unique role types only */}
-      <View style={styles.rolesContainer}>
-        {[...new Set((roles || []).map((r: any) => r.role))].map((roleType, index) => (
-          <View key={index} style={styles.roleBadge}>
-            <Text style={styles.roleBadgeText}>
-              {String(roleType).replace(/_/g, ' ')}
-            </Text>
-          </View>
-        ))}
-      </View>
-
-      {players.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🎽 Your Players</Text>
-          {players.map((player, index) => (
-            <TouchableOpacity
-              key={index}
-              style={styles.playerCard}
-              onPress={() =>
-                navigation.navigate('PlayerProfile', {
-                  playerId: player.id,
-                  playerName: `${player.first_name} ${player.last_name}`,
-                })
-              }
-              activeOpacity={0.7}
-            >
-              <View style={styles.playerCardContent}>
-                <View style={styles.playerInfo}>
-                  <Text style={styles.playerName}>
-                    {player.first_name} {player.last_name}
-                  </Text>
-                  {player.teams && (
-                    <>
-                      <Text style={styles.teamName}>⚽ {player.teams.name}</Text>
-                      {player.teams.clubs && (
-                        <Text style={styles.clubName}>🏆 {player.teams.clubs.name}</Text>
-                      )}
-                    </>
-                  )}
-                </View>
-                <Text style={styles.playerArrow}>›</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
+    <View style={styles.container}>
+      <View style={styles.brandHeader}>
+        <View style={styles.brandLeft}>
+          <Text style={styles.brandText}>⚽ Thryvyng</Text>
         </View>
-      )}
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>⚡ Quick Actions</Text>
-
         <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => navigation.getParent()?.navigate('CalendarTab')}
+          style={styles.notificationButton}
+          onPress={() => navigation.navigate('Notifications')}
         >
-          <Text style={styles.actionButtonText}>📅 View Upcoming Events</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.actionButton}>
-          <Text style={styles.actionButtonText}>📚 Browse Courses</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.actionButton}>
-          <Text style={styles.actionButtonText}>🔗 Share Referral Link</Text>
+          <Text style={styles.bellIcon}>🔔</Text>
+          {unreadCount > 0 && (
+            <View style={styles.notificationBadge}>
+              <Text style={styles.badgeText}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
-      {(hasRole('platform_admin') || hasRole('club_admin') || hasRole('team_manager')) && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🔧 Admin Tools</Text>
-          
-          {hasRole('platform_admin') && (
-            <TouchableOpacity style={[styles.actionButton, styles.adminButton]}>
-              <Text style={styles.actionButtonText}>🏢 Manage Platform</Text>
-            </TouchableOpacity>
-          )}
-          
-          {hasRole('club_admin') && (
-            <TouchableOpacity style={[styles.actionButton, styles.adminButton]}>
-              <Text style={styles.actionButtonText}>⚽ Manage Club</Text>
-            </TouchableOpacity>
-          )}
-          
-          {hasRole('team_manager') && (
-            <TouchableOpacity style={[styles.actionButton, styles.adminButton]}>
-              <Text style={styles.actionButtonText}>👥 Manage Team</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
+      <View style={styles.roleSwitcherCard}>
+        <RoleSwitcher embedded />
+      </View>
 
-      <View style={styles.bottomPadding} />
-    </ScrollView>
+      <View style={styles.dashboardContent}>
+        {renderDashboard()}
+      </View>
+    </View>
   );
 }
 
@@ -172,6 +92,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a2e',
+  },
+  dashboardContent: {
+    flex: 1,
   },
   loadingContainer: {
     flex: 1,
@@ -184,22 +107,53 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 16,
   },
-  header: {
-    padding: 24,
-    paddingTop: 60,
-    backgroundColor: '#2a2a4e',
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+  brandHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 12,
+    backgroundColor: 'transparent',
   },
-  greeting: {
-    fontSize: 28,
+  brandLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  brandText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#a78bfa',
+  },
+  notificationButton: {
+    position: 'relative',
+    padding: 8,
+  },
+  bellIcon: {
+    fontSize: 24,
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 11,
     fontWeight: 'bold',
-    color: '#ffffff',
   },
-  email: {
-    fontSize: 14,
-    color: '#888',
-    marginTop: 4,
+  roleSwitcherCard: {
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 12,
   },
   rolesContainer: {
     flexDirection: 'row',
@@ -218,6 +172,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     textTransform: 'capitalize',
+  },
+  selectRoleContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  selectRoleText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  selectRoleHint: {
+    color: '#888',
+    fontSize: 14,
+    textAlign: 'center',
   },
   section: {
     padding: 16,

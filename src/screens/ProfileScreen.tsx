@@ -6,14 +6,33 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  Linking,
+  Alert,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
+
+const HELP_URL = 'https://thryvyng.com/help';
+const TERMS_URL = 'https://thryvyng.com/terms';
+const PRIVACY_URL = 'https://thryvyng.com/privacy';
+const SUPPORT_URL = 'mailto:support@thryvyng.com';
 
 export default function ProfileScreen({ navigation }: any) {
   const { user, profile, currentRole, signOut } = useAuth();
 
   const handleSignOut = async () => {
-    await signOut();
+    try {
+      await signOut();
+      // Auth state change (user=null) causes AppNavigator to show AuthStack/Login
+    } catch (error) {
+      console.error('Sign out error:', error);
+      Alert.alert('Error', 'Failed to sign out');
+    }
+  };
+
+  const openUrl = (url: string) => {
+    Linking.openURL(url).catch(() =>
+      Alert.alert('Error', 'Could not open link')
+    );
   };
 
   return (
@@ -46,25 +65,37 @@ export default function ProfileScreen({ navigation }: any) {
       <View style={styles.menuSection}>
         <Text style={styles.menuSectionTitle}>Account</Text>
 
-        <TouchableOpacity style={styles.menuItem}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => navigation.navigate('EditProfile')}
+        >
           <Text style={styles.menuIcon}>👤</Text>
           <Text style={styles.menuItemText}>Edit Profile</Text>
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => navigation.navigate('Notifications')}
+        >
           <Text style={styles.menuIcon}>🔔</Text>
           <Text style={styles.menuItemText}>Notifications</Text>
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => navigation.navigate('PaymentMethods')}
+        >
           <Text style={styles.menuIcon}>💳</Text>
           <Text style={styles.menuItemText}>Payment Methods</Text>
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => navigation.navigate('PaymentHistory')}
+        >
           <Text style={styles.menuIcon}>📜</Text>
           <Text style={styles.menuItemText}>Payment History</Text>
           <Text style={styles.menuArrow}>›</Text>
@@ -74,13 +105,19 @@ export default function ProfileScreen({ navigation }: any) {
       <View style={styles.menuSection}>
         <Text style={styles.menuSectionTitle}>Support</Text>
 
-        <TouchableOpacity style={styles.menuItem}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => openUrl(HELP_URL)}
+        >
           <Text style={styles.menuIcon}>❓</Text>
           <Text style={styles.menuItemText}>Help Center</Text>
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => openUrl(SUPPORT_URL)}
+        >
           <Text style={styles.menuIcon}>📧</Text>
           <Text style={styles.menuItemText}>Contact Support</Text>
           <Text style={styles.menuArrow}>›</Text>
@@ -90,13 +127,19 @@ export default function ProfileScreen({ navigation }: any) {
       <View style={styles.menuSection}>
         <Text style={styles.menuSectionTitle}>About</Text>
 
-        <TouchableOpacity style={styles.menuItem}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => openUrl(TERMS_URL)}
+        >
           <Text style={styles.menuIcon}>📄</Text>
           <Text style={styles.menuItemText}>Terms of Service</Text>
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => openUrl(PRIVACY_URL)}
+        >
           <Text style={styles.menuIcon}>🔒</Text>
           <Text style={styles.menuItemText}>Privacy Policy</Text>
           <Text style={styles.menuArrow}>›</Text>

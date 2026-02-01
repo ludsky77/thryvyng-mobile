@@ -35,7 +35,11 @@ const ROLE_ICONS: Record<string, string> = {
   evaluator: '📝',
 };
 
-export function RoleSwitcher() {
+interface RoleSwitcherProps {
+  embedded?: boolean;
+}
+
+export function RoleSwitcher({ embedded }: RoleSwitcherProps) {
   const { roles, currentRole, switchRole } = useAuth();
   const [modalVisible, setModalVisible] = useState(false);
 
@@ -45,9 +49,11 @@ export function RoleSwitcher() {
 
   const getRoleDisplayName = (role: any) => {
     const label = ROLE_LABELS[role.role] || role.role;
+    // Use entityName from AuthContext (parent: "Player Name (Team)", coach: team name, club_admin: club name)
+    if (role.entityName) return `${label} - ${role.entityName}`;
     if (role.team?.name) return `${label} - ${role.team.name}`;
     if (role.club?.name) return `${label} - ${role.club.name}`;
-    if (role.player) return `${label} - ${role.player.first_name}`;
+    if (role.player) return `${label} - ${role.player.first_name} ${role.player.last_name}`;
     return label;
   };
 
@@ -59,7 +65,10 @@ export function RoleSwitcher() {
   return (
     <>
       <TouchableOpacity
-        style={styles.currentRoleButton}
+        style={[
+          styles.currentRoleButton,
+          embedded && styles.currentRoleButtonEmbedded,
+        ]}
         onPress={() => setModalVisible(true)}
       >
         <Text style={styles.roleIcon}>
@@ -70,7 +79,7 @@ export function RoleSwitcher() {
             {ROLE_LABELS[currentRole.role] || currentRole.role}
           </Text>
           <Text style={styles.roleEntity} numberOfLines={1}>
-            {currentRole.team?.name || currentRole.club?.name || ''}
+            {currentRole.entityName || currentRole.team?.name || currentRole.club?.name || ''}
           </Text>
         </View>
         <Text style={styles.switchIcon}>▼</Text>
@@ -132,12 +141,16 @@ const styles = StyleSheet.create({
   currentRoleButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#2a2a4e',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 10,
     marginHorizontal: 16,
-    marginVertical: 8,
+    marginVertical: 4,
+  },
+  currentRoleButtonEmbedded: {
+    marginHorizontal: 0,
+    marginVertical: 0,
   },
   roleIcon: {
     fontSize: 24,

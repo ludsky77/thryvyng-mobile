@@ -212,9 +212,12 @@ export default function PlayerProfileScreen({ route, navigation }: any) {
             <TouchableOpacity
               key={evaluation.id}
               style={styles.evaluationCard}
-              onPress={() => {
-                console.log('View evaluation:', evaluation.id);
-              }}
+              onPress={() =>
+                navigation.navigate('EvaluationDetail', {
+                  evaluation_id: evaluation.id,
+                })
+              }
+              activeOpacity={0.7}
             >
               <View style={styles.evaluationInfo}>
                 <Text style={styles.evaluationDate}>

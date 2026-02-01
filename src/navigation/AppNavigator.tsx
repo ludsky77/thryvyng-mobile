@@ -12,10 +12,23 @@ import ChatScreen from '../screens/ChatScreen';
 import TeamChatRoomScreen from '../screens/TeamChatRoomScreen';
 import CalendarScreen from '../screens/CalendarScreen';
 import EventDetailScreen from '../screens/EventDetailScreen';
+import AttendanceScreen from '../screens/AttendanceScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import TeamsScreen from '../screens/TeamsScreen';
 import TeamDetailScreen from '../screens/TeamDetailScreen';
+import RosterScreen from '../screens/RosterScreen';
+import CreateEvaluationScreen from '../screens/CreateEvaluationScreen';
+import TeamStaffScreen from '../screens/TeamStaffScreen';
 import PlayerProfileScreen from '../screens/PlayerProfileScreen';
+import EvaluationDetailScreen from '../screens/EvaluationDetailScreen';
+import CertificateViewerScreen from '../screens/CertificateViewerScreen';
+import CoursesScreen from '../screens/CoursesScreen';
+import MyCoursesScreen from '../screens/MyCoursesScreen';
+import CourseDetailScreen from '../screens/CourseDetailScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
+import EditProfileScreen from '../screens/EditProfileScreen';
+import PaymentMethodsScreen from '../screens/PaymentMethodsScreen';
+import PaymentHistoryScreen from '../screens/PaymentHistoryScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -133,11 +146,41 @@ function HomeStack() {
         options={{ headerShown: false }}
       />
       <Stack.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
         name="PlayerProfile"
         component={PlayerProfileScreen}
         options={({ route }: any) => ({
           title: route.params?.playerName || 'Player Profile',
         })}
+      />
+      <Stack.Screen
+        name="EvaluationDetail"
+        component={EvaluationDetailScreen}
+        options={{ title: 'Evaluation' }}
+      />
+      <Stack.Screen
+        name="CertificateViewer"
+        component={CertificateViewerScreen}
+        options={{ title: 'Certificate' }}
+      />
+      <Stack.Screen
+        name="MyCourses"
+        component={MyCoursesScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Courses"
+        component={CoursesScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CourseDetail"
+        component={CourseDetailScreen}
+        options={{ title: 'Course' }}
       />
     </Stack.Navigator>
   );
@@ -163,6 +206,28 @@ function TeamsStack() {
         options={({ route }: any) => ({
           title: route.params?.teamName || 'Team',
         })}
+      />
+      <Stack.Screen
+        name="Roster"
+        component={RosterScreen}
+        options={{ title: 'Roster' }}
+      />
+      <Stack.Screen
+        name="PlayerProfile"
+        component={PlayerProfileScreen}
+        options={({ route }: any) => ({
+          title: route.params?.playerName || 'Player Profile',
+        })}
+      />
+      <Stack.Screen
+        name="CreateEvaluation"
+        component={CreateEvaluationScreen}
+        options={{ title: 'New Evaluation' }}
+      />
+      <Stack.Screen
+        name="TeamStaff"
+        component={TeamStaffScreen}
+        options={{ title: 'Team Staff' }}
       />
     </Stack.Navigator>
   );
@@ -210,6 +275,11 @@ function CalendarStack() {
         component={EventDetailScreen}
         options={{ headerShown: false }}
       />
+      <Stack.Screen
+        name="Attendance"
+        component={AttendanceScreen}
+        options={{ title: 'Take Attendance' }}
+      />
     </Stack.Navigator>
   );
 }
@@ -227,6 +297,26 @@ function ProfileStack() {
         name="Profile"
         component={ProfileScreen}
         options={{ title: 'Profile' }}
+      />
+      <Stack.Screen
+        name="EditProfile"
+        component={EditProfileScreen}
+        options={{ title: 'Edit Profile' }}
+      />
+      <Stack.Screen
+        name="PaymentMethods"
+        component={PaymentMethodsScreen}
+        options={{ title: 'Payment Methods' }}
+      />
+      <Stack.Screen
+        name="PaymentHistory"
+        component={PaymentHistoryScreen}
+        options={{ title: 'Payment History' }}
+      />
+      <Stack.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

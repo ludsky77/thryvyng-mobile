@@ -25,11 +25,20 @@ import { useCalendarEvents } from '../hooks/useCalendarEvents';
 import { MonthView } from '../components/calendar/MonthView';
 import { CreateEventModal } from '../components/calendar/CreateEventModal';
 import { supabase } from '../lib/supabase';
+import { getEventTypeConfig } from '../types';
 import type { CalendarEvent } from '../types';
 
 type ViewMode = 'list' | 'month';
 
 const ALL_TEAMS_ID = 'ALL_TEAMS';
+
+const EVENT_TYPE_LABEL_COLORS: Record<string, string> = {
+  practice: '#10b981',
+  game: '#ef4444',
+  scrimmage: '#f59e0b',
+  other_event: '#8b5cf6',
+  club_event: '#3b82f6',
+};
 
 export default function CalendarScreen({ route, navigation }: any) {
   const { user } = useAuth();
@@ -278,68 +287,72 @@ export default function CalendarScreen({ route, navigation }: any) {
       </View>
 
       <View style={styles.toolbar}>
-        <TouchableOpacity
-          style={styles.teamSelector}
-          onPress={() => setTeamPickerVisible(true)}
-        >
-          {selectedTeamId === ALL_TEAMS_ID ? (
-            <View style={styles.allTeamsIndicator}>
-              <Text style={styles.allTeamsIcon}>👥</Text>
-            </View>
-          ) : selectedTeam?.color ? (
-            <View
-              style={[styles.teamColorDot, { backgroundColor: selectedTeam.color }]}
-            />
-          ) : null}
-          <Text style={styles.teamSelectorText} numberOfLines={1}>
-            {selectedTeamName}
-          </Text>
-          <Text style={styles.dropdownArrow}>▼</Text>
-        </TouchableOpacity>
-
-        <View style={styles.viewToggle}>
+        {/* Row 1: Team selector (full width) + create button */}
+        <View style={styles.toolbarRow1}>
           <TouchableOpacity
-            style={[
-              styles.viewButton,
-              viewMode === 'list' && styles.viewButtonActive,
-            ]}
-            onPress={() => setViewMode('list')}
+            style={styles.teamSelector}
+            onPress={() => setTeamPickerVisible(true)}
           >
-            <Text
-              style={[
-                styles.viewButtonText,
-                viewMode === 'list' && styles.viewButtonTextActive,
-              ]}
-            >
-              List
+            {selectedTeamId === ALL_TEAMS_ID ? (
+              <View style={styles.allTeamsIndicator}>
+                <Text style={styles.allTeamsIcon}>👥</Text>
+              </View>
+            ) : selectedTeam?.color ? (
+              <View
+                style={[styles.teamColorDot, { backgroundColor: selectedTeam.color }]}
+              />
+            ) : null}
+            <Text style={styles.teamSelectorText} numberOfLines={1}>
+              {selectedTeamName}
             </Text>
+            <Text style={styles.dropdownArrow}>▼</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.viewButton,
-              viewMode === 'month' && styles.viewButtonActive,
-            ]}
-            onPress={() => setViewMode('month')}
-          >
-            <Text
-              style={[
-                styles.viewButtonText,
-                viewMode === 'month' && styles.viewButtonTextActive,
-              ]}
+          {canCreate && (
+            <TouchableOpacity
+              style={styles.createButton}
+              onPress={handleCreatePress}
             >
-              Month
-            </Text>
-          </TouchableOpacity>
+              <Text style={styles.createButtonText}>+</Text>
+            </TouchableOpacity>
+          )}
         </View>
-
-        {canCreate && (
-          <TouchableOpacity
-            style={styles.createButton}
-            onPress={handleCreatePress}
-          >
-            <Text style={styles.createButtonText}>+</Text>
-          </TouchableOpacity>
-        )}
+        {/* Row 2: List/Month toggle centered */}
+        <View style={styles.toolbarRow2}>
+          <View style={styles.viewToggle}>
+            <TouchableOpacity
+              style={[
+                styles.viewButton,
+                viewMode === 'list' && styles.viewButtonActive,
+              ]}
+              onPress={() => setViewMode('list')}
+            >
+              <Text
+                style={[
+                  styles.viewButtonText,
+                  viewMode === 'list' && styles.viewButtonTextActive,
+                ]}
+              >
+                List
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.viewButton,
+                viewMode === 'month' && styles.viewButtonActive,
+              ]}
+              onPress={() => setViewMode('month')}
+            >
+              <Text
+                style={[
+                  styles.viewButtonText,
+                  viewMode === 'month' && styles.viewButtonTextActive,
+                ]}
+              >
+                Month
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
 
       {loading ? (
@@ -366,36 +379,99 @@ export default function CalendarScreen({ route, navigation }: any) {
             groupedEvents.map((group, groupIndex) => (
               <View key={groupIndex} style={styles.eventGroup}>
                 <Text style={styles.groupTitle}>{group.title}</Text>
-                {group.data.map((event) => (
-                  <TouchableOpacity
-                    key={event.id}
-                    style={styles.eventCard}
-                    onPress={() =>
-                      navigation.navigate('EventDetail', {
-                        event,
-                        onRefetch: fetchEvents,
-                      })
-                    }
-                  >
-                    {selectedTeamId === ALL_TEAMS_ID && event.team && (
-                      <View style={styles.eventTeamBadge}>
-                        <View
-                          style={[
-                            styles.teamDot,
-                            { backgroundColor: event.team.color || '#8b5cf6' },
-                          ]}
-                        />
-                        <Text style={styles.eventTeamName}>{event.team.name}</Text>
-                      </View>
-                    )}
+                {group.data.map((event) => {
+                  const eventDate = parseISO(
+                    event.event_date + 'T12:00:00'
+                  );
+                  const typeConfig = getEventTypeConfig(event.event_type);
+                  const barColor =
+                    selectedTeamId === ALL_TEAMS_ID && event.team?.color
+                      ? event.team.color
+                      : typeConfig.color;
 
-                    <View style={styles.eventContent}>
-                      <View style={styles.eventMain}>
+                  return (
+                    <TouchableOpacity
+                      key={event.id}
+                      style={styles.eventCard}
+                      onPress={() =>
+                        navigation.navigate('EventDetail', {
+                          event,
+                          onRefetch: fetchEvents,
+                        })
+                      }
+                    >
+                      {/* Color bar - 4px left edge */}
+                      <View
+                        style={[
+                          styles.eventColorBar,
+                          { backgroundColor: barColor },
+                        ]}
+                      />
+
+                      {/* Date block */}
+                      <View style={styles.eventDateBlock}>
+                        <Text
+                          style={[
+                            styles.eventTypeLabel,
+                            {
+                              color:
+                                EVENT_TYPE_LABEL_COLORS[event.event_type] ||
+                                typeConfig.color,
+                            },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {event.event_type === 'other_event'
+                            ? 'OTHER'
+                            : event.event_type === 'club_event'
+                              ? 'CLUB'
+                              : event.event_type.toUpperCase()}
+                        </Text>
+                        <Text
+                          style={styles.eventDateDow}
+                          numberOfLines={1}
+                        >
+                          {format(eventDate, 'EEE')}
+                        </Text>
+                        <Text
+                          style={styles.eventDateDay}
+                          numberOfLines={1}
+                        >
+                          {format(eventDate, 'd')}
+                        </Text>
+                        <Text
+                          style={styles.eventDateMonth}
+                          numberOfLines={1}
+                        >
+                          {format(eventDate, 'MMM')}
+                        </Text>
+                      </View>
+
+                      {/* Event details */}
+                      <View style={styles.eventDetails}>
+                        {selectedTeamId === ALL_TEAMS_ID && event.team && (
+                          <View style={styles.eventTeamBadge}>
+                            <View
+                              style={[
+                                styles.teamDot,
+                                {
+                                  backgroundColor:
+                                    event.team.color || '#8b5cf6',
+                                },
+                              ]}
+                            />
+                            <Text style={styles.eventTeamName}>
+                              {event.team.name}
+                            </Text>
+                          </View>
+                        )}
                         <Text style={styles.eventTitle}>{event.title}</Text>
                         <Text style={styles.eventTime}>
                           {event.start_time
                             ? format(
-                                parseISO(`2000-01-01T${event.start_time}`),
+                                parseISO(
+                                  `2000-01-01T${event.start_time}`
+                                ),
                                 'h:mm a'
                               )
                             : 'All Day'}
@@ -407,13 +483,16 @@ export default function CalendarScreen({ route, navigation }: any) {
                         )}
                       </View>
 
+                      {/* RSVP buttons */}
                       <View style={styles.rsvpSection}>
                         {event.user_rsvp ? (
                           <View
                             style={[
                               styles.rsvpBadge,
-                              event.user_rsvp.status === 'yes' && styles.rsvpYes,
-                              event.user_rsvp.status === 'no' && styles.rsvpNo,
+                              event.user_rsvp.status === 'yes' &&
+                                styles.rsvpYes,
+                              event.user_rsvp.status === 'no' &&
+                                styles.rsvpNo,
                               event.user_rsvp.status === 'maybe' &&
                                 styles.rsvpMaybe,
                             ]}
@@ -443,9 +522,9 @@ export default function CalendarScreen({ route, navigation }: any) {
                           </View>
                         )}
                       </View>
-                    </View>
-                  </TouchableOpacity>
-                ))}
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             ))
           )}
@@ -620,14 +699,20 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   toolbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: '#2a2a4e',
     borderBottomWidth: 1,
     borderBottomColor: '#3a3a5e',
+  },
+  toolbarRow1: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 10,
+  },
+  toolbarRow2: {
+    alignItems: 'center',
+    marginTop: 12,
   },
   teamSelector: {
     flex: 1,
@@ -638,6 +723,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     gap: 8,
+    minWidth: 0,
   },
   teamColorDot: {
     width: 12,
@@ -734,47 +820,91 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   eventCard: {
+    flexDirection: 'row',
     backgroundColor: '#2a2a4e',
     borderRadius: 12,
-    padding: 14,
     marginBottom: 10,
+    overflow: 'hidden',
+    minHeight: 80,
+  },
+  eventColorBar: {
+    width: 4,
+    alignSelf: 'stretch',
+  },
+  eventDateBlock: {
+    width: 52,
+    minWidth: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRightWidth: 1,
+    borderRightColor: '#3a3a5e',
+  },
+  eventTypeLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    marginBottom: 4,
+  },
+  eventDateDow: {
+    color: '#888',
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+    marginBottom: 2,
+  },
+  eventDateDay: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  eventDateMonth: {
+    color: '#888',
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+    marginTop: 2,
+  },
+  eventDetails: {
+    flex: 1,
+    padding: 12,
+    justifyContent: 'center',
+    minWidth: 0,
   },
   eventTeamBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 4,
     gap: 6,
   },
   eventTeamName: {
     color: '#a78bfa',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
-  },
-  eventContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  eventMain: {
-    flex: 1,
   },
   eventTitle: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   eventTime: {
     color: '#8b5cf6',
-    fontSize: 14,
-    marginBottom: 4,
+    fontSize: 13,
+    marginBottom: 2,
   },
   eventLocation: {
     color: '#888',
-    fontSize: 13,
+    fontSize: 12,
   },
   rsvpSection: {
-    marginLeft: 12,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
   rsvpBadge: {
     paddingHorizontal: 10,

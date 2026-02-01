@@ -71,7 +71,15 @@ export function useMessages(channelId: string | null) {
             .single();
           
           if (data) {
-            setMessages(prev => [...prev, data as unknown as Message]);
+            const newMessage = {
+              ...data,
+              profile: data.profile || { id: data.user_id, full_name: 'Unknown', avatar_url: null }
+            } as unknown as Message;
+            // Deduplicate: poll (and other) messages may already be in state from refetch after create
+            setMessages(prev => {
+              if (prev.some(m => m.id === newMessage.id)) return prev;
+              return [...prev, newMessage];
+            });
           }
         }
       )

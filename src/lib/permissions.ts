@@ -17,6 +17,15 @@ export const STAFF_ROLES = [
     if (!role) return false;
     return STAFF_ROLES.includes(role as StaffRole);
   };
+
+  /**
+   * Check if a role can create calendar events
+   * Same staff roles as poll creation
+   */
+  export const canCreateEvent = (role: string | undefined | null): boolean => {
+    if (!role) return false;
+    return STAFF_ROLES.includes(role as StaffRole);
+  };
   
   /**
    * Check if a role is considered staff (can see voter details)

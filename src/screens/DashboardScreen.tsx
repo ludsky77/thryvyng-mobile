@@ -8,40 +8,25 @@ import {
   ScrollView,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
+import { RoleSwitcher } from '../components/RoleSwitcher';
 
 export default function DashboardScreen({ navigation }: any) {
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
-  const [roles, setRoles] = useState<any[]>([]);
+  const { user, profile, roles, loading: authLoading } = useAuth();
   const [players, setPlayers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadUserData();
-  }, []);
+  }, [user, roles]);
 
   async function loadUserData() {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
+      if (!user) return;
 
-      if (user) {
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-        setProfile(profileData);
-
-        const { data: rolesData } = await supabase
-          .from('user_roles')
-          .select('*')
-          .eq('user_id', user.id);
-        setRoles(rolesData || []);
-
-        const parentRole = rolesData?.find(r => r.role === 'parent');
-        if (parentRole || user.email) {
-          const { data: playersData } = await supabase
+      const parentRole = roles?.find((r: any) => r.role === 'parent');
+      if (parentRole || user.email) {
+        const { data: playersData } = await supabase
             .from('players')
             .select(`
               *,
@@ -55,8 +40,7 @@ export default function DashboardScreen({ navigation }: any) {
               )
             `)
             .or(`parent_email.eq.${user.email},secondary_parent_email.eq.${user.email}`);
-          setPlayers(playersData || []);
-        }
+        setPlayers(playersData || []);
       }
     } catch (error) {
       console.error('Error loading user data:', error);
@@ -65,15 +49,11 @@ export default function DashboardScreen({ navigation }: any) {
     }
   }
 
-  async function handleSignOut() {
-    await supabase.auth.signOut();
-  }
-
   const hasRole = (roleName: string) => {
-    return roles.some(r => r.role === roleName);
+    return (roles || []).some((r: any) => r.role === roleName);
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#8b5cf6" />
@@ -91,11 +71,14 @@ export default function DashboardScreen({ navigation }: any) {
         <Text style={styles.email}>{user?.email}</Text>
       </View>
 
+      <RoleSwitcher />
+
+      {/* Show unique role types only */}
       <View style={styles.rolesContainer}>
-        {roles.map((role, index) => (
+        {[...new Set((roles || []).map((r: any) => r.role))].map((roleType, index) => (
           <View key={index} style={styles.roleBadge}>
             <Text style={styles.roleBadgeText}>
-              {role.role.replace('_', ' ')}
+              {String(roleType).replace(/_/g, ' ')}
             </Text>
           </View>
         ))}
@@ -105,43 +88,54 @@ export default function DashboardScreen({ navigation }: any) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>🎽 Your Players</Text>
           {players.map((player, index) => (
-            <View key={index} style={styles.playerCard}>
-              <Text style={styles.playerName}>
-                {player.first_name} {player.last_name}
-              </Text>
-              {player.teams && (
-                <>
-                  <Text style={styles.teamName}>⚽ {player.teams.name}</Text>
-                  {player.teams.clubs && (
-                    <Text style={styles.clubName}>🏆 {player.teams.clubs.name}</Text>
+            <TouchableOpacity
+              key={index}
+              style={styles.playerCard}
+              onPress={() =>
+                navigation.navigate('PlayerProfile', {
+                  playerId: player.id,
+                  playerName: `${player.first_name} ${player.last_name}`,
+                })
+              }
+              activeOpacity={0.7}
+            >
+              <View style={styles.playerCardContent}>
+                <View style={styles.playerInfo}>
+                  <Text style={styles.playerName}>
+                    {player.first_name} {player.last_name}
+                  </Text>
+                  {player.teams && (
+                    <>
+                      <Text style={styles.teamName}>⚽ {player.teams.name}</Text>
+                      {player.teams.clubs && (
+                        <Text style={styles.clubName}>🏆 {player.teams.clubs.name}</Text>
+                      )}
+                    </>
                   )}
-                </>
-              )}
-            </View>
+                </View>
+                <Text style={styles.playerArrow}>›</Text>
+              </View>
+            </TouchableOpacity>
           ))}
         </View>
       )}
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>⚡ Quick Actions</Text>
-        
+
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => navigation.getParent()?.navigate('CalendarTab')}
+        >
+          <Text style={styles.actionButtonText}>📅 View Upcoming Events</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.actionButton}>
           <Text style={styles.actionButtonText}>📚 Browse Courses</Text>
         </TouchableOpacity>
-        
+
         <TouchableOpacity style={styles.actionButton}>
-          <Text style={styles.actionButtonText}>📊 View Evaluations</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={() => navigation.navigate('TeamChat')}
-        >
-          <Text style={styles.actionButtonText}>💬 Team Chat</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.actionButton}>
-          <Text style={styles.actionButtonText}>📅 Calendar</Text>
+          <Text style={styles.actionButtonText}>🔗 Share Referral Link</Text>
         </TouchableOpacity>
       </View>
 
@@ -168,10 +162,6 @@ export default function DashboardScreen({ navigation }: any) {
           )}
         </View>
       )}
-
-      <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-        <Text style={styles.signOutText}>Sign Out</Text>
-      </TouchableOpacity>
 
       <View style={styles.bottomPadding} />
     </ScrollView>
@@ -246,10 +236,23 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: '#10b981',
   },
+  playerCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  playerInfo: {
+    flex: 1,
+  },
   playerName: {
     fontSize: 18,
     fontWeight: '600',
     color: '#fff',
+  },
+  playerArrow: {
+    color: '#666',
+    fontSize: 24,
+    marginLeft: 12,
   },
   teamName: {
     fontSize: 14,
@@ -275,18 +278,6 @@ const styles = StyleSheet.create({
   adminButton: {
     borderLeftWidth: 4,
     borderLeftColor: '#f59e0b',
-  },
-  signOutButton: {
-    backgroundColor: '#ef4444',
-    borderRadius: 12,
-    padding: 16,
-    margin: 16,
-    alignItems: 'center',
-  },
-  signOutText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
   },
   bottomPadding: {
     height: 40,

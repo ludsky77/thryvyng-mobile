@@ -118,8 +118,19 @@ export interface Channel {
   }
   
   // Calendar Types
-  export type EventType = 'game' | 'practice' | 'meeting' | 'tournament' | 'social' | 'other';
+  export type EventType = 'game' | 'scrimmage' | 'practice' | 'other_event' | 'club_event';
   export type RSVPStatus = 'yes' | 'no' | 'maybe' | 'pending';
+
+  export const EVENT_TYPES = [
+    { value: 'game' as const, label: 'Game', icon: '🏆', color: '#ef4444' },
+    { value: 'scrimmage' as const, label: 'Scrimmage', icon: '⚽', color: '#f97316' },
+    { value: 'practice' as const, label: 'Practice', icon: '🏃', color: '#22c55e' },
+    { value: 'other_event' as const, label: 'Other Event', icon: '📅', color: '#a855f7' },
+    { value: 'club_event' as const, label: 'Club Event', icon: '👥', color: '#3b82f6' },
+  ] as const;
+
+  export const getEventTypeConfig = (type: EventType) =>
+    EVENT_TYPES.find((t) => t.value === type) || EVENT_TYPES[3];
   
   export interface CalendarEvent {
     id: string;
@@ -175,24 +186,6 @@ export interface Channel {
     notes: string | null;
     is_home_field: boolean;
   }
-  
-  export const EVENT_COLORS: Record<EventType, string> = {
-    game: '#EF4444',
-    practice: '#22C55E',
-    meeting: '#8B5CF6',
-    tournament: '#F59E0B',
-    social: '#EC4899',
-    other: '#6B7280'
-  };
-  
-  export const EVENT_ICONS: Record<EventType, string> = {
-    game: '⚽',
-    practice: '🏃',
-    meeting: '📋',
-    tournament: '🏆',
-    social: '🎉',
-    other: '📅'
-  };
   
   // Notification Types
   export type NotificationType = 

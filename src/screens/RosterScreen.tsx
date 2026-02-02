@@ -29,7 +29,7 @@ interface Player {
 }
 
 export default function RosterScreen({ route, navigation }: any) {
-  const { team_id } = route.params;
+  const team_id = route.params?.team_id ?? route.params?.teamId;
   const [team, setTeam] = useState<Team | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
@@ -126,25 +126,41 @@ export default function RosterScreen({ route, navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { borderLeftColor: teamColor }]}>
-        <View style={styles.headerTop}>
-          <View>
-            <Text style={styles.teamName}>{team.name}</Text>
-            <Text style={styles.playerCount}>
-              {players.length} {players.length === 1 ? 'player' : 'players'}
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={styles.staffButton}
-            onPress={() =>
-              navigation.navigate('TeamStaff', { team_id })
-            }
-          >
-            <Text style={styles.staffButtonText}>👔 Staff</Text>
-          </TouchableOpacity>
-        </View>
+      {/* Team Info */}
+      <View style={styles.teamHeader}>
+        <Text style={styles.teamName}>{team.name}</Text>
+        <Text style={styles.playerCount}>
+          {players.length} {players.length === 1 ? 'player' : 'players'}
+        </Text>
       </View>
 
+      {/* Action Buttons Row - centered like Calendar */}
+      <View style={styles.actionButtonsRow}>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() =>
+            navigation.navigate('TeamStaff', {
+              team_id,
+              teamId: team_id,
+            })
+          }
+        >
+          <Text style={styles.actionButtonText}>👥 Staff</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() =>
+            navigation.navigate('InvitePlayer', {
+              team_id,
+              teamId: team_id,
+            })
+          }
+        >
+          <Text style={styles.actionButtonText}>➕ Invite Player</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Player List */}
       <ScrollView
         style={styles.list}
         contentContainerStyle={styles.listContent}
@@ -206,7 +222,10 @@ export default function RosterScreen({ route, navigation }: any) {
                   onPress={() =>
                     navigation.navigate('CreateEvaluation', {
                       player_id: player.id,
+                      playerId: player.id,
                       team_id,
+                      teamId: team_id,
+                      playerName: `${player.first_name} ${player.last_name}`,
                     })
                   }
                 >
@@ -248,36 +267,42 @@ const styles = StyleSheet.create({
     color: '#ef4444',
     fontSize: 16,
   },
-  header: {
-    padding: 20,
-    backgroundColor: '#2a2a4e',
-    borderLeftWidth: 4,
+  teamHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
-  headerTop: {
+  teamName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  playerCount: {
+    fontSize: 14,
+    color: '#888',
+    marginTop: 4,
+  },
+  actionButtonsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 8,
   },
-  staffButton: {
-    backgroundColor: '#3a3a6e',
+  actionButton: {
+    backgroundColor: 'rgba(139, 92, 246, 0.2)',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.3)',
   },
-  staffButtonText: {
+  actionButtonText: {
     color: '#a78bfa',
     fontSize: 14,
     fontWeight: '600',
-  },
-  teamName: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  playerCount: {
-    color: '#888',
-    fontSize: 14,
   },
   list: {
     flex: 1,

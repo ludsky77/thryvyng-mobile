@@ -29,6 +29,9 @@ import NotificationsScreen from '../screens/NotificationsScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import PaymentMethodsScreen from '../screens/PaymentMethodsScreen';
 import PaymentHistoryScreen from '../screens/PaymentHistoryScreen';
+import InvitePlayerScreen from '../screens/InvitePlayerScreen';
+import PlayerEvaluationsScreen from '../screens/PlayerEvaluationsScreen';
+import TeamCertificatesScreen from '../screens/TeamCertificatesScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -182,6 +185,37 @@ function HomeStack() {
         component={CourseDetailScreen}
         options={{ title: 'Course' }}
       />
+      {/* Team-related screens accessible from CoachDashboard */}
+      <Stack.Screen
+        name="Roster"
+        component={RosterScreen}
+        options={{ title: 'Team Roster' }}
+      />
+      <Stack.Screen
+        name="TeamStaff"
+        component={TeamStaffScreen}
+        options={{ title: 'Team Staff' }}
+      />
+      <Stack.Screen
+        name="PlayerEvaluations"
+        component={PlayerEvaluationsScreen}
+        options={{ title: 'Player Evaluations' }}
+      />
+      <Stack.Screen
+        name="TeamCertificates"
+        component={TeamCertificatesScreen}
+        options={{ title: 'Team Certificates' }}
+      />
+      <Stack.Screen
+        name="CreateEvaluation"
+        component={CreateEvaluationScreen}
+        options={{ title: 'New Evaluation' }}
+      />
+      <Stack.Screen
+        name="InvitePlayer"
+        component={InvitePlayerScreen}
+        options={{ title: 'Invite Player' }}
+      />
     </Stack.Navigator>
   );
 }
@@ -228,6 +262,21 @@ function TeamsStack() {
         name="TeamStaff"
         component={TeamStaffScreen}
         options={{ title: 'Team Staff' }}
+      />
+      <Stack.Screen
+        name="InvitePlayer"
+        component={InvitePlayerScreen}
+        options={{ title: 'Invite Player' }}
+      />
+      <Stack.Screen
+        name="PlayerEvaluations"
+        component={PlayerEvaluationsScreen}
+        options={{ title: 'Player Evaluations' }}
+      />
+      <Stack.Screen
+        name="TeamCertificates"
+        component={TeamCertificatesScreen}
+        options={{ title: 'Team Certificates' }}
       />
     </Stack.Navigator>
   );

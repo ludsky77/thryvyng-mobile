@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Share,
   Alert,
+  Linking,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -34,6 +35,7 @@ interface EnrolledCourse {
   id: string;
   course_id: string;
   progress_percentage: number;
+  completed_at?: string | null;
   course?: { id: string; title: string; category?: string | null } | null;
 }
 
@@ -83,7 +85,7 @@ export default function PlayerDashboard({ playerId, navigation }: PlayerDashboar
       if (user?.id) {
         const { data } = await supabase
           .from('course_enrollments')
-          .select('id, course_id, progress_percentage, course:courses(id, title, category)')
+          .select('id, course_id, progress_percentage, completed_at, course:courses(id, title, category)')
           .eq('user_id', user.id);
         enrollments = data || [];
       }
@@ -194,38 +196,43 @@ export default function PlayerDashboard({ playerId, navigation }: PlayerDashboar
   const playerName = `${player.first_name} ${player.last_name}`;
   const teamName = player.teams?.name || '';
   const clubName = (player.teams?.clubs as any)?.name || '';
+  const coursesCompleted = enrolledCourses.filter((e) => e.completed_at).length;
 
   return (
     <ScrollView style={styles.container}>
-      {/* Header: [Photo] Name, team • club, XP badge, jersey */}
-      <View style={styles.header}>
-        <View style={styles.headerRow}>
-          {player.photo_url ? (
-            <Image source={{ uri: player.photo_url }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarText}>
-                {player.first_name.charAt(0)}
-                {player.last_name.charAt(0)}
-              </Text>
-            </View>
-          )}
-          <View style={styles.headerInfo}>
-            <Text style={styles.playerName}>{playerName}</Text>
-            <Text style={styles.teamClub}>
-              {teamName}
-              {clubName ? ` • ${clubName}` : ''}
+      {/* Player Header: [Photo] Name, team • club, XP badge, jersey */}
+      <View style={styles.playerHeader}>
+        {player.photo_url ? (
+          <Image source={{ uri: player.photo_url }} style={styles.playerPhoto} />
+        ) : (
+          <View style={styles.playerPhotoPlaceholder}>
+            <Text style={styles.playerPhotoText}>
+              {player.first_name.charAt(0)}
+              {player.last_name.charAt(0)}
             </Text>
-            <View style={styles.badgesRow}>
-              <View style={styles.xpBadge}>
-                <Text style={styles.xpValue}>🏆 {player.total_xp || 0} XP</Text>
-              </View>
-              {player.jersey_number != null && (
-                <View style={styles.jerseyBadge}>
-                  <Text style={styles.jerseyText}>🎽 #{player.jersey_number}</Text>
-                </View>
-              )}
+          </View>
+        )}
+        <View style={styles.playerInfo}>
+          <Text
+            style={styles.playerName}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
+            {player.first_name} {player.last_name}
+          </Text>
+          <Text style={styles.teamClubName} numberOfLines={2}>
+            {teamName}
+            {clubName ? ` • ${clubName}` : ''}
+          </Text>
+          <View style={styles.badgeRow}>
+            <View style={styles.xpBadge}>
+              <Text style={styles.badgeText}>🏆 {player.total_xp || 0} XP</Text>
             </View>
+            {player.jersey_number != null && (
+              <View style={styles.jerseyBadge}>
+                <Text style={styles.badgeText}>🎽 #{player.jersey_number}</Text>
+              </View>
+            )}
           </View>
         </View>
       </View>
@@ -390,6 +397,64 @@ export default function PlayerDashboard({ playerId, navigation }: PlayerDashboar
         </View>
       )}
 
+      {/* 📊 QUICK STATS */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>📊 QUICK STATS</Text>
+        <View style={styles.statsGrid}>
+          <View style={styles.statBox}>
+            <Text style={styles.statValue}>{enrolledCourses.length}</Text>
+            <Text style={styles.statLabel}>Courses Enrolled</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statValue}>{coursesCompleted}</Text>
+            <Text style={styles.statLabel}>Completed</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statValue}>{player.total_xp || 0}</Text>
+            <Text style={styles.statLabel}>Total XP</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* 🔍 FIND AN EVALUATOR */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>🔍 FIND AN EVALUATOR</Text>
+        <View style={styles.card}>
+          <Text style={styles.cardDescription}>
+            Get professional assessments from certified evaluators
+          </Text>
+          <TouchableOpacity
+            style={styles.outlineButton}
+            onPress={() => Linking.openURL('https://thryvyng.com/evaluators')}
+          >
+            <Text style={styles.outlineButtonText}>Browse Evaluators</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* 🎮 COGNITIVE GAMES */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionTitle, styles.sectionTitleInline]}>🎮 COGNITIVE GAMES</Text>
+          <View style={styles.betaBadge}>
+            <Text style={styles.betaBadgeText}>BETA</Text>
+          </View>
+        </View>
+        <View style={styles.card}>
+          <Text style={styles.cardDescription}>
+            Train your soccer brain with cognitive training games
+          </Text>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={() =>
+              Alert.alert('Coming Soon', 'Cognitive games are in development!')
+            }
+          >
+            <Text style={styles.primaryButtonText}>Play Games</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       <View style={styles.bottomPadding} />
     </ScrollView>
   );
@@ -416,76 +481,72 @@ const styles = StyleSheet.create({
     color: '#ef4444',
     fontSize: 16,
   },
-  header: {
-    flexDirection: 'row',
-    padding: 16,
-    backgroundColor: '#2a2a4e',
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
-  headerRow: {
+  playerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: 16,
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 16,
   },
-  avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    marginRight: 16,
+  playerPhoto: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    marginRight: 12,
+    backgroundColor: '#333',
   },
-  avatarPlaceholder: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#10b981',
+  playerPhotoPlaceholder: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    marginRight: 12,
+    backgroundColor: '#333',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
   },
-  avatarText: {
+  playerPhotoText: {
     fontSize: 24,
     fontWeight: '700',
     color: '#fff',
   },
-  headerInfo: {
+  playerInfo: {
     flex: 1,
+    justifyContent: 'center',
   },
   playerName: {
-    color: '#fff',
     fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 4,
+    fontWeight: 'bold',
+    color: '#fff',
   },
-  teamClub: {
+  teamClubName: {
+    fontSize: 13,
     color: '#a78bfa',
-    fontSize: 14,
-    marginBottom: 8,
+    marginTop: 2,
   },
-  badgesRow: {
+  badgeRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
     gap: 8,
   },
   xpBadge: {
-    backgroundColor: 'rgba(139, 92, 246, 0.2)',
+    backgroundColor: 'rgba(251, 191, 36, 0.2)',
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 8,
-  },
-  xpValue: {
-    color: '#a78bfa',
-    fontSize: 14,
-    fontWeight: '700',
+    borderRadius: 12,
   },
   jerseyBadge: {
-    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    backgroundColor: 'rgba(34, 211, 238, 0.2)',
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 8,
+    borderRadius: 12,
   },
-  jerseyText: {
-    color: '#10b981',
-    fontSize: 14,
-    fontWeight: '700',
+  badgeText: {
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: '600',
   },
   section: {
     padding: 16,
@@ -704,6 +765,79 @@ const styles = StyleSheet.create({
   },
   leaderRowLast: {
     borderBottomWidth: 0,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  statBox: {
+    flex: 1,
+    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+    padding: 12,
+    borderRadius: 8,
+    marginHorizontal: 4,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  statLabel: {
+    fontSize: 11,
+    color: '#888',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  card: {
+    backgroundColor: '#2a2a4e',
+    borderRadius: 12,
+    padding: 16,
+  },
+  cardDescription: {
+    color: '#aaa',
+    fontSize: 14,
+    marginBottom: 12,
+  },
+  outlineButton: {
+    borderWidth: 1,
+    borderColor: '#8b5cf6',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  outlineButtonText: {
+    color: '#a78bfa',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  primaryButton: {
+    backgroundColor: '#8b5cf6',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  betaBadge: {
+    backgroundColor: '#10b981',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  betaBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   rank: {
     color: '#f59e0b',

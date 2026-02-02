@@ -6,6 +6,9 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Share,
+  Alert,
+  Image,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 
@@ -17,14 +20,17 @@ interface ClubAdminDashboardProps {
 interface Club {
   id: string;
   name: string;
-  available_balance: number | null;
-  lifetime_earned: number | null;
+  available_balance?: number | null;
+  lifetime_earned?: number | null;
+  logo_url?: string | null;
 }
 
 interface Team {
   id: string;
   name: string;
   status: string | null;
+  available_balance?: number | null;
+  manager_name?: string | null;
 }
 
 export default function ClubAdminDashboard({
@@ -33,7 +39,6 @@ export default function ClubAdminDashboard({
 }: ClubAdminDashboardProps) {
   const [club, setClub] = useState<Club | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
-  const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
@@ -45,7 +50,7 @@ export default function ClubAdminDashboard({
     try {
       const { data: clubData, error: clubError } = await supabase
         .from('clubs')
-        .select('id, name, available_balance, lifetime_earned')
+        .select('*')
         .eq('id', clubId)
         .single();
 
@@ -58,15 +63,31 @@ export default function ClubAdminDashboard({
         .eq('club_id', clubId)
         .order('name', { ascending: true });
 
-      setTeams((teamsData || []) as Team[]);
+      const teamsList = (teamsData || []) as Team[];
 
-      const { count } = await supabase
-        .from('teams')
-        .select('*', { count: 'exact', head: true })
-        .eq('club_id', clubId)
-        .eq('status', 'pending');
+      for (const team of teamsList) {
+        const { data: staffList } = await supabase
+          .from('team_staff')
+          .select('user_id')
+          .eq('team_id', team.id)
+          .or('staff_role.eq.team_manager,staff_role.eq.head_coach')
+          .limit(1);
 
-      setPendingCount(count || 0);
+        const firstStaff = Array.isArray(staffList) ? staffList[0] : staffList;
+
+        let managerName: string | null = null;
+        if (firstStaff?.user_id) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', firstStaff.user_id)
+            .single();
+          managerName = (profile as any)?.full_name ?? null;
+        }
+        (team as any).manager_name = managerName;
+      }
+
+      setTeams(teamsList);
     } catch (err) {
       console.error('Error fetching club dashboard:', err);
     } finally {
@@ -77,6 +98,52 @@ export default function ClubAdminDashboard({
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const pendingTeams = teams.filter((t) => t.status === 'pending');
+  const approvedTeams = teams.filter((t) => t.status === 'approved');
+  const pendingPayouts = 0;
+  const registrationUrl = clubId
+    ? `https://thryvyng.com/team-register?club_id=${clubId}`
+    : 'https://thryvyng.com/team-register';
+
+  const handleApproveTeam = async (teamId: string) => {
+    try {
+      const { error } = await supabase
+        .from('teams')
+        .update({ status: 'approved' })
+        .eq('id', teamId);
+
+      if (error) throw error;
+      fetchData();
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to approve team');
+    }
+  };
+
+  const handleShareRegistration = async () => {
+    try {
+      await Share.share({
+        message: `Register your team on Thryvyng: ${registrationUrl}`,
+        url: registrationUrl,
+        title: 'Team Registration',
+      });
+    } catch (err: any) {
+      if (err.message !== 'User did not share') {
+        Alert.alert('Link', registrationUrl);
+      }
+    }
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await Share.share({
+        message: registrationUrl,
+        title: 'Copy Link',
+      });
+    } catch (err: any) {
+      Alert.alert('Link', registrationUrl);
+    }
+  };
 
   if (loading) {
     return (
@@ -96,94 +163,142 @@ export default function ClubAdminDashboard({
 
   return (
     <ScrollView style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <View style={styles.clubLogoPlaceholder}>
-          <Text style={styles.clubLogoText}>
-            {club.name.slice(0, 2).toUpperCase()}
-          </Text>
-        </View>
-        <Text style={styles.clubName}>{club.name}</Text>
-      </View>
-
-      <View style={styles.statsRow}>
-        <View style={styles.statBox}>
-          <Text style={styles.statValue}>
-            ${(club.available_balance ?? 0).toFixed(0)}
-          </Text>
-          <Text style={styles.statLabel}>Club Balance</Text>
-        </View>
-        <View style={styles.statBox}>
-          <Text style={styles.statValue}>{pendingCount}</Text>
-          <Text style={styles.statLabel}>Pending</Text>
-        </View>
-        <View style={styles.statBox}>
-          <Text style={styles.statValue}>
-            ${(club.lifetime_earned ?? 0).toFixed(0)}
-          </Text>
-          <Text style={styles.statLabel}>Lifetime</Text>
-        </View>
-      </View>
-
-      {pendingCount > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Team Approvals</Text>
-          <View style={styles.pendingBanner}>
-            <Text style={styles.pendingText}>
-              {pendingCount} team(s) pending approval
-            </Text>
+        <View style={styles.headerRow}>
+          {club.logo_url ? (
+            <Image source={{ uri: club.logo_url }} style={styles.clubLogo} />
+          ) : (
+            <View style={styles.clubLogoPlaceholder}>
+              <Text style={styles.clubLogoText}>
+                {club.name.slice(0, 2).toUpperCase()}
+              </Text>
+            </View>
+          )}
+          <View style={styles.headerInfo}>
+            <Text style={styles.clubName}>{club.name}</Text>
+            <Text style={styles.clubSubtitle}>Club Admin Dashboard</Text>
           </View>
         </View>
-      )}
+      </View>
 
+      {/* 💰 FINANCES */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Teams</Text>
-        {teams.length === 0 ? (
-          <Text style={styles.emptyText}>No teams yet</Text>
+        <Text style={styles.sectionTitle}>💰 FINANCES</Text>
+        <View style={styles.financeRow}>
+          <View style={styles.financeBox}>
+            <Text style={styles.financeValue}>
+              ${(club.available_balance ?? 0).toFixed(2)}
+            </Text>
+            <Text style={styles.financeLabel}>Balance</Text>
+          </View>
+          <View style={styles.financeBox}>
+            <Text style={styles.financeValue}>
+              ${pendingPayouts.toFixed(2)}
+            </Text>
+            <Text style={styles.financeLabel}>Payouts Pending</Text>
+          </View>
+          <View style={styles.financeBox}>
+            <Text style={styles.financeValue}>
+              ${(club.lifetime_earned ?? 0).toFixed(2)}
+            </Text>
+            <Text style={styles.financeLabel}>Lifetime Earned</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* ✅ TEAM APPROVALS */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>✅ TEAM APPROVALS</Text>
+        {pendingTeams.length === 0 ? (
+          <Text style={styles.emptyText}>No pending team approvals</Text>
         ) : (
-          teams.map((team) => (
+          pendingTeams.map((team) => (
+            <View key={team.id} style={styles.approvalCard}>
+              <View style={styles.approvalInfo}>
+                <Text style={styles.teamName}>{team.name}</Text>
+                <Text style={styles.managerName}>
+                  Manager: {team.manager_name || '—'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.approveButton}
+                onPress={() => handleApproveTeam(team.id)}
+              >
+                <Text style={styles.approveText}>Approve</Text>
+              </TouchableOpacity>
+            </View>
+          ))
+        )}
+      </View>
+
+      {/* 🏟️ TEAMS */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, styles.sectionTitleInline]}>
+            🏟️ TEAMS
+          </Text>
+          {approvedTeams.length > 0 && (
+            <TouchableOpacity
+              onPress={() =>
+                navigation.getParent()?.getParent()?.navigate('TeamsTab')
+              }
+            >
+              <Text style={styles.viewAll}>View All →</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        {approvedTeams.length === 0 ? (
+          <Text style={styles.emptyText}>No approved teams yet</Text>
+        ) : (
+          approvedTeams.slice(0, 5).map((team) => (
             <TouchableOpacity
               key={team.id}
               style={styles.teamCard}
               onPress={() =>
                 navigation.getParent()?.getParent()?.navigate('TeamsTab', {
                   screen: 'Roster',
-                  params: { team_id: team.id },
+                  params: {
+                    team_id: team.id,
+                    teamId: team.id,
+                    teamName: team.name,
+                  },
                 })
               }
             >
-              <View style={styles.teamInfo}>
-                <Text style={styles.teamName}>{team.name}</Text>
-                <View
-                  style={[
-                    styles.statusBadge,
-                    team.status === 'approved'
-                      ? styles.statusApproved
-                      : styles.statusPending,
-                  ]}
-                >
-                  <Text style={styles.statusText}>
-                    {team.status === 'approved' ? 'Approved' : 'Pending'}
-                  </Text>
-                </View>
-              </View>
+              <Text style={styles.teamName}>{team.name}</Text>
+              <Text style={styles.teamBalance}>Available: $0.00</Text>
               <Text style={styles.teamArrow}>›</Text>
             </TouchableOpacity>
           ))
         )}
       </View>
 
-      <View style={styles.quickActions}>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() =>
-            navigation.getParent()?.getParent()?.navigate('TeamsTab')
-          }
-        >
-          <Text style={styles.actionButtonText}>👥 Manage Teams</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton}>
-          <Text style={styles.actionButtonText}>📊 Revenue Reports</Text>
-        </TouchableOpacity>
+      {/* 🔗 TEAM REGISTRATION LINK */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>🔗 TEAM REGISTRATION LINK</Text>
+        <View style={styles.registrationCard}>
+          <Text style={styles.registrationDescription}>
+            Share with team managers to register
+          </Text>
+          <Text style={styles.registrationLink} numberOfLines={1}>
+            {registrationUrl}
+          </Text>
+          <View style={styles.registrationButtons}>
+            <TouchableOpacity
+              style={styles.copyButton}
+              onPress={handleCopyLink}
+            >
+              <Text style={styles.copyButtonText}>📋 Copy</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.shareButton}
+              onPress={handleShareRegistration}
+            >
+              <Text style={styles.shareButtonText}>📤 Share</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
 
       <View style={styles.bottomPadding} />
@@ -213,81 +328,128 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   header: {
-    alignItems: 'center',
-    paddingVertical: 24,
+    flexDirection: 'row',
+    padding: 20,
     backgroundColor: '#2a2a4e',
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   clubLogo: {
-    width: 80,
-    height: 80,
-    borderRadius: 16,
-    marginBottom: 12,
+    width: 64,
+    height: 64,
+    borderRadius: 12,
+    marginRight: 16,
   },
   clubLogoPlaceholder: {
-    width: 80,
-    height: 80,
-    borderRadius: 16,
+    width: 64,
+    height: 64,
+    borderRadius: 12,
     backgroundColor: '#8b5cf6',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginRight: 16,
   },
   clubLogoText: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: '700',
-  },
-  clubName: {
     color: '#fff',
     fontSize: 24,
     fontWeight: '700',
   },
-  statsRow: {
-    flexDirection: 'row',
-    marginHorizontal: 16,
-    marginTop: -20,
-    backgroundColor: '#2a2a4e',
-    borderRadius: 16,
-    padding: 16,
-  },
-  statBox: {
+  headerInfo: {
     flex: 1,
-    alignItems: 'center',
   },
-  statValue: {
+  clubName: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 22,
     fontWeight: '700',
+    marginBottom: 4,
   },
-  statLabel: {
-    color: '#888',
-    fontSize: 11,
-    marginTop: 4,
+  clubSubtitle: {
+    color: '#a78bfa',
+    fontSize: 14,
   },
   section: {
     padding: 16,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: '700',
-    color: '#fff',
+    color: '#888',
+    letterSpacing: 1,
     marginBottom: 12,
   },
-  pendingBanner: {
-    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+  sectionTitleInline: {
+    marginBottom: 0,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  viewAll: {
+    color: '#a78bfa',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  financeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  financeBox: {
+    flex: 1,
+    backgroundColor: 'rgba(139, 92, 246, 0.1)',
     padding: 14,
     borderRadius: 12,
+    marginHorizontal: 4,
+    alignItems: 'center',
   },
-  pendingText: {
-    color: '#f59e0b',
+  financeValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  financeLabel: {
+    fontSize: 11,
+    color: '#888',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  approvalCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#2a2a4e',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 10,
+  },
+  approvalInfo: {
+    flex: 1,
+  },
+  managerName: {
+    color: '#888',
+    fontSize: 13,
+    marginTop: 4,
+  },
+  approveButton: {
+    backgroundColor: '#22c55e',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  approveText: {
+    color: '#fff',
     fontSize: 14,
     fontWeight: '600',
   },
   emptyText: {
     color: '#888',
     fontSize: 14,
+    marginBottom: 8,
   },
   teamCard: {
     flexDirection: 'row',
@@ -297,48 +459,63 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 10,
   },
-  teamInfo: {
-    flex: 1,
-  },
   teamName: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 4,
+    flex: 1,
   },
-  statusBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  statusApproved: {
-    backgroundColor: 'rgba(34, 197, 94, 0.2)',
-  },
-  statusPending: {
-    backgroundColor: 'rgba(245, 158, 11, 0.2)',
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#fff',
+  teamBalance: {
+    color: '#888',
+    fontSize: 13,
+    marginRight: 8,
   },
   teamArrow: {
     color: '#666',
     fontSize: 20,
   },
-  quickActions: {
-    padding: 16,
-  },
-  actionButton: {
+  registrationCard: {
     backgroundColor: '#2a2a4e',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 10,
   },
-  actionButtonText: {
+  registrationDescription: {
+    color: '#888',
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  registrationLink: {
+    color: '#a78bfa',
+    fontSize: 12,
+    marginBottom: 12,
+  },
+  registrationButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  copyButton: {
+    flex: 1,
+    backgroundColor: '#3a3a6e',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  copyButtonText: {
     color: '#fff',
-    fontSize: 15,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  shareButton: {
+    flex: 1,
+    backgroundColor: '#8b5cf6',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  shareButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   bottomPadding: {
     height: 40,

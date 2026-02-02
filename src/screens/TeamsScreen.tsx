@@ -6,7 +6,6 @@ import {
   SectionList,
   TouchableOpacity,
   ActivityIndicator,
-  Image,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -143,6 +142,7 @@ export default function TeamsScreen({ navigation }: any) {
           onPress={() =>
             navigation.navigate('Roster', {
               team_id: c.teamId,
+              teamId: c.teamId,
               teamName: c.teamName,
             })
           }

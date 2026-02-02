@@ -63,7 +63,8 @@ const DIMENSIONS: {
 const SCORE_MAX = 10;
 
 export default function CreateEvaluationScreen({ route, navigation }: any) {
-  const { player_id, team_id } = route.params;
+  const player_id = route.params?.player_id ?? route.params?.playerId;
+  const team_id = route.params?.team_id ?? route.params?.teamId;
   const { user } = useAuth();
   const [player, setPlayer] = useState<{
     first_name: string;

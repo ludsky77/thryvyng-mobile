@@ -28,7 +28,7 @@ export default function DashboardScreen({ navigation }: any) {
       case 'head_coach':
       case 'assistant_coach':
       case 'team_manager':
-        return <CoachDashboard teamId={entityId} navigation={navigation} />;
+        return <CoachDashboard teamId={entityId} />;
       case 'club_admin':
         return <ClubAdminDashboard clubId={entityId} navigation={navigation} />;
       default:

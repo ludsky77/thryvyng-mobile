@@ -18,15 +18,14 @@ interface Profile {
   full_name: string | null;
   email: string | null;
   avatar_url: string | null;
-  phone: string | null;
 }
 
 interface StaffMember {
   id: string;
-  user_id: string;
-  team_id: string;
   role: string;
-  profile: Profile | Profile[] | null;
+  user_id: string;
+  entity_id: string | null;
+  profiles?: Profile | Profile[] | null;
 }
 
 const ROLE_CONFIG: Record<string, { label: string; color: string }> = {
@@ -45,14 +44,15 @@ function getInitials(name: string | null): string {
 }
 
 export default function TeamStaffScreen({ route, navigation }: any) {
-  const { team_id } = route.params;
+  const { team_id, teamId } = route.params || {};
+  const actualTeamId = team_id || teamId;
   const [team, setTeam] = useState<{ id: string; name: string } | null>(null);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchData = useCallback(async () => {
-    if (!team_id) {
+    if (!actualTeamId) {
       setLoading(false);
       return;
     }
@@ -61,46 +61,43 @@ export default function TeamStaffScreen({ route, navigation }: any) {
       const { data: teamData } = await supabase
         .from('teams')
         .select('id, name')
-        .eq('id', team_id)
+        .eq('id', actualTeamId)
         .single();
 
       setTeam(teamData as any);
 
       const { data: staffData, error } = await supabase
-        .from('team_staff')
-        .select('id, user_id, team_id, role')
-        .eq('team_id', team_id);
+        .from('user_roles')
+        .select(`
+          id,
+          role,
+          user_id,
+          entity_id,
+          profiles (
+            id,
+            full_name,
+            email,
+            avatar_url
+          )
+        `)
+        .eq('entity_id', actualTeamId)
+        .in('role', ['head_coach', 'assistant_coach', 'team_manager']);
 
       if (error) throw error;
 
-      const staffList = staffData || [];
-      const userIds = staffList.map((s: any) => s.user_id).filter(Boolean);
-
-      let profilesMap: Record<string, Profile> = {};
-      if (userIds.length > 0) {
-        const { data: profilesData } = await supabase
-          .from('profiles')
-          .select('id, full_name, email, avatar_url, phone')
-          .in('id', userIds);
-
-        (profilesData || []).forEach((p: any) => {
-          profilesMap[p.id] = p;
-        });
-      }
-
-      const staffWithProfiles = staffList.map((s: any) => ({
-        ...s,
-        profile: profilesMap[s.user_id] || null,
+      const staffList = (staffData || []).map((m: any) => ({
+        ...m,
+        profiles: Array.isArray(m.profiles) ? m.profiles[0] : m.profiles,
       }));
 
-      setStaff(staffWithProfiles);
+      setStaff(staffList);
     } catch (err) {
       console.error('Error fetching staff:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [team_id]);
+  }, [actualTeamId]);
 
   useEffect(() => {
     fetchData();
@@ -118,7 +115,7 @@ export default function TeamStaffScreen({ route, navigation }: any) {
   };
 
   const handleStaffPress = (member: StaffMember) => {
-    const profile = member.profile as Profile | null;
+    const profile = member.profiles as Profile | null;
     if (!profile) return;
 
     const buttons: { text: string; onPress?: () => void; style?: 'cancel' }[] = [
@@ -129,12 +126,6 @@ export default function TeamStaffScreen({ route, navigation }: any) {
       buttons.push({
         text: 'Email',
         onPress: () => Linking.openURL(`mailto:${profile.email}`),
-      });
-    }
-    if (profile.phone) {
-      buttons.push({
-        text: 'Call',
-        onPress: () => Linking.openURL(`tel:${profile.phone}`),
       });
     }
 
@@ -190,10 +181,10 @@ export default function TeamStaffScreen({ route, navigation }: any) {
           </View>
         ) : (
           staff.map((member) => {
-            const profile = member.profile as Profile | null;
+            const profile = member.profiles as Profile | null;
             const name = profile?.full_name || 'Unknown';
             const config = ROLE_CONFIG[member.role] || {
-              label: member.role?.replace(/_/g, ' ') || 'Staff',
+              label: (member.role || 'Staff')?.replace(/_/g, ' '),
               color: '#8b5cf6',
             };
 
@@ -201,7 +192,7 @@ export default function TeamStaffScreen({ route, navigation }: any) {
               <TouchableOpacity
                 key={member.id}
                 style={styles.staffCard}
-                onPress={() => handleStaffPress(member)}
+                onPress={() => handleStaffPress({ ...member, profile: member.profiles })}
                 activeOpacity={0.7}
               >
                 <View style={styles.avatarContainer}>
@@ -234,9 +225,6 @@ export default function TeamStaffScreen({ route, navigation }: any) {
                   </View>
                   {profile?.email && (
                     <Text style={styles.staffDetail}>📧 {profile.email}</Text>
-                  )}
-                  {profile?.phone && (
-                    <Text style={styles.staffDetail}>📞 {profile.phone}</Text>
                   )}
                 </View>
                 <Text style={styles.staffArrow}>›</Text>

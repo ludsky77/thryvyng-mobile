@@ -10,6 +10,9 @@ import LoginScreen from '../screens/LoginScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import ChatScreen from '../screens/ChatScreen';
 import TeamChatRoomScreen from '../screens/TeamChatRoomScreen';
+import DirectMessagesScreen from '../screens/DirectMessagesScreen';
+import DMChatScreen from '../screens/DMChatScreen';
+import GroupInfoScreen from '../screens/GroupInfoScreen';
 import CalendarScreen from '../screens/CalendarScreen';
 import EventDetailScreen from '../screens/EventDetailScreen';
 import AttendanceScreen from '../screens/AttendanceScreen';
@@ -25,6 +28,7 @@ import CertificateViewerScreen from '../screens/CertificateViewerScreen';
 import CoursesScreen from '../screens/CoursesScreen';
 import MyCoursesScreen from '../screens/MyCoursesScreen';
 import CourseDetailScreen from '../screens/CourseDetailScreen';
+import CoursePlayerScreen from '../screens/CoursePlayerScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import PaymentMethodsScreen from '../screens/PaymentMethodsScreen';
@@ -185,6 +189,11 @@ function HomeStack() {
         component={CourseDetailScreen}
         options={{ title: 'Course' }}
       />
+      <Stack.Screen
+        name="CoursePlayer"
+        component={CoursePlayerScreen}
+        options={{ headerShown: false }}
+      />
       {/* Team-related screens accessible from CoachDashboard */}
       <Stack.Screen
         name="Roster"
@@ -297,9 +306,24 @@ function ChatStack() {
         options={{ headerShown: false }}
       />
       <Stack.Screen
+        name="DirectMessages"
+        component={DirectMessagesScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="DMChat"
+        component={DMChatScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
         name="TeamChatRoom"
         component={TeamChatRoomScreen}
         options={{ title: 'Chat' }}
+      />
+      <Stack.Screen
+        name="GroupInfo"
+        component={GroupInfoScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

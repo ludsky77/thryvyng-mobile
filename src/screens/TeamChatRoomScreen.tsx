@@ -20,9 +20,10 @@ import { canCreatePoll } from '../lib/permissions';
 import type { Message } from '../types';
 
 export default function TeamChatRoomScreen({ route, navigation }: any) {
-  const { channelId, channelName, teamName } = route.params;
+  const { channelId, channelName, teamName, channelType } = route.params || {};
   const { user, currentRole } = useAuth();
   const flatListRef = useRef<FlatList>(null);
+  const isGroupDm = channelType === 'group_dm';
 
   const [messageText, setMessageText] = useState('');
   const [sending, setSending] = useState(false);
@@ -45,7 +46,15 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   useEffect(() => {
     navigation.setOptions({
       headerTitle: () => (
-        <View style={styles.headerTitleContainer}>
+        <TouchableOpacity
+          onPress={() => {
+            if (isGroupDm) {
+              navigation.navigate('GroupInfo', { channelId });
+            }
+          }}
+          disabled={!isGroupDm}
+          style={styles.headerTitleContainer}
+        >
           <Text style={styles.headerTitle} numberOfLines={1}>
             {channelName}
           </Text>
@@ -54,10 +63,20 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
               {teamName}
             </Text>
           )}
-        </View>
+        </TouchableOpacity>
       ),
+      headerRight: isGroupDm
+        ? () => (
+            <TouchableOpacity
+              onPress={() => navigation.navigate('GroupInfo', { channelId })}
+              style={styles.infoButton}
+            >
+              <Text style={styles.infoIcon}>ℹ️</Text>
+            </TouchableOpacity>
+          )
+        : undefined,
     });
-  }, [channelName, teamName, navigation]);
+  }, [channelName, teamName, channelId, isGroupDm, navigation]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -233,6 +252,13 @@ const styles = StyleSheet.create({
   },
   headerTitleContainer: {
     alignItems: 'center',
+  },
+  infoButton: {
+    padding: 8,
+    marginRight: 8,
+  },
+  infoIcon: {
+    fontSize: 20,
   },
   headerTitle: {
     color: '#fff',

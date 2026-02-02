@@ -108,7 +108,16 @@ export default function MyCoursesScreen({ navigation }: any) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonIcon}>←</Text>
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>My Courses</Text>
+        <View style={styles.headerRight} />
+      </View>
+      <View style={styles.headerSubtitleRow}>
         <Text style={styles.headerSubtitle}>
           {enrollments.length} {enrollments.length === 1 ? 'course' : 'courses'} enrolled
         </Text>
@@ -221,20 +230,46 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   header: {
-    paddingTop: 60,
-    paddingBottom: 16,
-    paddingHorizontal: 20,
-    backgroundColor: '#2a2a4e',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#0f172a',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#1e293b',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backButtonIcon: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '600',
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
     color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'center',
+  },
+  headerRight: {
+    width: 40,
+  },
+  headerSubtitleRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#0f172a',
   },
   headerSubtitle: {
     color: '#888',
     fontSize: 14,
-    marginTop: 4,
   },
   list: {
     flex: 1,

@@ -17,6 +17,8 @@
     "@supabase/supabase-js": "^2.93.3",
     "date-fns": "^4.1.0",
     "expo": "~54.0.32",
+    "expo-av": "~16.0.8",
+    "expo-linear-gradient": "~15.0.8",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
     "react-native": "0.81.5",

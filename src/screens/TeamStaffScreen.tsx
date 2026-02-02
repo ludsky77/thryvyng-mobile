@@ -103,12 +103,6 @@ export default function TeamStaffScreen({ route, navigation }: any) {
     fetchData();
   }, [fetchData]);
 
-  useEffect(() => {
-    navigation.setOptions({
-      title: team ? `${team.name} Staff` : 'Team Staff',
-    });
-  }, [team?.name, navigation]);
-
   const handleRefresh = () => {
     setRefreshing(true);
     fetchData();
@@ -154,9 +148,18 @@ export default function TeamStaffScreen({ route, navigation }: any) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.teamName}>{team.name}</Text>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonIcon}>←</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Team Staff</Text>
+        <View style={styles.headerRight} />
+      </View>
+      <View style={styles.headerSubtitleRow}>
         <Text style={styles.staffCount}>
-          {staff.length} {staff.length === 1 ? 'staff member' : 'staff members'}
+          {team.name} • {staff.length} {staff.length === 1 ? 'staff member' : 'staff members'}
         </Text>
       </View>
 
@@ -265,15 +268,42 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   header: {
-    padding: 20,
-    backgroundColor: '#2a2a4e',
-    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#0f172a',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
   },
-  teamName: {
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#1e293b',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backButtonIcon: {
     color: '#fff',
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 4,
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'center',
+  },
+  headerRight: {
+    width: 40,
+  },
+  headerSubtitleRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#0f172a',
   },
   staffCount: {
     color: '#888',

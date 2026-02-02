@@ -107,7 +107,16 @@ export default function PlayerEvaluationsScreen({ route, navigation }: any) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>📝 Player Evaluations</Text>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonIcon}>←</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Player Evaluations</Text>
+        <View style={styles.headerRight} />
+      </View>
+      <View style={styles.subtitleRow}>
         <Text style={styles.subtitle}>{evaluations.length} evaluations</Text>
       </View>
 
@@ -141,19 +150,46 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   header: {
-    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#0f172a',
     borderBottomWidth: 1,
-    borderBottomColor: '#2a2a4e',
+    borderBottomColor: '#1e293b',
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#1e293b',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backButtonIcon: {
     color: '#fff',
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'center',
+  },
+  headerRight: {
+    width: 40,
+  },
+  subtitleRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#0f172a',
   },
   subtitle: {
     fontSize: 14,
     color: '#888',
-    marginTop: 4,
   },
   listContent: {
     padding: 16,

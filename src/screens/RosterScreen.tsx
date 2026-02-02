@@ -82,12 +82,6 @@ export default function RosterScreen({ route, navigation }: any) {
     fetchData();
   }, [fetchData]);
 
-  useEffect(() => {
-    navigation.setOptions({
-      title: team?.name || 'Roster',
-    });
-  }, [team?.name, navigation]);
-
   const handleRefresh = () => {
     setRefreshing(true);
     fetchData();
@@ -126,6 +120,18 @@ export default function RosterScreen({ route, navigation }: any) {
 
   return (
     <View style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonIcon}>←</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          {team?.name || 'Team Roster'}
+        </Text>
+        <View style={styles.headerRight} />
+      </View>
       {/* Team Info */}
       <View style={styles.teamHeader}>
         <Text style={styles.teamName}>{team.name}</Text>
@@ -266,6 +272,39 @@ const styles = StyleSheet.create({
   errorText: {
     color: '#ef4444',
     fontSize: 16,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#0f172a',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#1e293b',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backButtonIcon: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'center',
+  },
+  headerRight: {
+    width: 40,
   },
   teamHeader: {
     paddingHorizontal: 16,

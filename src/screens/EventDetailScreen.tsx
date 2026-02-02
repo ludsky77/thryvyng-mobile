@@ -138,11 +138,15 @@ export default function EventDetailScreen({ route, navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerBar}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Text style={styles.backButtonText}>← Back</Text>
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonIcon}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Event Details</Text>
+        <View style={styles.headerRight} />
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
@@ -301,27 +305,38 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#1a1a2e',
   },
-  headerBar: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 56,
-    paddingBottom: 12,
-    backgroundColor: '#2a2a4e',
+    paddingVertical: 12,
+    backgroundColor: '#0f172a',
     borderBottomWidth: 1,
-    borderBottomColor: '#3a3a6e',
+    borderBottomColor: '#1e293b',
   },
   backButton: {
-    marginRight: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#1e293b',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  backButtonText: {
-    color: '#a78bfa',
-    fontSize: 16,
+  backButtonIcon: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '600',
   },
   headerTitle: {
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
+    flex: 1,
+    textAlign: 'center',
+  },
+  headerRight: {
+    width: 40,
   },
   scroll: {
     flex: 1,

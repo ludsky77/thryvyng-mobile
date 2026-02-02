@@ -258,47 +258,57 @@ export default function PlayerDashboard({ playerId, navigation }: PlayerDashboar
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, styles.sectionTitleInline]}>📚 MY COURSES</Text>
-          {enrolledCourses.length > 0 && (
-            <TouchableOpacity onPress={() => navigation.navigate('MyCourses')}>
-              <Text style={styles.viewAll}>View All →</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity onPress={() => navigation.navigate('MyCourses')}>
+            <Text style={styles.viewAll}>View All →</Text>
+          </TouchableOpacity>
         </View>
         {enrolledCourses.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>No courses enrolled yet</Text>
             <TouchableOpacity
-              style={styles.browseButton}
+              style={styles.browseLibraryButton}
               onPress={() => navigation.navigate('Courses')}
             >
-              <Text style={styles.browseButtonText}>Browse Courses</Text>
+              <Text style={styles.browseLibraryButtonText}>
+                📖 Browse Course Library
+              </Text>
             </TouchableOpacity>
           </View>
         ) : (
-          enrolledCourses.slice(0, 3).map((e) => (
+          <>
+            {enrolledCourses.slice(0, 3).map((e) => (
+              <TouchableOpacity
+                key={e.id}
+                style={styles.courseCard}
+                onPress={() =>
+                  navigation.navigate('CourseDetail', { course_id: e.course_id })
+                }
+              >
+                <Text style={styles.courseTitle} numberOfLines={1}>
+                  {(e.course as any)?.title || 'Course'}
+                </Text>
+                <Text style={styles.progressLabel}>
+                  Progress: {Math.round(e.progress_percentage || 0)}%
+                </Text>
+                <View style={styles.progressBar}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${e.progress_percentage || 0}%` },
+                    ]}
+                  />
+                </View>
+              </TouchableOpacity>
+            ))}
             <TouchableOpacity
-              key={e.id}
-              style={styles.courseCard}
-              onPress={() =>
-                navigation.navigate('CourseDetail', { course_id: e.course_id })
-              }
+              style={styles.browseLibraryButton}
+              onPress={() => navigation.navigate('Courses')}
             >
-              <Text style={styles.courseTitle} numberOfLines={1}>
-                {(e.course as any)?.title || 'Course'}
+              <Text style={styles.browseLibraryButtonText}>
+                📖 Browse Course Library
               </Text>
-              <Text style={styles.progressLabel}>
-                Progress: {Math.round(e.progress_percentage || 0)}%
-              </Text>
-              <View style={styles.progressBar}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    { width: `${e.progress_percentage || 0}%` },
-                  ]}
-                />
-              </View>
             </TouchableOpacity>
-          ))
+          </>
         )}
       </View>
 
@@ -620,17 +630,19 @@ const styles = StyleSheet.create({
     padding: 20,
     alignItems: 'center',
   },
-  browseButton: {
-    backgroundColor: '#8b5cf6',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+  browseLibraryButton: {
+    backgroundColor: '#10B981',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 8,
     marginTop: 12,
+    alignItems: 'center',
+    width: '100%',
   },
-  browseButtonText: {
+  browseLibraryButtonText: {
     color: '#fff',
-    fontSize: 14,
     fontWeight: '600',
+    fontSize: 14,
   },
   progressLabel: {
     color: '#888',

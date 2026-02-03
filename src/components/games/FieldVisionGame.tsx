@@ -17,10 +17,10 @@ import Animated, {
 import { Feather } from '@expo/vector-icons';
 import type { FieldVisionConfig, GameResult } from '../../types/games';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const FIELD_WIDTH = SCREEN_WIDTH - 32;
-const FIELD_HEIGHT = FIELD_WIDTH * 0.75;
-const PLAYER_SIZE = 48;
+const FIELD_HEIGHT = SCREEN_HEIGHT * 0.55; // Use more vertical space
+const PLAYER_SIZE = 44;
 const PADDING = PLAYER_SIZE / 2;
 
 type GamePhase = 'ready' | 'memorize' | 'tracking' | 'select' | 'result';
@@ -476,11 +476,40 @@ export default function FieldVisionGame({
       {/* Field */}
       <View style={styles.fieldContainer}>
         <View style={styles.field}>
-          {/* Field markings */}
-          <View style={styles.centerCircle} />
-          <View style={styles.centerLine} />
-          <View style={styles.penaltyAreaTop} />
-          <View style={styles.penaltyAreaBottom} />
+          {/* Outer border */}
+          <View style={styles.fieldBorder}>
+            {/* Top Penalty Area */}
+            <View style={styles.penaltyAreaTop}>
+              <View style={styles.goalAreaTop} />
+              <View style={styles.penaltySpotTop} />
+              <View style={styles.penaltyArcTop} />
+            </View>
+
+            {/* Center Line */}
+            <View style={styles.centerLine} />
+
+            {/* Center Circle */}
+            <View style={styles.centerCircle}>
+              <View style={styles.centerSpot} />
+            </View>
+
+            {/* Bottom Penalty Area */}
+            <View style={styles.penaltyAreaBottom}>
+              <View style={styles.goalAreaBottom} />
+              <View style={styles.penaltySpotBottom} />
+              <View style={styles.penaltyArcBottom} />
+            </View>
+
+            {/* Corner Arcs */}
+            <View style={styles.cornerTopLeft} />
+            <View style={styles.cornerTopRight} />
+            <View style={styles.cornerBottomLeft} />
+            <View style={styles.cornerBottomRight} />
+
+            {/* Goals */}
+            <View style={styles.goalTop} />
+            <View style={styles.goalBottom} />
+          </View>
 
           {/* Players */}
           {players.map((player) => (
@@ -644,55 +673,227 @@ const styles = StyleSheet.create({
   },
   // Field
   fieldContainer: {
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 16,
+    paddingVertical: 8,
   },
   field: {
     width: FIELD_WIDTH,
     height: FIELD_HEIGHT,
-    backgroundColor: '#166534',
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#fff',
-    overflow: 'hidden',
+    backgroundColor: '#2d8a4e', // Grass green
+    borderRadius: 4,
     position: 'relative',
+    overflow: 'hidden',
+  },
+  fieldBorder: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    right: 8,
+    bottom: 8,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 2,
+  },
+  // Center elements
+  centerLine: {
+    position: 'absolute',
+    top: '50%',
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    marginTop: -1,
   },
   centerCircle: {
     position: 'absolute',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: FIELD_WIDTH * 0.22,
+    height: FIELD_WIDTH * 0.22,
+    borderRadius: FIELD_WIDTH * 0.11,
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
-    top: FIELD_HEIGHT / 2 - 40,
-    left: FIELD_WIDTH / 2 - 40,
+    borderColor: 'rgba(255,255,255,0.9)',
+    top: '50%',
+    left: '50%',
+    marginTop: -(FIELD_WIDTH * 0.11),
+    marginLeft: -(FIELD_WIDTH * 0.11),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  centerLine: {
-    position: 'absolute',
-    width: 2,
-    height: '100%',
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    left: FIELD_WIDTH / 2 - 1,
+  centerSpot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.9)',
   },
+  // Top penalty area
   penaltyAreaTop: {
     position: 'absolute',
-    width: 120,
-    height: 40,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
-    borderTopWidth: 0,
     top: 0,
-    left: FIELD_WIDTH / 2 - 60,
+    left: '50%',
+    marginLeft: -(FIELD_WIDTH * 0.25),
+    width: FIELD_WIDTH * 0.5,
+    height: FIELD_HEIGHT * 0.18,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+    borderTopWidth: 0,
   },
+  goalAreaTop: {
+    position: 'absolute',
+    top: 0,
+    left: '50%',
+    marginLeft: -(FIELD_WIDTH * 0.15),
+    width: FIELD_WIDTH * 0.3,
+    height: FIELD_HEIGHT * 0.07,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+    borderTopWidth: 0,
+  },
+  penaltySpotTop: {
+    position: 'absolute',
+    top: FIELD_HEIGHT * 0.12,
+    left: '50%',
+    marginLeft: -4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+  },
+  penaltyArcTop: {
+    position: 'absolute',
+    bottom: -FIELD_WIDTH * 0.12,
+    left: '50%',
+    marginLeft: -(FIELD_WIDTH * 0.1),
+    width: FIELD_WIDTH * 0.2,
+    height: FIELD_WIDTH * 0.12,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    borderBottomLeftRadius: FIELD_WIDTH * 0.1,
+    borderBottomRightRadius: FIELD_WIDTH * 0.1,
+    borderTopWidth: 0,
+  },
+  // Bottom penalty area
   penaltyAreaBottom: {
     position: 'absolute',
-    width: 120,
-    height: 40,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
-    borderBottomWidth: 0,
     bottom: 0,
-    left: FIELD_WIDTH / 2 - 60,
+    left: '50%',
+    marginLeft: -(FIELD_WIDTH * 0.25),
+    width: FIELD_WIDTH * 0.5,
+    height: FIELD_HEIGHT * 0.18,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+    borderBottomWidth: 0,
+  },
+  goalAreaBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: '50%',
+    marginLeft: -(FIELD_WIDTH * 0.15),
+    width: FIELD_WIDTH * 0.3,
+    height: FIELD_HEIGHT * 0.07,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+    borderBottomWidth: 0,
+  },
+  penaltySpotBottom: {
+    position: 'absolute',
+    bottom: FIELD_HEIGHT * 0.12,
+    left: '50%',
+    marginLeft: -4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+  },
+  penaltyArcBottom: {
+    position: 'absolute',
+    top: -FIELD_WIDTH * 0.12,
+    left: '50%',
+    marginLeft: -(FIELD_WIDTH * 0.1),
+    width: FIELD_WIDTH * 0.2,
+    height: FIELD_WIDTH * 0.12,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderTopLeftRadius: FIELD_WIDTH * 0.1,
+    borderTopRightRadius: FIELD_WIDTH * 0.1,
+    borderBottomWidth: 0,
+  },
+  // Corner arcs
+  cornerTopLeft: {
+    position: 'absolute',
+    top: -6,
+    left: -6,
+    width: 12,
+    height: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 12,
+    borderTopWidth: 0,
+    borderLeftWidth: 0,
+  },
+  cornerTopRight: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 12,
+    height: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 12,
+    borderTopWidth: 0,
+    borderRightWidth: 0,
+  },
+  cornerBottomLeft: {
+    position: 'absolute',
+    bottom: -6,
+    left: -6,
+    width: 12,
+    height: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 12,
+    borderBottomWidth: 0,
+    borderLeftWidth: 0,
+  },
+  cornerBottomRight: {
+    position: 'absolute',
+    bottom: -6,
+    right: -6,
+    width: 12,
+    height: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 12,
+    borderBottomWidth: 0,
+    borderRightWidth: 0,
+  },
+  // Goals (behind the lines)
+  goalTop: {
+    position: 'absolute',
+    top: -10,
+    left: '50%',
+    marginLeft: -(FIELD_WIDTH * 0.12),
+    width: FIELD_WIDTH * 0.24,
+    height: 10,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 4,
+  },
+  goalBottom: {
+    position: 'absolute',
+    bottom: -10,
+    left: '50%',
+    marginLeft: -(FIELD_WIDTH * 0.12),
+    width: FIELD_WIDTH * 0.24,
+    height: 10,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderBottomLeftRadius: 4,
+    borderBottomRightRadius: 4,
   },
   // Player
   playerContainer: {

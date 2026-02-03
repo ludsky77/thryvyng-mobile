@@ -13,7 +13,8 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ludskywalker77.thryvyng-mobile"
     },
     "android": {
       "adaptiveIcon": {

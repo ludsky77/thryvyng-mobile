@@ -4,20 +4,66 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useMessages } from '../hooks/useMessages';
 import { PollCard } from '../components/chat/PollCard';
 import { CreatePollModal } from '../components/chat/CreatePollModal';
+import { ChatBubble, type ReactionSummary } from '../components/chat/ChatBubble';
+import { ChatInputBar, type AttachmentData } from '../components/chat/ChatInputBar';
+import { ReactionPicker } from '../components/chat/ReactionPicker';
+import {
+  CelebrationOverlay,
+  type CelebrationType,
+} from '../components/chat/CelebrationOverlay';
+import {
+  ReactionDetailsModal,
+  type ReactionDetailItem,
+} from '../components/chat/ReactionDetailsModal';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { canCreatePoll } from '../lib/permissions';
+import { useChannelMembers } from '../hooks/useChannelMembers';
 import type { Message } from '../types';
+
+function getCelebrationType(
+  content: string,
+  isCoach: boolean
+): CelebrationType | null {
+  const lower = (content || '').toLowerCase().trim();
+  if (lower === '/celebrate') return 'celebrate';
+  if (isCoach && (lower === 'goal' || content?.trim() === '⚽')) return 'goal';
+  if (lower.includes('happy birthday')) return 'birthday';
+  return null;
+}
+
+function getReactionsSummary(
+  reactions: Message['reactions'],
+  currentUserId: string | undefined
+): ReactionSummary[] {
+  if (!reactions?.length) return [];
+  const byEmoji: Record<string, { count: number; userReacted: boolean }> = {};
+  for (const r of reactions) {
+    const emoji = r.reaction ?? r.emoji ?? '';
+    if (!emoji) continue;
+    if (!byEmoji[emoji]) {
+      byEmoji[emoji] = { count: 0, userReacted: false };
+    }
+    byEmoji[emoji].count += 1;
+    if (r.user_id === currentUserId) byEmoji[emoji].userReacted = true;
+  }
+  return Object.entries(byEmoji).map(([reaction, { count, userReacted }]) => ({
+    reaction,
+    count,
+    userReacted,
+  }));
+}
 
 export default function TeamChatRoomScreen({ route, navigation }: any) {
   const { channelId, channelName, teamName, channelType } = route.params || {};
@@ -25,58 +71,49 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   const flatListRef = useRef<FlatList>(null);
   const isGroupDm = channelType === 'group_dm';
 
-  const [messageText, setMessageText] = useState('');
   const [sending, setSending] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [pollModalVisible, setPollModalVisible] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<{
+    messageId: string;
+    content: string;
+    senderName: string;
+  } | null>(null);
+  const [reactionPickerVisible, setReactionPickerVisible] = useState(false);
+  const [reactionPickerMessage, setReactionPickerMessage] =
+    useState<Message | null>(null);
+  const [celebration, setCelebration] = useState<{
+    type: CelebrationType;
+    visible: boolean;
+  }>({ type: 'celebrate', visible: false });
+  const [showReactionDetails, setShowReactionDetails] = useState(false);
+  const [selectedMessageReactions, setSelectedMessageReactions] = useState<
+    ReactionDetailItem[]
+  >([]);
 
-  const { messages, loading, sendMessage, refetch } = useMessages(channelId);
+  const {
+    messages,
+    loading,
+    sendMessage,
+    toggleReaction,
+    refetch,
+  } = useMessages(channelId);
+  const { members: channelMembers, updateLastReadMessage } =
+    useChannelMembers(channelId);
+
+  const isCoach =
+    currentRole?.role &&
+    ['head_coach', 'assistant_coach', 'team_manager'].includes(
+      currentRole.role
+    );
+  const messageIds = messages.map((m) => m.id);
 
   useEffect(() => {
-    if (channelId && user?.id) {
-      supabase
-        .from('comm_channel_members')
-        .update({ last_read_at: new Date().toISOString() })
-        .eq('channel_id', channelId)
-        .eq('user_id', user.id)
-        .then(() => {});
+    if (channelId && user?.id && messages.length > 0) {
+      const lastId = messages[messages.length - 1].id;
+      updateLastReadMessage(lastId).catch(() => {});
     }
-  }, [channelId, user?.id]);
-
-  useEffect(() => {
-    navigation.setOptions({
-      headerTitle: () => (
-        <TouchableOpacity
-          onPress={() => {
-            if (isGroupDm) {
-              navigation.navigate('GroupInfo', { channelId });
-            }
-          }}
-          disabled={!isGroupDm}
-          style={styles.headerTitleContainer}
-        >
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {channelName}
-          </Text>
-          {teamName && (
-            <Text style={styles.headerSubtitle} numberOfLines={1}>
-              {teamName}
-            </Text>
-          )}
-        </TouchableOpacity>
-      ),
-      headerRight: isGroupDm
-        ? () => (
-            <TouchableOpacity
-              onPress={() => navigation.navigate('GroupInfo', { channelId })}
-              style={styles.infoButton}
-            >
-              <Text style={styles.infoIcon}>ℹ️</Text>
-            </TouchableOpacity>
-          )
-        : undefined,
-    });
-  }, [channelName, teamName, channelId, isGroupDm, navigation]);
+  }, [channelId, user?.id, messages.length, updateLastReadMessage]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -86,19 +123,90 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     }
   }, [messages]);
 
-  const handleSend = async () => {
-    if (!messageText.trim() || sending) return;
+  const handleSendMessage = async (
+    content: string,
+    attachment?: AttachmentData
+  ) => {
+    if (sending) return;
     setSending(true);
     try {
-      const success = await sendMessage(messageText.trim());
+      const success = await sendMessage(content, {
+        attachment: attachment
+          ? {
+              uri: attachment.uri,
+              type: attachment.type,
+              name: attachment.name,
+              mimeType: attachment.mimeType,
+              size: attachment.size,
+            }
+          : undefined,
+        replyTo: replyingTo
+          ? {
+              id: replyingTo.messageId,
+              content: replyingTo.content,
+              senderName: replyingTo.senderName,
+            }
+          : undefined,
+      });
       if (success) {
-        setMessageText('');
+        setReplyingTo(null);
         flatListRef.current?.scrollToEnd({ animated: true });
+        const celebrationType = getCelebrationType(content, isCoach ?? false);
+        if (celebrationType) {
+          setCelebration({ type: celebrationType, visible: true });
+        }
       }
     } catch (error) {
       console.error('Error sending message:', error);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleReactionSelect = async (emoji: string) => {
+    if (!reactionPickerMessage?.id) return;
+    try {
+      await toggleReaction(reactionPickerMessage.id, emoji);
+      await refetch();
+    } catch (error) {
+      console.error('Failed to add reaction:', error);
+    } finally {
+      setReactionPickerVisible(false);
+      setReactionPickerMessage(null);
+    }
+  };
+
+  const openReactionPicker = (message: Message) => {
+    setReactionPickerMessage(message);
+    setReactionPickerVisible(true);
+  };
+
+  const handleShowReactionDetails = (reactions: ReactionDetailItem[]) => {
+    setSelectedMessageReactions(reactions);
+    setShowReactionDetails(true);
+  };
+
+  const startReply = () => {
+    if (reactionPickerMessage) {
+      setReplyingTo({
+        messageId: reactionPickerMessage.id,
+        content:
+          reactionPickerMessage.content?.trim() ||
+          (reactionPickerMessage.attachment_name
+            ? `📎 ${reactionPickerMessage.attachment_name}`
+            : 'Attachment'),
+        senderName:
+          reactionPickerMessage.profile?.full_name ?? 'Unknown',
+      });
+    }
+    setReactionPickerMessage(null);
+    setReactionPickerVisible(false);
+  };
+
+  const scrollToMessageId = (messageId: string) => {
+    const index = messages.findIndex((m) => m.id === messageId);
+    if (index >= 0) {
+      flatListRef.current?.scrollToIndex({ index, animated: true });
     }
   };
 
@@ -108,58 +216,115 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     setRefreshing(false);
   };
 
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const isNewDay = (currentMsg: Message, prevMsg: Message | undefined) => {
+    if (!prevMsg) return true;
+    const currentDate = new Date(currentMsg.created_at).toDateString();
+    const prevDate = new Date(prevMsg.created_at).toDateString();
+    return currentDate !== prevDate;
   };
 
-  const renderItem = ({ item }: { item: Message }) => {
+  const formatDateSeparator = (dateString: string) => {
+    const date = new Date(dateString);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (date.toDateString() === today.toDateString()) {
+      return 'Today';
+    }
+    if (date.toDateString() === yesterday.toDateString()) {
+      return 'Yesterday';
+    }
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+
+  const renderItem = ({ item, index }: { item: Message; index: number }) => {
+    const prevItem = messages[index - 1];
+    const showDaySeparator = isNewDay(item, prevItem);
+
     if (item.message_type === 'poll' && item.poll_id) {
       return (
-        <View style={styles.messageContainer}>
-          <PollCard pollId={item.poll_id} compact={true} />
-        </View>
+        <>
+          {showDaySeparator && (
+            <View style={styles.daySeparator}>
+              <Text style={styles.daySeparatorText}>
+                {formatDateSeparator(item.created_at)}
+              </Text>
+              <View style={styles.daySeparatorLine} />
+            </View>
+          )}
+          <View style={styles.messageContainer}>
+            <PollCard pollId={item.poll_id} compact={true} />
+          </View>
+        </>
       );
     }
 
     const isOwnMessage = item.user_id === user?.id;
+    const reactionsSummary = getReactionsSummary(item.reactions, user?.id);
+    const replyTo =
+      item.reply_to_id && (item.reply_to_content != null || item.reply_to_sender != null)
+        ? {
+            content: item.reply_to_content ?? '(message)',
+            senderName: item.reply_to_sender ?? 'Unknown',
+          }
+        : undefined;
 
     return (
-      <View
-        style={[
-          styles.messageContainer,
-          isOwnMessage && styles.ownMessageContainer,
-        ]}
-      >
-        {!isOwnMessage && (
-          <View style={styles.messageHeader}>
-            <Text style={styles.messageSender}>
-              {item.profile?.full_name || 'Unknown User'}
+      <>
+        {showDaySeparator && (
+          <View style={styles.daySeparator}>
+            <Text style={styles.daySeparatorText}>
+              {formatDateSeparator(item.created_at)}
             </Text>
-            <Text style={styles.messageTime}>{formatTime(item.created_at)}</Text>
+            <View style={styles.daySeparatorLine} />
           </View>
         )}
-
-        <View
-          style={[
-            styles.messageContent,
-            isOwnMessage ? styles.ownMessageContent : styles.otherMessageContent,
-          ]}
-        >
-          <Text
-            style={[
-              styles.messageText,
-              isOwnMessage ? styles.ownMessageText : styles.otherMessageText,
-            ]}
-          >
-            {item.content}
-          </Text>
-
-          {item.is_pinned && (
-            <Text style={styles.pinnedText}>📌 Pinned</Text>
-          )}
+        <View style={styles.messageContainer}>
+          <ChatBubble
+          message={{
+            id: item.id,
+            content: item.content,
+            user_id: item.user_id,
+            created_at: item.created_at,
+            comm_message_attachments: item.comm_message_attachments,
+            attachment_url: item.attachment_url ?? undefined,
+            attachment_type: item.attachment_type ?? undefined,
+            attachment_name: item.attachment_name ?? undefined,
+          }}
+          isOwnMessage={isOwnMessage}
+          senderName={
+            (item as any).profiles?.full_name || item.profile?.full_name
+          }
+          senderAvatar={
+            (item as any).profiles?.avatar_url || item.profile?.avatar_url
+          }
+          senderRole={
+            (item as any).profiles?.role ||
+            (item as any).profile?.role ||
+            undefined
+          }
+          showSenderInfo={true}
+          reactions={reactionsSummary.length > 0 ? reactionsSummary : undefined}
+          replyTo={replyTo}
+          onLongPress={() => openReactionPicker(item)}
+          onReplyPress={
+            item.reply_to_id
+              ? () => scrollToMessageId(item.reply_to_id!)
+              : undefined
+          }
+          onReactionPress={(reaction) => toggleReaction(item.id, reaction)}
+          onShowReactionDetails={() =>
+            handleShowReactionDetails(
+              (item.reactions ?? []) as ReactionDetailItem[]
+            )
+          }
+        />
         </View>
-      </View>
+      </>
     );
   };
 
@@ -172,28 +337,91 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={90}
-    >
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderItem}
-        keyExtractor={(item, index) => `${item.id}-${index}`}
-        contentContainerStyle={styles.messagesList}
-        onContentSizeChange={() =>
-          flatListRef.current?.scrollToEnd({ animated: false })
-        }
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#8b5cf6"
-          />
-        }
-      />
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Custom Header */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Feather name="arrow-left" size={24} color="#fff" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.headerCenter}
+          onPress={() => {
+            if (isGroupDm) {
+              navigation.navigate('GroupInfo', { channelId });
+            }
+          }}
+          disabled={!isGroupDm}
+        >
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {channelName || 'Team Chat'}
+          </Text>
+          {teamName && (
+            <Text style={styles.headerSubtitle} numberOfLines={1}>
+              {teamName}
+            </Text>
+          )}
+        </TouchableOpacity>
+        {isGroupDm ? (
+          <TouchableOpacity
+            style={styles.headerIconButton}
+            onPress={() => navigation.navigate('GroupInfo', { channelId })}
+          >
+            <Feather name="info" size={24} color="#8B5CF6" />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.headerIconButton} />
+        )}
+      </View>
+
+      {/* Chat Area with Keyboard Handling */}
+      <KeyboardAvoidingView
+        style={styles.chatArea}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 56 : 0}
+      >
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          style={{ flex: 1 }}
+          renderItem={renderItem}
+          keyExtractor={(item, index) => `${item.id}-${index}`}
+          contentContainerStyle={styles.messagesList}
+          onContentSizeChange={() =>
+            flatListRef.current?.scrollToEnd({ animated: false })
+          }
+          onLayout={() =>
+            flatListRef.current?.scrollToEnd({ animated: false })
+          }
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#8b5cf6"
+            />
+          }
+        />
+
+        <ChatInputBar
+          onSendMessage={handleSendMessage}
+          onPollPress={
+            canCreatePoll(currentRole?.role)
+              ? () => setPollModalVisible(true)
+              : undefined
+          }
+          placeholder="Type a message..."
+          replyingTo={
+            replyingTo
+              ? { senderName: replyingTo.senderName, content: replyingTo.content }
+              : null
+          }
+          onCancelReply={() => setReplyingTo(null)}
+        />
+      </KeyboardAvoidingView>
 
       <CreatePollModal
         visible={pollModalVisible}
@@ -202,63 +430,63 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
         onSuccess={refetch}
       />
 
-      <View style={styles.inputContainer}>
-        {canCreatePoll(currentRole?.role) && (
-          <TouchableOpacity
-            style={styles.pollButton}
-            onPress={() => setPollModalVisible(true)}
-          >
-            <Text style={styles.pollButtonText}>📊</Text>
-          </TouchableOpacity>
-        )}
+      <ReactionPicker
+        visible={reactionPickerVisible}
+        onSelect={handleReactionSelect}
+        onClose={() => {
+          setReactionPickerVisible(false);
+          setReactionPickerMessage(null);
+        }}
+        onReply={startReply}
+      />
 
-        <TextInput
-          style={styles.input}
-          placeholder="Type a message..."
-          placeholderTextColor="#666"
-          value={messageText}
-          onChangeText={setMessageText}
-          multiline
-          maxLength={1000}
-        />
+      <CelebrationOverlay
+        type={celebration.type}
+        visible={celebration.visible}
+        onComplete={() => setCelebration({ type: 'celebrate', visible: false })}
+      />
 
-        <TouchableOpacity
-          style={[
-            styles.sendButton,
-            !messageText.trim() && styles.sendButtonDisabled,
-          ]}
-          onPress={handleSend}
-          disabled={!messageText.trim() || sending}
-        >
-          <Text style={styles.sendButtonText}>
-            {sending ? '...' : 'Send'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+      <ReactionDetailsModal
+        visible={showReactionDetails}
+        onClose={() => setShowReactionDetails(false)}
+        reactions={selectedMessageReactions}
+      />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a2e',
+    backgroundColor: '#0f172a',
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#1a1a2e',
+    backgroundColor: '#0f172a',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  headerTitleContainer: {
+  header: {
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
+    backgroundColor: '#0f172a',
   },
-  infoButton: {
-    padding: 8,
-    marginRight: 8,
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#1e293b',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  infoIcon: {
-    fontSize: 20,
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 12,
   },
   headerTitle: {
     color: '#fff',
@@ -268,10 +496,37 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     color: '#8b5cf6',
     fontSize: 12,
+    marginTop: 2,
+  },
+  headerIconButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatArea: {
+    flex: 1,
   },
   messagesList: {
     padding: 16,
     paddingBottom: 20,
+  },
+  daySeparator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 16,
+    paddingHorizontal: 12,
+  },
+  daySeparatorText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginRight: 12,
+  },
+  daySeparatorLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#374151',
   },
   messageContainer: {
     marginBottom: 16,

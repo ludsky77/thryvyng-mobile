@@ -9,6 +9,7 @@ import {
   Linking,
   Alert,
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 
 const HELP_URL = 'https://thryvyng.com/help';
@@ -78,7 +79,9 @@ export default function ProfileScreen({ navigation }: any) {
           style={styles.menuItem}
           onPress={() => navigation.navigate('Notifications')}
         >
-          <Text style={styles.menuIcon}>🔔</Text>
+          <View style={styles.menuIconWrap}>
+            <Feather name="bell" size={22} color="#8B5CF6" />
+          </View>
           <Text style={styles.menuItemText}>Notifications</Text>
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>
@@ -241,6 +244,9 @@ const styles = StyleSheet.create({
   },
   menuIcon: {
     fontSize: 20,
+    marginRight: 14,
+  },
+  menuIconWrap: {
     marginRight: 14,
   },
   menuItemText: {

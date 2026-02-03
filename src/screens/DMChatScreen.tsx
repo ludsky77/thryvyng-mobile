@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
@@ -17,7 +16,43 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useMessages } from '../hooks/useMessages';
 import { formatRoleLabel, getRolePriority } from '../lib/chatHelpers';
+import { ChatBubble, type ReactionSummary } from '../components/chat/ChatBubble';
+import { ChatInputBar, type AttachmentData } from '../components/chat/ChatInputBar';
+import { ReactionPicker } from '../components/chat/ReactionPicker';
+import {
+  CelebrationOverlay,
+  type CelebrationType,
+} from '../components/chat/CelebrationOverlay';
 import type { Message } from '../types';
+
+function getCelebrationType(content: string): CelebrationType | null {
+  const lower = (content || '').toLowerCase().trim();
+  if (lower === '/celebrate') return 'celebrate';
+  if (lower.includes('happy birthday')) return 'birthday';
+  return null;
+}
+
+function getReactionsSummary(
+  reactions: Message['reactions'],
+  currentUserId: string | undefined
+): ReactionSummary[] {
+  if (!reactions?.length) return [];
+  const byEmoji: Record<string, { count: number; userReacted: boolean }> = {};
+  for (const r of reactions) {
+    const emoji = r.reaction ?? r.emoji ?? '';
+    if (!emoji) continue;
+    if (!byEmoji[emoji]) {
+      byEmoji[emoji] = { count: 0, userReacted: false };
+    }
+    byEmoji[emoji].count += 1;
+    if (r.user_id === currentUserId) byEmoji[emoji].userReacted = true;
+  }
+  return Object.entries(byEmoji).map(([reaction, { count, userReacted }]) => ({
+    reaction,
+    count,
+    userReacted,
+  }));
+}
 
 interface OtherPerson {
   id: string;
@@ -33,11 +68,24 @@ export default function DMChatScreen({ route, navigation }: any) {
 
   const [otherPerson, setOtherPerson] = useState<OtherPerson | null>(null);
   const [channelLoading, setChannelLoading] = useState(true);
-  const [messageText, setMessageText] = useState('');
   const [sending, setSending] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<{
+    messageId: string;
+    content: string;
+    senderName: string;
+  } | null>(null);
+  const [reactionPickerVisible, setReactionPickerVisible] = useState(false);
+  const [reactionPickerMessage, setReactionPickerMessage] =
+    useState<Message | null>(null);
 
-  const { messages, loading, sendMessage, refetch } = useMessages(channelId);
+  const {
+    messages,
+    loading,
+    sendMessage,
+    toggleReaction,
+    refetch,
+  } = useMessages(channelId);
 
   const fetchChannelInfo = useCallback(async () => {
     if (!channelId || !user?.id) {
@@ -125,14 +173,39 @@ export default function DMChatScreen({ route, navigation }: any) {
     }
   }, [messages.length]);
 
-  const handleSend = async () => {
-    if (!messageText.trim() || sending || !channelId) return;
+  const handleSendMessage = async (
+    content: string,
+    attachment?: AttachmentData
+  ) => {
+    if (sending || !channelId) return;
+    if (!content.trim() && !attachment) return;
     setSending(true);
     try {
-      const success = await sendMessage(messageText.trim());
+      const success = await sendMessage(content, {
+        attachment: attachment
+          ? {
+              uri: attachment.uri,
+              type: attachment.type,
+              name: attachment.name,
+              mimeType: attachment.mimeType,
+              size: attachment.size,
+            }
+          : undefined,
+        replyTo: replyingTo
+          ? {
+              id: replyingTo.messageId,
+              content: replyingTo.content,
+              senderName: replyingTo.senderName,
+            }
+          : undefined,
+      });
       if (success) {
-        setMessageText('');
+        setReplyingTo(null);
         flatListRef.current?.scrollToEnd({ animated: true });
+        const celebrationType = getCelebrationType(content);
+        if (celebrationType) {
+          setCelebration({ type: celebrationType, visible: true });
+        }
         await supabase
           .from('comm_channels')
           .update({ updated_at: new Date().toISOString() })
@@ -145,51 +218,86 @@ export default function DMChatScreen({ route, navigation }: any) {
     }
   };
 
+  const handleReactionSelect = async (emoji: string) => {
+    if (!reactionPickerMessage?.id) return;
+    await toggleReaction(reactionPickerMessage.id, emoji);
+    setReactionPickerMessage(null);
+    setReactionPickerVisible(false);
+  };
+
+  const openReactionPicker = (message: Message) => {
+    setReactionPickerMessage(message);
+    setReactionPickerVisible(true);
+  };
+
+  const startReply = () => {
+    if (reactionPickerMessage) {
+      setReplyingTo({
+        messageId: reactionPickerMessage.id,
+        content:
+          reactionPickerMessage.content?.trim() ||
+          (reactionPickerMessage.attachment_name
+            ? `📎 ${reactionPickerMessage.attachment_name}`
+            : 'Attachment'),
+        senderName:
+          reactionPickerMessage.profile?.full_name ?? 'Unknown',
+      });
+    }
+    setReactionPickerMessage(null);
+    setReactionPickerVisible(false);
+  };
+
+  const scrollToMessageId = (messageId: string) => {
+    const index = messages.findIndex((m) => m.id === messageId);
+    if (index >= 0) {
+      flatListRef.current?.scrollToIndex({ index, animated: true });
+    }
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
     await refetch();
     setRefreshing(false);
   };
 
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
   const renderItem = ({ item }: { item: Message }) => {
     const isOwnMessage = item.user_id === user?.id;
+    const reactionsSummary = getReactionsSummary(item.reactions, user?.id);
+    const replyTo =
+      item.reply_to_id && (item.reply_to_content != null || item.reply_to_sender != null)
+        ? {
+            content: item.reply_to_content ?? '(message)',
+            senderName: item.reply_to_sender ?? 'Unknown',
+          }
+        : undefined;
 
     return (
-      <View
-        style={[
-          styles.messageContainer,
-          isOwnMessage && styles.ownMessageContainer,
-        ]}
-      >
-        {!isOwnMessage && (
-          <View style={styles.messageHeader}>
-            <Text style={styles.messageSender}>
-              {item.profile?.full_name || 'Unknown'}
-            </Text>
-            <Text style={styles.messageTime}>{formatTime(item.created_at)}</Text>
-          </View>
-        )}
-
-        <View
-          style={[
-            styles.messageContent,
-            isOwnMessage ? styles.ownMessageContent : styles.otherMessageContent,
-          ]}
-        >
-          <Text
-            style={[
-              styles.messageText,
-              isOwnMessage ? styles.ownMessageText : styles.otherMessageText,
-            ]}
-          >
-            {item.content}
-          </Text>
-        </View>
+      <View style={styles.messageContainer}>
+        <ChatBubble
+          message={{
+            id: item.id,
+            content: item.content,
+            user_id: item.user_id,
+            created_at: item.created_at,
+            comm_message_attachments: item.comm_message_attachments,
+            attachment_url: item.attachment_url ?? undefined,
+            attachment_type: item.attachment_type ?? undefined,
+            attachment_name: item.attachment_name ?? undefined,
+          }}
+          isOwnMessage={isOwnMessage}
+          senderName={item.profile?.full_name}
+          senderAvatar={item.profile?.avatar_url}
+          showSenderInfo={false}
+          reactions={reactionsSummary.length > 0 ? reactionsSummary : undefined}
+          replyTo={replyTo}
+          onLongPress={() => openReactionPicker(item)}
+          onReplyPress={
+            item.reply_to_id
+              ? () => scrollToMessageId(item.reply_to_id!)
+              : undefined
+          }
+          onReactionPress={(reaction) => toggleReaction(item.id, reaction)}
+        />
       </View>
     );
   };
@@ -265,7 +373,7 @@ export default function DMChatScreen({ route, navigation }: any) {
       <KeyboardAvoidingView
         style={styles.chatArea}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 56 : 0}
       >
         {loading ? (
           <View style={styles.messagesLoading}>
@@ -291,29 +399,26 @@ export default function DMChatScreen({ route, navigation }: any) {
           />
         )}
 
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            placeholder="Type a message..."
-            placeholderTextColor="#6B7280"
-            value={messageText}
-            onChangeText={setMessageText}
-            multiline
-            maxLength={1000}
-          />
-          <TouchableOpacity
-            style={[
-              styles.sendButton,
-              (!messageText.trim() || sending) && styles.sendButtonDisabled,
-            ]}
-            onPress={handleSend}
-            disabled={!messageText.trim() || sending}
-          >
-            <Text style={styles.sendButtonText}>
-              {sending ? '...' : 'Send'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <ReactionPicker
+          visible={reactionPickerVisible}
+          onSelect={handleReactionSelect}
+          onClose={() => {
+            setReactionPickerVisible(false);
+            setReactionPickerMessage(null);
+          }}
+          onReply={startReply}
+        />
+
+        <ChatInputBar
+          onSendMessage={handleSendMessage}
+          placeholder="Type a message..."
+          replyingTo={
+            replyingTo
+              ? { senderName: replyingTo.senderName, content: replyingTo.content }
+              : null
+          }
+          onCancelReply={() => setReplyingTo(null)}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

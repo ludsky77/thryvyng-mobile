@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePoll } from '../../hooks/usePolls';
 import { canCreatePoll } from '../../lib/permissions';
@@ -85,7 +86,8 @@ export function PollCard({ pollId, compact = false }: PollCardProps) {
           <View style={styles.compactHeaderContent}>
             <View style={styles.compactInfo}>
               <View style={styles.pollBadge}>
-                <Text style={styles.pollBadgeText}>📊 Poll</Text>
+                <Feather name="bar-chart-2" size={16} color="#8B5CF6" />
+                <Text style={styles.pollBadgeText}>Poll</Text>
                 {isClosed && <Text style={styles.closedBadge}>Closed</Text>}
               </View>
               <Text style={styles.compactQuestion} numberOfLines={2}>

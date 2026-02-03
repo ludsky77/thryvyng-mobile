@@ -456,9 +456,7 @@ export default function PlayerDashboard({ playerId, navigation }: PlayerDashboar
           </Text>
           <TouchableOpacity
             style={styles.primaryButton}
-            onPress={() =>
-              Alert.alert('Coming Soon', 'Cognitive games are in development!')
-            }
+            onPress={() => navigation.navigate('GamesHub')}
           >
             <Text style={styles.primaryButtonText}>Play Games</Text>
           </TouchableOpacity>

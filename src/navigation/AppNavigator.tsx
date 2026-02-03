@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 
 // Screens
@@ -36,27 +37,19 @@ import PaymentHistoryScreen from '../screens/PaymentHistoryScreen';
 import InvitePlayerScreen from '../screens/InvitePlayerScreen';
 import PlayerEvaluationsScreen from '../screens/PlayerEvaluationsScreen';
 import TeamCertificatesScreen from '../screens/TeamCertificatesScreen';
+import GamesHubScreen from '../screens/GamesHubScreen';
+import GamePlayScreen from '../screens/GamePlayScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-function TabIcon({ name, focused }: { name: string; focused: boolean }) {
-  const icons: Record<string, string> = {
-    Home: '🏠',
-    Teams: '👥',
-    Chat: '💬',
-    Calendar: '📅',
-    Profile: '👤',
-  };
-
-  return (
-    <Text
-      style={[styles.tabIcon, focused && styles.tabIconFocused]}
-    >
-      {icons[name] || '📱'}
-    </Text>
-  );
-}
+const TAB_ICONS: Record<string, string> = {
+  Home: 'home',
+  Teams: 'users',
+  Chat: 'message-circle',
+  Calendar: 'calendar',
+  Profile: 'user',
+};
 
 function MainTabs() {
   const { currentRole } = useAuth();
@@ -75,11 +68,11 @@ function MainTabs() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
+        tabBarActiveTintColor: '#8B5CF6',
+        tabBarInactiveTintColor: '#6B7280',
         tabBarStyle: styles.tabBar,
-        tabBarActiveTintColor: '#8b5cf6',
-        tabBarInactiveTintColor: '#666',
         tabBarLabelStyle: styles.tabBarLabel,
-        tabBarIconStyle: styles.tabBarIcon,
+        tabBarIconStyle: styles.tabBarIconStyle,
       }}
     >
       <Tab.Screen
@@ -87,7 +80,9 @@ function MainTabs() {
         component={HomeStack}
         options={{
           tabBarLabel: 'Home',
-          tabBarIcon: ({ focused }) => <TabIcon name="Home" focused={focused} />,
+          tabBarIcon: ({ color, size }) => (
+            <Feather name={TAB_ICONS.Home} size={22} color={color} />
+          ),
         }}
       />
 
@@ -97,8 +92,8 @@ function MainTabs() {
           component={TeamsStack}
           options={{
             tabBarLabel: 'Teams',
-            tabBarIcon: ({ focused }) => (
-              <TabIcon name="Teams" focused={focused} />
+            tabBarIcon: ({ color, size }) => (
+              <Feather name={TAB_ICONS.Teams} size={22} color={color} />
             ),
           }}
         />
@@ -109,7 +104,9 @@ function MainTabs() {
         component={ChatStack}
         options={{
           tabBarLabel: 'Chat',
-          tabBarIcon: ({ focused }) => <TabIcon name="Chat" focused={focused} />,
+          tabBarIcon: ({ color, size }) => (
+            <Feather name={TAB_ICONS.Chat} size={22} color={color} />
+          ),
         }}
       />
 
@@ -118,8 +115,8 @@ function MainTabs() {
         component={CalendarStack}
         options={{
           tabBarLabel: 'Calendar',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon name="Calendar" focused={focused} />
+          tabBarIcon: ({ color, size }) => (
+            <Feather name={TAB_ICONS.Calendar} size={22} color={color} />
           ),
         }}
       />
@@ -129,8 +126,8 @@ function MainTabs() {
         component={ProfileStack}
         options={{
           tabBarLabel: 'Profile',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon name="Profile" focused={focused} />
+          tabBarIcon: ({ color, size }) => (
+            <Feather name={TAB_ICONS.Profile} size={22} color={color} />
           ),
         }}
       />
@@ -225,6 +222,16 @@ function HomeStack() {
         component={InvitePlayerScreen}
         options={{ title: 'Invite Player' }}
       />
+      <Stack.Screen
+        name="GamesHub"
+        component={GamesHubScreen as any}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="GamePlay"
+        component={GamePlayScreen as any}
+        options={{ headerShown: false }}
+      />
     </Stack.Navigator>
   );
 }
@@ -318,7 +325,7 @@ function ChatStack() {
       <Stack.Screen
         name="TeamChatRoom"
         component={TeamChatRoomScreen}
-        options={{ title: 'Chat' }}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="GroupInfo"
@@ -435,26 +442,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   tabBar: {
-    backgroundColor: '#1a1a2e',
-    borderTopColor: '#2a2a4e',
+    backgroundColor: '#1F2937',
+    borderTopColor: '#374151',
     borderTopWidth: 1,
-    height: 90,
-    paddingBottom: 20,
-    paddingTop: 10,
+    paddingTop: 8,
+    paddingBottom: 24,
+    height: 80,
   },
   tabBarLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 5,
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 4,
   },
-  tabBarIcon: {
-    marginTop: 5,
-  },
-  tabIcon: {
-    fontSize: 26,
-  },
-  tabIconFocused: {
-    transform: [{ scale: 1.1 }],
+  tabBarIconStyle: {
+    marginTop: 4,
   },
   header: {
     backgroundColor: '#1a1a2e',

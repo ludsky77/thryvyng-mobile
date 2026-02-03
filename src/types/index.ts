@@ -58,6 +58,16 @@ export interface Channel {
     is_deleted: boolean;
     edited_at: string | null;
     created_at: string;
+    /** @deprecated Use comm_message_attachments */
+    attachment_url?: string | null;
+    /** @deprecated Use comm_message_attachments */
+    attachment_type?: 'image' | 'video' | 'document' | null;
+    /** @deprecated Use comm_message_attachments */
+    attachment_name?: string | null;
+    comm_message_attachments?: MessageAttachment[];
+    reply_to_id?: string | null;
+    reply_to_content?: string | null;
+    reply_to_sender?: string | null;
     // Joined data - profile for parents/staff
     profile?: {
       id: string;
@@ -75,11 +85,21 @@ export interface Channel {
     reactions?: MessageReaction[];
   }
   
+  export interface MessageAttachment {
+    id: string;
+    message_id: string;
+    file_url: string;
+    file_name: string;
+    file_type: 'image' | 'video' | 'document';
+    file_size?: number;
+  }
+
   export interface MessageReaction {
     id: string;
     message_id: string;
     user_id: string;
-    emoji: string;
+    emoji?: string;
+    reaction?: string; // DB column name may be 'reaction'
     created_at: string;
   }
   

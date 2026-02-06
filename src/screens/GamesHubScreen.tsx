@@ -232,7 +232,7 @@ export default function GamesHubScreen({ navigation }: any) {
           <View style={styles.infoRow}>
             <Feather name="clock" size={16} color="#64748b" />
             <Text style={styles.infoText}>
-              60 minute daily limit helps maintain focus
+              3 hour daily limit helps maintain focus
             </Text>
           </View>
         </View>

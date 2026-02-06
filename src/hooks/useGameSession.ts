@@ -17,7 +17,7 @@ export function useGameSession({ gameId, gameSlug }: UseGameSessionProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Fetch levels for this game
+  // Fetch levels for this game (select('*') returns all columns: config, spin_type, spin_intensity, trajectory_type, etc.)
   const fetchLevels = useCallback(async () => {
     setLoading(true);
     try {

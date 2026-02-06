@@ -37,6 +37,7 @@ interface AnimatedPlayerProps {
   phase: GamePhase;
   speed: number;
   duration: number;
+  memorizeMs: number;
   isSelected: boolean;
   showResult: boolean;
   onSelect: (id: number) => void;
@@ -48,6 +49,7 @@ function AnimatedPlayer({
   phase,
   speed,
   duration,
+  memorizeMs,
   isSelected,
   showResult,
   onSelect,
@@ -93,14 +95,18 @@ function AnimatedPlayer({
   // Pulse animation during memorize phase for targets
   useEffect(() => {
     if (phase === 'memorize' && player.isTarget) {
-      scale.value = withSequence(
-        withTiming(1.2, { duration: 300 }),
-        withTiming(1, { duration: 300 }),
-        withTiming(1.2, { duration: 300 }),
-        withTiming(1, { duration: 300 })
-      );
+      const pulseDuration = 300;
+      const sequence: any[] = [];
+      const pulseCount = Math.max(2, Math.floor(memorizeMs / (pulseDuration * 2)));
+
+      for (let i = 0; i < pulseCount; i++) {
+        sequence.push(withTiming(1.2, { duration: pulseDuration }));
+        sequence.push(withTiming(1, { duration: pulseDuration }));
+      }
+
+      scale.value = withSequence(...sequence);
     }
-  }, [phase, player.isTarget]);
+  }, [phase, player.isTarget, memorizeMs]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
@@ -188,7 +194,32 @@ export default function FieldVisionGame({
   onComplete,
   onQuit,
 }: FieldVisionGameProps) {
-  const { targets, players: totalPlayers, speed, duration } = config;
+  const targets = config.targets || 3;
+  const totalPlayers = config.players || 8;
+  const baseSpeed = config.speed || 1.0;
+  const baseDuration = config.duration || 4000;
+  const baseMemorize = config.memorize || 2000;
+  const selectionTime = config.selectionTime || 10;
+  const roundModifiers = config.roundModifiers || {
+    round2: { speedMult: 1.08, memorizeMult: 0.88 },
+    round3: { speedMult: 1.15, memorizeMult: 0.78 },
+  };
+
+  const getRoundSpeed = (roundNum: number): number => {
+    if (roundNum === 2) return baseSpeed * (roundModifiers.round2?.speedMult || 1.08);
+    if (roundNum === 3) return baseSpeed * (roundModifiers.round3?.speedMult || 1.15);
+    return baseSpeed;
+  };
+
+  const getRoundMemorize = (roundNum: number): number => {
+    if (roundNum === 2) {
+      return Math.round(baseMemorize * (roundModifiers.round2?.memorizeMult || 0.88));
+    }
+    if (roundNum === 3) {
+      return Math.round(baseMemorize * (roundModifiers.round3?.memorizeMult || 0.78));
+    }
+    return baseMemorize;
+  };
 
   const [phase, setPhase] = useState<GamePhase>('ready');
   const [players, setPlayers] = useState<PlayerData[]>([]);
@@ -272,23 +303,38 @@ export default function FieldVisionGame({
     }
   }, [autoSubmitDue, phase, handleSubmitSelection]);
 
-  // Phase transitions
+  // Phase transitions (do not depend on getRoundMemorize — it's recreated each render and would clear the transition timeout)
   useEffect(() => {
     if (phase === 'memorize') {
-      setPhaseTimer(2);
+      const memorizeMs =
+        round === 2
+          ? Math.round(baseMemorize * (roundModifiers.round2?.memorizeMult || 0.88))
+          : round === 3
+            ? Math.round(baseMemorize * (roundModifiers.round3?.memorizeMult || 0.78))
+            : baseMemorize;
+      const memorizeSec = Math.ceil(memorizeMs / 1000);
+      setPhaseTimer(memorizeSec);
+
+      const interval = setInterval(() => {
+        setPhaseTimer((prev) => Math.max(0, prev - 1));
+      }, 1000);
+
       const timer = setTimeout(() => {
         setPhase('tracking');
-      }, 2000);
-      return () => clearTimeout(timer);
+      }, memorizeMs);
+
+      return () => {
+        clearTimeout(timer);
+        clearInterval(interval);
+      };
     }
 
     if (phase === 'tracking') {
-      setPhaseTimer(Math.ceil(duration / 1000));
+      setPhaseTimer(Math.ceil(baseDuration / 1000));
       const timer = setTimeout(() => {
         setPhase('select');
-      }, duration);
+      }, baseDuration);
 
-      // Update timer display
       const interval = setInterval(() => {
         setPhaseTimer((prev) => Math.max(0, prev - 1));
       }, 1000);
@@ -300,7 +346,7 @@ export default function FieldVisionGame({
     }
 
     if (phase === 'select') {
-      setPhaseTimer(10); // 10 seconds to select
+      setPhaseTimer(selectionTime);
       const interval = setInterval(() => {
         setPhaseTimer((prev) => {
           if (prev <= 1) {
@@ -313,7 +359,7 @@ export default function FieldVisionGame({
       }, 1000);
       return () => clearInterval(interval);
     }
-  }, [phase, duration]);
+  }, [phase, baseDuration, round, selectionTime, baseMemorize, roundModifiers]);
 
   // Handle player selection
   const handleSelectPlayer = (id: number) => {
@@ -369,8 +415,23 @@ export default function FieldVisionGame({
           <View style={styles.configInfo}>
             <Text style={styles.configText}>👥 {totalPlayers} players</Text>
             <Text style={styles.configText}>🎯 {targets} targets</Text>
-            <Text style={styles.configText}>⏱️ {duration / 1000}s tracking</Text>
+            <Text style={styles.configText}>⏱️ {baseDuration / 1000}s tracking</Text>
           </View>
+          {round > 1 && (
+            <View style={{
+              backgroundColor: '#7c3aed20',
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              borderRadius: 8,
+              marginBottom: 16,
+              borderWidth: 1,
+              borderColor: '#7c3aed40',
+            }}>
+              <Text style={{ color: '#a78bfa', fontSize: 13, textAlign: 'center' }}>
+                ⚡ Round {round}: {round === 2 ? 'Faster' : 'Fastest'} — Less memorize time
+              </Text>
+            </View>
+          )}
           {countdown > 0 ? (
             <View style={styles.countdownContainer}>
               <Text style={styles.countdownText}>{countdown}</Text>
@@ -394,8 +455,23 @@ export default function FieldVisionGame({
           <View style={styles.configInfo}>
             <Text style={styles.configText}>👥 {totalPlayers} players</Text>
             <Text style={styles.configText}>🎯 {targets} to track</Text>
-            <Text style={styles.configText}>⏱️ {duration / 1000}s</Text>
+            <Text style={styles.configText}>⏱️ {baseDuration / 1000}s</Text>
           </View>
+          {round > 1 && (
+            <View style={{
+              backgroundColor: '#7c3aed20',
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              borderRadius: 8,
+              marginBottom: 16,
+              borderWidth: 1,
+              borderColor: '#7c3aed40',
+            }}>
+              <Text style={{ color: '#a78bfa', fontSize: 13, textAlign: 'center' }}>
+                ⚡ Round {round}: {round === 2 ? 'Faster' : 'Fastest'} — Less memorize time
+              </Text>
+            </View>
+          )}
           <TouchableOpacity style={styles.startButton} onPress={startGame}>
             <Text style={styles.startButtonText}>Start Round {round}</Text>
           </TouchableOpacity>
@@ -422,6 +498,20 @@ export default function FieldVisionGame({
           <Text style={styles.scoreLabel}>
             {lastScore === 100 ? '🎉 Perfect!' : lastScore >= 70 ? '👍 Good job!' : '💪 Keep practicing!'}
           </Text>
+
+          {round < totalRounds && (
+            <View style={{
+              backgroundColor: '#1e293b',
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              borderRadius: 8,
+              marginBottom: 16,
+            }}>
+              <Text style={{ color: '#64748b', fontSize: 13, textAlign: 'center' }}>
+                Next: Speed ×{getRoundSpeed(round + 1).toFixed(1)} • Memorize {Math.ceil(getRoundMemorize(round + 1) / 1000)}s
+              </Text>
+            </View>
+          )}
 
           {roundScores.length > 1 && (
             <View style={styles.roundScores}>
@@ -467,9 +557,13 @@ export default function FieldVisionGame({
       {/* Instructions */}
       <View style={styles.instructionBar}>
         <Text style={styles.instructionBarText}>
-          {phase === 'memorize' && 'Remember the purple players!'}
-          {phase === 'tracking' && 'Keep your eyes on them...'}
-          {phase === 'select' && `Tap ${targets - selectedIds.size} more player(s)`}
+          {phase === 'memorize' && `Remember the purple players! (${Math.ceil(getRoundMemorize(round) / 1000)}s)`}
+          {phase === 'tracking' && (round > 1 ? 'Faster now! Keep tracking...' : 'Keep your eyes on them...')}
+          {phase === 'select' && (
+            selectedIds.size >= targets
+              ? 'Hit Submit!'
+              : `Tap ${targets - selectedIds.size} more player(s)`
+          )}
         </Text>
       </View>
 
@@ -517,8 +611,9 @@ export default function FieldVisionGame({
               key={player.id}
               player={player}
               phase={phase}
-              speed={speed}
-              duration={duration}
+              speed={getRoundSpeed(round)}
+              duration={baseDuration}
+              memorizeMs={getRoundMemorize(round)}
               isSelected={selectedIds.has(player.id)}
               showResult={showResult}
               onSelect={handleSelectPlayer}

@@ -19,16 +19,33 @@ export interface GameLevel {
   xp_reward: number;
   field_type: 'half' | 'full';
   is_active: boolean;
-  config: FieldVisionConfig | PatternPlayConfig | DecisionPointConfig | AnticipationConfig | PressureConfig;
+  config: FieldVisionConfig | PatternPlayConfig | DecisionPointConfig | AnticipationConfig | PressureConfig | DribbleRushConfig;
+  // Anticipation Arena (and other games) level columns - from DB, not config JSON
+  spin_type?: string;
+  spin_intensity?: number;
+  trajectory_type?: string;
+  visibility_percent?: number;
+  pass_threshold?: number;
+  has_teammate?: boolean;
+  teammate_speed?: number;
+  static_players?: unknown;
+  moving_players?: unknown;
+  round_count?: number;
 }
 
 // Field Vision specific config
 export interface FieldVisionConfig {
-  targets: number;      // Number of players to track
-  players: number;      // Total players on field
-  speed: number;        // Movement speed multiplier
-  duration: number;     // Tracking duration in ms
-  distractors?: number; // Distractor players (Level 2+)
+  targets: number;        // Number of players to track
+  players: number;        // Total players on field
+  speed: number;          // Base movement speed multiplier
+  duration: number;       // Base tracking duration in ms
+  memorize: number;       // Base memorize phase duration in ms
+  selectionTime: number;  // Selection phase duration in seconds
+  positionChanges: boolean;
+  roundModifiers: {
+    round2: { speedMult: number; memorizeMult: number };
+    round3: { speedMult: number; memorizeMult: number };
+  };
 }
 
 // Pattern Play config
@@ -49,6 +66,7 @@ export interface AnticipationConfig {
   showPath: boolean;
   predictionTime: number;
   targetSize: number;
+  spin_type?: string; // e.g. 'topspin', 'backspin', 'curve_right', 'curve_left', 'knuckle', 'variable', 'changes'
 }
 
 // Pressure Protocol config
@@ -56,6 +74,47 @@ export interface PressureConfig {
   taskType: string;
   distractionLevel: number;
   timeLimit: number;
+}
+
+// Dribble Rush round modifier
+export interface DribbleRushRoundMod {
+  speedMod: number;
+  freqMod: number;
+  warnMod: number;
+  distMod: number;
+}
+
+// Dribble Rush config
+export interface DribbleRushConfig {
+  name: string;
+  tier: number;
+  baseSpeed: number;
+  maxSpeed: number;
+  accelRate: number;
+  obstacleFrequency: number;
+  warningDistance: number;
+  distanceTarget: number;
+  passThreshold: number;
+  obstacleTypes: string[];
+  obstacleWeights: Record<string, number>;
+  passWindow: number;
+  roundModifiers: {
+    round1: DribbleRushRoundMod;
+    round2: DribbleRushRoundMod;
+    round3: DribbleRushRoundMod;
+  };
+  scoring: {
+    dodgePoints: number;
+    passPoints: number;
+    fakePenalty: number;
+  };
+  environment: {
+    rain: number;
+    night: number;
+  };
+  bonusElements: {
+    shields: number;
+  };
 }
 
 // Player's progress per game

@@ -11,7 +11,12 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useGameSession } from '../hooks/useGameSession';
 import FieldVisionGame from '../components/games/FieldVisionGame';
-import type { GameResult, FieldVisionConfig } from '../types/games';
+import PatternPlayGame from '../components/games/PatternPlayGame';
+import DecisionPointGame from '../components/games/DecisionPointGame';
+import AnticipationArenaGame from '../components/games/AnticipationArenaGame';
+import PressureProtocolGame from '../components/games/PressureProtocolGame';
+import DribbleRushGame from '../components/games/DribbleRushGame';
+import type { GameResult, FieldVisionConfig, PatternPlayConfig, DecisionPointConfig, AnticipationConfig, PressureConfig, DribbleRushConfig } from '../types/games';
 
 interface GamePlayScreenProps {
   navigation: any;
@@ -204,15 +209,70 @@ export default function GamePlayScreen({ navigation, route }: GamePlayScreenProp
             <View style={styles.levelDetails}>
               <Text style={styles.levelDetailsTitle}>Level {currentLevel.level_number}</Text>
               <View style={styles.levelConfig}>
-                <Text style={styles.configItem}>
-                  👥 {(currentLevel.config as FieldVisionConfig).players} players
-                </Text>
-                <Text style={styles.configItem}>
-                  🎯 {(currentLevel.config as FieldVisionConfig).targets} targets
-                </Text>
-                <Text style={styles.configItem}>
-                  ⏱️ {(currentLevel.config as FieldVisionConfig).duration / 1000}s
-                </Text>
+                {gameSlug === 'pattern-play' ? (
+                  <>
+                    <Text style={styles.configItem}>
+                      🔢 {(currentLevel.config as PatternPlayConfig).patternLength} passes
+                    </Text>
+                    <Text style={styles.configItem}>
+                      ⏱️ {(currentLevel.config as PatternPlayConfig).showDuration}ms each
+                    </Text>
+                  </>
+                ) : gameSlug === 'decision-point' ? (
+                  <>
+                    <Text style={styles.configItem}>
+                      ⏱️ {(currentLevel.config as DecisionPointConfig).timeLimit / 1000}s per decision
+                    </Text>
+                    <Text style={styles.configItem}>
+                      📊 {(currentLevel.config as DecisionPointConfig).scenarioComplexity}
+                    </Text>
+                  </>
+                ) : gameSlug === 'anticipation-arena' ? (
+                  <>
+                    <Text style={styles.configItem}>
+                      ⚡ {(currentLevel.config as AnticipationConfig).ballSpeed}x speed
+                    </Text>
+                    <Text style={styles.configItem}>
+                      ⏱️ {(currentLevel.config as AnticipationConfig).predictionTime / 1000}s to predict
+                    </Text>
+                  </>
+                ) : gameSlug === 'pressure-protocol' ? (
+                  <>
+                    <Text style={styles.configItem}>
+                      ⏱️ {(currentLevel.config as PressureConfig).timeLimit / 1000}s
+                    </Text>
+                    <Text style={styles.configItem}>
+                      🎯 {(currentLevel.config as PressureConfig).taskType}
+                    </Text>
+                    <Text style={styles.configItem}>
+                      😵 Distraction: {(currentLevel.config as PressureConfig).distractionLevel}
+                    </Text>
+                  </>
+                ) : gameSlug === 'dribble-rush' ? (
+                  <>
+                    <Text style={styles.configItem}>
+                      🏃 {(currentLevel.config as DribbleRushConfig).distanceTarget}m
+                    </Text>
+                    <Text style={styles.configItem}>
+                      ⚡ {(currentLevel.config as DribbleRushConfig).baseSpeed}x speed
+                    </Text>
+                    <Text style={styles.configItem}>
+                      🛡️ Pass: {(currentLevel.config as DribbleRushConfig).passThreshold}%
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.configItem}>
+                      👥 {(currentLevel.config as FieldVisionConfig).players} players
+                    </Text>
+                    <Text style={styles.configItem}>
+                      🎯 {(currentLevel.config as FieldVisionConfig).targets} targets
+                    </Text>
+                    <Text style={styles.configItem}>
+                      ⏱️ {(currentLevel.config as FieldVisionConfig).duration / 1000}s
+                    </Text>
+                  </>
+                )}
               </View>
             </View>
           )}
@@ -230,12 +290,89 @@ export default function GamePlayScreen({ navigation, route }: GamePlayScreenProp
     );
   }
 
+  // Dribble Rush game
+  if (gameSlug === 'dribble-rush' && currentLevel) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <DribbleRushGame
+          config={currentLevel.config as DribbleRushConfig}
+          levelNumber={currentLevel.level_number}
+          xpReward={currentLevel.xp_reward}
+          onComplete={handleGameComplete}
+          onQuit={handleQuit}
+        />
+      </SafeAreaView>
+    );
+  }
+
   // Render the actual game based on slug
   if (gameSlug === 'field-vision' && currentLevel) {
     return (
       <SafeAreaView style={styles.container}>
         <FieldVisionGame
           config={currentLevel.config as FieldVisionConfig}
+          levelNumber={currentLevel.level_number}
+          xpReward={currentLevel.xp_reward}
+          onComplete={handleGameComplete}
+          onQuit={handleQuit}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  // Pattern Play game
+  if (gameSlug === 'pattern-play' && currentLevel) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <PatternPlayGame
+          config={currentLevel.config as PatternPlayConfig}
+          levelNumber={currentLevel.level_number}
+          xpReward={currentLevel.xp_reward}
+          onComplete={handleGameComplete}
+          onQuit={handleQuit}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  // Decision Point game
+  if (gameSlug === 'decision-point' && currentLevel) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <DecisionPointGame
+          config={currentLevel.config as DecisionPointConfig}
+          levelNumber={currentLevel.level_number}
+          xpReward={currentLevel.xp_reward}
+          onComplete={handleGameComplete}
+          onQuit={handleQuit}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  // Anticipation Arena game (spin_type from level column, not config)
+  if (gameSlug === 'anticipation-arena' && currentLevel) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <AnticipationArenaGame
+          config={currentLevel.config as AnticipationConfig}
+          levelNumber={currentLevel.level_number}
+          xpReward={currentLevel.xp_reward}
+          spinType={currentLevel.spin_type ?? 'none'}
+          trajectoryType={currentLevel.trajectory_type ?? 'linear'}
+          onComplete={handleGameComplete}
+          onQuit={handleQuit}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  // Pressure Protocol game
+  if (gameSlug === 'pressure-protocol' && currentLevel) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <PressureProtocolGame
+          config={currentLevel.config as PressureConfig}
           levelNumber={currentLevel.level_number}
           xpReward={currentLevel.xp_reward}
           onComplete={handleGameComplete}

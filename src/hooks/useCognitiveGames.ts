@@ -88,8 +88,8 @@ export function useCognitiveGames() {
     return progress.find(p => p.game_id === gameId);
   }, [progress]);
 
-  // Calculate minutes remaining today (60 min limit)
-  const minutesRemaining = Math.max(0, 60 - (dailyTime?.minutes_played || 0));
+  // Calculate minutes remaining today (TEMP: bypass limit for testing)
+  const minutesRemaining = 999; // TEMP: bypass limit for testing
 
   // Calculate total XP earned from all games
   const totalXpEarned = progress.reduce((sum, p) => sum + (p.total_xp_earned || 0), 0);

@@ -5,6 +5,18 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
+import { linking, type RootStackParamList } from './linking';
+import {
+  JoinTeamScreen,
+  JoinStaffScreen,
+  RegisterClubScreen,
+  RegisterTeamScreen,
+  RegisterCreatorScreen,
+  ProgramRegistrationScreen,
+  AcceptCoParentScreen,
+  ClaimPlayerScreen,
+  NotFoundScreen,
+} from '../screens/registration';
 
 // Screens
 import LoginScreen from '../screens/LoginScreen';
@@ -41,7 +53,17 @@ import GamesHubScreen from '../screens/GamesHubScreen';
 import GamePlayScreen from '../screens/GamePlayScreen';
 
 const Stack = createNativeStackNavigator();
+const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
+
+function LoadingScreen() {
+  return (
+    <View style={styles.loadingContainer}>
+      <ActivityIndicator size="large" color="#8b5cf6" />
+      <Text style={styles.loadingText}>Loading...</Text>
+    </View>
+  );
+}
 
 const TAB_ICONS: Record<string, string> = {
   Home: 'home',
@@ -410,6 +432,70 @@ function AuthStack() {
   );
 }
 
+function RootStackNavigator() {
+  const { user } = useAuth();
+  return (
+    <RootStack.Navigator
+      initialRouteName={user ? 'Main' : 'Login'}
+      screenOptions={{
+        headerShown: false,
+        headerStyle: styles.header,
+        headerTintColor: '#fff',
+        headerTitleStyle: styles.headerTitle,
+      }}
+    >
+      <RootStack.Screen name="Login" component={LoginScreen} />
+      <RootStack.Screen name="Main" component={MainTabs} />
+      {/* Registration Screens - No Auth Required */}
+      <RootStack.Screen
+        name="JoinTeam"
+        component={JoinTeamScreen}
+        options={{ title: 'Join Team', headerShown: true }}
+      />
+      <RootStack.Screen
+        name="JoinStaff"
+        component={JoinStaffScreen}
+        options={{ title: 'Join Staff', headerShown: true }}
+      />
+      <RootStack.Screen
+        name="RegisterClub"
+        component={RegisterClubScreen}
+        options={{ title: 'Register Club', headerShown: true }}
+      />
+      <RootStack.Screen
+        name="RegisterTeam"
+        component={RegisterTeamScreen}
+        options={{ title: 'Register Team', headerShown: true }}
+      />
+      <RootStack.Screen
+        name="RegisterCreator"
+        component={RegisterCreatorScreen}
+        options={{ title: 'Become a Creator', headerShown: true }}
+      />
+      <RootStack.Screen
+        name="ProgramRegistration"
+        component={ProgramRegistrationScreen}
+        options={{ title: 'Program Registration', headerShown: true }}
+      />
+      <RootStack.Screen
+        name="AcceptCoParent"
+        component={AcceptCoParentScreen}
+        options={{ title: 'Accept Invitation', headerShown: true }}
+      />
+      <RootStack.Screen
+        name="ClaimPlayer"
+        component={ClaimPlayerScreen}
+        options={{ title: 'Claim Player', headerShown: true }}
+      />
+      <RootStack.Screen
+        name="NotFound"
+        component={NotFoundScreen}
+        options={{ title: 'Not Found', headerShown: true }}
+      />
+    </RootStack.Navigator>
+  );
+}
+
 export default function AppNavigator() {
   const { user, loading } = useAuth();
 
@@ -423,8 +509,8 @@ export default function AppNavigator() {
   }
 
   return (
-    <NavigationContainer>
-      {user ? <MainTabs /> : <AuthStack />}
+    <NavigationContainer linking={linking} fallback={<LoadingScreen />}>
+      <RootStackNavigator />
     </NavigationContainer>
   );
 }

@@ -7,6 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "scheme": "thryvyng",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -14,15 +15,31 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.ludskywalker77.thryvyng-mobile"
+      "bundleIdentifier": "com.thryvyng.app",
+      "associatedDomains": ["applinks:thryvyng.com", "applinks:www.thryvyng.com"]
     },
     "android": {
+      "package": "com.thryvyng.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "https", "host": "thryvyng.com", "pathPrefix": "/join-team" },
+            { "scheme": "https", "host": "thryvyng.com", "pathPrefix": "/join-staff" },
+            { "scheme": "https", "host": "thryvyng.com", "pathPrefix": "/register" },
+            { "scheme": "https", "host": "thryvyng.com", "pathPrefix": "/accept-coparent" },
+            { "scheme": "https", "host": "thryvyng.com", "pathPrefix": "/claim-player" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"

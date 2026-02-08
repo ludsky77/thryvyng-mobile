@@ -130,3 +130,11 @@
 {"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770548529530}
 {"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770548529530}
 {"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"2b4337bc-4894-4cbf-ba5c-5845ab6738da"},"hypothesisId":"H4","timestamp":1770548529533}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770549103443}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"4e3bacd2-29bf-412c-b517-01cd5591cbdc"},"hypothesisId":"H2","timestamp":1770549911059}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"4e3bacd2-29bf-412c-b517-01cd5591cbdc"},"hypothesisId":"H2","timestamp":1770549911059}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770549911595}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"4e3bacd2-29bf-412c-b517-01cd5591cbdc"},"hypothesisId":"H2","timestamp":1770549911942}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"4e3bacd2-29bf-412c-b517-01cd5591cbdc"},"hypothesisId":"H2","timestamp":1770549911943}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770549912425}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770550819425}

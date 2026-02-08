@@ -19,6 +19,7 @@ import {
 } from '../screens/registration';
 
 // Screens
+import { WelcomeScreen } from '../screens/WelcomeScreen';
 import LoginScreen from '../screens/LoginScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import ChatScreen from '../screens/ChatScreen';
@@ -427,6 +428,7 @@ function ProfileStack() {
 function AuthStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Welcome" component={WelcomeScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
     </Stack.Navigator>
   );
@@ -436,7 +438,7 @@ function RootStackNavigator() {
   const { user } = useAuth();
   return (
     <RootStack.Navigator
-      initialRouteName={user ? 'Main' : 'Login'}
+      initialRouteName={user ? 'Main' : 'Welcome'}
       screenOptions={{
         headerShown: false,
         headerStyle: styles.header,
@@ -444,6 +446,7 @@ function RootStackNavigator() {
         headerTitleStyle: styles.headerTitle,
       }}
     >
+      <RootStack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
       <RootStack.Screen name="Login" component={LoginScreen} />
       <RootStack.Screen name="Main" component={MainTabs} />
       {/* Registration Screens - No Auth Required */}
@@ -505,14 +508,14 @@ export default function AppNavigator() {
     if (!loading && navigationRef.current) {
       const currentRoute = navigationRef.current.getCurrentRoute()?.name;
 
-      if (user && currentRoute === 'Login') {
-        // User logged in, go to Main
+      if (user && (currentRoute === 'Login' || currentRoute === 'Welcome')) {
         navigationRef.current.reset({
           index: 0,
           routes: [{ name: 'Main' }],
         });
       } else if (
         !user &&
+        currentRoute !== 'Welcome' &&
         currentRoute !== 'Login' &&
         ![
           'JoinTeam',
@@ -526,10 +529,9 @@ export default function AppNavigator() {
           'NotFound',
         ].includes(currentRoute ?? '')
       ) {
-        // User logged out, go to Login (but allow registration screens)
         navigationRef.current.reset({
           index: 0,
-          routes: [{ name: 'Login' }],
+          routes: [{ name: 'Welcome' }],
         });
       }
     }

@@ -541,7 +541,7 @@ export const JoinTeamScreen: React.FC = () => {
     if (navigation.canGoBack()) {
       navigation.goBack();
     } else {
-      navigation.navigate('Login');
+      navigation.navigate('Welcome');
     }
   };
 
@@ -745,9 +745,20 @@ export const JoinTeamScreen: React.FC = () => {
           </View>
 
           {user && (
-            <View style={styles.loggedInBanner}>
-              <Ionicons name="checkmark-circle" size={20} color="#22C55E" />
-              <Text style={styles.loggedInText}>Logged in as {user.email}</Text>
+            <View style={styles.loggedInBannerWithAction}>
+              <View style={styles.loggedInBannerContent}>
+                <Ionicons name="checkmark-circle" size={20} color="#22C55E" />
+                <Text style={styles.loggedInText}>
+                  Logged in as {user.email}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={async () => {
+                  await supabase.auth.signOut();
+                }}
+              >
+                <Text style={styles.notYouText}>Not you?</Text>
+              </TouchableOpacity>
             </View>
           )}
         </>
@@ -1209,6 +1220,26 @@ const styles = StyleSheet.create({
     color: '#86EFAC',
     fontSize: 14,
     fontWeight: '500',
+  },
+  loggedInBannerWithAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#14532D',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 20,
+  },
+  loggedInBannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  notYouText: {
+    color: '#86EFAC',
+    fontSize: 14,
+    textDecorationLine: 'underline',
   },
   continueButton: {
     backgroundColor: '#8B5CF6',

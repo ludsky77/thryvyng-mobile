@@ -13,13 +13,16 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const REMEMBER_EMAIL_KEY = 'thryvyng_remember_email';
 
 export default function LoginScreen() {
   const navigation = useNavigation<any>();
+  const { user } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -104,14 +107,58 @@ export default function LoginScreen() {
       style={styles.container}
     >
       <View style={styles.inner}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.navigate('Welcome')}
+        >
+          <Ionicons name="arrow-back" size={24} color="#9CA3AF" />
+          <Text style={styles.backButtonText}>Back</Text>
+        </TouchableOpacity>
+
         <Text style={styles.title}>🏆 Thryvyng</Text>
         <Text style={styles.subtitle}>Sign in to continue</Text>
 
-        {error ? (
-          <Text style={styles.errorText}>{error}</Text>
-        ) : null}
+        {user && (
+          <View style={styles.alreadyLoggedInCard}>
+            <Ionicons name="person-circle" size={48} color="#8B5CF6" />
+            <Text style={styles.alreadyLoggedInTitle}>Welcome back!</Text>
+            <Text style={styles.alreadyLoggedInEmail}>{user.email}</Text>
 
-        <TextInput
+            <TouchableOpacity
+              style={styles.continueAsButton}
+              onPress={() =>
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'Main' }],
+                })
+              }
+            >
+              <Text style={styles.continueAsButtonText}>
+                Continue to Dashboard
+              </Text>
+              <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.switchAccountButton}
+              onPress={async () => {
+                await supabase.auth.signOut();
+              }}
+            >
+              <Text style={styles.switchAccountText}>
+                Sign in with different account
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {!user && (
+          <>
+            {error ? (
+              <Text style={styles.errorText}>{error}</Text>
+            ) : null}
+
+            <TextInput
           style={styles.input}
           placeholder="Email"
           placeholderTextColor="#666"
@@ -167,6 +214,8 @@ export default function LoginScreen() {
             <Text style={styles.buttonText}>Sign In</Text>
           )}
         </TouchableOpacity>
+          </>
+        )}
 
         {__DEV__ && (
           <View style={{ marginTop: 20, borderTopWidth: 1, borderTopColor: '#374151', paddingTop: 20 }}>
@@ -184,6 +233,12 @@ export default function LoginScreen() {
               onPress={() => navigation.navigate('JoinStaff', { code: '780QJMMP' })}
             >
               <Text style={{ color: '#9CA3AF', textAlign: 'center' }}>Test Join Staff (Assistant Coach)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ backgroundColor: '#374151', padding: 12, borderRadius: 8, marginBottom: 8 }}
+              onPress={() => navigation.navigate('RegisterTeam')}
+            >
+              <Text style={{ color: '#9CA3AF', textAlign: 'center' }}>Test Register Team</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -287,5 +342,59 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.7,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 8,
+  },
+  backButtonText: {
+    color: '#9CA3AF',
+    fontSize: 16,
+  },
+  alreadyLoggedInCard: {
+    backgroundColor: '#1F2937',
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    marginBottom: 24,
+    width: '100%',
+  },
+  alreadyLoggedInTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginTop: 12,
+  },
+  alreadyLoggedInEmail: {
+    fontSize: 16,
+    color: '#9CA3AF',
+    marginTop: 4,
+    marginBottom: 24,
+  },
+  continueAsButton: {
+    backgroundColor: '#8B5CF6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 10,
+    gap: 8,
+    width: '100%',
+    marginBottom: 16,
+  },
+  continueAsButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  switchAccountButton: {
+    paddingVertical: 8,
+  },
+  switchAccountText: {
+    color: '#8B5CF6',
+    fontSize: 14,
   },
 });

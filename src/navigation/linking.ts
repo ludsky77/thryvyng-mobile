@@ -3,6 +3,7 @@ import type { LinkingOptions } from '@react-navigation/native';
 // Type definitions for navigation params
 export type RootStackParamList = {
   // Auth screens
+  Welcome: undefined;
   Login: undefined;
   // Main app screens
   Main: undefined;

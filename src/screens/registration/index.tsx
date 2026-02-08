@@ -3,7 +3,7 @@ import PlaceholderScreen from './PlaceholderScreen';
 
 // JoinTeamScreen is the real implementation; others are placeholders for now
 export { JoinTeamScreen } from './JoinTeamScreen';
-export const JoinStaffScreen = () => <PlaceholderScreen screenName="Join Staff" />;
+export { JoinStaffScreen } from './JoinStaffScreen';
 export const RegisterClubScreen = () => <PlaceholderScreen screenName="Register Club" />;
 export const RegisterTeamScreen = () => <PlaceholderScreen screenName="Register Team" />;
 export const RegisterCreatorScreen = () => <PlaceholderScreen screenName="Register Creator" />;

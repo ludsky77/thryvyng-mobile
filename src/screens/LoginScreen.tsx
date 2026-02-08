@@ -179,6 +179,12 @@ export default function LoginScreen() {
             >
               <Text style={{ color: '#9CA3AF', textAlign: 'center' }}>Test Join Team</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={{ backgroundColor: '#374151', padding: 12, borderRadius: 8, marginBottom: 8 }}
+              onPress={() => navigation.navigate('JoinStaff', { code: '780QJMMP' })}
+            >
+              <Text style={{ color: '#9CA3AF', textAlign: 'center' }}>Test Join Staff (Assistant Coach)</Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>

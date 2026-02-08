@@ -12,12 +12,14 @@ import {
   Linking,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const REMEMBER_EMAIL_KEY = 'thryvyng_remember_email';
 
 export default function LoginScreen() {
+  const navigation = useNavigation<any>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -49,11 +51,22 @@ export default function LoginScreen() {
     }
 
     setLoading(true);
+    // #region agent log
+    const _log1 = { location: 'LoginScreen.tsx:handleLogin:beforeSignIn', message: 'Before signInWithPassword', data: { emailLen: trimmedEmail.length, passwordLen: password.length }, hypothesisId: 'H1' };
+    console.log('[DEBUG]', JSON.stringify(_log1));
+    fetch('http://127.0.0.1:7242/ingest/d8dadf68-0309-483d-b3ac-248851d8ac12',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({..._log1,timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
       email: trimmedEmail,
       password,
     });
+
+    // #region agent log
+    const _log2 = { location: 'LoginScreen.tsx:handleLogin:afterSignIn', message: 'After signInWithPassword', data: { hasError: !!signInError, errorMessage: signInError?.message, hasSession: !!signInData?.session, hasUser: !!signInData?.user?.id }, hypothesisId: 'H1' };
+    console.log('[DEBUG]', JSON.stringify(_log2));
+    fetch('http://127.0.0.1:7242/ingest/d8dadf68-0309-483d-b3ac-248851d8ac12',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({..._log2,timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     setLoading(false);
 
@@ -61,6 +74,12 @@ export default function LoginScreen() {
       setError(signInError.message);
       return;
     }
+
+    // #region agent log
+    const _log3 = { location: 'LoginScreen.tsx:handleLogin:successPath', message: 'Login success path, no error', data: { userId: signInData?.user?.id }, hypothesisId: 'H4' };
+    console.log('[DEBUG]', JSON.stringify(_log3));
+    fetch('http://127.0.0.1:7242/ingest/d8dadf68-0309-483d-b3ac-248851d8ac12',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({..._log3,timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     if (rememberEmail) {
       await AsyncStorage.setItem(REMEMBER_EMAIL_KEY, trimmedEmail);
@@ -148,6 +167,20 @@ export default function LoginScreen() {
             <Text style={styles.buttonText}>Sign In</Text>
           )}
         </TouchableOpacity>
+
+        {__DEV__ && (
+          <View style={{ marginTop: 20, borderTopWidth: 1, borderTopColor: '#374151', paddingTop: 20 }}>
+            <Text style={{ color: '#6B7280', fontSize: 12, textAlign: 'center', marginBottom: 10 }}>
+              🧪 DEBUG: Test Registration Flows
+            </Text>
+            <TouchableOpacity
+              style={{ backgroundColor: '#374151', padding: 12, borderRadius: 8, marginBottom: 8 }}
+              onPress={() => navigation.navigate('JoinTeam', { code: 'UPS-RV2RLR' })}
+            >
+              <Text style={{ color: '#9CA3AF', textAlign: 'center' }}>Test Join Team</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </KeyboardAvoidingView>
   );

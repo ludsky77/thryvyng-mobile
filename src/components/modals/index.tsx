@@ -1,0 +1,1 @@
+export { IdentityVerificationModal } from './IdentityVerificationModal';

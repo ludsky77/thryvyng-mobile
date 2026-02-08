@@ -120,26 +120,50 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Set up auth state listener first
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        // #region agent log
+        const _logA = { location: 'AuthContext.tsx:onAuthStateChange:entry', message: 'Auth state change', data: { event, hasSession: !!session, userId: session?.user?.id }, hypothesisId: 'H2' };
+        console.log('[DEBUG]', JSON.stringify(_logA));
+        fetch('http://127.0.0.1:7242/ingest/d8dadf68-0309-483d-b3ac-248851d8ac12',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({..._logA,timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         setSession(session);
         setUser(session?.user ?? null);
 
         if (session?.user) {
-          const { data: profileData } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-          setProfile(profileData ?? null);
+          try {
+            // #region agent log
+            const _logB = { location: 'AuthContext.tsx:onAuthStateChange:beforeProfile', message: 'Before profile fetch', data: { userId: session.user.id }, hypothesisId: 'H2' };
+            console.log('[DEBUG]', JSON.stringify(_logB));
+            fetch('http://127.0.0.1:7242/ingest/d8dadf68-0309-483d-b3ac-248851d8ac12',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({..._logB,timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .single();
+            setProfile(profileData ?? null);
 
-          const roles = await fetchUserRoles(session.user.id);
-          setAllRoles(roles);
+            const roles = await fetchUserRoles(session.user.id);
+            setAllRoles(roles);
 
-          const savedRoleId = await AsyncStorage.getItem('lastRoleId') ?? await AsyncStorage.getItem('currentRoleId');
-          const role = savedRoleId
-            ? roles.find((r) => r.id === savedRoleId) || roles[0]
-            : roles[0];
-          setCurrentRole(role);
-          setLoading(false);
+            const savedRoleId = await AsyncStorage.getItem('lastRoleId') ?? await AsyncStorage.getItem('currentRoleId');
+            const role = savedRoleId
+              ? roles.find((r) => r.id === savedRoleId) || roles[0]
+              : roles[0];
+            setCurrentRole(role);
+            setLoading(false);
+            // #region agent log
+            const _logC = { location: 'AuthContext.tsx:onAuthStateChange:success', message: 'Listener done, setLoading(false)', data: { event }, hypothesisId: 'H2' };
+            console.log('[DEBUG]', JSON.stringify(_logC));
+            fetch('http://127.0.0.1:7242/ingest/d8dadf68-0309-483d-b3ac-248851d8ac12',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({..._logC,timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
+          } catch (err) {
+            // #region agent log
+            const _logE = { location: 'AuthContext.tsx:onAuthStateChange:catch', message: 'Listener threw', data: { message: (err as Error)?.message }, hypothesisId: 'H5' };
+            console.log('[DEBUG]', JSON.stringify(_logE));
+            fetch('http://127.0.0.1:7242/ingest/d8dadf68-0309-483d-b3ac-248851d8ac12',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({..._logE,timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
+            setLoading(false);
+          }
         } else {
           setProfile(null);
           setAllRoles([]);
@@ -151,6 +175,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // Check for existing session
     supabase.auth.getSession().then(async ({ data: { session } }) => {
+      // #region agent log
+      const _logG = { location: 'AuthContext.tsx:getSession:entry', message: 'Initial getSession', data: { hasSession: !!session, userId: session?.user?.id }, hypothesisId: 'H3' };
+      console.log('[DEBUG]', JSON.stringify(_logG));
+      fetch('http://127.0.0.1:7242/ingest/d8dadf68-0309-483d-b3ac-248851d8ac12',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({..._logG,timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       setSession(session);
       setUser(session?.user ?? null);
 

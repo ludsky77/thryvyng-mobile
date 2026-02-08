@@ -498,6 +498,42 @@ function RootStackNavigator() {
 
 export default function AppNavigator() {
   const { user, loading } = useAuth();
+  const navigationRef = React.useRef<any>(null);
+
+  // Navigate when auth state changes
+  React.useEffect(() => {
+    if (!loading && navigationRef.current) {
+      const currentRoute = navigationRef.current.getCurrentRoute()?.name;
+
+      if (user && currentRoute === 'Login') {
+        // User logged in, go to Main
+        navigationRef.current.reset({
+          index: 0,
+          routes: [{ name: 'Main' }],
+        });
+      } else if (
+        !user &&
+        currentRoute !== 'Login' &&
+        ![
+          'JoinTeam',
+          'JoinStaff',
+          'RegisterClub',
+          'RegisterTeam',
+          'RegisterCreator',
+          'ProgramRegistration',
+          'AcceptCoParent',
+          'ClaimPlayer',
+          'NotFound',
+        ].includes(currentRoute ?? '')
+      ) {
+        // User logged out, go to Login (but allow registration screens)
+        navigationRef.current.reset({
+          index: 0,
+          routes: [{ name: 'Login' }],
+        });
+      }
+    }
+  }, [user, loading]);
 
   if (loading) {
     return (
@@ -509,7 +545,11 @@ export default function AppNavigator() {
   }
 
   return (
-    <NavigationContainer linking={linking} fallback={<LoadingScreen />}>
+    <NavigationContainer
+      ref={navigationRef}
+      linking={linking}
+      fallback={<LoadingScreen />}
+    >
       <RootStackNavigator />
     </NavigationContainer>
   );

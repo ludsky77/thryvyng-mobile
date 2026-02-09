@@ -12,25 +12,39 @@ import {
   Linking,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useRegistration } from '../contexts/RegistrationContext';
+import type { RootStackParamList } from '../navigation/linking';
+
+type LoginRouteProps = RouteProp<RootStackParamList, 'Login'>;
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const REMEMBER_EMAIL_KEY = 'thryvyng_remember_email';
 
 export default function LoginScreen() {
   const navigation = useNavigation<any>();
+  const route = useRoute<LoginRouteProps>();
+  const initialMode = route.params?.mode ?? 'signin';
   const { user } = useAuth();
   const { pendingProgramId, setPendingProgramId } = useRegistration();
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [rememberEmail, setRememberEmail] = useState(false);
+
+  useEffect(() => {
+    if (route.params?.mode) {
+      setAuthMode(route.params.mode);
+    }
+  }, [route.params?.mode]);
 
   useEffect(() => {
     AsyncStorage.getItem(REMEMBER_EMAIL_KEY).then((saved) => {
@@ -116,6 +130,84 @@ export default function LoginScreen() {
     if (error) setError('');
   };
 
+  const handleSignup = async () => {
+    if (!fullName.trim()) {
+      setError('Please enter your full name');
+      return;
+    }
+    if (!email.trim()) {
+      setError('Please enter your email');
+      return;
+    }
+    if (!password) {
+      setError('Please enter a password');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const { error: signupError } = await supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
+        password,
+        options: {
+          data: {
+            full_name: fullName.trim(),
+          },
+        },
+      });
+
+      if (signupError) {
+        setError(signupError.message);
+        return;
+      }
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+
+      if (signInError) {
+        setError('Account created! Please sign in.');
+        setAuthMode('signin');
+        return;
+      }
+
+      if (pendingProgramId) {
+        const returnProgramId = pendingProgramId;
+        setPendingProgramId(null);
+        navigation.reset({
+          index: 0,
+          routes: [
+            {
+              name: 'ProgramRegistration',
+              params: { programId: returnProgramId },
+            },
+          ],
+        });
+        return;
+      }
+
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Main' }],
+      });
+    } catch {
+      setError('An error occurred. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -173,62 +265,167 @@ export default function LoginScreen() {
               <Text style={styles.errorText}>{error}</Text>
             ) : null}
 
-            <TextInput
-          style={styles.input}
-          placeholder="Email"
-          placeholderTextColor="#666"
-          value={email}
-          onChangeText={handleEmailChange}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-        />
+            {authMode === 'signin' ? (
+              <>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Email"
+                  placeholderTextColor="#666"
+                  value={email}
+                  onChangeText={handleEmailChange}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  textContentType="emailAddress"
+                  autoComplete="email"
+                />
 
-        <View style={styles.passwordContainer}>
-          <TextInput
-            style={styles.passwordInput}
-            placeholder="Password"
-            placeholderTextColor="#666"
-            secureTextEntry={!showPassword}
-            value={password}
-            onChangeText={handlePasswordChange}
-          />
-          <TouchableOpacity
-            style={styles.eyeIcon}
-            onPress={() => setShowPassword(!showPassword)}
-          >
-            <Text style={styles.eyeText}>{showPassword ? '👁️' : '👁️‍🗨️'}</Text>
-          </TouchableOpacity>
-        </View>
+                <View style={styles.passwordContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    placeholder="Password"
+                    placeholderTextColor="#666"
+                    secureTextEntry={!showPassword}
+                    value={password}
+                    onChangeText={handlePasswordChange}
+                    textContentType="password"
+                    autoComplete="password"
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeIcon}
+                    onPress={() => setShowPassword(!showPassword)}
+                  >
+                    <Text style={styles.eyeText}>
+                      {showPassword ? '👁️' : '👁️‍🗨️'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
 
-        <TouchableOpacity
-          style={styles.forgotPassword}
-          onPress={() => Linking.openURL('https://thryvyng.com/forgot-password')}
-        >
-          <Text style={styles.forgotText}>Forgot password?</Text>
-        </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.forgotPassword}
+                  onPress={() =>
+                    Linking.openURL('https://thryvyng.com/forgot-password')
+                  }
+                >
+                  <Text style={styles.forgotText}>Forgot password?</Text>
+                </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.rememberRow}
-          onPress={() => setRememberEmail(!rememberEmail)}
-        >
-          <Text style={styles.checkbox}>
-            {rememberEmail ? '☑' : '☐'}
-          </Text>
-          <Text style={styles.rememberText}>Remember my email</Text>
-        </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.rememberRow}
+                  onPress={() => setRememberEmail(!rememberEmail)}
+                >
+                  <Text style={styles.checkbox}>
+                    {rememberEmail ? '☑' : '☐'}
+                  </Text>
+                  <Text style={styles.rememberText}>Remember my email</Text>
+                </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
-          onPress={handleLogin}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.buttonText}>Sign In</Text>
-          )}
-        </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.button, loading && styles.buttonDisabled]}
+                  onPress={handleLogin}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.buttonText}>Sign In</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setAuthMode('signup')}
+                  style={{ marginTop: 16 }}
+                >
+                  <Text
+                    style={{
+                      color: '#9CA3AF',
+                      textAlign: 'center',
+                    }}
+                  >
+                    Don't have an account?{' '}
+                    <Text style={{ color: '#8B5CF6' }}>Sign Up</Text>
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.inputLabel}>Full Name</Text>
+                <TextInput
+                  style={styles.input}
+                  value={fullName}
+                  onChangeText={setFullName}
+                  placeholder="Your full name"
+                  placeholderTextColor="#6B7280"
+                  autoCapitalize="words"
+                  textContentType="name"
+                  autoComplete="name"
+                />
+
+                <Text style={styles.inputLabel}>Email</Text>
+                <TextInput
+                  style={styles.input}
+                  value={email}
+                  onChangeText={handleEmailChange}
+                  placeholder="you@example.com"
+                  placeholderTextColor="#6B7280"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  textContentType="emailAddress"
+                  autoComplete="email"
+                />
+
+                <Text style={styles.inputLabel}>Password</Text>
+                <TextInput
+                  style={styles.input}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Min 8 characters"
+                  placeholderTextColor="#6B7280"
+                  secureTextEntry
+                  textContentType="newPassword"
+                  autoComplete="password-new"
+                />
+
+                <Text style={styles.inputLabel}>Confirm Password</Text>
+                <TextInput
+                  style={styles.input}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  placeholder="Confirm your password"
+                  placeholderTextColor="#6B7280"
+                  secureTextEntry
+                  textContentType="newPassword"
+                  autoComplete="password-new"
+                />
+
+                <TouchableOpacity
+                  style={[styles.button, loading && styles.buttonDisabled]}
+                  onPress={handleSignup}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.buttonText}>Create Account</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setAuthMode('signin')}
+                  style={{ marginTop: 16 }}
+                >
+                  <Text
+                    style={{
+                      color: '#9CA3AF',
+                      textAlign: 'center',
+                    }}
+                  >
+                    Already have an account?{' '}
+                    <Text style={{ color: '#8B5CF6' }}>Sign In</Text>
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
           </>
         )}
 
@@ -295,6 +492,11 @@ const styles = StyleSheet.create({
     color: '#ef4444',
     fontSize: 14,
     marginBottom: 12,
+  },
+  inputLabel: {
+    fontSize: 14,
+    color: '#D1D5DB',
+    marginBottom: 6,
   },
   input: {
     backgroundColor: 'rgba(255,255,255,0.1)',

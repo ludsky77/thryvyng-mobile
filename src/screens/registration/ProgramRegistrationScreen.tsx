@@ -11,6 +11,8 @@ import {
   Modal,
   FlatList,
   Linking,
+  AppState,
+  type AppStateStatus,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -157,6 +159,10 @@ export const ProgramRegistrationScreen: React.FC = () => {
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [registrationComplete, setRegistrationComplete] = useState(false);
   const [registrationError, setRegistrationError] = useState<string | null>(null);
+  const [awaitingPayment, setAwaitingPayment] = useState(false);
+  const [createdRegistrationIds, setCreatedRegistrationIds] = useState<string[]>(
+    []
+  );
 
   useEffect(() => {
     fetchProgramData();
@@ -310,6 +316,53 @@ export const ProgramRegistrationScreen: React.FC = () => {
     };
   }, []);
 
+  // Check payment status when app returns to foreground
+  useEffect(() => {
+    const checkPaymentStatus = async () => {
+      if (!awaitingPayment || createdRegistrationIds.length === 0) return;
+
+      if (__DEV__) console.log('[ProgramReg] Checking payment status...');
+
+      try {
+        const { data, error } = await supabase
+          .from('program_registrations')
+          .select('payment_status')
+          .in('id', createdRegistrationIds);
+
+        if (error) {
+          if (__DEV__)
+            console.error('[ProgramReg] Error checking status:', error);
+          return;
+        }
+
+        const anyPaid = data?.some((r) => r.payment_status === 'paid');
+
+        if (anyPaid) {
+          if (__DEV__) console.log('[ProgramReg] Payment confirmed!');
+          setAwaitingPayment(false);
+          setRegistrationComplete(true);
+        }
+      } catch (err) {
+        if (__DEV__) console.error('[ProgramReg] Status check error:', err);
+      }
+    };
+
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active' && awaitingPayment) {
+        checkPaymentStatus();
+      }
+    };
+
+    const subscription = AppState.addEventListener(
+      'change',
+      handleAppStateChange
+    );
+
+    return () => {
+      subscription.remove();
+    };
+  }, [awaitingPayment, createdRegistrationIds]);
+
   const resetPlayerForm = () => {
     setPlayerFirstName('');
     setPlayerLastName('');
@@ -429,6 +482,15 @@ export const ProgramRegistrationScreen: React.FC = () => {
 
   const handleRemoveRegistration = (index: number) => {
     setRegistrations(registrations.filter((_, i) => i !== index));
+  };
+
+  const generateReferralCode = (): string => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = '';
+    for (let i = 0; i < 8; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
   };
 
   const renderQuestionInput = (question: ProgramQuestion) => {
@@ -621,6 +683,7 @@ export const ProgramRegistrationScreen: React.FC = () => {
               medical_notes: reg.medicalInfo.medicalNotes || null,
               status: 'active',
               is_solo_player: true,
+              referral_code: generateReferralCode(),
             })
             .select()
             .single();
@@ -644,13 +707,14 @@ export const ProgramRegistrationScreen: React.FC = () => {
             package_id: selectedPackage.id,
             player_id: playerId,
             parent_id: user.id,
+            club_id: program.club?.id || null,
             status: 'pending',
             payment_status: 'unpaid',
-            total_amount: selectedPackage.price,
-            discount_amount: discountApplied
-              ? discountApplied.amount / registrations.length
-              : 0,
-            discount_code: discountApplied?.code || null,
+            total_amount: discountApplied
+              ? selectedPackage.price -
+                discountApplied.amount / registrations.length
+              : selectedPackage.price,
+            amount_paid: 0,
           })
           .select()
           .single();
@@ -692,6 +756,9 @@ export const ProgramRegistrationScreen: React.FC = () => {
 
       if (__DEV__)
         console.log('[ProgramReg] Created registrations:', registrationIds);
+
+      // Store registration IDs for status checking
+      setCreatedRegistrationIds(registrationIds);
 
       const totalAmount = calculateTotal();
 
@@ -740,10 +807,8 @@ export const ProgramRegistrationScreen: React.FC = () => {
       const supported = await Linking.canOpenURL(checkoutData.url);
 
       if (supported) {
+        setAwaitingPayment(true);
         await Linking.openURL(checkoutData.url);
-        alert(
-          'Complete your payment in the browser. You will be redirected back to the app after payment.'
-        );
       } else {
         throw new Error('Cannot open checkout URL');
       }
@@ -963,6 +1028,65 @@ export const ProgramRegistrationScreen: React.FC = () => {
     );
   }
 
+  // AWAITING PAYMENT SCREEN
+  if (awaitingPayment) {
+    return (
+      <View style={styles.awaitingContainer}>
+        <View style={styles.awaitingCard}>
+          <ActivityIndicator size="large" color="#8B5CF6" />
+          <Text style={styles.awaitingTitle}>Completing Payment...</Text>
+          <Text style={styles.awaitingSubtitle}>
+            Complete your payment in the browser. Once done, return here.
+          </Text>
+
+          <View style={styles.awaitingDivider} />
+
+          <Text style={styles.awaitingNote}>Already completed payment?</Text>
+
+          <TouchableOpacity
+            style={styles.checkStatusButton}
+            onPress={async () => {
+              if (__DEV__) console.log('[ProgramReg] Manual status check...');
+
+              const { data } = await supabase
+                .from('program_registrations')
+                .select('payment_status')
+                .in('id', createdRegistrationIds);
+
+              if (data?.some((r) => r.payment_status === 'paid')) {
+                setAwaitingPayment(false);
+                setRegistrationComplete(true);
+              } else {
+                alert(
+                  'Payment not yet confirmed. Please complete payment in the browser, or wait a moment and try again.'
+                );
+              }
+            }}
+          >
+            <Ionicons name="refresh" size={20} color="#FFFFFF" />
+            <Text style={styles.checkStatusButtonText}>
+              Check Payment Status
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.cancelPaymentButton}
+            onPress={() => {
+              setAwaitingPayment(false);
+              setRegistrationError(
+                'Payment was cancelled. Your registration is saved - you can try again.'
+              );
+            }}
+          >
+            <Text style={styles.cancelPaymentButtonText}>
+              Cancel & Go Back
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   // Loading state
   if (isLoading) {
     return (
@@ -1047,7 +1171,7 @@ export const ProgramRegistrationScreen: React.FC = () => {
             style={styles.primaryButton}
             onPress={() => {
               setPendingProgramId(programId);
-              navigation.navigate('Login');
+              navigation.navigate('Login', { mode: 'signin' });
             }}
           >
             <Ionicons name="log-in-outline" size={20} color="#FFFFFF" />
@@ -1064,7 +1188,7 @@ export const ProgramRegistrationScreen: React.FC = () => {
             style={styles.secondaryButton}
             onPress={() => {
               setPendingProgramId(programId);
-              navigation.navigate('Login');
+              navigation.navigate('Login', { mode: 'signup' });
             }}
           >
             <Ionicons name="person-add-outline" size={20} color="#8B5CF6" />
@@ -3030,6 +3154,71 @@ const styles = StyleSheet.create({
     color: '#FCA5A5',
     fontSize: 14,
     flex: 1,
+  },
+
+  // Awaiting Payment Styles
+  awaitingContainer: {
+    flex: 1,
+    backgroundColor: '#121212',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  awaitingCard: {
+    backgroundColor: '#1F2937',
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    maxWidth: 350,
+    width: '100%',
+  },
+  awaitingTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginTop: 24,
+    marginBottom: 8,
+  },
+  awaitingSubtitle: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  awaitingDivider: {
+    height: 1,
+    backgroundColor: '#374151',
+    width: '100%',
+    marginVertical: 24,
+  },
+  awaitingNote: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 12,
+  },
+  checkStatusButton: {
+    backgroundColor: '#8B5CF6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 10,
+    gap: 8,
+    width: '100%',
+    marginBottom: 12,
+  },
+  checkStatusButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  cancelPaymentButton: {
+    paddingVertical: 12,
+  },
+  cancelPaymentButtonText: {
+    color: '#EF4444',
+    fontSize: 14,
   },
 });
 

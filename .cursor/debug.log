@@ -173,3 +173,50 @@
 {"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770599406991}
 {"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770599408008}
 {"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770599420293}
+{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":18,"passwordLen":11},"hypothesisId":"H1","timestamp":1770601077600}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770601078319}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770601078320}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770601079273}
+{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770601079273}
+{"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H4","timestamp":1770601079273}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770601402744}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770601402747}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770601402750}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770601403597}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770601410616}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":false},"hypothesisId":"H2","timestamp":1770602547313}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":false},"hypothesisId":"H3","timestamp":1770602547316}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"24466441-f36d-4deb-a921-e76e83364e93"},"hypothesisId":"H2","timestamp":1770602621188}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"24466441-f36d-4deb-a921-e76e83364e93"},"hypothesisId":"H2","timestamp":1770602621189}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770602621775}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"24466441-f36d-4deb-a921-e76e83364e93"},"hypothesisId":"H2","timestamp":1770602622118}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"24466441-f36d-4deb-a921-e76e83364e93"},"hypothesisId":"H2","timestamp":1770602622119}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770602622641}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"24466441-f36d-4deb-a921-e76e83364e93"},"hypothesisId":"H2","timestamp":1770602771546}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"24466441-f36d-4deb-a921-e76e83364e93"},"hypothesisId":"H2","timestamp":1770602771543}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"24466441-f36d-4deb-a921-e76e83364e93"},"hypothesisId":"H3","timestamp":1770602771549}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770602772233}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770602786518}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":false},"hypothesisId":"H3","timestamp":1770602975740}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":false},"hypothesisId":"H2","timestamp":1770602975737}
+{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":18,"passwordLen":11},"hypothesisId":"H1","timestamp":1770602999384}
+{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":true,"errorMessage":"Invalid login credentials","hasSession":false,"hasUser":false},"hypothesisId":"H1","timestamp":1770602999817}
+{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":18,"passwordLen":11},"hypothesisId":"H1","timestamp":1770603009949}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770603010518}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770603010519}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770603011569}
+{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770603011570}
+{"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H4","timestamp":1770603011570}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770603735589}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770603735592}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770603735596}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770603736768}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770605735222}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":false},"hypothesisId":"H3","timestamp":1770615037634}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":false},"hypothesisId":"H2","timestamp":1770615037631}
+{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":18,"passwordLen":11},"hypothesisId":"H1","timestamp":1770615074753}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770615075472}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770615075472}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770615076271}
+{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770615076271}
+{"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H4","timestamp":1770615076271}

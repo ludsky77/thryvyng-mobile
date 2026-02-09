@@ -4,7 +4,7 @@ import type { LinkingOptions } from '@react-navigation/native';
 export type RootStackParamList = {
   // Auth screens
   Welcome: undefined;
-  Login: undefined;
+  Login: { mode?: 'signin' | 'signup' } | undefined;
   // Main app screens
   Main: undefined;
   MainTabs: undefined;

@@ -1,5 +1,17 @@
 import type { LinkingOptions } from '@react-navigation/native';
 
+// Shared shape for selected players passed through the invitation flow
+export interface SelectedPlayerParam {
+  placementId: string;
+  playerId: string;
+  playerName: string;
+  teamId: string;
+  teamName: string;
+  packageId: string;
+  packageName: string;
+  packagePrice: number;
+}
+
 // Type definitions for navigation params
 export type RootStackParamList = {
   // Auth screens
@@ -18,6 +30,26 @@ export type RootStackParamList = {
   ProgramRegistration: { programId: string };
   AcceptCoParent: { code: string };
   ClaimPlayer: { code: string };
+  // Post-tryout invitation (Flow B)
+  Invitation: { token: string };
+  Invitations: { email?: string };
+  InvitationQuestions: {
+    token: string;
+    packageId?: string;
+    selectedPlayers?: SelectedPlayerParam[];
+  };
+  InvitationPayment: {
+    token: string;
+    packageId: string;
+    selectedPlayers?: SelectedPlayerParam[];
+    answers?: Record<string, any>;
+  };
+  InvitationVolunteer: { token: string };
+  InvitationDonate: { token: string };
+  InvitationAid: { token: string };
+  InvitationCheckout: { token: string };
+  InvitationSuccess: undefined;
+  InvitationCancel: { token?: string };
   // Fallback
   NotFound: undefined;
 };
@@ -43,6 +75,13 @@ export const linking: LinkingOptions<RootStackParamList> = {
       },
       AcceptCoParent: 'accept-coparent/:code',
       ClaimPlayer: 'claim-player/:code',
+      Invitation: {
+        path: 'invitation/:token',
+        parse: { token: (token: string) => token },
+      },
+      Invitations: 'invitations',
+      InvitationSuccess: 'invitation-success',
+      InvitationCancel: 'invitation-cancel',
       Login: 'login',
       Dashboard: 'dashboard',
       NotFound: '*',

@@ -84,6 +84,15 @@ export default function DashboardScreen({ navigation }: any) {
         <RoleSwitcher embedded />
       </View>
 
+      <TouchableOpacity
+        style={{ backgroundColor: '#8b5cf6', padding: 12, borderRadius: 8, margin: 16 }}
+        onPress={() => navigation.navigate('Invitation', { token: '9d707cb6-c855-4de2-ad76-ef8201ef2ce3' })}
+      >
+        <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '600' }}>
+          DEBUG: Test Invitation (Lucas)
+        </Text>
+      </TouchableOpacity>
+
       <View style={styles.dashboardContent}>
         {renderDashboard()}
       </View>

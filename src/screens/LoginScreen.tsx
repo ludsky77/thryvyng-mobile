@@ -24,6 +24,12 @@ type LoginRouteProps = RouteProp<RootStackParamList, 'Login'>;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const REMEMBER_EMAIL_KEY = 'thryvyng_remember_email';
 
+interface LoginRouteParams {
+  mode?: 'signin' | 'signup';
+  returnTo?: string;
+  returnParams?: Record<string, any>;
+}
+
 export default function LoginScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<LoginRouteProps>();
@@ -118,6 +124,17 @@ export default function LoginScreen() {
       });
       return;
     }
+
+    const params = route.params as LoginRouteParams | undefined;
+    if (params?.returnTo) {
+      navigation.navigate(params.returnTo as never, params.returnParams as never);
+      return;
+    }
+
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Main' }],
+    });
   }
 
   const handleEmailChange = (text: string) => {
@@ -457,6 +474,12 @@ export default function LoginScreen() {
               onPress={() => navigation.navigate('ProgramRegistration', { programId: '5753cf16-efb6-41b3-8ee2-376661abe5fc' })}
             >
               <Text style={{ color: '#9CA3AF', textAlign: 'center' }}>Test Program Registration</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ backgroundColor: '#8b5cf6', padding: 12, borderRadius: 8, marginBottom: 8 }}
+              onPress={() => navigation.navigate('Invitation', { token: '9d707cb6-c855-4de2-ad76-ef8201ef2ce3' })}
+            >
+              <Text style={{ color: '#9CA3AF', textAlign: 'center' }}>Test Invitation (Lucas)</Text>
             </TouchableOpacity>
           </View>
         )}

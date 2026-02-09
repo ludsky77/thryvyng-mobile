@@ -1,222 +1,280 @@
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770536608143}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770536608147}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H3","timestamp":1770536608149}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770536609802}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770536616113}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":false},"hypothesisId":"H2","timestamp":1770536634204}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":false},"hypothesisId":"H3","timestamp":1770536634207}
-{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":18,"passwordLen":10},"hypothesisId":"H1","timestamp":1770536643629}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770536644084}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770536644085}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770536645067}
-{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770536645067}
-{"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H4","timestamp":1770536645068}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770536664407}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770536664409}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H3","timestamp":1770536664412}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770536665361}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770536726112}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":false},"hypothesisId":"H2","timestamp":1770536827648}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":false},"hypothesisId":"H3","timestamp":1770536827651}
-{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":18,"passwordLen":10},"hypothesisId":"H1","timestamp":1770536899276}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770536899963}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770536899963}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770536901146}
-{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770536901147}
-{"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H4","timestamp":1770536901147}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770536904553}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770536904556}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H3","timestamp":1770536904559}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770536905460}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770537005225}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770537005228}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H3","timestamp":1770537005230}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770537006223}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770537011891}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":false},"hypothesisId":"H2","timestamp":1770537025110}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":false},"hypothesisId":"H3","timestamp":1770537025113}
-{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":18,"passwordLen":10},"hypothesisId":"H1","timestamp":1770537042009}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770537042515}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770537042515}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770537043480}
-{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770537043480}
-{"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H4","timestamp":1770537043480}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770537053774}
-{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":18,"passwordLen":10},"hypothesisId":"H1","timestamp":1770537463175}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770537463975}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770537463976}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770537465445}
-{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770537465445}
-{"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H4","timestamp":1770537465445}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770537470809}
-{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":18,"passwordLen":10},"hypothesisId":"H1","timestamp":1770537477174}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770537477560}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770537477560}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770537478351}
-{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770537478351}
-{"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H4","timestamp":1770537478351}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"TOKEN_REFRESHED","hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770540986345}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770540986346}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770541557380}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770541557382}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H3","timestamp":1770541557384}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770541559761}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770541922176}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770541922173}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H3","timestamp":1770541922178}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770541923862}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770541944763}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":false},"hypothesisId":"H2","timestamp":1770542277362}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":false},"hypothesisId":"H3","timestamp":1770542277366}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":false},"hypothesisId":"H2","timestamp":1770542763083}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":false},"hypothesisId":"H3","timestamp":1770542763087}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770543108687}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770543108687}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770543109829}
-{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":18,"passwordLen":10},"hypothesisId":"H1","timestamp":1770543278298}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770543278946}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H2","timestamp":1770543278947}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770543280487}
-{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770543280487}
-{"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"30437d9b-c601-439a-8512-079d378bfc5b"},"hypothesisId":"H4","timestamp":1770543280487}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770543284430}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"3688734d-65bb-470d-933e-03fcce813180"},"hypothesisId":"H2","timestamp":1770543799516}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"3688734d-65bb-470d-933e-03fcce813180"},"hypothesisId":"H2","timestamp":1770543799516}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770543800423}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"3688734d-65bb-470d-933e-03fcce813180"},"hypothesisId":"H2","timestamp":1770544799802}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"3688734d-65bb-470d-933e-03fcce813180"},"hypothesisId":"H2","timestamp":1770544799805}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"3688734d-65bb-470d-933e-03fcce813180"},"hypothesisId":"H3","timestamp":1770544799807}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770544800448}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"3688734d-65bb-470d-933e-03fcce813180"},"hypothesisId":"H2","timestamp":1770544811395}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"3688734d-65bb-470d-933e-03fcce813180"},"hypothesisId":"H2","timestamp":1770544811398}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"3688734d-65bb-470d-933e-03fcce813180"},"hypothesisId":"H3","timestamp":1770544811400}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770544811880}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770544846865}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":false},"hypothesisId":"H2","timestamp":1770546429514}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":false},"hypothesisId":"H3","timestamp":1770546429518}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":false},"hypothesisId":"H2","timestamp":1770546919925}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":false},"hypothesisId":"H3","timestamp":1770546919928}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"9a8a5ae9-783c-4790-bf79-3b439ef43690"},"hypothesisId":"H2","timestamp":1770546969030}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"9a8a5ae9-783c-4790-bf79-3b439ef43690"},"hypothesisId":"H2","timestamp":1770546969029}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770546969573}
-{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":16,"passwordLen":9},"hypothesisId":"H1","timestamp":1770547089112}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"9a8a5ae9-783c-4790-bf79-3b439ef43690"},"hypothesisId":"H2","timestamp":1770547089529}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"9a8a5ae9-783c-4790-bf79-3b439ef43690"},"hypothesisId":"H2","timestamp":1770547089529}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770547090147}
-{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770547090148}
-{"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"9a8a5ae9-783c-4790-bf79-3b439ef43690"},"hypothesisId":"H4","timestamp":1770547090148}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770547604513}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":false},"hypothesisId":"H2","timestamp":1770547610761}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":false},"hypothesisId":"H3","timestamp":1770547610764}
-{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":16,"passwordLen":9},"hypothesisId":"H1","timestamp":1770547620345}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"9a8a5ae9-783c-4790-bf79-3b439ef43690"},"hypothesisId":"H2","timestamp":1770547620869}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"9a8a5ae9-783c-4790-bf79-3b439ef43690"},"hypothesisId":"H2","timestamp":1770547620869}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770547621767}
-{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770547621768}
-{"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"9a8a5ae9-783c-4790-bf79-3b439ef43690"},"hypothesisId":"H4","timestamp":1770547621768}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770548323428}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":false},"hypothesisId":"H2","timestamp":1770548335403}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":false},"hypothesisId":"H3","timestamp":1770548335406}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"2b4337bc-4894-4cbf-ba5c-5845ab6738da"},"hypothesisId":"H2","timestamp":1770548420547}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"2b4337bc-4894-4cbf-ba5c-5845ab6738da"},"hypothesisId":"H2","timestamp":1770548420548}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770548421187}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"2b4337bc-4894-4cbf-ba5c-5845ab6738da"},"hypothesisId":"H2","timestamp":1770548421511}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"2b4337bc-4894-4cbf-ba5c-5845ab6738da"},"hypothesisId":"H2","timestamp":1770548421511}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770548422052}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770548516377}
-{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":18,"passwordLen":10},"hypothesisId":"H1","timestamp":1770548528160}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"2b4337bc-4894-4cbf-ba5c-5845ab6738da"},"hypothesisId":"H2","timestamp":1770548528593}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"2b4337bc-4894-4cbf-ba5c-5845ab6738da"},"hypothesisId":"H2","timestamp":1770548528593}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770548529530}
-{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770548529530}
-{"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"2b4337bc-4894-4cbf-ba5c-5845ab6738da"},"hypothesisId":"H4","timestamp":1770548529533}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770549103443}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"4e3bacd2-29bf-412c-b517-01cd5591cbdc"},"hypothesisId":"H2","timestamp":1770549911059}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"4e3bacd2-29bf-412c-b517-01cd5591cbdc"},"hypothesisId":"H2","timestamp":1770549911059}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770549911595}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"4e3bacd2-29bf-412c-b517-01cd5591cbdc"},"hypothesisId":"H2","timestamp":1770549911942}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"4e3bacd2-29bf-412c-b517-01cd5591cbdc"},"hypothesisId":"H2","timestamp":1770549911943}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770549912425}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770550819425}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":false},"hypothesisId":"H2","timestamp":1770596432287}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":false},"hypothesisId":"H3","timestamp":1770596432291}
-{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":18,"passwordLen":11},"hypothesisId":"H1","timestamp":1770596498933}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770596499834}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770596499835}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770596500703}
-{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770596500703}
-{"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H4","timestamp":1770596500703}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770596521533}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":false},"hypothesisId":"H2","timestamp":1770597596207}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":false},"hypothesisId":"H3","timestamp":1770597596210}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":false},"hypothesisId":"H2","timestamp":1770597917377}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":false},"hypothesisId":"H3","timestamp":1770597917380}
-{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":18,"passwordLen":11},"hypothesisId":"H1","timestamp":1770598015660}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770598016429}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770598016430}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770598017238}
-{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770598017238}
-{"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H4","timestamp":1770598017238}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770599194334}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770599194330}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770599194336}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770599195225}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770599204843}
-{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":18,"passwordLen":11},"hypothesisId":"H1","timestamp":1770599227225}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770599227759}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770599227759}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770599228607}
-{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770599228607}
-{"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H4","timestamp":1770599228607}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770599406985}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770599406988}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770599406991}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770599408008}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770599420293}
-{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":18,"passwordLen":11},"hypothesisId":"H1","timestamp":1770601077600}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770601078319}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770601078320}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770601079273}
-{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770601079273}
-{"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H4","timestamp":1770601079273}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770601402744}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770601402747}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770601402750}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770601403597}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770601410616}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":false},"hypothesisId":"H2","timestamp":1770602547313}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":false},"hypothesisId":"H3","timestamp":1770602547316}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"24466441-f36d-4deb-a921-e76e83364e93"},"hypothesisId":"H2","timestamp":1770602621188}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"24466441-f36d-4deb-a921-e76e83364e93"},"hypothesisId":"H2","timestamp":1770602621189}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770602621775}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"24466441-f36d-4deb-a921-e76e83364e93"},"hypothesisId":"H2","timestamp":1770602622118}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"24466441-f36d-4deb-a921-e76e83364e93"},"hypothesisId":"H2","timestamp":1770602622119}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770602622641}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"24466441-f36d-4deb-a921-e76e83364e93"},"hypothesisId":"H2","timestamp":1770602771546}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"24466441-f36d-4deb-a921-e76e83364e93"},"hypothesisId":"H2","timestamp":1770602771543}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"24466441-f36d-4deb-a921-e76e83364e93"},"hypothesisId":"H3","timestamp":1770602771549}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770602772233}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770602786518}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":false},"hypothesisId":"H3","timestamp":1770602975740}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":false},"hypothesisId":"H2","timestamp":1770602975737}
-{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":18,"passwordLen":11},"hypothesisId":"H1","timestamp":1770602999384}
-{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":true,"errorMessage":"Invalid login credentials","hasSession":false,"hasUser":false},"hypothesisId":"H1","timestamp":1770602999817}
-{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":18,"passwordLen":11},"hypothesisId":"H1","timestamp":1770603009949}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770603010518}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770603010519}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770603011569}
-{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770603011570}
-{"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H4","timestamp":1770603011570}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770603735589}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770603735592}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770603735596}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770603736768}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770605735222}
-{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":false},"hypothesisId":"H3","timestamp":1770615037634}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":false},"hypothesisId":"H2","timestamp":1770615037631}
-{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":18,"passwordLen":11},"hypothesisId":"H1","timestamp":1770615074753}
-{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770615075472}
-{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770615075472}
-{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770615076271}
-{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770615076271}
-{"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H4","timestamp":1770615076271}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"TOKEN_REFRESHED","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770628091631}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770628091632}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770628146507}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770628146504}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770628146509}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770628147812}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770628211593,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770628211959,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770628212193,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770628212425,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770628212675,"hypothesisId":"H5"}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770628331741,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770628332224,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770628332575,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770628332857,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770628333174,"hypothesisId":"H5"}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770628607078}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770628607074}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770628607080}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770628608103}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770628614158,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770628614489,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770628614705,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770628614905,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770628615122,"hypothesisId":"H5"}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770628649391}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770628649387}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770628649394}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770628650181}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770628651705,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770628651971,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770628652171,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770628652388,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770628652605,"hypothesisId":"H5"}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770628676672,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770628677104,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770628677321,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770628677554,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770628677787,"hypothesisId":"H5"}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770628679404,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770628679704,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770628679921,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770628680138,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770628680354,"hypothesisId":"H5"}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770628712809}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770628712813}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770628712816}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770628713722}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770628716036,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770628716336,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770628716552,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770628716769,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770628716986,"hypothesisId":"H5"}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770628733051,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770628733368,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770628733585,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770628733802,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770628734018,"hypothesisId":"H5"}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770628735568,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770628735819,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770628736035,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770628736251,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770628736451,"hypothesisId":"H5"}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770628770334,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770628770650,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770628770917,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770628771217,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770628771467,"hypothesisId":"H5"}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770628791434,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770628791700,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770628791917,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770628792133,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770628792350,"hypothesisId":"H5"}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770628800134,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770628800400,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770628800617,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770628800816,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770628801033,"hypothesisId":"H5"}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770628807100,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770628807383,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770628807616,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770628807834,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770628808050,"hypothesisId":"H5"}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770628920527}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770628920531}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770628920534}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770628921467}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770628922515,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770628922782,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770628922999,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770628923216,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770628923449,"hypothesisId":"H5"}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770628927399,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770628927682,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770628927899,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770628928115,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770628928332,"hypothesisId":"H5"}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770628929982,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770628930283,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770628930582,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770628930799,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770628931032,"hypothesisId":"H5"}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770628952801}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770628952797}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770628952803}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770628953484}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770628955201,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770628955648,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770628955866,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770628956099,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770628956332,"hypothesisId":"H5"}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770629035595}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770629035598}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770629035601}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770629036535}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770629038315,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770629038581,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770629038798,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770629039014,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770629039248,"hypothesisId":"H5"}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"TOKEN_REFRESHED","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770631586240}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770631586241}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770631860860}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770631860863}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770631860866}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770631862500}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770631864433,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770631864783,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770631865000,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770631865216,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770631865450,"hypothesisId":"H5"}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770631903708}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770631903711}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770631903715}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770631904466}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770631908400,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770631908699,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770631908916,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770631909216,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770631909432,"hypothesisId":"H5"}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770631913599,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770631913866,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770631914083,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770631914299,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770631914550,"hypothesisId":"H5"}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770631915266,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770631915515,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770631915715,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770631915932,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770631916150,"hypothesisId":"H5"}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770631949607}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770631949603}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770631949610}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770631950366}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770631952182,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770631952448,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770631952666,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770631952865,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770631953082,"hypothesisId":"H5"}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770632036914,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770632037264,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770632037514,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770632037747,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770632037997,"hypothesisId":"H5"}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770632061681,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770632062030,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770632062232,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770632062430,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770632062648,"hypothesisId":"H5"}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770632068764,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770632069031,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770632069231,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770632069431,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770632069664,"hypothesisId":"H5"}
+{"location":"useInvitation.ts:placement","message":"Placement query result","data":{"hasPlacement":true},"timestamp":1770632070364,"hypothesisId":"H1"}
+{"location":"useInvitation.ts:player","message":"Player query result","data":{"hasPlayer":true},"timestamp":1770632070614,"hypothesisId":"H2"}
+{"location":"useInvitation.ts:team","message":"Team query result","data":{"hasTeam":true},"timestamp":1770632070814,"hypothesisId":"H3"}
+{"location":"useInvitation.ts:club","message":"Club query result","data":{"hasClub":true},"timestamp":1770632071014,"hypothesisId":"H4"}
+{"location":"useInvitation.ts:assignment","message":"Assignment query result","data":{"hasAssignment":true},"timestamp":1770632071214,"hypothesisId":"H5"}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770632809715}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770632809711}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770632809717}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770632810357}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770633226046}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770633226042}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770633226048}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770633227336}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770633266463}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770633266466}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770633266469}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770633267289}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770633365908}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770633365911}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770633365913}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770633367160}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770633416008}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770633416012}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770633416014}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770633416683}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770633482269}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770633482273}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770633482275}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770633482983}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770634512485}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770634512488}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770634512491}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770634514305}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770634744801}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770634744804}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770634744807}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770634745679}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"TOKEN_REFRESHED","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770635075237}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770635075238}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770636209765}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770636209768}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770636209771}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770636210923}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770636328749}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770636328752}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770636328755}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770636329937}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_OUT","hasSession":false},"hypothesisId":"H2","timestamp":1770636377924}
+{"location":"LoginScreen.tsx:handleLogin:beforeSignIn","message":"Before signInWithPassword","data":{"emailLen":18,"passwordLen":11},"hypothesisId":"H1","timestamp":1770636405972}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"SIGNED_IN","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770636406507}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770636406507}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"SIGNED_IN"},"hypothesisId":"H2","timestamp":1770636407277}
+{"location":"LoginScreen.tsx:handleLogin:afterSignIn","message":"After signInWithPassword","data":{"hasError":false,"hasSession":true,"hasUser":true},"hypothesisId":"H1","timestamp":1770636407277}
+{"location":"LoginScreen.tsx:handleLogin:successPath","message":"Login success path, no error","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H4","timestamp":1770636407277}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770636466692}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770636466695}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770636466698}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770636467322}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770637836186}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770637836189}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770637836191}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770637837142}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"TOKEN_REFRESHED","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770639906812}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770639906812}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770640069064}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770640069067}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770640069070}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770640069942}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770640119513}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770640119516}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770640119518}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770640120173}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770640599033}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770640599036}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770640599038}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770640599812}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770641705021}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770641705024}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770641705026}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770641706752}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770641915423}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770641915422}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770641915425}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770641916236}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770642774670}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770642774670}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770642774671}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770642775651}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770642823530}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770642823534}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770642823537}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770642824785}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770643340833}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770643340836}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770643340839}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770643341514}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770643401352}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"TOKEN_REFRESHED","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770643401351}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770643445429}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770643445435}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770643445440}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770643446431}
+{"location":"AuthContext.tsx:onAuthStateChange:entry","message":"Auth state change","data":{"event":"INITIAL_SESSION","hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770643527167}
+{"location":"AuthContext.tsx:onAuthStateChange:beforeProfile","message":"Before profile fetch","data":{"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H2","timestamp":1770643527167}
+{"location":"AuthContext.tsx:getSession:entry","message":"Initial getSession","data":{"hasSession":true,"userId":"7bce2dc9-804a-4d16-981b-60aee7dcff62"},"hypothesisId":"H3","timestamp":1770643527169}
+{"location":"AuthContext.tsx:onAuthStateChange:success","message":"Listener done, setLoading(false)","data":{"event":"INITIAL_SESSION"},"hypothesisId":"H2","timestamp":1770643527964}

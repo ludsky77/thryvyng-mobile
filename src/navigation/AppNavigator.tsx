@@ -6,6 +6,7 @@ import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { useRegistration } from '../contexts/RegistrationContext';
+import { FamilyCheckoutProvider } from '../contexts/FamilyCheckoutContext';
 import { linking, type RootStackParamList } from './linking';
 import {
   JoinTeamScreen,
@@ -53,6 +54,17 @@ import PlayerEvaluationsScreen from '../screens/PlayerEvaluationsScreen';
 import TeamCertificatesScreen from '../screens/TeamCertificatesScreen';
 import GamesHubScreen from '../screens/GamesHubScreen';
 import GamePlayScreen from '../screens/GamePlayScreen';
+import InvitationScreen from '../screens/invitation/InvitationScreen';
+import FamilyInvitationsScreen from '../screens/invitation/FamilyInvitationsScreen';
+import InvitationQuestionsScreen from '../screens/invitation/InvitationQuestionsScreen';
+import InvitationPaymentScreen from '../screens/invitation/InvitationPaymentScreen';
+import InvitationVolunteerScreen from '../screens/invitation/InvitationVolunteerScreen';
+import InvitationDonateScreen from '../screens/invitation/InvitationDonateScreen';
+import InvitationAidScreen from '../screens/invitation/InvitationAidScreen';
+import InvitationCheckoutScreen from '../screens/invitation/InvitationCheckoutScreen';
+import InvitationAuthWrapper from '../screens/invitation/InvitationAuthWrapper';
+import InvitationSuccessScreen from '../screens/invitation/InvitationSuccessScreen';
+import InvitationCancelScreen from '../screens/invitation/InvitationCancelScreen';
 
 const Stack = createNativeStackNavigator();
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -63,6 +75,14 @@ function LoadingScreen() {
     <View style={styles.loadingContainer}>
       <ActivityIndicator size="large" color="#8b5cf6" />
       <Text style={styles.loadingText}>Loading...</Text>
+    </View>
+  );
+}
+
+function InvitationPlaceholderScreen() {
+  return (
+    <View style={{ flex: 1, backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center' }}>
+      <Text style={{ color: '#888' }}>Coming in next prompt...</Text>
     </View>
   );
 }
@@ -438,15 +458,16 @@ function AuthStack() {
 function RootStackNavigator() {
   const { user } = useAuth();
   return (
-    <RootStack.Navigator
-      initialRouteName={user ? 'Main' : 'Welcome'}
-      screenOptions={{
-        headerShown: false,
-        headerStyle: styles.header,
-        headerTintColor: '#fff',
-        headerTitleStyle: styles.headerTitle,
-      }}
-    >
+    <FamilyCheckoutProvider>
+      <RootStack.Navigator
+        initialRouteName={user ? 'Main' : 'Welcome'}
+        screenOptions={{
+          headerShown: false,
+          headerStyle: styles.header,
+          headerTintColor: '#fff',
+          headerTitleStyle: styles.headerTitle,
+        }}
+      >
       <RootStack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
       <RootStack.Screen name="Login" component={LoginScreen} />
       <RootStack.Screen name="Main" component={MainTabs} />
@@ -492,11 +513,64 @@ function RootStackNavigator() {
         options={{ title: 'Claim Player', headerShown: true }}
       />
       <RootStack.Screen
+        name="Invitation"
+        component={InvitationAuthWrapper}
+        options={{ headerShown: false }}
+        initialParams={{ token: '' }}
+      />
+      <RootStack.Screen
+        name="Invitations"
+        component={FamilyInvitationsScreen}
+        options={{ headerShown: false }}
+        initialParams={{ email: '' }}
+      />
+      <RootStack.Screen
+        name="InvitationQuestions"
+        component={InvitationQuestionsScreen}
+        options={{ headerShown: false }}
+      />
+      <RootStack.Screen
+        name="InvitationPayment"
+        component={InvitationPaymentScreen}
+        options={{ headerShown: false }}
+      />
+      <RootStack.Screen
+        name="InvitationVolunteer"
+        component={InvitationVolunteerScreen}
+        options={{ headerShown: false }}
+      />
+      <RootStack.Screen
+        name="InvitationDonate"
+        component={InvitationDonateScreen}
+        options={{ headerShown: false }}
+      />
+      <RootStack.Screen
+        name="InvitationAid"
+        component={InvitationAidScreen}
+        options={{ headerShown: false }}
+      />
+      <RootStack.Screen
+        name="InvitationCheckout"
+        component={InvitationCheckoutScreen}
+        options={{ headerShown: false }}
+      />
+      <RootStack.Screen
+        name="InvitationSuccess"
+        component={InvitationSuccessScreen}
+        options={{ headerShown: false }}
+      />
+      <RootStack.Screen
+        name="InvitationCancel"
+        component={InvitationCancelScreen}
+        options={{ headerShown: false }}
+      />
+      <RootStack.Screen
         name="NotFound"
         component={NotFoundScreen}
         options={{ title: 'Not Found', headerShown: true }}
       />
     </RootStack.Navigator>
+    </FamilyCheckoutProvider>
   );
 }
 
@@ -542,6 +616,8 @@ export default function AppNavigator() {
           'ProgramRegistration',
           'AcceptCoParent',
           'ClaimPlayer',
+          'Invitation',
+          'Invitations',
           'NotFound',
         ].includes(currentRoute ?? '')
       ) {

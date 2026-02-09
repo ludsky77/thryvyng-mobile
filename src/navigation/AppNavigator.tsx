@@ -5,6 +5,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
+import { useRegistration } from '../contexts/RegistrationContext';
 import { linking, type RootStackParamList } from './linking';
 import {
   JoinTeamScreen,
@@ -66,7 +67,7 @@ function LoadingScreen() {
   );
 }
 
-const TAB_ICONS: Record<string, string> = {
+const TAB_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   Home: 'home',
   Teams: 'users',
   Chat: 'message-circle',
@@ -478,7 +479,7 @@ function RootStackNavigator() {
       <RootStack.Screen
         name="ProgramRegistration"
         component={ProgramRegistrationScreen}
-        options={{ title: 'Program Registration', headerShown: true }}
+        options={{ headerShown: false }}
       />
       <RootStack.Screen
         name="AcceptCoParent"
@@ -501,6 +502,7 @@ function RootStackNavigator() {
 
 export default function AppNavigator() {
   const { user, loading } = useAuth();
+  const { pendingProgramId, setPendingProgramId } = useRegistration();
   const navigationRef = React.useRef<any>(null);
 
   // Navigate when auth state changes
@@ -509,10 +511,24 @@ export default function AppNavigator() {
       const currentRoute = navigationRef.current.getCurrentRoute()?.name;
 
       if (user && (currentRoute === 'Login' || currentRoute === 'Welcome')) {
-        navigationRef.current.reset({
-          index: 0,
-          routes: [{ name: 'Main' }],
-        });
+        if (pendingProgramId) {
+          const returnProgramId = pendingProgramId;
+          setPendingProgramId(null);
+          navigationRef.current.reset({
+            index: 0,
+            routes: [
+              {
+                name: 'ProgramRegistration',
+                params: { programId: returnProgramId },
+              },
+            ],
+          });
+        } else {
+          navigationRef.current.reset({
+            index: 0,
+            routes: [{ name: 'Main' }],
+          });
+        }
       } else if (
         !user &&
         currentRoute !== 'Welcome' &&
@@ -535,7 +551,7 @@ export default function AppNavigator() {
         });
       }
     }
-  }, [user, loading]);
+  }, [user, loading, pendingProgramId, setPendingProgramId]);
 
   if (loading) {
     return (

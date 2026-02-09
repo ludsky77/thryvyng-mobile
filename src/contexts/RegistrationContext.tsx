@@ -10,6 +10,7 @@ export interface RegistrationContextData {
 
   // Program Registration flow
   programId?: string;
+  pendingProgramId?: string;
 
   // Co-Parent flow
   coParentCode?: string;
@@ -50,12 +51,16 @@ interface RegistrationContextType {
 
   // Check if there's a pending registration
   hasPendingRegistration: boolean;
+
+  pendingProgramId: string | null;
+  setPendingProgramId: (id: string | null) => void;
 }
 
 const RegistrationContext = createContext<RegistrationContextType | undefined>(undefined);
 
 export const RegistrationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [registrationData, setRegistrationDataState] = useState<RegistrationContextData>({});
+  const [pendingProgramId, setPendingProgramId] = useState<string | null>(null);
 
   const setRegistrationData = (data: RegistrationContextData) => {
     if (__DEV__) {
@@ -95,6 +100,8 @@ export const RegistrationProvider: React.FC<{ children: ReactNode }> = ({ childr
         updateRegistrationData,
         clearRegistrationData,
         hasPendingRegistration,
+        pendingProgramId,
+        setPendingProgramId,
       }}
     >
       {children}

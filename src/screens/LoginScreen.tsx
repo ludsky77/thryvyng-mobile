@@ -16,6 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useRegistration } from '../contexts/RegistrationContext';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const REMEMBER_EMAIL_KEY = 'thryvyng_remember_email';
@@ -23,6 +24,7 @@ const REMEMBER_EMAIL_KEY = 'thryvyng_remember_email';
 export default function LoginScreen() {
   const navigation = useNavigation<any>();
   const { user } = useAuth();
+  const { pendingProgramId, setPendingProgramId } = useRegistration();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -88,6 +90,19 @@ export default function LoginScreen() {
       await AsyncStorage.setItem(REMEMBER_EMAIL_KEY, trimmedEmail);
     } else {
       await AsyncStorage.removeItem(REMEMBER_EMAIL_KEY);
+    }
+
+    // Check if there's a pending program registration
+    if (pendingProgramId) {
+      const returnProgramId = pendingProgramId;
+      setPendingProgramId(null);
+      navigation.reset({
+        index: 0,
+        routes: [
+          { name: 'ProgramRegistration', params: { programId: returnProgramId } },
+        ],
+      });
+      return;
     }
   }
 
@@ -239,6 +254,12 @@ export default function LoginScreen() {
               onPress={() => navigation.navigate('RegisterTeam')}
             >
               <Text style={{ color: '#9CA3AF', textAlign: 'center' }}>Test Register Team</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ backgroundColor: '#374151', padding: 12, borderRadius: 8, marginBottom: 8 }}
+              onPress={() => navigation.navigate('ProgramRegistration', { programId: '5753cf16-efb6-41b3-8ee2-376661abe5fc' })}
+            >
+              <Text style={{ color: '#9CA3AF', textAlign: 'center' }}>Test Program Registration</Text>
             </TouchableOpacity>
           </View>
         )}

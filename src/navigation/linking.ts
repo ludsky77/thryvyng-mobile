@@ -35,7 +35,12 @@ export const linking: LinkingOptions<RootStackParamList> = {
       RegisterClub: 'register/club',
       RegisterTeam: 'register/team',
       RegisterCreator: 'register/creator',
-      ProgramRegistration: 'register/:programId',
+      ProgramRegistration: {
+        path: 'register/program/:programId',
+        parse: {
+          programId: (programId: string) => programId,
+        },
+      },
       AcceptCoParent: 'accept-coparent/:code',
       ClaimPlayer: 'claim-player/:code',
       Login: 'login',

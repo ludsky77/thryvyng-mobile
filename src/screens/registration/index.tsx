@@ -7,7 +7,7 @@ export { JoinStaffScreen } from './JoinStaffScreen';
 export { RegisterClubScreen } from './RegisterClubScreen';
 export { RegisterTeamScreen } from './RegisterTeamScreen';
 export const RegisterCreatorScreen = () => <PlaceholderScreen screenName="Register Creator" />;
-export const ProgramRegistrationScreen = () => <PlaceholderScreen screenName="Program Registration" />;
+export { ProgramRegistrationScreen } from './ProgramRegistrationScreen';
 export const AcceptCoParentScreen = () => <PlaceholderScreen screenName="Accept Co-Parent" />;
 export const ClaimPlayerScreen = () => <PlaceholderScreen screenName="Claim Player" />;
 export const NotFoundScreen = () => <PlaceholderScreen screenName="Page Not Found" />;

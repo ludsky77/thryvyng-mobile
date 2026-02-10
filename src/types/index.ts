@@ -176,6 +176,8 @@ export interface Channel {
     cancelled_reason: string | null;
     created_at: string;
     updated_at: string;
+    recurrence_group_id?: string | null;
+    is_recurring?: boolean;
     rsvp_counts?: {
       yes: number;
       no: number;

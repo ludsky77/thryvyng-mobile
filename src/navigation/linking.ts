@@ -50,6 +50,11 @@ export type RootStackParamList = {
   InvitationCheckout: { token: string };
   InvitationSuccess: undefined;
   InvitationCancel: { token?: string };
+  // Product store & checkout
+  ProductStore: undefined;
+  ProductDetail: { productId: string };
+  Cart: undefined;
+  CheckoutSuccess: { sessionId?: string };
   // Fallback
   NotFound: undefined;
 };
@@ -84,6 +89,10 @@ export const linking: LinkingOptions<RootStackParamList> = {
       InvitationCancel: 'invitation-cancel',
       Login: 'login',
       Dashboard: 'dashboard',
+      CheckoutSuccess: 'checkout-success',
+      ProductStore: 'store',
+      ProductDetail: 'product/:productId',
+      Cart: 'cart',
       NotFound: '*',
     },
   },

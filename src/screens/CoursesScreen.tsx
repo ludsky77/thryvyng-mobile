@@ -12,6 +12,7 @@ import {
   Alert,
   useWindowDimensions,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -428,15 +429,16 @@ export default function CoursesScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
-          style={styles.backButton}
+          style={styles.headerButton}
           onPress={() => navigation.goBack()}
         >
-          <Text style={styles.backButtonIcon}>←</Text>
+          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Course Library</Text>
-        <View style={styles.headerRight} />
+        <View style={styles.headerButton} />
       </View>
       <FlatList
         data={filteredCourses}
@@ -472,32 +474,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#0f172a',
     borderBottomWidth: 1,
     borderBottomColor: '#1e293b',
   },
-  backButton: {
+  headerButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: '#1e293b',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backButtonIcon: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '600',
-  },
   headerTitle: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '600',
-    flex: 1,
-    textAlign: 'center',
-  },
-  headerRight: {
-    width: 40,
   },
   listHeaderStyle: {
     marginBottom: 8,

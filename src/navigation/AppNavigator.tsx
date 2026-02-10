@@ -51,9 +51,14 @@ import PaymentMethodsScreen from '../screens/PaymentMethodsScreen';
 import PaymentHistoryScreen from '../screens/PaymentHistoryScreen';
 import InvitePlayerScreen from '../screens/InvitePlayerScreen';
 import PlayerEvaluationsScreen from '../screens/PlayerEvaluationsScreen';
+import EvaluationsScreen from '../screens/EvaluationsScreen';
 import TeamCertificatesScreen from '../screens/TeamCertificatesScreen';
 import GamesHubScreen from '../screens/GamesHubScreen';
 import GamePlayScreen from '../screens/GamePlayScreen';
+import ProductStoreScreen from '../screens/ProductStoreScreen';
+import ProductDetailScreen from '../screens/ProductDetailScreen';
+import CartScreen from '../screens/CartScreen';
+import CheckoutSuccessScreen from '../screens/CheckoutSuccessScreen';
 import InvitationScreen from '../screens/invitation/InvitationScreen';
 import FamilyInvitationsScreen from '../screens/invitation/FamilyInvitationsScreen';
 import InvitationQuestionsScreen from '../screens/invitation/InvitationQuestionsScreen';
@@ -267,6 +272,11 @@ function HomeStack() {
         options={{ title: 'Invite Player' }}
       />
       <Stack.Screen
+        name="Evaluations"
+        component={EvaluationsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
         name="GamesHub"
         component={GamesHubScreen as any}
         options={{ headerShown: false }}
@@ -274,6 +284,26 @@ function HomeStack() {
       <Stack.Screen
         name="GamePlay"
         component={GamePlayScreen as any}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="ProductStore"
+        component={ProductStoreScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="ProductDetail"
+        component={ProductDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Cart"
+        component={CartScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CheckoutSuccess"
+        component={CheckoutSuccessScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

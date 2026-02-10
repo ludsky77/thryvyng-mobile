@@ -103,6 +103,17 @@ export default function ProfileScreen({ navigation }: any) {
           <Text style={styles.menuItemText}>Payment History</Text>
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => navigation.navigate('ProductStore')}
+        >
+          <View style={styles.menuIconWrap}>
+            <Feather name="shopping-cart" size={22} color="#8B5CF6" />
+          </View>
+          <Text style={styles.menuItemText}>Team Store</Text>
+          <Text style={styles.menuArrow}>›</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.menuSection}>

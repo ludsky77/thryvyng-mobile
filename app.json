@@ -16,7 +16,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.thryvyng.app",
-      "associatedDomains": ["applinks:thryvyng.com", "applinks:www.thryvyng.com"]
+      "associatedDomains": [
+        "applinks:thryvyng.com",
+        "applinks:www.thryvyng.com"
+      ]
     },
     "android": {
       "package": "com.thryvyng.app",
@@ -31,18 +34,54 @@
           "action": "VIEW",
           "autoVerify": true,
           "data": [
-            { "scheme": "https", "host": "thryvyng.com", "pathPrefix": "/join-team" },
-            { "scheme": "https", "host": "thryvyng.com", "pathPrefix": "/join-staff" },
-            { "scheme": "https", "host": "thryvyng.com", "pathPrefix": "/register" },
-            { "scheme": "https", "host": "thryvyng.com", "pathPrefix": "/accept-coparent" },
-            { "scheme": "https", "host": "thryvyng.com", "pathPrefix": "/claim-player"},{"scheme":"https","host":"thryvyng.com","pathPrefix":"/invitation"},{"scheme":"https","host":"thryvyng.com","pathPrefix":"/invitations" }
+            {
+              "scheme": "https",
+              "host": "thryvyng.com",
+              "pathPrefix": "/join-team"
+            },
+            {
+              "scheme": "https",
+              "host": "thryvyng.com",
+              "pathPrefix": "/join-staff"
+            },
+            {
+              "scheme": "https",
+              "host": "thryvyng.com",
+              "pathPrefix": "/register"
+            },
+            {
+              "scheme": "https",
+              "host": "thryvyng.com",
+              "pathPrefix": "/accept-coparent"
+            },
+            {
+              "scheme": "https",
+              "host": "thryvyng.com",
+              "pathPrefix": "/claim-player"
+            },
+            {
+              "scheme": "https",
+              "host": "thryvyng.com",
+              "pathPrefix": "/invitation"
+            },
+            {
+              "scheme": "https",
+              "host": "thryvyng.com",
+              "pathPrefix": "/invitations"
+            }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-web-browser"
+    ]
   }
 }

@@ -9,8 +9,8 @@ import {
   ActivityIndicator,
   Share,
   Alert,
-  Linking,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -39,18 +39,10 @@ interface EnrolledCourse {
   course?: { id: string; title: string; category?: string | null } | null;
 }
 
-interface Evaluation {
-  id: string;
-  evaluation_date: string;
-  overall_score: number | null;
-  title?: string | null;
-}
-
 export default function PlayerDashboard({ playerId, navigation }: PlayerDashboardProps) {
   const { user } = useAuth();
   const [player, setPlayer] = useState<Player | null>(null);
   const [enrolledCourses, setEnrolledCourses] = useState<EnrolledCourse[]>([]);
-  const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [topPlayers, setTopPlayers] = useState<{ id: string; first_name: string; last_name: string; total_xp: number }[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -96,16 +88,6 @@ export default function PlayerDashboard({ playerId, navigation }: PlayerDashboar
         course: Array.isArray(courseRel(e)) ? courseRel(e)[0] : courseRel(e),
       }));
       setEnrolledCourses(courses);
-
-      const { data: evals } = await supabase
-        .from('player_evaluations')
-        .select('id, evaluation_date, overall_score, title')
-        .eq('player_id', playerId)
-        .eq('is_visible_to_player', true)
-        .order('evaluation_date', { ascending: false })
-        .limit(5);
-
-      setEvaluations((evals || []) as Evaluation[]);
 
       const teamId = (playerData as any).team_id;
       if (teamId) {
@@ -171,12 +153,6 @@ export default function PlayerDashboard({ playerId, navigation }: PlayerDashboar
       year: 'numeric',
     });
 
-  const formatEvalTitle = (e: Evaluation) => {
-    if (e.title) return e.title;
-    const d = new Date(e.evaluation_date + 'T12:00:00');
-    return `Evaluation - ${d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`;
-  };
-
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -237,6 +213,53 @@ export default function PlayerDashboard({ playerId, navigation }: PlayerDashboar
         </View>
       </View>
 
+      {/* Action Buttons Row */}
+      <View style={styles.actionButtonsRow}>
+        <TouchableOpacity
+          style={styles.actionButtonCard}
+          onPress={() => navigation.navigate('Courses' as never)}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.actionButtonIcon, { backgroundColor: '#3B82F6' }]}>
+            <Ionicons name="library-outline" size={28} color="#FFFFFF" />
+          </View>
+          <Text style={styles.actionButtonLabel}>Courses</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButtonCard}
+          onPress={() => navigation.navigate('GamesHub' as never)}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.actionButtonIcon, { backgroundColor: '#8B5CF6' }]}>
+            <Ionicons name="game-controller-outline" size={28} color="#FFFFFF" />
+          </View>
+          <Text style={styles.actionButtonLabel}>Games</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButtonCard}
+          onPress={() => navigation.navigate('ProductStore' as never)}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.actionButtonIcon, { backgroundColor: '#10B981' }]}>
+            <Ionicons name="cart-outline" size={28} color="#FFFFFF" />
+          </View>
+          <Text style={styles.actionButtonLabel}>Store</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButtonCard}
+          onPress={() => navigation.navigate('Evaluations' as never)}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.actionButtonIcon, { backgroundColor: '#F59E0B' }]}>
+            <Ionicons name="clipboard-outline" size={28} color="#FFFFFF" />
+          </View>
+          <Text style={styles.actionButtonLabel}>Evals</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* YOUR PROGRESS */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>YOUR PROGRESS</Text>
@@ -265,92 +288,30 @@ export default function PlayerDashboard({ playerId, navigation }: PlayerDashboar
         {enrolledCourses.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>No courses enrolled yet</Text>
-            <TouchableOpacity
-              style={styles.browseLibraryButton}
-              onPress={() => navigation.navigate('Courses')}
-            >
-              <Text style={styles.browseLibraryButtonText}>
-                📖 Browse Course Library
-              </Text>
-            </TouchableOpacity>
           </View>
         ) : (
-          <>
-            {enrolledCourses.slice(0, 3).map((e) => (
-              <TouchableOpacity
-                key={e.id}
-                style={styles.courseCard}
-                onPress={() =>
-                  navigation.navigate('CourseDetail', { course_id: e.course_id })
-                }
-              >
-                <Text style={styles.courseTitle} numberOfLines={1}>
-                  {(e.course as any)?.title || 'Course'}
-                </Text>
-                <Text style={styles.progressLabel}>
-                  Progress: {Math.round(e.progress_percentage || 0)}%
-                </Text>
-                <View style={styles.progressBar}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      { width: `${e.progress_percentage || 0}%` },
-                    ]}
-                  />
-                </View>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              style={styles.browseLibraryButton}
-              onPress={() => navigation.navigate('Courses')}
-            >
-              <Text style={styles.browseLibraryButtonText}>
-                📖 Browse Course Library
-              </Text>
-            </TouchableOpacity>
-          </>
-        )}
-      </View>
-
-      {/* 📊 MY EVALUATIONS */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, styles.sectionTitleInline]}>📊 MY EVALUATIONS</Text>
-          {evaluations.length > 0 && (
-            <TouchableOpacity
-              onPress={() =>
-                navigation.navigate('PlayerProfile', {
-                  playerId: player.id,
-                  playerName,
-                })
-              }
-            >
-              <Text style={styles.viewAll}>View All →</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        {evaluations.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>No evaluations yet</Text>
-          </View>
-        ) : (
-          evaluations.map((e) => (
+          enrolledCourses.slice(0, 3).map((e) => (
             <TouchableOpacity
               key={e.id}
-              style={styles.evalCard}
+              style={styles.courseCard}
               onPress={() =>
-                navigation.navigate('EvaluationDetail', {
-                  evaluation_id: e.id,
-                })
+                navigation.navigate('CourseDetail', { course_id: e.course_id })
               }
             >
-              <Text style={styles.evalTitle}>{formatEvalTitle(e)}</Text>
-              {e.overall_score != null && (
-                <Text style={styles.evalScore}>
-                  {e.overall_score.toFixed(1)}/10
-                </Text>
-              )}
-              <Text style={styles.evalArrow}>›</Text>
+              <Text style={styles.courseTitle} numberOfLines={1}>
+                {(e.course as any)?.title || 'Course'}
+              </Text>
+              <Text style={styles.progressLabel}>
+                Progress: {Math.round(e.progress_percentage || 0)}%
+              </Text>
+              <View style={styles.progressBar}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${e.progress_percentage || 0}%` },
+                  ]}
+                />
+              </View>
             </TouchableOpacity>
           ))
         )}
@@ -423,43 +384,6 @@ export default function PlayerDashboard({ playerId, navigation }: PlayerDashboar
             <Text style={styles.statValue}>{player.total_xp || 0}</Text>
             <Text style={styles.statLabel}>Total XP</Text>
           </View>
-        </View>
-      </View>
-
-      {/* 🔍 FIND AN EVALUATOR */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>🔍 FIND AN EVALUATOR</Text>
-        <View style={styles.card}>
-          <Text style={styles.cardDescription}>
-            Get professional assessments from certified evaluators
-          </Text>
-          <TouchableOpacity
-            style={styles.outlineButton}
-            onPress={() => Linking.openURL('https://thryvyng.com/evaluators')}
-          >
-            <Text style={styles.outlineButtonText}>Browse Evaluators</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* 🎮 COGNITIVE GAMES */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.sectionTitle, styles.sectionTitleInline]}>🎮 COGNITIVE GAMES</Text>
-          <View style={styles.betaBadge}>
-            <Text style={styles.betaBadgeText}>BETA</Text>
-          </View>
-        </View>
-        <View style={styles.card}>
-          <Text style={styles.cardDescription}>
-            Train your soccer brain with cognitive training games
-          </Text>
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={() => navigation.navigate('GamesHub')}
-          >
-            <Text style={styles.primaryButtonText}>Play Games</Text>
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -556,21 +480,53 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    marginTop: 8,
+    marginBottom: 12,
+    gap: 8,
+  },
+  actionButtonCard: {
+    flex: 1,
+    backgroundColor: '#2a2a4e',
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionButtonIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  actionButtonLabel: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   section: {
-    padding: 16,
+    padding: 12,
   },
   sectionTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: '#888',
     letterSpacing: 1,
-    marginBottom: 12,
+    marginBottom: 8,
+    marginTop: 12,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   sectionTitleInline: {
     marginBottom: 0,
@@ -583,7 +539,7 @@ const styles = StyleSheet.create({
   progressCard: {
     backgroundColor: '#2a2a4e',
     borderRadius: 12,
-    padding: 16,
+    padding: 12,
   },
   progressHeader: {
     flexDirection: 'row',
@@ -625,7 +581,7 @@ const styles = StyleSheet.create({
   emptyCard: {
     backgroundColor: '#2a2a4e',
     borderRadius: 12,
-    padding: 20,
+    padding: 12,
     alignItems: 'center',
   },
   browseLibraryButton: {
@@ -647,11 +603,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginBottom: 6,
   },
-  actionButton: {
+  actionCardButton: {
     backgroundColor: '#2a2a4e',
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 10,
+    padding: 12,
+    marginBottom: 8,
   },
   actionButtonText: {
     color: '#fff',
@@ -660,8 +616,8 @@ const styles = StyleSheet.create({
   courseCard: {
     backgroundColor: '#2a2a4e',
     borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
+    padding: 12,
+    marginBottom: 8,
   },
   courseTitle: {
     color: '#fff',
@@ -689,39 +645,10 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 14,
   },
-  evalCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#2a2a4e',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
-  },
-  evalDate: {
-    flex: 1,
-    color: '#fff',
-    fontSize: 15,
-  },
-  evalTitle: {
-    flex: 1,
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  evalScore: {
-    color: '#10b981',
-    fontSize: 14,
-    fontWeight: '600',
-    marginRight: 8,
-  },
-  evalArrow: {
-    color: '#666',
-    fontSize: 18,
-  },
   shareCard: {
     backgroundColor: '#2a2a4e',
     borderRadius: 12,
-    padding: 16,
+    padding: 12,
   },
   shareLabel: {
     color: '#888',
@@ -769,7 +696,7 @@ const styles = StyleSheet.create({
   leaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#3a3a6e',
   },
@@ -802,7 +729,8 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: '#2a2a4e',
     borderRadius: 12,
-    padding: 16,
+    padding: 12,
+    marginBottom: 12,
   },
   cardDescription: {
     color: '#aaa',
@@ -835,7 +763,7 @@ const styles = StyleSheet.create({
   sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   betaBadge: {
     backgroundColor: '#10b981',
@@ -866,9 +794,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   quickActions: {
-    padding: 16,
+    padding: 12,
   },
   bottomPadding: {
-    height: 40,
+    height: 24,
   },
 });

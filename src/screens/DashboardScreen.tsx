@@ -84,14 +84,16 @@ export default function DashboardScreen({ navigation }: any) {
         <RoleSwitcher embedded />
       </View>
 
-      <TouchableOpacity
-        style={{ backgroundColor: '#8b5cf6', padding: 12, borderRadius: 8, margin: 16 }}
-        onPress={() => navigation.navigate('Invitation', { token: '9d707cb6-c855-4de2-ad76-ef8201ef2ce3' })}
-      >
-        <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '600' }}>
-          DEBUG: Test Invitation (Lucas)
-        </Text>
-      </TouchableOpacity>
+      {__DEV__ && (
+        <TouchableOpacity
+          style={{ backgroundColor: '#8b5cf6', padding: 12, borderRadius: 8, marginHorizontal: 16, marginTop: 8, marginBottom: 8 }}
+          onPress={() => navigation.navigate('Invitation', { token: '9d707cb6-c855-4de2-ad76-ef8201ef2ce3' })}
+        >
+          <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '600' }}>
+            DEBUG: Test Invitation (Lucas)
+          </Text>
+        </TouchableOpacity>
+      )}
 
       <View style={styles.dashboardContent}>
         {renderDashboard()}
@@ -164,7 +166,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(139, 92, 246, 0.15)',
     borderRadius: 12,
     marginHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 12,
     padding: 12,
   },
   rolesContainer: {
@@ -186,7 +188,7 @@ const styles = StyleSheet.create({
     textTransform: 'capitalize',
   },
   selectRoleContainer: {
-    padding: 40,
+    padding: 24,
     alignItems: 'center',
   },
   selectRoleText: {
@@ -201,19 +203,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   section: {
-    padding: 16,
+    padding: 12,
   },
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 12,
+    marginBottom: 8,
+    marginTop: 12,
   },
   playerCard: {
     backgroundColor: '#2a2a4e',
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    padding: 12,
+    marginBottom: 8,
     borderLeftWidth: 4,
     borderLeftColor: '#10b981',
   },
@@ -248,8 +251,8 @@ const styles = StyleSheet.create({
   actionButton: {
     backgroundColor: '#2a2a4e',
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 10,
+    padding: 12,
+    marginBottom: 8,
   },
   actionButtonText: {
     color: '#fff',
@@ -261,6 +264,6 @@ const styles = StyleSheet.create({
     borderLeftColor: '#f59e0b',
   },
   bottomPadding: {
-    height: 40,
+    height: 24,
   },
 });

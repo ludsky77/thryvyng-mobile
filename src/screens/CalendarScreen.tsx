@@ -392,7 +392,10 @@ export default function CalendarScreen({ route, navigation }: any) {
                   return (
                     <TouchableOpacity
                       key={event.id}
-                      style={styles.eventCard}
+                      style={[
+                        styles.eventCard,
+                        event.is_cancelled && { opacity: 0.5 },
+                      ]}
                       onPress={() =>
                         navigation.navigate('EventDetail', {
                           event,
@@ -465,7 +468,17 @@ export default function CalendarScreen({ route, navigation }: any) {
                             </Text>
                           </View>
                         )}
-                        <Text style={styles.eventTitle}>{event.title}</Text>
+                        <Text
+                          style={[
+                            styles.eventTitle,
+                            event.is_cancelled && {
+                              textDecorationLine: 'line-through',
+                              color: '#64748b',
+                            },
+                          ]}
+                        >
+                          {event.title}
+                        </Text>
                         <Text style={styles.eventTime}>
                           {event.start_time
                             ? format(

@@ -2173,19 +2173,8 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
-  chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#374151',
-    marginBottom: 8,
-  },
   chipSelected: {
     backgroundColor: '#8B5CF6',
-  },
-  chipText: {
-    color: '#9CA3AF',
-    fontSize: 14,
   },
   chipTextSelected: {
     color: '#FFFFFF',
@@ -2236,11 +2225,6 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     fontSize: 12,
     marginTop: 2,
-  },
-  emptyText: {
-    color: '#6B7280',
-    textAlign: 'center',
-    marginTop: 24,
   },
   fixedBottom: {
     position: 'absolute',

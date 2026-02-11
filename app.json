@@ -27,6 +27,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "useNextNotificationsApi": true,
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "intentFilters": [
@@ -81,7 +82,14 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "color": "#8b5cf6",
+          "sounds": []
+        }
+      ]
     ]
   }
 }

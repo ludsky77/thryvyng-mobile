@@ -3,6 +3,7 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserRole } from '../types';
+import { registerForPushNotifications, deactivatePushToken } from '../services/notifications';
 
 export interface AuthContextType {
   user: User | null;
@@ -151,6 +152,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               : roles[0];
             setCurrentRole(role);
             setLoading(false);
+            // Register for push notifications
+            if (session?.user?.id) {
+              registerForPushNotifications(session.user.id);
+            }
             // #region agent log
             const _logC = { location: 'AuthContext.tsx:onAuthStateChange:success', message: 'Listener done, setLoading(false)', data: { event }, hypothesisId: 'H2' };
             console.log('[DEBUG]', JSON.stringify(_logC));
@@ -200,6 +205,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           : roles[0];
         setCurrentRole(role);
         setLoading(false);
+        // Register for push notifications
+        if (session?.user?.id) {
+          registerForPushNotifications(session.user.id);
+        }
       } else {
         setProfile(null);
         setLoading(false);
@@ -220,6 +229,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signOut = async () => {
+    // Deactivate push token before logout
+    if (user?.id) {
+      await deactivatePushToken(user.id);
+    }
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);

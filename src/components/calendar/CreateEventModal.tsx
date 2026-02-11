@@ -18,6 +18,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import type { EventType } from '../../types';
 import { EVENT_TYPES } from '../../types';
 import { CollapsibleSection } from '../CollapsibleSection';
+import { notifyTeamOfEvent } from '../../services/eventNotifications';
 
 if (
   Platform.OS === 'android' &&
@@ -272,6 +273,14 @@ export function CreateEventModal({
       } else {
         const result = await onSubmit(basePayload);
         if (result) {
+          // Notify team of new event
+          const eventId = (result as { id?: string })?.id;
+          if (eventId) {
+            notifyTeamOfEvent({
+              eventId,
+              action: 'created',
+            });
+          }
           onSuccess?.();
           onClose();
         } else {

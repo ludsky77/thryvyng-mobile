@@ -17,6 +17,7 @@ import { openInMaps } from '../lib/maps';
 import { getEventTypeConfig } from '../types';
 import type { CalendarEvent } from '../types';
 import { EditEventModal } from '../components/calendar/EditEventModal';
+import { notifyTeamOfEvent } from '../services/eventNotifications';
 
 function formatTime(time: string | null): string {
   if (!time) return '';
@@ -224,6 +225,11 @@ export default function EventDetailScreen({ route, navigation }: any) {
 
               if (error) throw error;
 
+              // Notify team of cancellation
+              notifyTeamOfEvent({
+                eventId: event.id,
+                action: 'cancelled',
+              });
               console.log('[Cancel] Event cancelled:', event.id);
               fetchEvent();
               onRefetch?.();
@@ -253,6 +259,11 @@ export default function EventDetailScreen({ route, navigation }: any) {
 
       if (error) throw error;
 
+      // Notify team event is restored
+      notifyTeamOfEvent({
+        eventId: event.id,
+        action: 'uncancelled',
+      });
       console.log('[Uncancel] Event restored:', event.id);
       fetchEvent();
       onRefetch?.();

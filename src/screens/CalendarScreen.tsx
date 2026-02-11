@@ -27,6 +27,7 @@ import { CreateEventModal } from '../components/calendar/CreateEventModal';
 import { supabase } from '../lib/supabase';
 import { getEventTypeConfig } from '../types';
 import type { CalendarEvent } from '../types';
+import { NotificationBell } from '../components/NotificationBell';
 
 type ViewMode = 'list' | 'month';
 
@@ -284,6 +285,7 @@ export default function CalendarScreen({ route, navigation }: any) {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Calendar</Text>
+        <NotificationBell />
       </View>
 
       <View style={styles.toolbar}>
@@ -701,12 +703,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingTop: 60,
     paddingBottom: 16,
     paddingHorizontal: 20,
     backgroundColor: '#2a2a4e',
   },
   headerTitle: {
+    flex: 1,
     fontSize: 28,
     fontWeight: '700',
     color: '#fff',

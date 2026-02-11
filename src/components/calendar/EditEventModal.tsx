@@ -19,6 +19,7 @@ import { supabase } from '../../lib/supabase';
 import type { EventType, CalendarEvent } from '../../types';
 import { EVENT_TYPES } from '../../types';
 import { CollapsibleSection } from '../CollapsibleSection';
+import { notifyTeamOfEvent } from '../../services/eventNotifications';
 
 if (
   Platform.OS === 'android' &&
@@ -158,6 +159,22 @@ export function EditEventModal({
         .eq('id', event.id);
 
       if (error) throw error;
+
+      // Track which fields changed and notify
+      const changedFields: string[] = [];
+      if (event.event_date !== updatePayload.event_date) changedFields.push('event_date');
+      if (event.start_time !== updatePayload.start_time) changedFields.push('start_time');
+      if (event.end_time !== updatePayload.end_time) changedFields.push('end_time');
+      if ((event.location_name ?? null) !== updatePayload.location_name) changedFields.push('location_name');
+      if ((event.location_address ?? null) !== updatePayload.location_address) changedFields.push('location_address');
+
+      if (changedFields.length > 0) {
+        notifyTeamOfEvent({
+          eventId: event.id,
+          action: 'updated',
+          changedFields,
+        });
+      }
 
       onSuccess();
     } catch (err) {

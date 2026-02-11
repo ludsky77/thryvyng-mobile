@@ -8,15 +8,14 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
-import { useNotifications } from '../hooks/useNotifications';
 import { RoleSwitcher } from '../components/RoleSwitcher';
+import { NotificationBell } from '../components/NotificationBell';
 import PlayerDashboard from '../components/dashboards/PlayerDashboard';
 import CoachDashboard from '../components/dashboards/CoachDashboard';
 import ClubAdminDashboard from '../components/dashboards/ClubAdminDashboard';
 
 export default function DashboardScreen({ navigation }: any) {
   const { user, profile, currentRole, loading: authLoading } = useAuth();
-  const { unreadCount } = useNotifications();
 
   const renderDashboard = () => {
     const role = currentRole?.role;
@@ -63,21 +62,7 @@ export default function DashboardScreen({ navigation }: any) {
         <View style={styles.brandLeft}>
           <Text style={styles.brandText}>⚽ Thryvyng</Text>
         </View>
-        <TouchableOpacity
-          style={styles.notificationButton}
-          onPress={() => navigation.navigate('Notifications')}
-        >
-          <View style={{ position: 'relative' }}>
-            <Feather name="bell" size={24} color="#8B5CF6" />
-            {unreadCount > 0 && (
-              <View style={styles.notificationBadge}>
-                <Text style={styles.badgeText}>
-                  {unreadCount > 99 ? '99+' : unreadCount}
-                </Text>
-              </View>
-            )}
-          </View>
-        </TouchableOpacity>
+        <NotificationBell />
       </View>
 
       <View style={styles.roleSwitcherCard}>

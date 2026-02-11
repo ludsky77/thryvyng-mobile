@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
+import { NotificationBell } from '../components/NotificationBell';
 
 const HELP_URL = 'https://thryvyng.com/help';
 const TERMS_URL = 'https://thryvyng.com/terms';
@@ -38,6 +39,10 @@ export default function ProfileScreen({ navigation }: any) {
 
   return (
     <ScrollView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Profile</Text>
+        <NotificationBell />
+      </View>
       <View style={styles.profileHeader}>
         <View style={styles.avatarContainer}>
           {profile?.avatar_url ? (
@@ -179,6 +184,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a2e',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 12,
+    backgroundColor: '#2a2a4e',
+  },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
   },
   profileHeader: {
     alignItems: 'center',

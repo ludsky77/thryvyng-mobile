@@ -22,6 +22,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useUserTeams } from '../hooks/useUserTeams';
 import { supabase } from '../lib/supabase';
 import { formatRoleLabel, getRolePriority, getTimeAgo } from '../lib/chatHelpers';
+import { NotificationBell } from '../components/NotificationBell';
 
 interface EnrichedConversation {
   id: string;
@@ -1432,12 +1433,15 @@ export default function ChatScreen({ navigation, route }: any) {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Conversations</Text>
-        <TouchableOpacity
-          style={styles.newButton}
-          onPress={() => setShowNewChatModal(true)}
-        >
-          <Text style={styles.newButtonText}>+ New</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <NotificationBell />
+          <TouchableOpacity
+            style={styles.newButton}
+            onPress={() => setShowNewChatModal(true)}
+          >
+            <Text style={styles.newButtonText}>+ New</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.tabContainer}>

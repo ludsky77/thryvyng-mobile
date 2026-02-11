@@ -1,280 +1,250 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
+  FlatList,
   TouchableOpacity,
-  SectionList,
-  RefreshControl,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNotifications, Notification } from '../hooks/useNotifications';
+import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
-function getNotificationIcon(type: string): string {
-  const icons: Record<string, string> = {
-    message: '💬',
-    event: '📅',
-    poll: '📊',
-    rsvp_reminder: '⏰',
-    push: '🔔',
-  };
-  return icons[type] || '🔔';
-}
-
-function getNotificationColor(type: string): string {
-  const colors: Record<string, string> = {
-    message: '#3B82F6',
-    event: '#10B981',
-    poll: '#8B5CF6',
-    rsvp_reminder: '#F59E0B',
-    push: '#6B7280',
-  };
-  return colors[type] || '#6B7280';
-}
-
-function getTimeAgo(dateString: string): string {
-  const now = new Date();
-  const date = new Date(dateString);
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
-}
-
-function groupNotificationsByDate(
-  notifications: Notification[]
-): { title: string; data: Notification[] }[] {
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const weekAgo = new Date(today);
-  weekAgo.setDate(weekAgo.getDate() - 7);
-
-  const groups: { title: string; data: Notification[] }[] = [
-    { title: 'Today', data: [] },
-    { title: 'Yesterday', data: [] },
-    { title: 'This Week', data: [] },
-    { title: 'Earlier', data: [] },
-  ];
-
-  notifications.forEach((notif) => {
-    const date = new Date(notif.created_at);
-    if (date.toDateString() === today.toDateString()) {
-      groups[0].data.push(notif);
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      groups[1].data.push(notif);
-    } else if (date > weekAgo) {
-      groups[2].data.push(notif);
-    } else {
-      groups[3].data.push(notif);
-    }
-  });
-
-  return groups.filter((g) => g.data.length > 0);
-}
-
-function NotificationItem({
-  item,
-  onPress,
-}: {
-  item: Notification;
-  onPress: () => void;
-}) {
-  const color = getNotificationColor(item.notification_type);
-  return (
-    <TouchableOpacity
-      style={[
-        styles.notificationItem,
-        !item.is_read && styles.notificationUnread,
-      ]}
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
-      <View
-        style={[
-          styles.iconContainer,
-          { backgroundColor: color + '20' },
-        ]}
-      >
-        <Text style={styles.icon}>
-          {getNotificationIcon(item.notification_type)}
-        </Text>
-      </View>
-      <View style={styles.notificationContent}>
-        <Text
-          style={[
-            styles.notificationTitle,
-            !item.is_read && styles.notificationTitleUnread,
-          ]}
-          numberOfLines={1}
-        >
-          {item.title}
-        </Text>
-        {item.body && (
-          <Text style={styles.notificationBody} numberOfLines={2}>
-            {item.body}
-          </Text>
-        )}
-      </View>
-      <View style={styles.notificationMeta}>
-        <Text style={styles.timeAgo}>{getTimeAgo(item.created_at)}</Text>
-        {!item.is_read && <View style={styles.unreadDot} />}
-      </View>
-    </TouchableOpacity>
-  );
+interface Notification {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  data: any;
+  is_read: boolean;
+  created_at: string;
 }
 
 export default function NotificationsScreen({ navigation }: any) {
-  const {
-    notifications,
-    loading,
-    markAsRead,
-    markAllAsRead,
-    refetch,
-  } = useNotifications();
+  const { user } = useAuth();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const [refreshing, setRefreshing] = React.useState(false);
+  const fetchNotifications = useCallback(async () => {
+    if (!user?.id) return;
 
-  const sections = useMemo(
-    () => groupNotificationsByDate(notifications),
-    [notifications]
-  );
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
 
-  const onRefresh = useCallback(async () => {
+      if (error) throw error;
+      setNotifications(data || []);
+    } catch (err) {
+      console.error('[Notifications] Error fetching:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
+
+  const handleRefresh = () => {
     setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
-  }, [refetch]);
+    fetchNotifications();
+  };
 
-  const handleNotificationPress = useCallback(
-    async (notification: Notification) => {
-      // Mark as read first (updates context → badge updates immediately)
-      if (!notification.is_read) {
-        await markAsRead(notification.id);
-      }
+  const markAsRead = async (notificationId: string) => {
+    try {
+      await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('id', notificationId);
 
-      const refType = notification.reference_type;
-      const refId = notification.reference_id;
+      setNotifications(prev =>
+        prev.map(n => (n.id === notificationId ? { ...n, is_read: true } : n))
+      );
+    } catch (err) {
+      console.error('[Notifications] Error marking as read:', err);
+    }
+  };
 
-      if (!refType || !refId) return;
+  const markAllAsRead = async () => {
+    if (!user?.id) return;
 
-      // Get tab navigator (parent of this stack) to switch tabs and push screen
-      const tabNav = navigation.getParent();
-      switch (refType) {
-        case 'cal_events':
-          tabNav?.navigate('CalendarTab', {
-            screen: 'EventDetail',
-            params: { eventId: refId },
-          });
-          break;
-        case 'comm_messages':
-        case 'comm_polls':
-          tabNav?.navigate('ChatTab');
-          break;
-        default:
-          break;
-      }
-    },
-    [markAsRead, navigation]
-  );
+    try {
+      await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('user_id', user.id)
+        .eq('is_read', false);
 
-  const renderItem = useCallback(
-    ({ item }: { item: Notification }) => (
-      <NotificationItem
-        item={item}
-        onPress={() => handleNotificationPress(item)}
-      />
-    ),
-    [handleNotificationPress]
-  );
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    } catch (err) {
+      console.error('[Notifications] Error marking all as read:', err);
+    }
+  };
 
-  const renderSectionHeader = useCallback(
-    ({ section: { title } }: { section: { title: string } }) => (
-      <Text style={styles.sectionHeader}>{title}</Text>
-    ),
-    []
-  );
+  const handleNotificationPress = (notification: Notification) => {
+    // DEBUG: Log notification data
+    console.log('[Notifications] Pressed notification:', {
+      id: notification.id,
+      type: notification.type,
+      data: notification.data,
+      hasEventId: !!notification.data?.event_id,
+    });
 
-  const ListEmptyComponent = useCallback(
-    () =>
-      !loading ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyIcon}>🔔</Text>
-          <Text style={styles.emptyTitle}>No Notifications</Text>
-          <Text style={styles.emptyText}>You're all caught up!</Text>
-        </View>
-      ) : null,
-    [loading]
-  );
+    // Mark as read first
+    if (!notification.is_read) {
+      markAsRead(notification.id);
+    }
 
-  const keyExtractor = useCallback((item: Notification) => item.id, []);
+    // Navigate based on notification type and data
+    const { data } = notification;
 
-  if (loading && notifications.length === 0) {
+    if (data?.event_id) {
+      // Navigate to event detail at root level
+      navigation.navigate('EventDetail', {
+        eventId: data.event_id,
+        onRefetch: () => {},
+      });
+    } else if (data?.chat_id || data?.team_id) {
+      // Navigate to chat
+      navigation.navigate('Chat', {
+        chatId: data.chat_id,
+        teamId: data.team_id,
+      });
+    } else if (data?.course_id) {
+      // Navigate to course
+      navigation.navigate('CourseDetail', {
+        courseId: data.course_id,
+      });
+    } else if (data?.evaluation_id) {
+      // Navigate to evaluation
+      navigation.navigate('EvaluationDetail', {
+        evaluationId: data.evaluation_id,
+      });
+    }
+    // If no specific destination, just mark as read (already done above)
+  };
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'event_created':
+        return { name: 'calendar', color: '#22c55e' };
+      case 'event_cancelled':
+        return { name: 'calendar-outline', color: '#ef4444' };
+      case 'event_changed':
+        return { name: 'create-outline', color: '#f59e0b' };
+      case 'event_reminder':
+        return { name: 'alarm-outline', color: '#8b5cf6' };
+      case 'chat_message':
+        return { name: 'chatbubble-outline', color: '#3b82f6' };
+      case 'announcement':
+        return { name: 'megaphone-outline', color: '#ec4899' };
+      default:
+        return { name: 'notifications-outline', color: '#64748b' };
+    }
+  };
+
+  const formatTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const renderNotification = ({ item }: { item: Notification }) => {
+    const icon = getNotificationIcon(item.type);
+
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-          >
-            <Text style={styles.backButtonText}>←</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Notifications</Text>
-          <View style={styles.markAllButton} />
+      <TouchableOpacity
+        style={[styles.notificationItem, !item.is_read && styles.unreadItem]}
+        onPress={() => handleNotificationPress(item)}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.iconContainer, { backgroundColor: icon.color + '20' }]}>
+          <Ionicons name={icon.name as any} size={22} color={icon.color} />
         </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#10B981" />
-          <Text style={styles.loadingText}>Loading notifications...</Text>
+        <View style={styles.contentContainer}>
+          <Text style={[styles.title, !item.is_read && styles.unreadTitle]}>
+            {item.title}
+          </Text>
+          {item.body && (
+            <Text style={styles.body} numberOfLines={2}>
+              {item.body}
+            </Text>
+          )}
+          <Text style={styles.time}>{formatTime(item.created_at)}</Text>
         </View>
-      </SafeAreaView>
+        {!item.is_read && <View style={styles.unreadDot} />}
+      </TouchableOpacity>
+    );
+  };
+
+  const unreadCount = notifications.filter(n => !n.is_read).length;
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color="#8b5cf6" />
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        >
-          <Text style={styles.backButtonText}>←</Text>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Notifications</Text>
-        <TouchableOpacity
-          onPress={markAllAsRead}
-          style={styles.markAllButton}
-        >
-          <Text style={styles.markAllText}>Mark All Read</Text>
-        </TouchableOpacity>
+        {unreadCount > 0 && (
+          <TouchableOpacity style={styles.markAllButton} onPress={markAllAsRead}>
+            <Text style={styles.markAllText}>Mark all read</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
-      <SectionList
-        sections={sections}
-        keyExtractor={keyExtractor}
-        renderItem={renderItem}
-        renderSectionHeader={renderSectionHeader}
-        stickySectionHeadersEnabled={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#10B981"
-          />
-        }
-        ListEmptyComponent={ListEmptyComponent}
-        contentContainerStyle={
-          notifications.length === 0 ? styles.emptyContainer : styles.listContent
-        }
-        showsVerticalScrollIndicator={false}
-      />
-    </SafeAreaView>
+      {notifications.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="notifications-off-outline" size={64} color="#334155" />
+          <Text style={styles.emptyTitle}>No notifications yet</Text>
+          <Text style={styles.emptySubtitle}>
+            You'll see updates about events, messages, and more here
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={notifications}
+          renderItem={renderNotification}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor="#8b5cf6"
+            />
+          }
+          showsVerticalScrollIndicator={false}
+        />
+      )}
+    </View>
   );
 }
 
@@ -283,76 +253,59 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0f172a',
   },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#0f172a',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e293b',
+    paddingTop: 50,
+    paddingBottom: 16,
+    backgroundColor: '#1e293b',
   },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#1e293b',
+    backgroundColor: '#334155',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  backButtonText: {
-    color: '#fff',
-    fontSize: 20,
   },
   headerTitle: {
+    flex: 1,
     color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
+    marginLeft: 12,
   },
   markAllButton: {
-    padding: 8,
-    minWidth: 90,
-    alignItems: 'flex-end',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: 'rgba(139, 92, 246, 0.2)',
   },
   markAllText: {
-    color: '#10B981',
-    fontSize: 14,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    color: '#9CA3AF',
-    marginTop: 12,
-    fontSize: 16,
+    color: '#a78bfa',
+    fontSize: 13,
+    fontWeight: '600',
   },
   listContent: {
-    paddingBottom: 24,
-  },
-  sectionHeader: {
-    color: '#9CA3AF',
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#0f172a',
+    padding: 16,
   },
   notificationItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
     backgroundColor: '#1e293b',
-    marginHorizontal: 16,
-    marginBottom: 8,
     borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
   },
-  notificationUnread: {
+  unreadItem: {
+    backgroundColor: '#1e3a5f',
     borderLeftWidth: 3,
-    borderLeftColor: '#10B981',
+    borderLeftColor: '#8b5cf6',
   },
   iconContainer: {
     width: 44,
@@ -362,60 +315,53 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-  icon: {
-    fontSize: 20,
-  },
-  notificationContent: {
+  contentContainer: {
     flex: 1,
-    minWidth: 0,
   },
-  notificationTitle: {
-    color: '#9CA3AF',
+  title: {
+    color: '#cbd5e1',
     fontSize: 15,
+    fontWeight: '500',
     marginBottom: 2,
   },
-  notificationTitleUnread: {
+  unreadTitle: {
     color: '#fff',
     fontWeight: '600',
   },
-  notificationBody: {
-    color: '#6B7280',
+  body: {
+    color: '#64748b',
     fontSize: 13,
+    lineHeight: 18,
   },
-  notificationMeta: {
-    alignItems: 'flex-end',
-  },
-  timeAgo: {
-    color: '#6B7280',
+  time: {
+    color: '#475569',
     fontSize: 12,
-  },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#10B981',
     marginTop: 4,
   },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  emptyText: {
-    color: '#6B7280',
-    fontSize: 14,
+  unreadDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#8b5cf6',
+    marginLeft: 8,
   },
   emptyContainer: {
-    flexGrow: 1,
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  emptyTitle: {
+    color: '#94a3b8',
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+  },
+  emptySubtitle: {
+    color: '#64748b',
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 20,
   },
 });

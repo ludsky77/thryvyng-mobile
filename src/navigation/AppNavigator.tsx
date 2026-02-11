@@ -595,6 +595,16 @@ function RootStackNavigator() {
         options={{ headerShown: false }}
       />
       <RootStack.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{ headerShown: false }}
+      />
+      <RootStack.Screen
+        name="EventDetail"
+        component={EventDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <RootStack.Screen
         name="NotFound"
         component={NotFoundScreen}
         options={{ title: 'Not Found', headerShown: true }}

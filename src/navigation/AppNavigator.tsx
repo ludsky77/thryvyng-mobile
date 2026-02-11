@@ -46,6 +46,7 @@ import MyCoursesScreen from '../screens/MyCoursesScreen';
 import CourseDetailScreen from '../screens/CourseDetailScreen';
 import CoursePlayerScreen from '../screens/CoursePlayerScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
+import NotificationSettingsScreen from '../screens/NotificationSettingsScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import PaymentMethodsScreen from '../screens/PaymentMethodsScreen';
 import PaymentHistoryScreen from '../screens/PaymentHistoryScreen';
@@ -602,6 +603,11 @@ function RootStackNavigator() {
       <RootStack.Screen
         name="EventDetail"
         component={EventDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <RootStack.Screen
+        name="NotificationSettings"
+        component={NotificationSettingsScreen}
         options={{ headerShown: false }}
       />
       <RootStack.Screen

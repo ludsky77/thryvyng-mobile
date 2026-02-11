@@ -22,6 +22,7 @@ export type RootStackParamList = {
   MainTabs: undefined;
   Dashboard: undefined;
   Notifications: undefined;
+  NotificationSettings: undefined;
   EventDetail: { eventId?: string; event?: any; onRefetch?: () => void };
   // Registration screens
   JoinTeam: { code: string };

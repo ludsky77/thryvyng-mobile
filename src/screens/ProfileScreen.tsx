@@ -10,6 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { NotificationBell } from '../components/NotificationBell';
 
@@ -89,6 +90,17 @@ export default function ProfileScreen({ navigation }: any) {
           </View>
           <Text style={styles.menuItemText}>Notifications</Text>
           <Text style={styles.menuArrow}>›</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => navigation.navigate('NotificationSettings')}
+        >
+          <View style={styles.menuIconContainer}>
+            <Ionicons name="notifications-outline" size={22} color="#8b5cf6" />
+          </View>
+          <Text style={styles.menuItemText}>Notification Settings</Text>
+          <Ionicons name="chevron-forward" size={20} color="#6b7280" />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -277,6 +289,9 @@ const styles = StyleSheet.create({
     marginRight: 14,
   },
   menuIconWrap: {
+    marginRight: 14,
+  },
+  menuIconContainer: {
     marginRight: 14,
   },
   menuItemText: {

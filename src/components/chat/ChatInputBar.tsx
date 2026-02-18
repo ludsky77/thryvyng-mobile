@@ -276,6 +276,9 @@ export function ChatInputBar({
           placeholderTextColor="#6B7280"
           multiline
           maxLength={2000}
+          returnKeyType="send"
+          onSubmitEditing={handleSend}
+          blurOnSubmit={false}
         />
 
         {onPollPress && (

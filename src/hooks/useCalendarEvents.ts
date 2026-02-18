@@ -125,6 +125,7 @@ export function useCalendarEvents(
     event_type: EventType;
     event_date: string;
     start_time?: string | null;
+    arrival_time?: string | null;
     end_time?: string | null;
     is_all_day?: boolean;
     location_name?: string | null;
@@ -152,6 +153,7 @@ export function useCalendarEvents(
         event_type: payload.event_type,
         event_date: payload.event_date,
         start_time: payload.start_time || null,
+        arrival_time: payload.arrival_time || null,
         end_time: payload.end_time || null,
         is_all_day: payload.is_all_day ?? false,
         location_name: payload.location_name || null,
@@ -208,6 +210,7 @@ export function useCalendarEvents(
       event_type: payload.event_type,
       event_date: date,
       start_time: payload.start_time || null,
+      arrival_time: payload.arrival_time || null,
       end_time: payload.end_time || null,
       is_all_day: payload.is_all_day || false,
       location_name: payload.location_name || null,

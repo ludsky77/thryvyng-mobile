@@ -32,9 +32,8 @@ interface Player {
 interface Evaluation {
   id: string;
   evaluation_date: string;
-  overall_score: number | null;
+  season_name: string | null;
   evaluator_name: string | null;
-  status: string;
 }
 
 export default function PlayerProfileScreen({ route, navigation }: any) {
@@ -79,15 +78,18 @@ export default function PlayerProfileScreen({ route, navigation }: any) {
 
       const { data: evalData, error: evalError } = await supabase
         .from('player_evaluations')
-        .select(
-          `
+        .select(`
           id,
+          player_name,
+          jersey_number,
+          season_name,
           evaluation_date,
-          overall_score,
+          award_id,
+          coach_personal_note,
+          is_visible_to_player,
           evaluator_name,
-          status
-        `
-        )
+          created_at
+        `)
         .eq('player_id', playerId)
         .order('evaluation_date', { ascending: false })
         .limit(5);
@@ -230,16 +232,10 @@ export default function PlayerProfileScreen({ route, navigation }: any) {
                 )}
               </View>
               <View style={styles.evaluationScore}>
-                {evaluation.overall_score != null ? (
-                  <>
-                    <Text style={styles.scoreValue}>
-                      {evaluation.overall_score.toFixed(1)}
-                    </Text>
-                    <Text style={styles.scoreLabel}>Score</Text>
-                  </>
-                ) : (
-                  <Text style={styles.statusBadge}>{evaluation.status}</Text>
-                )}
+                <Text style={styles.scoreValue}>
+                  {evaluation.season_name ?? '--'}
+                </Text>
+                <Text style={styles.scoreLabel}>Season</Text>
               </View>
               <Text style={styles.evaluationArrow}>›</Text>
             </TouchableOpacity>

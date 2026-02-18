@@ -445,44 +445,6 @@ export default function LoginScreen() {
             )}
           </>
         )}
-
-        {__DEV__ && (
-          <View style={{ marginTop: 20, borderTopWidth: 1, borderTopColor: '#374151', paddingTop: 20 }}>
-            <Text style={{ color: '#6B7280', fontSize: 12, textAlign: 'center', marginBottom: 10 }}>
-              🧪 DEBUG: Test Registration Flows
-            </Text>
-            <TouchableOpacity
-              style={{ backgroundColor: '#374151', padding: 12, borderRadius: 8, marginBottom: 8 }}
-              onPress={() => navigation.navigate('JoinTeam', { code: 'UPS-RV2RLR' })}
-            >
-              <Text style={{ color: '#9CA3AF', textAlign: 'center' }}>Test Join Team</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={{ backgroundColor: '#374151', padding: 12, borderRadius: 8, marginBottom: 8 }}
-              onPress={() => navigation.navigate('JoinStaff', { code: '780QJMMP' })}
-            >
-              <Text style={{ color: '#9CA3AF', textAlign: 'center' }}>Test Join Staff (Assistant Coach)</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={{ backgroundColor: '#374151', padding: 12, borderRadius: 8, marginBottom: 8 }}
-              onPress={() => navigation.navigate('RegisterTeam')}
-            >
-              <Text style={{ color: '#9CA3AF', textAlign: 'center' }}>Test Register Team</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={{ backgroundColor: '#374151', padding: 12, borderRadius: 8, marginBottom: 8 }}
-              onPress={() => navigation.navigate('ProgramRegistration', { programId: '5753cf16-efb6-41b3-8ee2-376661abe5fc' })}
-            >
-              <Text style={{ color: '#9CA3AF', textAlign: 'center' }}>Test Program Registration</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={{ backgroundColor: '#8b5cf6', padding: 12, borderRadius: 8, marginBottom: 8 }}
-              onPress={() => navigation.navigate('Invitation', { token: '9d707cb6-c855-4de2-ad76-ef8201ef2ce3' })}
-            >
-              <Text style={{ color: '#9CA3AF', textAlign: 'center' }}>Test Invitation (Lucas)</Text>
-            </TouchableOpacity>
-          </View>
-        )}
       </View>
     </KeyboardAvoidingView>
   );

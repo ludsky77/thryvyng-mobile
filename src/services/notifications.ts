@@ -4,6 +4,9 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { supabase } from '../lib/supabase';
 
+// Check if we're in Expo Go (no native push support)
+const isExpoGo = Constants.appOwnership === 'expo';
+
 // Configure how notifications appear when app is in foreground
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -14,6 +17,11 @@ Notifications.setNotificationHandler({
 });
 
 export async function registerForPushNotifications(userId: string): Promise<string | null> {
+  if (isExpoGo) {
+    console.log('[Notifications] Push notifications not available in Expo Go');
+    return null;
+  }
+
   // Must be a physical device
   if (!Device.isDevice) {
     console.log('[Notifications] Must use physical device for push notifications');
@@ -98,6 +106,11 @@ async function savePushToken(userId: string, pushToken: string): Promise<void> {
 }
 
 export async function deactivatePushToken(userId: string): Promise<void> {
+  if (isExpoGo) {
+    console.log('[Notifications] Push notifications not available in Expo Go');
+    return;
+  }
+
   try {
     const tokenData = await Notifications.getExpoPushTokenAsync();
     const pushToken = tokenData.data;
@@ -119,6 +132,11 @@ export function addNotificationListeners(
   onNotificationReceived?: (notification: Notifications.Notification) => void,
   onNotificationResponse?: (response: Notifications.NotificationResponse) => void
 ) {
+  if (isExpoGo) {
+    console.log('[Notifications] Push notifications not available in Expo Go');
+    return () => {};
+  }
+
   const receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
     console.log('[Notifications] Received:', notification);
     onNotificationReceived?.(notification);

@@ -65,6 +65,7 @@ export const JoinTeamScreen: React.FC = () => {
   const { setRegistrationData, clearRegistrationData } = useRegistration();
 
   const code = route.params?.code ?? '';
+  const role = route.params?.role;
 
   const [screenState, setScreenState] = useState<ScreenState>('loading');
   const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
@@ -72,8 +73,9 @@ export const JoinTeamScreen: React.FC = () => {
 
   // Registration flow state
   const [step, setStep] = useState<
-    'team-info' | 'mode-select' | 'player-select' | 'parent-form'
+    'team-info' | 'role-select' | 'mode-select' | 'player-select' | 'parent-form'
   >('team-info');
+  const [joinRole, setJoinRole] = useState<'parent' | 'player' | 'staff' | null>(null);
   const [registrationMode, setRegistrationMode] = useState<'new' | 'existing'>('new');
 
   // Player selection state
@@ -118,6 +120,38 @@ export const JoinTeamScreen: React.FC = () => {
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [verifiedUserId, setVerifiedUserId] = useState<string | null>(null);
   const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null);
+
+  // Player self-claim state
+  const [playerClaimStep, setPlayerClaimStep] = useState<'age_gate' | 'find_self' | 'create_account'>('age_gate');
+  const [playerClaimDob, setPlayerClaimDob] = useState('');
+  const [playerClaimAge, setPlayerClaimAge] = useState<number | null>(null);
+  const [playerClaimAgeError, setPlayerClaimAgeError] = useState('');
+  const [claimablePlayer, setClaimablePlayer] = useState<any>(null);
+  const [claimRosterPlayers, setClaimRosterPlayers] = useState<any[]>([]);
+  const [playerClaimEmail, setPlayerClaimEmail] = useState('');
+  const [playerClaimPassword, setPlayerClaimPassword] = useState('');
+  const [playerClaimConfirmPassword, setPlayerClaimConfirmPassword] = useState('');
+  const [playerClaimPasswordError, setPlayerClaimPasswordError] = useState('');
+  const [playerClaimMode, setPlayerClaimMode] = useState<'new' | 'existing' | null>(null);
+  const [playerClaimSubmitting, setPlayerClaimSubmitting] = useState(false);
+  const [playerClaimComplete, setPlayerClaimComplete] = useState(false);
+  const [showPlayerClaimVerificationModal, setShowPlayerClaimVerificationModal] = useState(false);
+
+  // Staff self-registration state
+  const [staffClaimStep, setStaffClaimStep] = useState<'role_pick' | 'account' | null>(null);
+  const [selectedStaffRole, setSelectedStaffRole] = useState<
+    'head_coach' | 'assistant_coach' | 'team_manager' | null
+  >(null);
+  const [staffFullName, setStaffFullName] = useState('');
+  const [staffEmail, setStaffEmail] = useState('');
+  const [staffPhone, setStaffPhone] = useState('');
+  const [staffPassword, setStaffPassword] = useState('');
+  const [staffConfirmPassword, setStaffConfirmPassword] = useState('');
+  const [staffPasswordError, setStaffPasswordError] = useState('');
+  const [staffMode, setStaffMode] = useState<'new' | 'existing' | null>(null);
+  const [staffSubmitting, setStaffSubmitting] = useState(false);
+  const [staffComplete, setStaffComplete] = useState(false);
+  const [showStaffVerificationModal, setShowStaffVerificationModal] = useState(false);
 
   useEffect(() => {
     if (code) {
@@ -204,6 +238,17 @@ export const JoinTeamScreen: React.FC = () => {
 
       setTeamInfo(team as TeamInfo);
       setScreenState('valid');
+
+      // Auto-select role if provided via deep link
+      if (role === 'parent' || role === 'player' || role === 'staff') {
+        setJoinRole(role);
+        if (role === 'parent' && team.id) {
+          fetchTeamPlayers(team.id);
+          setStep('mode-select');
+        } else {
+          setStep('role-select');
+        }
+      }
     } catch (err) {
       if (__DEV__) {
         console.error('[JoinTeam] Error validating code:', err);
@@ -455,12 +500,489 @@ export const JoinTeamScreen: React.FC = () => {
     setStep('player-select');
   };
 
+  const calculateAge = (dob: string): number => {
+    const birthDate = new Date(dob);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  const resetPlayerClaimState = () => {
+    setPlayerClaimStep('age_gate');
+    setPlayerClaimDob('');
+    setPlayerClaimAge(null);
+    setPlayerClaimAgeError('');
+    setClaimablePlayer(null);
+    setClaimRosterPlayers([]);
+    setPlayerClaimEmail('');
+    setPlayerClaimPassword('');
+    setPlayerClaimConfirmPassword('');
+    setPlayerClaimPasswordError('');
+    setPlayerClaimMode(null);
+    setPlayerClaimSubmitting(false);
+    setPlayerClaimComplete(false);
+    setShowPlayerClaimVerificationModal(false);
+  };
+
+  const fetchRosterForClaim = async (teamId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('team_players_for_registration')
+        .select('id, first_name, last_name, birth_year, jersey_number')
+        .eq('team_id', teamId)
+        .order('last_name', { ascending: true });
+      if (error) throw error;
+      setClaimRosterPlayers(data || []);
+    } catch (err) {
+      if (__DEV__) console.error('[JoinTeam] Error fetching roster for claim:', err);
+      setClaimRosterPlayers([]);
+    }
+  };
+
+  const handlePlayerClaimAgeCheck = () => {
+    if (!playerClaimDob) {
+      setPlayerClaimAgeError('Please enter your date of birth');
+      return;
+    }
+    const age = calculateAge(playerClaimDob);
+    setPlayerClaimAge(age);
+    if (age < 11) {
+      setPlayerClaimAgeError(
+        'You must be at least 11 years old to create your own account. Please ask your parent or guardian to register you using this same team link — they should select "Parent / Guardian."'
+      );
+    } else {
+      setPlayerClaimAgeError('');
+      if (teamInfo?.id) {
+        fetchRosterForClaim(teamInfo.id);
+      }
+      setPlayerClaimStep('find_self');
+    }
+  };
+
+  const handleSelectSelfFromRoster = async (player: any) => {
+    try {
+      const { data: isMatch, error: dobError } = await supabase.rpc('verify_player_dob', {
+        player_id: player.id,
+        provided_dob: playerClaimDob,
+      });
+
+      if (dobError) {
+        if (__DEV__) console.error('[JoinTeam] DOB verify error:', dobError);
+        setFormErrors({ submit: 'Unable to verify. Please try again.' });
+        return;
+      }
+
+      if (!isMatch) {
+        setFormErrors({
+          submit:
+            "That doesn't match our records. Make sure you entered your correct date of birth on the previous screen.",
+        });
+        return;
+      }
+
+      const { data: fullPlayer, error: claimError } = await supabase.rpc('check_player_claim_status', {
+        target_player_id: player.id,
+      });
+
+      if (claimError) {
+        if (__DEV__) console.error('[JoinTeam] Claim check error:', claimError);
+        setFormErrors({ submit: 'Unable to verify player status. Please try again.' });
+        return;
+      }
+
+      if (fullPlayer?.claimed_at) {
+        setFormErrors({
+          submit:
+            'This player account has already been claimed. If this is a mistake, please contact your team manager.',
+        });
+        return;
+      }
+
+      if (!fullPlayer?.allow_self_registration) {
+        setFormErrors({
+          submit:
+            'Self-registration has been disabled for your account by your coach. Please contact your team manager.',
+        });
+        return;
+      }
+
+      setFormErrors({});
+      setClaimablePlayer(fullPlayer);
+      setPlayerClaimStep('create_account');
+    } catch (err) {
+      if (__DEV__) console.error('[JoinTeam] Select self error:', err);
+      setFormErrors({ submit: 'Something went wrong. Please try again.' });
+    }
+  };
+
+  const handlePlayerClaimSubmit = async () => {
+    if (!claimablePlayer) return;
+
+    if (!playerClaimEmail.trim()) {
+      setPlayerClaimPasswordError('Please enter your email');
+      return;
+    }
+
+    if (playerClaimEmail.trim().toLowerCase() === claimablePlayer.parent_email?.toLowerCase()) {
+      setPlayerClaimPasswordError("Please use your own email address, not your parent's");
+      return;
+    }
+
+    if (playerClaimMode === 'new') {
+      if (!playerClaimPassword) {
+        setPlayerClaimPasswordError('Password is required');
+        return;
+      }
+      if (!isPasswordValid(playerClaimPassword)) {
+        setPlayerClaimPasswordError('Password does not meet requirements');
+        return;
+      }
+      if (playerClaimPassword !== playerClaimConfirmPassword) {
+        setPlayerClaimPasswordError('Passwords do not match');
+        return;
+      }
+    }
+
+    setPlayerClaimSubmitting(true);
+    setPlayerClaimPasswordError('');
+
+    try {
+      if (playerClaimMode === 'new') {
+        const emailAvailable = await new Promise<boolean>((resolve) => {
+          supabase.functions
+            .invoke('check-email-exists', {
+              body: { email: playerClaimEmail.trim().toLowerCase() },
+            })
+            .then(({ data }) => resolve(!data?.exists))
+            .catch(() => resolve(true));
+        });
+
+        if (!emailAvailable) {
+          setPlayerClaimPasswordError(
+            'This email already has an account. Select "I already have an account" instead.'
+          );
+          setPlayerClaimSubmitting(false);
+          return;
+        }
+
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: playerClaimEmail.trim(),
+          password: playerClaimPassword,
+          options: {
+            data: {
+              full_name: `${claimablePlayer.first_name} ${claimablePlayer.last_name}`,
+              role: 'player',
+            },
+          },
+        });
+
+        if (authError) throw authError;
+        if (!authData.user) throw new Error('Failed to create account');
+
+        const { error: updateError } = await supabase
+          .from('players')
+          .update({
+            email: playerClaimEmail.trim(),
+            claimed_at: new Date().toISOString(),
+          })
+          .eq('id', claimablePlayer.id);
+
+        if (updateError) throw updateError;
+
+        const { error: roleError } = await supabase.from('user_roles').insert({
+          user_id: authData.user.id,
+          role: 'player',
+          entity_id: claimablePlayer.id,
+        });
+
+        if (roleError && roleError.code !== '23505') {
+          if (__DEV__) console.error('[JoinTeam] Role error:', roleError);
+        }
+
+        try {
+          await supabase.functions.invoke('send-email', {
+            body: {
+              to: playerClaimEmail.trim(),
+              template: 'player-registration',
+              data: {
+                playerName: `${claimablePlayer.first_name} ${claimablePlayer.last_name}`,
+                teamName: teamInfo?.name,
+              },
+            },
+          });
+        } catch (emailErr) {
+          if (__DEV__) console.log('[JoinTeam] Email warning:', emailErr);
+        }
+
+        setPlayerClaimComplete(true);
+      } else if (playerClaimMode === 'existing') {
+        setShowPlayerClaimVerificationModal(true);
+        setPlayerClaimSubmitting(false);
+        return;
+      }
+    } catch (err: any) {
+      if (__DEV__) console.error('[JoinTeam] Claim submit error:', err);
+      setPlayerClaimPasswordError(err.message || 'Failed to claim account. Please try again.');
+    } finally {
+      setPlayerClaimSubmitting(false);
+    }
+  };
+
+  const handlePlayerClaimVerified = async (userId: string, email: string) => {
+    setShowPlayerClaimVerificationModal(false);
+    setPlayerClaimSubmitting(true);
+
+    try {
+      const { error: updateError } = await supabase
+        .from('players')
+        .update({
+          email: playerClaimEmail.trim(),
+          claimed_at: new Date().toISOString(),
+        })
+        .eq('id', claimablePlayer.id);
+
+      if (updateError) throw updateError;
+
+      const { error: roleError } = await supabase.from('user_roles').insert({
+        user_id: userId,
+        role: 'player',
+        entity_id: claimablePlayer.id,
+      });
+
+      if (roleError && roleError.code !== '23505') {
+        if (__DEV__) console.error('[JoinTeam] Role error:', roleError);
+      }
+
+      try {
+        await supabase.functions.invoke('send-email', {
+          body: {
+            to: playerClaimEmail.trim(),
+            template: 'player-registration',
+            data: {
+              playerName: `${claimablePlayer.first_name} ${claimablePlayer.last_name}`,
+              teamName: teamInfo?.name,
+            },
+          },
+        });
+      } catch (emailErr) {
+        if (__DEV__) console.log('[JoinTeam] Email warning:', emailErr);
+      }
+
+      setPlayerClaimComplete(true);
+    } catch (err: any) {
+      if (__DEV__) console.error('[JoinTeam] Claim verify error:', err);
+      setPlayerClaimPasswordError(err.message || 'Failed to claim account.');
+    } finally {
+      setPlayerClaimSubmitting(false);
+    }
+  };
+
+  const resetStaffState = () => {
+    setStaffClaimStep(null);
+    setSelectedStaffRole(null);
+    setStaffFullName('');
+    setStaffEmail('');
+    setStaffPhone('');
+    setStaffPassword('');
+    setStaffConfirmPassword('');
+    setStaffPasswordError('');
+    setStaffMode(null);
+    setStaffSubmitting(false);
+    setStaffComplete(false);
+    setShowStaffVerificationModal(false);
+  };
+
+  const getStaffRoleDisplay = (role: string | null) => {
+    if (role === 'head_coach') return 'Head Coach';
+    if (role === 'assistant_coach') return 'Assistant Coach';
+    if (role === 'team_manager') return 'Team Manager';
+    return '';
+  };
+
+  const handleStaffSubmitNew = async () => {
+    if (!selectedStaffRole || !teamInfo) return;
+
+    if (!staffFullName.trim()) {
+      setStaffPasswordError('Please enter your full name');
+      return;
+    }
+    if (!staffEmail.trim() || !isEmailValid(staffEmail)) {
+      setStaffPasswordError('Please enter a valid email');
+      return;
+    }
+    if (!isPasswordValid(staffPassword)) {
+      setStaffPasswordError('Password does not meet requirements');
+      return;
+    }
+    if (staffPassword !== staffConfirmPassword) {
+      setStaffPasswordError('Passwords do not match');
+      return;
+    }
+
+    setStaffSubmitting(true);
+    setStaffPasswordError('');
+
+    try {
+      const { data: emailCheck } = await supabase.functions.invoke('check-email-exists', {
+        body: { email: staffEmail.trim().toLowerCase() },
+      });
+
+      if (emailCheck?.exists) {
+        setStaffPasswordError(
+          'This email already has an account. Select "Existing Account" instead.'
+        );
+        setStaffSubmitting(false);
+        return;
+      }
+
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: staffEmail.trim(),
+        password: staffPassword,
+        options: {
+          data: {
+            full_name: staffFullName.trim(),
+            role: selectedStaffRole,
+          },
+        },
+      });
+
+      if (authError) throw authError;
+      if (!authData.user) throw new Error('Failed to create account');
+
+      const { error: joinError } = await supabase.rpc('process_staff_join', {
+        p_team_id: teamInfo.id,
+        p_user_id: authData.user.id,
+        p_staff_role: selectedStaffRole,
+        p_full_name: staffFullName.trim(),
+        p_email: staffEmail.trim(),
+        p_phone: staffPhone.trim() || null,
+        p_auto_approve: true,
+      });
+
+      if (joinError) throw joinError;
+
+      try {
+        await supabase.functions.invoke('send-email', {
+          body: {
+            to: staffEmail.trim(),
+            template: 'staff-welcome',
+            data: {
+              staffName: staffFullName.trim(),
+              teamName: teamInfo.name,
+              role: getStaffRoleDisplay(selectedStaffRole),
+            },
+          },
+        });
+      } catch (emailErr) {
+        if (__DEV__) console.log('[JoinTeam] Staff email warning:', emailErr);
+      }
+
+      setStaffComplete(true);
+    } catch (err: any) {
+      if (__DEV__) console.error('[JoinTeam] Staff submit error:', err);
+      setStaffPasswordError(err.message || 'Failed to join team. Please try again.');
+    } finally {
+      setStaffSubmitting(false);
+    }
+  };
+
+  const handleStaffSubmitExisting = async () => {
+    if (!staffEmail.trim() || !isEmailValid(staffEmail)) {
+      setStaffPasswordError('Please enter a valid email');
+      return;
+    }
+
+    setStaffSubmitting(true);
+    setStaffPasswordError('');
+
+    try {
+      const { data: emailCheck } = await supabase.functions.invoke('check-email-exists', {
+        body: { email: staffEmail.trim().toLowerCase() },
+      });
+
+      if (!emailCheck?.exists) {
+        setStaffPasswordError(
+          'No account found with this email. Select "New Account" instead.'
+        );
+        setStaffSubmitting(false);
+        return;
+      }
+
+      setStaffSubmitting(false);
+      setShowStaffVerificationModal(true);
+    } catch (err: any) {
+      if (__DEV__) console.error('[JoinTeam] Staff email check error:', err);
+      setStaffPasswordError('Something went wrong. Please try again.');
+      setStaffSubmitting(false);
+    }
+  };
+
+  const handleStaffVerified = async (userId: string, email: string) => {
+    setShowStaffVerificationModal(false);
+    setStaffSubmitting(true);
+
+    try {
+      if (!selectedStaffRole || !teamInfo) throw new Error('Missing role or team info');
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', userId)
+        .single();
+
+      const name = profile?.full_name || staffFullName.trim() || email.split('@')[0];
+
+      const { error: joinError } = await supabase.rpc('process_staff_join', {
+        p_team_id: teamInfo.id,
+        p_user_id: userId,
+        p_staff_role: selectedStaffRole,
+        p_full_name: name,
+        p_email: email,
+        p_phone: staffPhone.trim() || null,
+        p_auto_approve: true,
+      });
+
+      if (joinError) throw joinError;
+
+      try {
+        await supabase.functions.invoke('send-email', {
+          body: {
+            to: email,
+            template: 'staff-welcome',
+            data: {
+              staffName: name,
+              teamName: teamInfo.name,
+              role: getStaffRoleDisplay(selectedStaffRole),
+            },
+          },
+        });
+      } catch (emailErr) {
+        if (__DEV__) console.log('[JoinTeam] Staff email warning:', emailErr);
+      }
+
+      setStaffComplete(true);
+    } catch (err: any) {
+      if (__DEV__) console.error('[JoinTeam] Staff verified error:', err);
+      setStaffPasswordError(err.message || 'Failed to join team.');
+    } finally {
+      setStaffSubmitting(false);
+    }
+  };
+
   const handleContinue = async () => {
     if (step === 'team-info') {
-      if (teamInfo?.id) {
-        fetchTeamPlayers(teamInfo.id);
+      setStep('role-select');
+    } else if (step === 'role-select') {
+      if (joinRole === 'parent') {
+        if (teamInfo?.id) {
+          fetchTeamPlayers(teamInfo.id);
+        }
+        setStep('mode-select');
       }
-      setStep('mode-select');
     } else if (step === 'mode-select') {
       if (registrationMode === 'existing') {
         if (user || verifiedUserId) {
@@ -531,6 +1053,9 @@ export const JoinTeamScreen: React.FC = () => {
     } else if (step === 'player-select') {
       setStep('mode-select');
     } else if (step === 'mode-select') {
+      setStep('role-select');
+    } else if (step === 'role-select') {
+      setJoinRole(null);
       setStep('team-info');
     } else {
       handleGoBack();
@@ -694,6 +1219,8 @@ export const JoinTeamScreen: React.FC = () => {
       <View style={styles.stepIndicator}>
         <View style={[styles.stepDot, step === 'team-info' && styles.stepDotActive]} />
         <View style={styles.stepLine} />
+        <View style={[styles.stepDot, step === 'role-select' && styles.stepDotActive]} />
+        <View style={styles.stepLine} />
         <View style={[styles.stepDot, step === 'mode-select' && styles.stepDotActive]} />
         <View style={styles.stepLine} />
         <View style={[styles.stepDot, step === 'player-select' && styles.stepDotActive]} />
@@ -758,6 +1285,574 @@ export const JoinTeamScreen: React.FC = () => {
                 }}
               >
                 <Text style={styles.notYouText}>Not you?</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </>
+      )}
+
+      {step === 'role-select' && (
+        <>
+          <Text style={styles.stepTitle}>How are you joining?</Text>
+          <Text style={styles.stepSubtitle}>Select your role for {teamInfo?.name}</Text>
+
+          <TouchableOpacity
+            style={[styles.roleCard, { borderColor: '#22C55E' }]}
+            onPress={() => {
+              setJoinRole('parent');
+              if (teamInfo?.id) {
+                fetchTeamPlayers(teamInfo.id);
+              }
+              setStep('mode-select');
+            }}
+          >
+            <View style={[styles.roleIconContainer, { backgroundColor: '#14532D' }]}>
+              <Ionicons name="people-outline" size={28} color="#22C55E" />
+            </View>
+            <View style={styles.roleTextContainer}>
+              <Text style={styles.roleTitle}>I'm a Parent / Guardian</Text>
+              <Text style={styles.roleDescription}>Register or link my child to this team</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.roleCard, { borderColor: '#3B82F6' }]}
+            onPress={() => {
+              setJoinRole('player');
+            }}
+          >
+            <View style={[styles.roleIconContainer, { backgroundColor: '#1E3A5F' }]}>
+              <Ionicons name="football-outline" size={28} color="#3B82F6" />
+            </View>
+            <View style={styles.roleTextContainer}>
+              <Text style={styles.roleTitle}>I'm a Player</Text>
+              <Text style={styles.roleDescription}>I'm 11+ and joining with my own phone</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.roleCard, { borderColor: '#8B5CF6' }]}
+            onPress={() => {
+              setJoinRole('staff');
+            }}
+          >
+            <View style={[styles.roleIconContainer, { backgroundColor: '#2D2050' }]}>
+              <Ionicons name="clipboard-outline" size={28} color="#8B5CF6" />
+            </View>
+            <View style={styles.roleTextContainer}>
+              <Text style={styles.roleTitle}>I'm joining as Staff</Text>
+              <Text style={styles.roleDescription}>Coach, manager, or team admin</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+          </TouchableOpacity>
+
+          {/* Player Claim Flow */}
+          {joinRole === 'player' && !playerClaimComplete && (
+            <>
+              {/* AGE GATE */}
+              {playerClaimStep === 'age_gate' && (
+                <View style={styles.placeholderCard}>
+                  <Ionicons name="football-outline" size={48} color="#3B82F6" />
+                  <Text style={styles.placeholderTitle}>Player Registration</Text>
+                  <Text style={styles.placeholderText}>Enter your date of birth to get started</Text>
+
+                  <View style={{ width: '100%', marginTop: 8 }}>
+                    <FormInput
+                      label="Date of Birth"
+                      value={playerClaimDob}
+                      onChangeText={(text) => {
+                        setPlayerClaimDob(text);
+                        setPlayerClaimAgeError('');
+                      }}
+                      placeholder="YYYY-MM-DD"
+                      keyboardType="numbers-and-punctuation"
+                      error={playerClaimAgeError}
+                    />
+                  </View>
+
+                  <TouchableOpacity
+                    style={[styles.continueButton, { marginTop: 16, width: '100%' }]}
+                    onPress={handlePlayerClaimAgeCheck}
+                  >
+                    <Text style={styles.continueButtonText}>Continue</Text>
+                    <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.placeholderBackButton}
+                    onPress={() => {
+                      resetPlayerClaimState();
+                      setJoinRole(null);
+                    }}
+                  >
+                    <Text style={styles.placeholderBackText}>← Choose a different role</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* FIND YOURSELF ON ROSTER */}
+              {playerClaimStep === 'find_self' && (
+                <View style={{ width: '100%' }}>
+                  <Text style={styles.stepTitle}>Find Yourself</Text>
+                  <Text style={styles.stepSubtitle}>Select your name from the team roster</Text>
+
+                  {formErrors.submit && (
+                    <View style={styles.submitErrorContainer}>
+                      <Ionicons name="alert-circle" size={20} color="#EF4444" />
+                      <Text style={styles.submitErrorText}>{formErrors.submit}</Text>
+                    </View>
+                  )}
+
+                  {claimRosterPlayers.length === 0 ? (
+                    <View style={styles.placeholderCard}>
+                      <Text style={styles.placeholderText}>
+                        No players found on this team. Your parent or guardian needs to register
+                        you first. Ask them to use this same team link and select "Parent /
+                        Guardian."
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.playerList}>
+                      {claimRosterPlayers.map((player) => (
+                        <TouchableOpacity
+                          key={player.id}
+                          style={[styles.playerItem]}
+                          onPress={() => {
+                            setFormErrors({});
+                            handleSelectSelfFromRoster(player);
+                          }}
+                        >
+                          <View style={styles.playerItemContent}>
+                            <Text style={styles.playerItemName}>
+                              {player.first_name} {player.last_name}
+                            </Text>
+                            <Text style={styles.playerItemJersey}>
+                              Born: {player.birth_year}
+                              {player.jersey_number ? ` · #${player.jersey_number}` : ''}
+                            </Text>
+                          </View>
+                          <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.placeholderBackButton}
+                    onPress={() => setPlayerClaimStep('age_gate')}
+                  >
+                    <Text style={styles.placeholderBackText}>← Back to date of birth</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* CREATE YOUR ACCOUNT */}
+              {playerClaimStep === 'create_account' && claimablePlayer && (
+                <View style={{ width: '100%' }}>
+                  <Text style={styles.stepTitle}>Create Your Account</Text>
+
+                  <View style={styles.summaryCard}>
+                    <Text style={styles.summaryTitle}>Claiming Account For</Text>
+                    <Text style={styles.summaryText}>
+                      {claimablePlayer.first_name} {claimablePlayer.last_name}
+                    </Text>
+                    <Text style={styles.summarySubtext}>{teamInfo?.name}</Text>
+                  </View>
+
+                  <View style={styles.playerModeToggle}>
+                    <TouchableOpacity
+                      style={[
+                        styles.playerModeOption,
+                        playerClaimMode === 'new' && styles.playerModeActive,
+                      ]}
+                      onPress={() => setPlayerClaimMode('new')}
+                    >
+                      <Text
+                        style={[
+                          styles.playerModeText,
+                          playerClaimMode === 'new' && styles.playerModeTextActive,
+                        ]}
+                      >
+                        New Account
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.playerModeOption,
+                        playerClaimMode === 'existing' && styles.playerModeActive,
+                      ]}
+                      onPress={() => setPlayerClaimMode('existing')}
+                    >
+                      <Text
+                        style={[
+                          styles.playerModeText,
+                          playerClaimMode === 'existing' && styles.playerModeTextActive,
+                        ]}
+                      >
+                        Existing Account
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {playerClaimMode === 'new' && (
+                    <View style={styles.newPlayerForm}>
+                      <EmailInput
+                        label="Your Email (not your parent's)"
+                        value={playerClaimEmail}
+                        onChangeText={(text) => {
+                          setPlayerClaimEmail(text);
+                          setPlayerClaimPasswordError('');
+                        }}
+                        placeholder="your.email@example.com"
+                        error=""
+                      />
+                      <PasswordInput
+                        label="Password"
+                        value={playerClaimPassword}
+                        onChangeText={(text) => {
+                          setPlayerClaimPassword(text);
+                          setPlayerClaimPasswordError('');
+                        }}
+                        showValidation={true}
+                        error=""
+                      />
+                      <PasswordInput
+                        label="Confirm Password"
+                        value={playerClaimConfirmPassword}
+                        onChangeText={(text) => {
+                          setPlayerClaimConfirmPassword(text);
+                          setPlayerClaimPasswordError('');
+                        }}
+                        error=""
+                      />
+                    </View>
+                  )}
+
+                  {playerClaimMode === 'existing' && (
+                    <View style={styles.newPlayerForm}>
+                      <EmailInput
+                        label="Your Email"
+                        value={playerClaimEmail}
+                        onChangeText={(text) => {
+                          setPlayerClaimEmail(text);
+                          setPlayerClaimPasswordError('');
+                        }}
+                        placeholder="your.email@example.com"
+                        error=""
+                      />
+                    </View>
+                  )}
+
+                  {playerClaimPasswordError ? (
+                    <View style={styles.submitErrorContainer}>
+                      <Ionicons name="alert-circle" size={20} color="#EF4444" />
+                      <Text style={styles.submitErrorText}>{playerClaimPasswordError}</Text>
+                    </View>
+                  ) : null}
+
+                  {playerClaimMode && (
+                    <TouchableOpacity
+                      style={[styles.continueButton, playerClaimSubmitting && styles.continueButtonDisabled]}
+                      onPress={handlePlayerClaimSubmit}
+                      disabled={playerClaimSubmitting}
+                    >
+                      <Text style={styles.continueButtonText}>
+                        {playerClaimSubmitting
+                          ? 'Processing...'
+                          : playerClaimMode === 'new'
+                            ? 'Create My Account'
+                            : 'Continue'}
+                      </Text>
+                      {playerClaimSubmitting ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+                      )}
+                    </TouchableOpacity>
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.placeholderBackButton}
+                    onPress={() => {
+                      setClaimablePlayer(null);
+                      setPlayerClaimStep('find_self');
+                    }}
+                  >
+                    <Text style={styles.placeholderBackText}>← Back to roster</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </>
+          )}
+
+          {/* Player Claim Success */}
+          {joinRole === 'player' && playerClaimComplete && claimablePlayer && (
+            <View style={styles.placeholderCard}>
+              <Ionicons name="checkmark-circle" size={64} color="#22C55E" />
+              <Text style={[styles.placeholderTitle, { marginTop: 16 }]}>Account Claimed!</Text>
+              <Text style={styles.placeholderText}>
+                Welcome, {claimablePlayer.first_name}! Your player account is now active on{' '}
+                {teamInfo?.name}.
+              </Text>
+              <TouchableOpacity
+                style={[styles.continueButton, { width: '100%', marginTop: 16 }]}
+                onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })}
+              >
+                <Text style={styles.continueButtonText}>Go to Dashboard</Text>
+                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Staff Registration Flow */}
+          {joinRole === 'staff' && !staffComplete && (
+            <>
+              {/* ROLE PICKER */}
+              {!staffClaimStep && (
+                <View style={{ width: '100%' }}>
+                  <Text style={styles.stepTitle}>Select Your Role</Text>
+                  <Text style={styles.stepSubtitle}>Choose your position on {teamInfo?.name}</Text>
+
+                  <TouchableOpacity
+                    style={[styles.roleCard, { borderColor: '#F59E0B' }]}
+                    onPress={() => {
+                      setSelectedStaffRole('head_coach');
+                      setStaffClaimStep('account');
+                    }}
+                  >
+                    <View style={[styles.roleIconContainer, { backgroundColor: '#422006' }]}>
+                      <Ionicons name="shield-outline" size={28} color="#F59E0B" />
+                    </View>
+                    <View style={styles.roleTextContainer}>
+                      <Text style={styles.roleTitle}>Head Coach</Text>
+                      <Text style={styles.roleDescription}>Primary coach responsible for the team</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.roleCard, { borderColor: '#3B82F6' }]}
+                    onPress={() => {
+                      setSelectedStaffRole('assistant_coach');
+                      setStaffClaimStep('account');
+                    }}
+                  >
+                    <View style={[styles.roleIconContainer, { backgroundColor: '#1E3A5F' }]}>
+                      <Ionicons name="people-outline" size={28} color="#3B82F6" />
+                    </View>
+                    <View style={styles.roleTextContainer}>
+                      <Text style={styles.roleTitle}>Assistant Coach</Text>
+                      <Text style={styles.roleDescription}>Supporting coach on the team</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.roleCard, { borderColor: '#22C55E' }]}
+                    onPress={() => {
+                      setSelectedStaffRole('team_manager');
+                      setStaffClaimStep('account');
+                    }}
+                  >
+                    <View style={[styles.roleIconContainer, { backgroundColor: '#14532D' }]}>
+                      <Ionicons name="clipboard-outline" size={28} color="#22C55E" />
+                    </View>
+                    <View style={styles.roleTextContainer}>
+                      <Text style={styles.roleTitle}>Team Manager</Text>
+                      <Text style={styles.roleDescription}>
+                        Handles logistics, communication, and operations
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.placeholderBackButton}
+                    onPress={() => {
+                      resetStaffState();
+                      setJoinRole(null);
+                    }}
+                  >
+                    <Text style={styles.placeholderBackText}>← Choose a different role</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* ACCOUNT CREATION */}
+              {staffClaimStep === 'account' && (
+                <View style={{ width: '100%' }}>
+                  <Text style={styles.stepTitle}>Create Your Account</Text>
+
+                  <View style={styles.summaryCard}>
+                    <Text style={styles.summaryTitle}>Joining As</Text>
+                    <Text style={styles.summaryText}>{getStaffRoleDisplay(selectedStaffRole)}</Text>
+                    <Text style={styles.summarySubtext}>{teamInfo?.name}</Text>
+                  </View>
+
+                  <View style={styles.playerModeToggle}>
+                    <TouchableOpacity
+                      style={[
+                        styles.playerModeOption,
+                        staffMode === 'new' && styles.playerModeActive,
+                      ]}
+                      onPress={() => setStaffMode('new')}
+                    >
+                      <Text
+                        style={[
+                          styles.playerModeText,
+                          staffMode === 'new' && styles.playerModeTextActive,
+                        ]}
+                      >
+                        New Account
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.playerModeOption,
+                        staffMode === 'existing' && styles.playerModeActive,
+                      ]}
+                      onPress={() => setStaffMode('existing')}
+                    >
+                      <Text
+                        style={[
+                          styles.playerModeText,
+                          staffMode === 'existing' && styles.playerModeTextActive,
+                        ]}
+                      >
+                        Existing Account
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {staffMode === 'new' && (
+                    <View style={styles.newPlayerForm}>
+                      <FormInput
+                        label="Full Name"
+                        value={staffFullName}
+                        onChangeText={(text) => {
+                          setStaffFullName(text);
+                          setStaffPasswordError('');
+                        }}
+                        placeholder="Jane Doe"
+                        autoCapitalize="words"
+                      />
+                      <EmailInput
+                        label="Email (this will be your login)"
+                        value={staffEmail}
+                        onChangeText={(text) => {
+                          setStaffEmail(text);
+                          setStaffPasswordError('');
+                        }}
+                        placeholder="coach@email.com"
+                        error=""
+                      />
+                      <PhoneInput
+                        label="Phone (optional)"
+                        value={staffPhone}
+                        onChangeText={setStaffPhone}
+                        error=""
+                      />
+                      <PasswordInput
+                        label="Password"
+                        value={staffPassword}
+                        onChangeText={(text) => {
+                          setStaffPassword(text);
+                          setStaffPasswordError('');
+                        }}
+                        showValidation={true}
+                        error=""
+                      />
+                      <PasswordInput
+                        label="Confirm Password"
+                        value={staffConfirmPassword}
+                        onChangeText={(text) => {
+                          setStaffConfirmPassword(text);
+                          setStaffPasswordError('');
+                        }}
+                        error=""
+                      />
+                    </View>
+                  )}
+
+                  {staffMode === 'existing' && (
+                    <View style={styles.newPlayerForm}>
+                      <EmailInput
+                        label="Your Email"
+                        value={staffEmail}
+                        onChangeText={(text) => {
+                          setStaffEmail(text);
+                          setStaffPasswordError('');
+                        }}
+                        placeholder="coach@email.com"
+                        error=""
+                      />
+                    </View>
+                  )}
+
+                  {staffPasswordError ? (
+                    <View style={styles.submitErrorContainer}>
+                      <Ionicons name="alert-circle" size={20} color="#EF4444" />
+                      <Text style={styles.submitErrorText}>{staffPasswordError}</Text>
+                    </View>
+                  ) : null}
+
+                  {staffMode && (
+                    <TouchableOpacity
+                      style={[styles.continueButton, staffSubmitting && styles.continueButtonDisabled]}
+                      onPress={
+                        staffMode === 'new' ? handleStaffSubmitNew : handleStaffSubmitExisting
+                      }
+                      disabled={staffSubmitting}
+                    >
+                      <Text style={styles.continueButtonText}>
+                        {staffSubmitting
+                          ? 'Processing...'
+                          : staffMode === 'new'
+                            ? 'Join Team'
+                            : 'Continue'}
+                      </Text>
+                      {staffSubmitting ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+                      )}
+                    </TouchableOpacity>
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.placeholderBackButton}
+                    onPress={() => {
+                      setStaffClaimStep(null);
+                      setSelectedStaffRole(null);
+                      setStaffMode(null);
+                      setStaffPasswordError('');
+                    }}
+                  >
+                    <Text style={styles.placeholderBackText}>← Back to role selection</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </>
+          )}
+
+          {/* Staff Success */}
+          {joinRole === 'staff' && staffComplete && (
+            <View style={styles.placeholderCard}>
+              <Ionicons name="checkmark-circle" size={64} color="#22C55E" />
+              <Text style={[styles.placeholderTitle, { marginTop: 16 }]}>
+                Welcome to {teamInfo?.name}!
+              </Text>
+              <Text style={styles.placeholderText}>
+                You've been added as {getStaffRoleDisplay(selectedStaffRole)}.
+              </Text>
+              <TouchableOpacity
+                style={[styles.continueButton, { width: '100%', marginTop: 16 }]}
+                onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })}
+              >
+                <Text style={styles.continueButtonText}>Go to Dashboard</Text>
+                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
           )}
@@ -1036,47 +2131,65 @@ export const JoinTeamScreen: React.FC = () => {
         </>
       )}
 
-      <TouchableOpacity
-        style={[
-          styles.continueButton,
-          (step === 'player-select' &&
-            playerLinkMode === 'existing' &&
-            !selectedPlayerId) &&
-            styles.continueButtonDisabled,
-          isSubmitting && styles.continueButtonDisabled,
-        ]}
-        onPress={handleContinue}
-        disabled={
-          (step === 'player-select' &&
-            playerLinkMode === 'existing' &&
-            !selectedPlayerId) ||
-          isSubmitting
-        }
-      >
-        <Text style={styles.continueButtonText}>
-          {step === 'parent-form'
-            ? 'Complete Registration'
-            : step === 'player-select' && registrationMode === 'existing'
-              ? 'Verify Account'
-              : step === 'player-select'
-                ? 'Continue to Your Info'
-                : 'Continue'}
-        </Text>
-        {isSubmitting ? (
-          <ActivityIndicator size="small" color="#FFFFFF" />
-        ) : (
-          <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-        )}
-      </TouchableOpacity>
+      {step !== 'role-select' && (
+        <TouchableOpacity
+          style={[
+            styles.continueButton,
+            (step === 'player-select' &&
+              playerLinkMode === 'existing' &&
+              !selectedPlayerId) &&
+              styles.continueButtonDisabled,
+            isSubmitting && styles.continueButtonDisabled,
+          ]}
+          onPress={handleContinue}
+          disabled={
+            (step === 'player-select' &&
+              playerLinkMode === 'existing' &&
+              !selectedPlayerId) ||
+            isSubmitting
+          }
+        >
+          <Text style={styles.continueButtonText}>
+            {step === 'parent-form'
+              ? 'Complete Registration'
+              : step === 'player-select' && registrationMode === 'existing'
+                ? 'Verify Account'
+                : step === 'player-select'
+                  ? 'Continue to Your Info'
+                  : 'Continue'}
+          </Text>
+          {isSubmitting ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+          )}
+        </TouchableOpacity>
+      )}
 
-      <Text style={styles.helpText}>
-        Need help? Contact your team manager or coach.
-      </Text>
+      {step !== 'role-select' && (
+        <Text style={styles.helpText}>
+          Need help? Contact your team manager or coach.
+        </Text>
+      )}
 
       <IdentityVerificationModal
         visible={showVerificationModal}
         onClose={() => setShowVerificationModal(false)}
         onVerified={handleVerificationSuccess}
+        teamName={teamInfo?.name}
+      />
+
+      <IdentityVerificationModal
+        visible={showPlayerClaimVerificationModal}
+        onClose={() => setShowPlayerClaimVerificationModal(false)}
+        onVerified={handlePlayerClaimVerified}
+        teamName={teamInfo?.name}
+      />
+
+      <IdentityVerificationModal
+        visible={showStaffVerificationModal}
+        onClose={() => setShowStaffVerificationModal(false)}
+        onVerified={handleStaffVerified}
         teamName={teamInfo?.name}
       />
     </ScrollView>
@@ -1305,6 +2418,67 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     marginTop: -12,
   },
+  roleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1F2937',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: '#374151',
+  },
+  roleIconContainer: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+  roleTextContainer: {
+    flex: 1,
+  },
+  roleTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 2,
+  },
+  roleDescription: {
+    fontSize: 13,
+    color: '#9CA3AF',
+  },
+  placeholderCard: {
+    backgroundColor: '#1F2937',
+    borderRadius: 12,
+    padding: 24,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  placeholderTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  placeholderText: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  placeholderBackButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  placeholderBackText: {
+    color: '#8B5CF6',
+    fontSize: 14,
+    fontWeight: '500',
+  },
   formSection: {
     marginBottom: 24,
   },
@@ -1370,23 +2544,28 @@ const styles = StyleSheet.create({
   playerModeToggle: {
     flexDirection: 'row',
     backgroundColor: '#1F2937',
-    borderRadius: 8,
+    borderRadius: 12,
     padding: 4,
     marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#374151',
   },
   playerModeOption: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 14,
     alignItems: 'center',
-    borderRadius: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
   playerModeActive: {
-    backgroundColor: '#374151',
+    backgroundColor: '#8B5CF6',
+    borderColor: '#A78BFA',
   },
   playerModeText: {
-    color: '#6B7280',
-    fontSize: 14,
-    fontWeight: '500',
+    color: '#9CA3AF',
+    fontSize: 15,
+    fontWeight: '600',
   },
   playerModeTextActive: {
     color: '#FFFFFF',

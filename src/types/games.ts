@@ -19,7 +19,7 @@ export interface GameLevel {
   xp_reward: number;
   field_type: 'half' | 'full';
   is_active: boolean;
-  config: FieldVisionConfig | PatternPlayConfig | DecisionPointConfig | AnticipationConfig | PressureConfig | DribbleRushConfig;
+  config: FieldVisionConfig | PatternPlayConfig | DecisionPointConfig | AnticipationConfig | PressureConfig | DribbleRushConfig | AngleMasterConfig;
   // Anticipation Arena (and other games) level columns - from DB, not config JSON
   spin_type?: string;
   spin_intensity?: number;
@@ -74,6 +74,17 @@ export interface PressureConfig {
   taskType: string;
   distractionLevel: number;
   timeLimit: number;
+}
+
+// Angle Master config (levels 1–11: active angles, decoys, xp from DB or derived)
+export interface AngleMasterConfig {
+  activeAngles?: number;
+  decoyMin?: number;
+  decoyMax?: number;
+  xpReward?: number;
+  memorizeSeconds?: number;
+  trialsPerLevel?: number;
+  passThresholdPercent?: number;
 }
 
 // Dribble Rush round modifier

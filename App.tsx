@@ -6,6 +6,10 @@ import { CartProvider } from './src/contexts/CartContext';
 import { RegistrationProvider } from './src/contexts/RegistrationContext';
 import { NotificationProvider } from './src/contexts/NotificationContext';
 import AppNavigator from './src/navigation/AppNavigator';
+import { initSentry } from './src/services/sentry';
+
+// Initialize Sentry before app renders
+initSentry();
 
 export default function App() {
   return (

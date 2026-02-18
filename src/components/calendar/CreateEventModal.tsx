@@ -14,6 +14,7 @@ import {
   LayoutAnimation,
   UIManager,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import type { EventType } from '../../types';
 import { EVENT_TYPES } from '../../types';
@@ -27,6 +28,20 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+const EVENT_TYPE_ICONS: Record<string, { icon: string; color: string }> = {
+  game: { icon: 'trophy', color: '#06B6D4' },
+  scrimmage: { icon: 'locate', color: '#F97316' },
+  practice: { icon: 'people', color: '#10B981' },
+  other_event: { icon: 'calendar', color: '#8B5CF6' },
+  club_event: { icon: 'business', color: '#3B82F6' },
+};
+
+const VENUE_ICONS: Record<string, { icon: string; color: string }> = {
+  home: { icon: 'home', color: '#10B981' },
+  away: { icon: 'car', color: '#EF4444' },
+  neutral: { icon: 'scale-outline', color: '#6B7280' },
+};
+
 const colors = {
   background: '#1a1a2e',
   cardBackground: '#2a2a4e',
@@ -39,18 +54,57 @@ const colors = {
   accentDim: '#8b5cf6',
 };
 
-function formatDate(d: Date): string {
+/** For API payload - YYYY-MM-DD */
+function formatDateForPayload(d: Date): string {
   return d.toISOString().split('T')[0];
 }
 
-function formatTime(d: Date): string {
+/** For API payload - 24-hour HH:mm */
+function formatTimeForPayload(d: Date): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** For UI display - 12-hour with AM/PM */
+function formatTimeDisplay(d: Date): string {
+  return d.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+/** For UI display - "Fri, Feb 13, 2026" */
+function formatDateDisplay(d: Date): string {
+  return d.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 function addMonths(d: Date, n: number): Date {
   const out = new Date(d);
   out.setMonth(out.getMonth() + n);
   return out;
+}
+
+function getDefaultStartTime(): Date {
+  const d = new Date();
+  d.setHours(16, 0, 0, 0); // 4:00 PM
+  return d;
+}
+
+function getDefaultArrivalTime(start: Date): Date {
+  const d = new Date(start);
+  d.setMinutes(d.getMinutes() - 45);
+  return d;
+}
+
+function getDefaultEndTime(start: Date): Date {
+  const d = new Date(start);
+  d.setMinutes(d.getMinutes() + 90);
+  return d;
 }
 
 type HomeAway = 'home' | 'away' | 'neutral';
@@ -63,6 +117,7 @@ interface CreateEventModalProps {
     event_type: EventType;
     event_date: string;
     start_time?: string | null;
+    arrival_time?: string | null;
     end_time?: string | null;
     is_all_day: boolean;
     location_name?: string | null;
@@ -76,6 +131,7 @@ interface CreateEventModalProps {
     title: string;
     event_type: EventType;
     start_time?: string | null;
+    arrival_time?: string | null;
     end_time?: string | null;
     is_all_day: boolean;
     location_name?: string | null;
@@ -139,12 +195,12 @@ export function CreateEventModal({
   onCreateRecurring,
   onSuccess,
 }: CreateEventModalProps) {
-  const today = new Date();
   const [title, setTitle] = useState('');
   const [eventType, setEventType] = useState<EventType>('practice');
   const [eventDate, setEventDate] = useState(new Date());
-  const [startTime, setStartTime] = useState(new Date(today.getTime() + 60 * 60 * 1000));
-  const [endTime, setEndTime] = useState(new Date(today.getTime() + 2 * 60 * 60 * 1000));
+  const [startTime, setStartTime] = useState(getDefaultStartTime);
+  const [arrivalTime, setArrivalTime] = useState(() => getDefaultArrivalTime(getDefaultStartTime()));
+  const [endTime, setEndTime] = useState(() => getDefaultEndTime(getDefaultStartTime()));
   const [isAllDay, setIsAllDay] = useState(false);
   const [locationName, setLocationName] = useState('');
   const [locationAddress, setLocationAddress] = useState('');
@@ -158,8 +214,21 @@ export function CreateEventModal({
   const [errors, setErrors] = useState<{ title?: string }>({});
   const [dateExpanded, setDateExpanded] = useState(true);
   const [startTimeExpanded, setStartTimeExpanded] = useState(false);
+  const [arrivalTimeExpanded, setArrivalTimeExpanded] = useState(false);
   const [endTimeExpanded, setEndTimeExpanded] = useState(false);
   const [endRepeatExpanded, setEndRepeatExpanded] = useState(false);
+
+  const handleStartTimeChange = (_event: unknown, selectedDate?: Date) => {
+    if (selectedDate) {
+      setStartTime(selectedDate);
+      const newArrival = new Date(selectedDate);
+      newArrival.setMinutes(newArrival.getMinutes() - 45);
+      setArrivalTime(newArrival);
+      const newEnd = new Date(selectedDate);
+      newEnd.setMinutes(newEnd.getMinutes() + 90);
+      setEndTime(newEnd);
+    }
+  };
 
   useEffect(() => {
     if (eventType !== 'practice' && eventType !== 'club_event') {
@@ -180,12 +249,13 @@ export function CreateEventModal({
 
   useEffect(() => {
     if (!visible) {
-      const now = new Date();
+      const start = getDefaultStartTime();
       setTitle('');
       setEventType('practice');
       setEventDate(new Date());
-      setStartTime(new Date(now.getTime() + 60 * 60 * 1000));
-      setEndTime(new Date(now.getTime() + 2 * 60 * 60 * 1000));
+      setStartTime(start);
+      setArrivalTime(getDefaultArrivalTime(start));
+      setEndTime(getDefaultEndTime(start));
       setIsAllDay(false);
       setLocationName('');
       setLocationAddress('');
@@ -197,6 +267,7 @@ export function CreateEventModal({
       setEndRepeatDate('');
       setDateExpanded(true);
       setStartTimeExpanded(false);
+      setArrivalTimeExpanded(false);
       setEndTimeExpanded(false);
       setEndRepeatExpanded(false);
       setErrors({});
@@ -223,9 +294,10 @@ export function CreateEventModal({
       const basePayload = {
         title: finalTitle,
         event_type: eventType,
-        event_date: formatDate(eventDate),
-        start_time: isAllDay ? null : formatTime(startTime),
-        end_time: isAllDay ? null : formatTime(endTime),
+        event_date: formatDateForPayload(eventDate),
+        start_time: isAllDay ? null : formatTimeForPayload(startTime),
+        arrival_time: isAllDay ? null : formatTimeForPayload(arrivalTime),
+        end_time: isAllDay ? null : formatTimeForPayload(endTime),
         is_all_day: isAllDay,
         location_name: locationName.trim() || null,
         location_address: locationAddress.trim() || null,
@@ -242,7 +314,7 @@ export function CreateEventModal({
 
       if (isRecurring) {
         const dates = calculateRecurrenceDates(
-          formatDate(eventDate),
+          formatDateForPayload(eventDate),
           endRepeatDate,
           selectedDays
         );
@@ -314,7 +386,7 @@ export function CreateEventModal({
   })();
   const recurrenceDates =
     selectedDays.length > 0 && endRepeatDate
-      ? calculateRecurrenceDates(formatDate(eventDate), endRepeatDate, selectedDays)
+      ? calculateRecurrenceDates(formatDateForPayload(eventDate), endRepeatDate, selectedDays)
       : [];
   const isRecurring =
     selectedDays.length > 0 &&
@@ -377,30 +449,39 @@ export function CreateEventModal({
             showsHorizontalScrollIndicator={false}
             style={styles.eventTypeContainer}
           >
-            {EVENT_TYPES.map((type) => (
-              <TouchableOpacity
-                key={type.value}
-                style={[
-                  styles.eventTypeButton,
-                  eventType === type.value && {
-                    borderColor: type.color,
-                    backgroundColor: type.color + '20',
-                  },
-                ]}
-                onPress={() => setEventType(type.value)}
-                disabled={submitting}
-              >
-                <Text style={styles.eventTypeIcon}>{type.icon}</Text>
-                <Text
+            {EVENT_TYPES.map((type) => {
+              const config = EVENT_TYPE_ICONS[type.value] || { icon: 'calendar', color: '#8B5CF6' };
+              return (
+                <TouchableOpacity
+                  key={type.value}
                   style={[
-                    styles.eventTypeLabel,
-                    eventType === type.value && { color: type.color },
+                    styles.eventTypeButton,
+                    eventType === type.value && {
+                      borderColor: config.color,
+                      backgroundColor: config.color + '20',
+                    },
                   ]}
+                  onPress={() => setEventType(type.value)}
+                  disabled={submitting}
                 >
-                  {type.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <View style={styles.eventTypeIconWrap}>
+                    <Ionicons
+                      name={config.icon as any}
+                      size={24}
+                      color={config.color}
+                    />
+                  </View>
+                  <Text
+                    style={[
+                      styles.eventTypeLabel,
+                      eventType === type.value && { color: config.color },
+                    ]}
+                  >
+                    {type.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
 
           {/* Dynamic Fields */}
@@ -419,24 +500,31 @@ export function CreateEventModal({
 
               <Text style={[styles.label, styles.inputTop]}>Venue</Text>
               <View style={styles.venueContainer}>
-                {(['home', 'away', 'neutral'] as const).map((v) => (
-                  <TouchableOpacity
-                    key={v}
-                    style={[
-                      styles.venueButton,
-                      venue === v && styles.venueButtonSelected,
-                      venue === v && v === 'home' && { backgroundColor: '#22c55e' },
-                      venue === v && v === 'away' && { backgroundColor: '#ef4444' },
-                      venue === v && v === 'neutral' && { backgroundColor: '#6b7280' },
-                    ]}
-                    onPress={() => setVenue(venue === v ? '' : v)}
-                    disabled={submitting}
-                  >
-                    <Text style={[styles.venueText, venue === v && { color: '#fff' }]}>
-                      {v === 'home' ? '🏠 Home' : v === 'away' ? '🚗 Away' : '⚖️ Neutral'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {(['home', 'away', 'neutral'] as const).map((v) => {
+                  const config = VENUE_ICONS[v] || { icon: 'ellipse', color: '#6B7280' };
+                  const isSelected = venue === v;
+                  return (
+                    <TouchableOpacity
+                      key={v}
+                      style={[
+                        styles.venueButton,
+                        isSelected && styles.venueButtonSelected,
+                        isSelected && { backgroundColor: config.color },
+                      ]}
+                      onPress={() => setVenue(venue === v ? '' : v)}
+                      disabled={submitting}
+                    >
+                      <Ionicons
+                        name={config.icon as any}
+                        size={18}
+                        color={isSelected ? '#fff' : config.color}
+                      />
+                      <Text style={[styles.venueText, isSelected && { color: '#fff' }]}>
+                        {v === 'home' ? 'Home' : v === 'away' ? 'Away' : 'Neutral'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
               <Text style={[styles.label, styles.inputTop]}>Uniform (optional)</Text>
@@ -477,7 +565,7 @@ export function CreateEventModal({
           {/* Date & Time with Sub-Collapsibles */}
           <CollapsibleSection
             title="Date & Time"
-            summary={`${eventDate.toLocaleDateString()}${isAllDay ? ' • All Day' : ` • ${formatTime(startTime)} - ${formatTime(endTime)}`}`}
+            summary={`${formatDateDisplay(eventDate)}${isAllDay ? ' • All Day' : ` • ${formatTimeDisplay(startTime)} - ${formatTimeDisplay(endTime)}`}`}
             defaultExpanded={true}
           >
             <TouchableOpacity
@@ -489,7 +577,7 @@ export function CreateEventModal({
               disabled={submitting}
             >
               <Text style={styles.subLabel}>Date</Text>
-              <Text style={styles.subValue}>{eventDate.toLocaleDateString()}</Text>
+              <Text style={styles.subValue}>{formatDateDisplay(eventDate)}</Text>
               <Text style={styles.chevron}>{dateExpanded ? '▲' : '▼'}</Text>
             </TouchableOpacity>
             {dateExpanded && (
@@ -517,7 +605,7 @@ export function CreateEventModal({
                   disabled={submitting}
                 >
                   <Text style={styles.subLabel}>Start Time</Text>
-                  <Text style={styles.subValue}>{formatTime(startTime)}</Text>
+                  <Text style={styles.subValue}>{formatTimeDisplay(startTime)}</Text>
                   <Text style={styles.chevron}>{startTimeExpanded ? '▲' : '▼'}</Text>
                 </TouchableOpacity>
                 {startTimeExpanded && (
@@ -525,11 +613,34 @@ export function CreateEventModal({
                     value={startTime}
                     mode="time"
                     display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={handleStartTimeChange}
+                    textColor={colors.text}
+                    themeVariant="dark"
+                  />
+                )}
+
+                <TouchableOpacity
+                  style={styles.subCollapsible}
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setArrivalTimeExpanded(!arrivalTimeExpanded);
+                  }}
+                  disabled={submitting}
+                >
+                  <Text style={styles.subLabel}>Arrival Time</Text>
+                  <Text style={styles.subValue}>{formatTimeDisplay(arrivalTime)}</Text>
+                  <Text style={styles.chevron}>{arrivalTimeExpanded ? '▲' : '▼'}</Text>
+                </TouchableOpacity>
+                {arrivalTimeExpanded && (
+                  <DateTimePicker
+                    value={arrivalTime}
+                    mode="time"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                     onChange={(_, d) => {
-                      if (d) setStartTime(d);
+                      if (d) setArrivalTime(d);
                     }}
                     textColor={colors.text}
-                themeVariant="dark"
+                    themeVariant="dark"
                   />
                 )}
 
@@ -542,7 +653,7 @@ export function CreateEventModal({
                   disabled={submitting}
                 >
                   <Text style={styles.subLabel}>End Time</Text>
-                  <Text style={styles.subValue}>{formatTime(endTime)}</Text>
+                  <Text style={styles.subValue}>{formatTimeDisplay(endTime)}</Text>
                   <Text style={styles.chevron}>{endTimeExpanded ? '▲' : '▼'}</Text>
                 </TouchableOpacity>
                 {endTimeExpanded && (
@@ -769,8 +880,7 @@ const styles = StyleSheet.create({
     marginRight: 10,
     minWidth: 80,
   },
-  eventTypeIcon: {
-    fontSize: 24,
+  eventTypeIconWrap: {
     marginBottom: 4,
   },
   eventTypeLabel: {
@@ -811,12 +921,16 @@ const styles = StyleSheet.create({
   },
   venueButton: {
     flex: 1,
+    flexDirection: 'row',
     paddingVertical: 12,
+    paddingHorizontal: 12,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.inputBackground,
     backgroundColor: colors.cardBackground,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
   venueButtonSelected: {
     borderColor: 'transparent',

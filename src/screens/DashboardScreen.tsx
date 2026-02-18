@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -68,17 +67,6 @@ export default function DashboardScreen({ navigation }: any) {
       <View style={styles.roleSwitcherCard}>
         <RoleSwitcher embedded />
       </View>
-
-      {__DEV__ && (
-        <TouchableOpacity
-          style={{ backgroundColor: '#8b5cf6', padding: 12, borderRadius: 8, marginHorizontal: 16, marginTop: 8, marginBottom: 8 }}
-          onPress={() => navigation.navigate('Invitation', { token: '9d707cb6-c855-4de2-ad76-ef8201ef2ce3' })}
-        >
-          <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '600' }}>
-            DEBUG: Test Invitation (Lucas)
-          </Text>
-        </TouchableOpacity>
-      )}
 
       <View style={styles.dashboardContent}>
         {renderDashboard()}

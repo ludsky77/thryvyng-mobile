@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -9,10 +9,9 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { useNotifications } from '../contexts/NotificationContext';
 
-interface Notification {
+interface NotificationItem {
   id: string;
   type: string;
   title: string;
@@ -22,118 +21,106 @@ interface Notification {
   created_at: string;
 }
 
+function mapContextNotificationToItem(n: {
+  id: string;
+  notification_type: string;
+  title: string;
+  body: string | null;
+  reference_type: string | null;
+  reference_id: string | null;
+  is_read: boolean;
+  created_at: string;
+}): NotificationItem {
+  const data: any = {};
+  if (n.reference_type === 'player_evaluation' && n.reference_id) {
+    data.evaluation_id = n.reference_id;
+  } else if (n.reference_type === 'event' && n.reference_id) {
+    data.event_id = n.reference_id;
+  } else if (n.reference_id) {
+    data.reference_id = n.reference_id;
+    data.reference_type = n.reference_type;
+  }
+  return {
+    id: n.id,
+    type: n.notification_type,
+    title: n.title,
+    body: n.body,
+    data,
+    is_read: n.is_read,
+    created_at: n.created_at,
+  };
+}
+
 export default function NotificationsScreen({ navigation }: any) {
-  const { user } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { notifications: contextNotifications, unreadCount, loading, markAsRead: contextMarkAsRead, markAllAsRead: contextMarkAllAsRead, refetch } = useNotifications();
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchNotifications = useCallback(async () => {
-    if (!user?.id) return;
+  const notifications: NotificationItem[] = contextNotifications.map(mapContextNotificationToItem);
 
-    try {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (error) throw error;
-      setNotifications(data || []);
-    } catch (err) {
-      console.error('[Notifications] Error fetching:', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [user?.id]);
-
-  useEffect(() => {
-    fetchNotifications();
-  }, [fetchNotifications]);
-
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setRefreshing(true);
-    fetchNotifications();
+    await refetch();
+    setRefreshing(false);
   };
 
   const markAsRead = async (notificationId: string) => {
-    try {
-      await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('id', notificationId);
-
-      setNotifications(prev =>
-        prev.map(n => (n.id === notificationId ? { ...n, is_read: true } : n))
-      );
-    } catch (err) {
-      console.error('[Notifications] Error marking as read:', err);
-    }
+    await contextMarkAsRead(notificationId);
   };
 
   const markAllAsRead = async () => {
-    if (!user?.id) return;
-
-    try {
-      await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('user_id', user.id)
-        .eq('is_read', false);
-
-      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-    } catch (err) {
-      console.error('[Notifications] Error marking all as read:', err);
-    }
+    await contextMarkAllAsRead();
   };
 
-  const handleNotificationPress = (notification: Notification) => {
-    // DEBUG: Log notification data
-    console.log('[Notifications] Pressed notification:', {
-      id: notification.id,
-      type: notification.type,
-      data: notification.data,
-      hasEventId: !!notification.data?.event_id,
-    });
-
+  const handleNotificationPress = (notification: NotificationItem) => {
     // Mark as read first
     if (!notification.is_read) {
       markAsRead(notification.id);
     }
 
-    // Navigate based on notification type and data
-    const { data } = notification;
+    const { type, data } = notification;
+    const referenceId = data?.evaluation_id ?? data?.reference_id;
 
-    if (data?.event_id) {
-      // Navigate to event detail at root level
-      navigation.navigate('EventDetail', {
-        eventId: data.event_id,
-        onRefetch: () => {},
-      });
-    } else if (data?.chat_id || data?.team_id) {
-      // Navigate to chat
-      navigation.navigate('Chat', {
-        chatId: data.chat_id,
-        teamId: data.team_id,
-      });
-    } else if (data?.course_id) {
-      // Navigate to course
-      navigation.navigate('CourseDetail', {
-        courseId: data.course_id,
-      });
-    } else if (data?.evaluation_id) {
-      // Navigate to evaluation
-      navigation.navigate('EvaluationDetail', {
-        evaluationId: data.evaluation_id,
-      });
+    switch (type) {
+      case 'event':
+      case 'event_created':
+      case 'event_cancelled':
+      case 'event_changed':
+        if (data?.event_id) {
+          navigation.navigate('EventDetail', {
+            eventId: data.event_id,
+            onRefetch: () => {},
+          });
+        }
+        break;
+      case 'evaluation':
+        if (referenceId) {
+          navigation.navigate('EvaluationDetail', {
+            evaluationId: referenceId,
+          });
+        } else {
+          navigation.navigate('Evaluations');
+        }
+        break;
+      case 'chat':
+      case 'message':
+        if (data?.chat_id || data?.team_id) {
+          navigation.navigate('Chat', {
+            chatId: data.chat_id,
+            teamId: data.team_id,
+          });
+        }
+        break;
+      default:
+        if (data?.course_id) {
+          navigation.navigate('CourseDetail', { courseId: data.course_id });
+        }
+        break;
     }
-    // If no specific destination, just mark as read (already done above)
   };
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
+      case 'event':
       case 'event_created':
         return { name: 'calendar', color: '#22c55e' };
       case 'event_cancelled':
@@ -142,7 +129,10 @@ export default function NotificationsScreen({ navigation }: any) {
         return { name: 'create-outline', color: '#f59e0b' };
       case 'event_reminder':
         return { name: 'alarm-outline', color: '#8b5cf6' };
+      case 'evaluation':
+        return { name: 'document-text-outline', color: '#8b5cf6' };
       case 'chat_message':
+      case 'message':
         return { name: 'chatbubble-outline', color: '#3b82f6' };
       case 'announcement':
         return { name: 'megaphone-outline', color: '#ec4899' };
@@ -167,7 +157,7 @@ export default function NotificationsScreen({ navigation }: any) {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  const renderNotification = ({ item }: { item: Notification }) => {
+  const renderNotification = ({ item }: { item: NotificationItem }) => {
     const icon = getNotificationIcon(item.type);
 
     return (
@@ -194,8 +184,6 @@ export default function NotificationsScreen({ navigation }: any) {
       </TouchableOpacity>
     );
   };
-
-  const unreadCount = notifications.filter(n => !n.is_read).length;
 
   if (loading) {
     return (

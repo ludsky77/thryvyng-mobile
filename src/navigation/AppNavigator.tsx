@@ -37,6 +37,7 @@ import TeamsScreen from '../screens/TeamsScreen';
 import TeamDetailScreen from '../screens/TeamDetailScreen';
 import RosterScreen from '../screens/RosterScreen';
 import CreateEvaluationScreen from '../screens/CreateEvaluationScreen';
+import EvaluationRosterScreen from '../screens/EvaluationRosterScreen';
 import TeamStaffScreen from '../screens/TeamStaffScreen';
 import PlayerProfileScreen from '../screens/PlayerProfileScreen';
 import EvaluationDetailScreen from '../screens/EvaluationDetailScreen';
@@ -263,9 +264,14 @@ function HomeStack() {
         options={{ title: 'Team Certificates' }}
       />
       <Stack.Screen
+        name="EvaluationRoster"
+        component={EvaluationRosterScreen}
+        options={{ title: 'Evaluate Players' }}
+      />
+      <Stack.Screen
         name="CreateEvaluation"
         component={CreateEvaluationScreen}
-        options={{ title: 'New Evaluation' }}
+        options={{ title: 'Player Evaluation' }}
       />
       <Stack.Screen
         name="InvitePlayer"
@@ -345,9 +351,14 @@ function TeamsStack() {
         })}
       />
       <Stack.Screen
+        name="EvaluationRoster"
+        component={EvaluationRosterScreen}
+        options={{ title: 'Evaluate Players' }}
+      />
+      <Stack.Screen
         name="CreateEvaluation"
         component={CreateEvaluationScreen}
-        options={{ title: 'New Evaluation' }}
+        options={{ title: 'Player Evaluation' }}
       />
       <Stack.Screen
         name="TeamStaff"

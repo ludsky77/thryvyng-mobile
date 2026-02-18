@@ -1,69 +1,19 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React from 'react';
 import { TouchableOpacity, View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { useNotifications } from '../contexts/NotificationContext';
 
 export function NotificationBell() {
   const navigation = useNavigation<any>();
-  const { user } = useAuth();
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  const fetchUnreadCount = useCallback(async () => {
-    if (!user?.id) return;
-
-    try {
-      const { count, error } = await supabase
-        .from('notifications')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('is_read', false);
-
-      if (!error) {
-        setUnreadCount(count || 0);
-      }
-    } catch (err) {
-      console.error('[NotificationBell] Error:', err);
-    }
-  }, [user?.id]);
-
-  // Fetch on mount
-  useEffect(() => {
-    fetchUnreadCount();
-  }, [fetchUnreadCount]);
+  const { unreadCount, refetch } = useNotifications();
 
   // Refresh when screen comes into focus (after returning from NotificationsScreen)
   useFocusEffect(
-    useCallback(() => {
-      fetchUnreadCount();
-    }, [fetchUnreadCount])
+    React.useCallback(() => {
+      refetch();
+    }, [refetch])
   );
-
-  // Subscribe to realtime changes
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const subscription = supabase
-      .channel('notifications-badge')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => {
-          fetchUnreadCount();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [user?.id, fetchUnreadCount]);
 
   return (
     <TouchableOpacity

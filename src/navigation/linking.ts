@@ -25,7 +25,7 @@ export type RootStackParamList = {
   NotificationSettings: undefined;
   EventDetail: { eventId?: string; event?: any; onRefetch?: () => void };
   // Registration screens
-  JoinTeam: { code: string };
+  JoinTeam: { code: string; role?: string };
   JoinStaff: { code: string };
   RegisterClub: undefined;
   RegisterTeam: undefined;
@@ -70,7 +70,12 @@ export const linking: LinkingOptions<RootStackParamList> = {
   prefixes: [prefix, ...universalLinks],
   config: {
     screens: {
-      JoinTeam: 'join-team/:code',
+      JoinTeam: {
+        path: 'join-team/:code',
+        parse: {
+          code: (code: string) => code,
+        },
+      },
       JoinStaff: 'join-staff/:code',
       RegisterClub: 'register/club',
       RegisterTeam: 'register/team',

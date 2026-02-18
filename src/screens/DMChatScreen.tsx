@@ -373,7 +373,7 @@ export default function DMChatScreen({ route, navigation }: any) {
       <KeyboardAvoidingView
         style={styles.chatArea}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 56 : 0}
+        keyboardVerticalOffset={0}
       >
         {loading ? (
           <View style={styles.messagesLoading}>

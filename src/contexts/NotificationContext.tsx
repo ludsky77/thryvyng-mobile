@@ -12,6 +12,7 @@ import { useAuth } from './AuthContext';
 export type NotificationType =
   | 'message'
   | 'event'
+  | 'evaluation'
   | 'poll'
   | 'rsvp_reminder'
   | 'push';

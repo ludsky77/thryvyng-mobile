@@ -16,7 +16,8 @@ import DecisionPointGame from '../components/games/DecisionPointGame';
 import AnticipationArenaGame from '../components/games/AnticipationArenaGame';
 import PressureProtocolGame from '../components/games/PressureProtocolGame';
 import DribbleRushGame from '../components/games/DribbleRushGame';
-import type { GameResult, FieldVisionConfig, PatternPlayConfig, DecisionPointConfig, AnticipationConfig, PressureConfig, DribbleRushConfig } from '../types/games';
+import AngleMasterGame from '../components/games/AngleMasterGame';
+import type { GameResult, FieldVisionConfig, PatternPlayConfig, DecisionPointConfig, AnticipationConfig, PressureConfig, DribbleRushConfig, AngleMasterConfig } from '../types/games';
 
 interface GamePlayScreenProps {
   navigation: any;
@@ -373,6 +374,21 @@ export default function GamePlayScreen({ navigation, route }: GamePlayScreenProp
       <SafeAreaView style={styles.container}>
         <PressureProtocolGame
           config={currentLevel.config as PressureConfig}
+          levelNumber={currentLevel.level_number}
+          xpReward={currentLevel.xp_reward}
+          onComplete={handleGameComplete}
+          onQuit={handleQuit}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  // Angle Master game
+  if (gameSlug === 'angle-master' && currentLevel) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <AngleMasterGame
+          config={currentLevel.config as AngleMasterConfig}
           levelNumber={currentLevel.level_number}
           xpReward={currentLevel.xp_reward}
           onComplete={handleGameComplete}

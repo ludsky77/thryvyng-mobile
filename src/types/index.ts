@@ -142,7 +142,7 @@ export interface Channel {
   export type RSVPStatus = 'yes' | 'no' | 'maybe' | 'pending';
 
   export const EVENT_TYPES = [
-    { value: 'game' as const, label: 'Game', icon: '🏆', color: '#ef4444' },
+    { value: 'game' as const, label: 'Game', icon: '🏆', color: '#06B6D4' },
     { value: 'scrimmage' as const, label: 'Scrimmage', icon: '⚽', color: '#f97316' },
     { value: 'practice' as const, label: 'Practice', icon: '🏃', color: '#22c55e' },
     { value: 'other_event' as const, label: 'Other Event', icon: '📅', color: '#a855f7' },

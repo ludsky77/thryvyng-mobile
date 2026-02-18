@@ -18,9 +18,11 @@ interface Evaluation {
   id: string;
   created_at?: string;
   evaluation_date?: string;
-  overall_score: number;
+  season_name?: string | null;
+  player_name?: string | null;
   evaluator_name: string;
-  status: string;
+  award_id?: string | null;
+  award_name?: string | null;
 }
 
 export default function EvaluationsScreen() {
@@ -44,7 +46,18 @@ export default function EvaluationsScreen() {
     try {
       const { data, error } = await supabase
         .from('player_evaluations')
-        .select('id, evaluation_date, created_at, overall_score, evaluator_name, status')
+        .select(`
+          id,
+          player_name,
+          jersey_number,
+          season_name,
+          evaluation_date,
+          award_id,
+          coach_personal_note,
+          is_visible_to_player,
+          evaluator_name,
+          created_at
+        `)
         .eq('player_id', playerId)
         .eq('is_visible_to_player', true)
         .order('evaluation_date', { ascending: false })
@@ -56,9 +69,10 @@ export default function EvaluationsScreen() {
         id: e.id,
         created_at: e.created_at || e.evaluation_date,
         evaluation_date: e.evaluation_date,
-        overall_score: e.overall_score ?? 0,
+        season_name: e.season_name ?? null,
+        player_name: e.player_name ?? null,
         evaluator_name: e.evaluator_name || 'Unknown',
-        status: e.status || 'completed',
+        award_id: e.award_id ?? null,
       }));
 
       setEvaluations(mapped);
@@ -178,31 +192,31 @@ export default function EvaluationsScreen() {
                 style={styles.evaluationCard}
                 onPress={() => handleEvaluationPress(evaluation.id)}
               >
-                <View style={styles.evalScoreContainer}>
-                  <Text style={styles.evalScore}>
-                    {evaluation.overall_score?.toFixed(1) ?? '--'}
+                <View style={styles.seasonBadge}>
+                  <Text style={styles.seasonText}>
+                    {evaluation.season_name?.split(' ')[0] || 'Eval'}
+                  </Text>
+                  <Text style={styles.seasonYear}>
+                    {evaluation.season_name?.split(' ')[1] || ''}
                   </Text>
                 </View>
-                <View style={styles.evalInfo}>
-                  <Text style={styles.evalEvaluator}>
-                    {evaluation.evaluator_name}
+
+                <View style={styles.cardContent}>
+                  <Text style={styles.playerName}>
+                    {evaluation.player_name || 'Player'}
                   </Text>
                   <Text style={styles.evalDate}>
-                    {formatDate(evaluation.created_at || evaluation.evaluation_date || '')}
+                    {new Date(
+                      evaluation.evaluation_date || evaluation.created_at || ''
+                    ).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
                   </Text>
                 </View>
-                <View
-                  style={[
-                    styles.evalStatus,
-                    evaluation.status === 'completed'
-                      ? styles.statusCompleted
-                      : styles.statusPending,
-                  ]}
-                >
-                  <Text style={styles.evalStatusText}>
-                    {evaluation.status === 'completed' ? 'Complete' : 'Pending'}
-                  </Text>
-                </View>
+
+                <Ionicons name="chevron-forward" size={20} color="#6B7280" />
               </TouchableOpacity>
             ))
           )}
@@ -335,35 +349,40 @@ const styles = StyleSheet.create({
   evaluationCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1e293b',
+    backgroundColor: '#1F2937',
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
+    padding: 12,
+    marginBottom: 10,
   },
-  evalScoreContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  seasonBadge: {
     backgroundColor: '#F59E0B',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12,
   },
-  evalScore: {
-    color: '#FFFFFF',
-    fontSize: 16,
+  seasonText: {
+    color: '#000000',
+    fontSize: 12,
     fontWeight: '700',
   },
-  evalInfo: {
-    flex: 1,
-    marginLeft: 12,
+  seasonYear: {
+    color: '#00000080',
+    fontSize: 10,
+    fontWeight: '600',
   },
-  evalEvaluator: {
+  cardContent: {
+    flex: 1,
+  },
+  playerName: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
   },
   evalDate: {
-    color: '#64748b',
+    color: '#9CA3AF',
     fontSize: 13,
     marginTop: 2,
   },

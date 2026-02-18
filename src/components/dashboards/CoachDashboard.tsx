@@ -10,6 +10,7 @@ import {
   Image,
   Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import { formatDistanceToNow } from 'date-fns';
@@ -53,6 +54,15 @@ interface RecentActivity {
   timeAgo: string;
   created_at: string;
 }
+
+const QUICK_ACTION_ICONS = [
+  { id: 'roster', label: 'View Roster', icon: 'people', color: '#06B6D4' },
+  { id: 'staff', label: 'Team Staff', icon: 'person-add', color: '#F97316' },
+  { id: 'evaluations', label: 'Evaluations', icon: 'clipboard', color: '#10B981' },
+  { id: 'messages', label: 'Messages', icon: 'chatbubble', color: '#8B5CF6' },
+  { id: 'calendar', label: 'Calendar', icon: 'calendar', color: '#3B82F6' },
+  { id: 'certificates', label: 'Certificates', icon: 'trophy', color: '#F59E0B' },
+];
 
 export default function CoachDashboard({ teamId }: CoachDashboardProps) {
   const navigation = useNavigation<any>();
@@ -379,9 +389,9 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
         </View>
       </View>
 
-      {/* 3. Invite Players Section */}
+      {/* 3. Invite Members Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>🔗 Invite Players</Text>
+        <Text style={styles.sectionTitle}>🔗 Invite Members</Text>
         <TouchableOpacity
           style={styles.inviteButton}
           onPress={handleShareInvite}
@@ -395,71 +405,32 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>⚡ QUICK ACTIONS</Text>
         <View style={styles.quickActionsGrid}>
-          <TouchableOpacity
-            style={styles.quickAction}
-            onPress={() => {
-              console.log('View Roster pressed, teamId:', teamId, 'teamName:', team?.name);
-              navigateToScreen('Roster', { teamId: teamId, team_id: teamId, teamName: team?.name || '' });
-            }}
-          >
-            <Text style={styles.quickActionIcon}>👥</Text>
-            <Text style={styles.quickActionText}>View Roster</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.quickAction}
-            onPress={() => {
-              console.log('Team Staff pressed, teamId:', teamId);
-              navigateToScreen('TeamStaff', { teamId: teamId, team_id: teamId });
-            }}
-          >
-            <Text style={styles.quickActionIcon}>🏷️</Text>
-            <Text style={styles.quickActionText}>Team Staff</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.quickAction}
-            onPress={() => {
-              console.log('Evaluations pressed, teamId:', teamId);
-              navigateToScreen('PlayerEvaluations', { teamId: teamId });
-            }}
-          >
-            <Text style={styles.quickActionIcon}>📝</Text>
-            <Text style={styles.quickActionText}>Evaluations</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.quickAction}
-            onPress={() => {
-              console.log('Messages pressed');
-              navigateToScreen('ChatTab');
-            }}
-          >
-            <Text style={styles.quickActionIcon}>💬</Text>
-            <Text style={styles.quickActionText}>Messages</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.quickAction}
-            onPress={() => {
-              console.log('Calendar pressed');
-              navigateToScreen('CalendarTab');
-            }}
-          >
-            <Text style={styles.quickActionIcon}>📅</Text>
-            <Text style={styles.quickActionText}>Calendar</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.quickAction}
-            onPress={() => {
-              console.log('Certificates pressed, teamId:', teamId);
-              navigateToScreen('TeamCertificates', { teamId: teamId });
-            }}
-          >
-            <Text style={styles.quickActionIcon}>🏆</Text>
-            <Text style={styles.quickActionText}>Certificates</Text>
-          </TouchableOpacity>
+          {QUICK_ACTION_ICONS.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={styles.quickAction}
+              onPress={() => {
+                if (item.id === 'roster') {
+                  navigateToScreen('Roster', { teamId: teamId, team_id: teamId, teamName: team?.name || '' });
+                } else if (item.id === 'staff') {
+                  navigateToScreen('TeamStaff', { teamId: teamId, team_id: teamId });
+                } else if (item.id === 'evaluations') {
+                  navigateToScreen('EvaluationRoster', { teamId: teamId, team_id: teamId, teamName: team?.name || '' });
+                } else if (item.id === 'messages') {
+                  navigateToScreen('ChatTab');
+                } else if (item.id === 'calendar') {
+                  navigateToScreen('CalendarTab');
+                } else if (item.id === 'certificates') {
+                  navigateToScreen('TeamCertificates', { teamId: teamId });
+                }
+              }}
+            >
+              <View style={[styles.quickActionIconContainer, { backgroundColor: item.color + '20' }]}>
+                <Ionicons name={item.icon as any} size={28} color={item.color} />
+              </View>
+              <Text style={styles.quickActionText}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </View>
 
@@ -716,17 +687,21 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   quickAction: {
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
     width: '31%',
     borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
-  quickActionIcon: {
-    fontSize: 24,
-    marginBottom: 6,
+  quickActionIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
   },
   quickActionText: {
     color: '#fff',

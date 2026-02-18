@@ -15,14 +15,19 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.thryvyng.app",
+      "bundleIdentifier": "com.weolkn.thryvyng",
       "associatedDomains": [
         "applinks:thryvyng.com",
+        "applinks:www.thryvyng.com",
+        "applinks:thryvyng.com",
         "applinks:www.thryvyng.com"
-      ]
+      ],
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
-      "package": "com.thryvyng.app",
+      "package": "com.weolkn.thryvyng",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -90,6 +95,12 @@
           "sounds": []
         }
       ]
-    ]
+      
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "8980651c-55bd-481d-89c8-3d6e25657cbc"
+      }
+    }
   }
 }

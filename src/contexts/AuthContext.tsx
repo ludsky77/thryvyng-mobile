@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserRole } from '../types';
 import { registerForPushNotifications, deactivatePushToken } from '../services/notifications';
+import { setUserContext, clearUserContext } from '../services/sentry';
+import Constants from 'expo-constants';
 
 export interface AuthContextType {
   user: User | null;
@@ -110,11 +112,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const roles = await fetchUserRoles(user.id);
     setAllRoles(roles);
 
-    const savedRoleId = await AsyncStorage.getItem('lastRoleId') ?? await AsyncStorage.getItem('currentRoleId');
-    const role = savedRoleId
-      ? roles.find((r) => r.id === savedRoleId) || roles[0]
-      : roles[0];
-    setCurrentRole(role);
+    // Auto-select if user has exactly one role
+    if (roles.length === 1 && !currentRole) {
+      setCurrentRole(roles[0]);
+    } else {
+      const savedRoleId = await AsyncStorage.getItem('lastRoleId') ?? await AsyncStorage.getItem('currentRoleId');
+      const role = savedRoleId
+        ? roles.find((r) => r.id === savedRoleId) || roles[0]
+        : roles[0];
+      setCurrentRole(role);
+    }
   };
 
   useEffect(() => {
@@ -146,14 +153,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             const roles = await fetchUserRoles(session.user.id);
             setAllRoles(roles);
 
-            const savedRoleId = await AsyncStorage.getItem('lastRoleId') ?? await AsyncStorage.getItem('currentRoleId');
-            const role = savedRoleId
-              ? roles.find((r) => r.id === savedRoleId) || roles[0]
-              : roles[0];
-            setCurrentRole(role);
+            // Auto-select if user has exactly one role
+            if (roles.length === 1 && !currentRole) {
+              setCurrentRole(roles[0]);
+            } else {
+              const savedRoleId = await AsyncStorage.getItem('lastRoleId') ?? await AsyncStorage.getItem('currentRoleId');
+              const role = savedRoleId
+                ? roles.find((r) => r.id === savedRoleId) || roles[0]
+                : roles[0];
+              setCurrentRole(role);
+            }
             setLoading(false);
-            // Register for push notifications
-            if (session?.user?.id) {
+            // Set Sentry user context
+            const roleNames = (roles || []).map((r: any) => r.role).filter(Boolean);
+            setUserContext(session.user.id, session.user.email ?? undefined, roleNames);
+            // Register for push notifications (skip in Expo Go)
+            if (session?.user?.id && Constants.appOwnership !== 'expo') {
               registerForPushNotifications(session.user.id);
             }
             // #region agent log
@@ -174,6 +189,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setAllRoles([]);
           setCurrentRole(null);
           setLoading(false);
+          clearUserContext();
         }
       }
     );
@@ -199,19 +215,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const roles = await fetchUserRoles(session.user.id);
         setAllRoles(roles);
 
-        const savedRoleId = await AsyncStorage.getItem('lastRoleId') ?? await AsyncStorage.getItem('currentRoleId');
-        const role = savedRoleId
-          ? roles.find((r) => r.id === savedRoleId) || roles[0]
-          : roles[0];
-        setCurrentRole(role);
+        // Auto-select if user has exactly one role
+        if (roles.length === 1 && !currentRole) {
+          setCurrentRole(roles[0]);
+        } else {
+          const savedRoleId = await AsyncStorage.getItem('lastRoleId') ?? await AsyncStorage.getItem('currentRoleId');
+          const role = savedRoleId
+            ? roles.find((r) => r.id === savedRoleId) || roles[0]
+            : roles[0];
+          setCurrentRole(role);
+        }
         setLoading(false);
-        // Register for push notifications
-        if (session?.user?.id) {
+        // Set Sentry user context
+        const roleNames = (roles || []).map((r: any) => r.role).filter(Boolean);
+        setUserContext(session.user.id, session.user.email ?? undefined, roleNames);
+        // Register for push notifications (skip in Expo Go)
+        if (session?.user?.id && Constants.appOwnership !== 'expo') {
           registerForPushNotifications(session.user.id);
         }
       } else {
         setProfile(null);
         setLoading(false);
+        clearUserContext();
       }
     });
 
@@ -241,6 +266,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setAllRoles([]);
     await AsyncStorage.removeItem('currentRoleId');
     await AsyncStorage.removeItem('lastRoleId');
+    clearUserContext();
   };
 
   return (

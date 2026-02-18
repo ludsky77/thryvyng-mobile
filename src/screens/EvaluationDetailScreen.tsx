@@ -8,7 +8,15 @@ import {
   ActivityIndicator,
   Image,
 } from 'react-native';
-import Svg, { Path, Rect, Circle, Line, Polygon, Text as SvgText, G } from 'react-native-svg';
+import Svg, {
+  Path,
+  Rect,
+  Circle,
+  Line,
+  Polygon,
+  Text as SvgText,
+  G,
+} from 'react-native-svg';
 import { supabase } from '../lib/supabase';
 
 interface Club {
@@ -61,6 +69,16 @@ interface Evaluation {
   is_visible_to_player: boolean | null;
   generated_certificate_url: string | null;
   created_at: string;
+  signature_1_name?: string | null;
+  signature_1_title?: string | null;
+  signature_2_name?: string | null;
+  signature_2_title?: string | null;
+  signature_3_name?: string | null;
+  signature_3_title?: string | null;
+  signature_4_name?: string | null;
+  signature_4_title?: string | null;
+  evaluator_name?: string | null;
+  evaluator_title?: string | null;
   players: Player | null;
   award_types: AwardType | null;
   batch_evaluation_sessions: BatchSession | null;
@@ -149,59 +167,19 @@ function JerseyCard({
   position: string | null;
 }) {
   return (
-    <View style={styles.jerseyContainer}>
-      <View style={styles.jerseyWrapper}>
-        <Svg width={95} height={100} viewBox="0 0 95 100">
-          {/* Left sleeve */}
-          <Path
-            d="M8 18 L20 8 L20 32 L8 32 Z"
-            fill="#1e3a5f"
-            stroke="#152a45"
-            strokeWidth="1"
-          />
-          {/* Right sleeve */}
-          <Path
-            d="M87 18 L75 8 L75 32 L87 32 Z"
-            fill="#1e3a5f"
-            stroke="#152a45"
-            strokeWidth="1"
-          />
-          {/* Main body - rectangular with curved top */}
-          <Path
-            d="M20 8 
-               Q47.5 16 75 8 
-               L75 95 
-               L20 95 
-               Z"
-            fill="#1e3a5f"
-            stroke="#152a45"
-            strokeWidth="1"
-          />
-          {/* Collar */}
-          <Path
-            d="M35 8 L47.5 18 L60 8"
-            fill="#0f172a"
-          />
-          <Path
-            d="M34 6 L47.5 17 L61 6"
-            fill="none"
-            stroke="#3b82f6"
-            strokeWidth="2"
-          />
-          {/* Subtle stripes */}
-          <Rect x="32" y="20" width="6" height="72" fill="rgba(59,130,246,0.25)" />
-          <Rect x="57" y="20" width="6" height="72" fill="rgba(59,130,246,0.25)" />
-        </Svg>
-        
-        {/* Number overlay - absolutely positioned for precise control */}
+    <View style={styles.jerseyCard}>
+      <View style={styles.jerseyImageContainer}>
+        <Image
+          source={require('../assets/jersey-badge.png')}
+          style={styles.jerseyImage}
+          resizeMode="contain"
+        />
         <View style={styles.numberOverlay}>
-          <Text style={styles.jerseyNumber}>{number ?? '?'}</Text>
+          <Text style={styles.jerseyNumber}>{number ?? '—'}</Text>
         </View>
       </View>
-      
-      {/* Position badge */}
       <View style={styles.positionBadge}>
-        <Text style={styles.positionText}>{position || 'N/A'}</Text>
+        <Text style={styles.positionBadgeText}>{position || 'N/A'}</Text>
       </View>
     </View>
   );
@@ -481,6 +459,16 @@ export default function EvaluationDetailScreen({ route, navigation }: any) {
           secondary_position,
           third_position,
           fourth_position,
+          signature_1_name,
+          signature_1_title,
+          signature_2_name,
+          signature_2_title,
+          signature_3_name,
+          signature_3_title,
+          signature_4_name,
+          signature_4_title,
+          evaluator_name,
+          evaluator_title,
           coach_personal_note,
           is_visible_to_player,
           generated_certificate_url,
@@ -585,14 +573,20 @@ export default function EvaluationDetailScreen({ route, navigation }: any) {
 
   const photoUrl = evaluation.players?.photo_url;
   const age = calculateAge(evaluation.players?.date_of_birth ?? null);
-  const session = evaluation.batch_evaluation_sessions;
-  const signatures = session
-    ? [
-        { name: session.default_signature_1_name, title: session.default_signature_1_title },
-        { name: session.default_signature_2_name, title: session.default_signature_2_title },
-        { name: session.default_signature_3_name, title: session.default_signature_3_title },
-      ].filter((s) => s.name)
-    : [];
+  const signatures = [
+    { name: evaluation?.signature_1_name, title: evaluation?.signature_1_title },
+    { name: evaluation?.signature_2_name, title: evaluation?.signature_2_title },
+    { name: evaluation?.signature_3_name, title: evaluation?.signature_3_title },
+    { name: evaluation?.signature_4_name, title: evaluation?.signature_4_title },
+  ].filter((s) => s.name);
+  const showSignatures =
+    signatures.length > 0 || !!evaluation?.evaluator_name;
+  const displaySignatures =
+    signatures.length > 0
+      ? signatures
+      : evaluation?.evaluator_name
+        ? [{ name: evaluation.evaluator_name, title: evaluation?.evaluator_title || '' }]
+        : [];
 
   return (
     <View style={styles.container}>
@@ -746,11 +740,11 @@ export default function EvaluationDetailScreen({ route, navigation }: any) {
       )}
 
       {/* Signatures */}
-      {signatures.length > 0 && (
+      {showSignatures && displaySignatures.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>✍️ SIGNATURES</Text>
           <View style={styles.signaturesGrid}>
-            {signatures.map((sig, index) => (
+            {displaySignatures.map((sig, index) => (
               <View key={index} style={styles.signatureCard}>
                 <Text style={styles.signatureName}>{sig.name}</Text>
                 <Text style={styles.signatureTitle}>{sig.title}</Text>
@@ -905,15 +899,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 12,
   },
-  jerseyContainer: {
+  jerseyCard: {
     alignItems: 'center',
-    width: 95,
-    height: 130,
+    justifyContent: 'center',
   },
-  jerseyWrapper: {
-    width: 95,
-    height: 100,
+  jerseyImageContainer: {
     position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  jerseyImage: {
+    width: 110,
+    height: 120,
   },
   numberOverlay: {
     position: 'absolute',
@@ -921,29 +918,32 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingTop: 15,
   },
   jerseyNumber: {
-    fontSize: 44,
-    fontWeight: '800',
-    color: '#3b82f6',
-    textShadowColor: 'rgba(0,0,0,0.4)',
-    textShadowOffset: { width: 1, height: 2 },
+    fontSize: 36,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 3,
   },
   positionBadge: {
-    marginTop: 4,
-    backgroundColor: '#0f172a',
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    borderRadius: 4,
+    backgroundColor: '#0F172A',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginTop: 8,
+    borderWidth: 1.5,
+    borderColor: '#00CED1',
   },
-  positionText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#fff',
+  positionBadgeText: {
+    color: '#00CED1',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
   heatMapContainer: {
     alignItems: 'center',

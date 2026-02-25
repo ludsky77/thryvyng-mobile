@@ -61,6 +61,7 @@ export function useUserTeams() {
             age_group,
             gender,
             club_id,
+            color,
             clubs (
               id,
               name
@@ -83,7 +84,7 @@ export function useUserTeams() {
             club_name: item.teams.clubs?.name || null,
             access_type: 'staff',
             staff_role: item.staff_role,
-            color: TEAM_COLORS[colorIndex++ % TEAM_COLORS.length],
+            color: item.teams.color || TEAM_COLORS[colorIndex++ % TEAM_COLORS.length],
           });
         }
       });
@@ -103,6 +104,7 @@ export function useUserTeams() {
             age_group,
             gender,
             club_id,
+            color,
             clubs (
               id,
               name
@@ -129,7 +131,7 @@ export function useUserTeams() {
               access_type: 'parent',
               player_id: item.id,
               player_name: `${item.first_name} ${item.last_name}`,
-              color: TEAM_COLORS[colorIndex++ % TEAM_COLORS.length],
+              color: item.teams.color || TEAM_COLORS[colorIndex++ % TEAM_COLORS.length],
             });
           } else if (existingTeam.access_type === 'parent') {
             // Already have parent access, maybe multiple kids on same team

@@ -1,13 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { CalendarEvent } from '../../types';
 import { getEventTypeConfig } from '../../types';
 import { openInMaps } from '../../lib/maps';
+import { CantGoReasonModal } from './CantGoReasonModal';
 
 interface EventCardProps {
   event: CalendarEvent;
-  onRsvp?: (eventId: string, status: 'yes' | 'maybe' | 'no') => void;
+  onRsvp?: (eventId: string, status: 'yes' | 'no', declineReason?: string | null) => void;
   rsvping?: boolean;
   onRefetch?: () => void;
 }
@@ -36,6 +37,7 @@ function formatDateBadge(dateStr: string): string {
 
 export function EventCard({ event, onRsvp, rsvping = false, onRefetch }: EventCardProps) {
   const navigation = useNavigation();
+  const [cantGoModalVisible, setCantGoModalVisible] = useState(false);
   const isCancelled = event.is_cancelled;
   const typeConfig = getEventTypeConfig(event.event_type);
   const timeStr = event.is_all_day
@@ -43,7 +45,7 @@ export function EventCard({ event, onRsvp, rsvping = false, onRefetch }: EventCa
     : [event.start_time, event.end_time].filter(Boolean).map(formatTime).join(' – ') || '—';
   const dateBadge = formatDateBadge(event.event_date);
   const counts = event.rsvp_counts || { yes: 0, no: 0, maybe: 0, pending: 0 };
-  const userStatus = event.user_rsvp?.status;
+  const userStatus = event.user_rsvp?.status === 'maybe' ? undefined : event.user_rsvp?.status;
 
   const handleCardPress = () => {
     navigation.navigate('EventDetail', { event, onRefetch });
@@ -123,31 +125,33 @@ export function EventCard({ event, onRsvp, rsvping = false, onRefetch }: EventCa
             <TouchableOpacity
               style={[
                 styles.rsvpButton,
-                styles.rsvpMaybe,
-                userStatus === 'maybe' && styles.rsvpSelected,
-              ]}
-              onPress={() => onRsvp?.(event.id, 'maybe')}
-              disabled={rsvping}
-            >
-              <Text style={styles.rsvpButtonText}>Maybe</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.rsvpButton,
                 styles.rsvpNotGoing,
                 userStatus === 'no' && styles.rsvpSelected,
               ]}
-              onPress={() => onRsvp?.(event.id, 'no')}
+              onPress={() => setCantGoModalVisible(true)}
               disabled={rsvping}
             >
-              <Text style={styles.rsvpButtonText}>Not Going</Text>
+              <Text style={styles.rsvpButtonText}>Can't Go</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.rsvpCounts}>
             <Text style={styles.rsvpCountText}>
-              ✓ {counts.yes}  ○ {counts.maybe}  ✕ {counts.no}
+              ✓ {counts.yes}  ✕ {counts.no}
             </Text>
           </View>
+          <CantGoReasonModal
+            visible={cantGoModalVisible}
+            onClose={() => setCantGoModalVisible(false)}
+            onSkip={() => {
+              setCantGoModalVisible(false);
+              onRsvp?.(event.id, 'no', null);
+            }}
+            onSubmit={(reason) => {
+              setCantGoModalVisible(false);
+              onRsvp?.(event.id, 'no', reason.trim() || null);
+            }}
+            submitting={rsvping}
+          />
         </View>
       )}
       </View>
@@ -275,9 +279,6 @@ const styles = StyleSheet.create({
   },
   rsvpGoing: {
     backgroundColor: '#166534',
-  },
-  rsvpMaybe: {
-    backgroundColor: '#854d0e',
   },
   rsvpNotGoing: {
     backgroundColor: '#7f1d1d',

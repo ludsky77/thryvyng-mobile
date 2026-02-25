@@ -6,8 +6,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Image,
 } from 'react-native';
+import PlayerAvatar from '../components/PlayerAvatar';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
@@ -104,16 +104,14 @@ export default function EvaluationRosterScreen() {
       activeOpacity={0.7}
     >
       <View style={styles.playerLeft}>
-        {item.photo_url ? (
-          <Image source={{ uri: item.photo_url }} style={styles.playerPhoto} />
-        ) : (
-          <View style={styles.playerPhotoPlaceholder}>
-            <Text style={styles.playerInitials}>
-              {item.first_name?.[0]}
-              {item.last_name?.[0]}
-            </Text>
-          </View>
-        )}
+        <PlayerAvatar
+          photoUrl={item.photo_url}
+          jerseyNumber={item.jersey_number}
+          firstName={item.first_name}
+          lastName={item.last_name}
+          size={50}
+          teamColor="#5B7BB5"
+        />
         <View style={styles.playerInfo}>
           <Text style={styles.playerName}>
             {item.first_name} {item.last_name}

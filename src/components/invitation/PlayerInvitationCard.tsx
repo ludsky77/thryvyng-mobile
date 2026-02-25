@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import PlayerAvatar from '../PlayerAvatar';
 import { Ionicons } from '@expo/vector-icons';
 import type { InvitationData } from '../../types/invitation';
 
@@ -67,15 +68,14 @@ export default function PlayerInvitationCard({
 
       {/* Player Info */}
       <View style={styles.playerSection}>
-        <View style={styles.playerAvatar}>
-          {player.photo_url ? (
-            <Image source={{ uri: player.photo_url }} style={styles.avatarImage} />
-          ) : (
-            <Text style={styles.avatarInitials}>
-              {player.first_name[0]}{player.last_name[0]}
-            </Text>
-          )}
-        </View>
+        <PlayerAvatar
+          photoUrl={player.photo_url}
+          jerseyNumber={null}
+          firstName={player.first_name}
+          lastName={player.last_name}
+          size={48}
+          teamColor="#4ade80"
+        />
 
         <View style={styles.playerInfo}>
           <Text style={styles.playerName}>

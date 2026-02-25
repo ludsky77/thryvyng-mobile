@@ -54,9 +54,12 @@ const colors = {
   accentDim: '#8b5cf6',
 };
 
-/** For API payload - YYYY-MM-DD */
+/** For API payload - YYYY-MM-DD (local date, no timezone shift) */
 function formatDateForPayload(d: Date): string {
-  return d.toISOString().split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 /** For API payload - 24-hour HH:mm */
@@ -241,7 +244,7 @@ export function CreateEventModal({
     if (selectedDays.length > 0 && !endRepeatDate) {
       const max = new Date(eventDate);
       max.setMonth(max.getMonth() + 2);
-      setEndRepeatDate(max.toISOString().split('T')[0]);
+      setEndRepeatDate(formatDateForPayload(max));
     } else if (selectedDays.length === 0) {
       setEndRepeatDate('');
     }
@@ -492,7 +495,7 @@ export function CreateEventModal({
                 style={[styles.input, errors.title && styles.inputError]}
                 value={opponent}
                 onChangeText={setOpponent}
-                placeholder="e.g., Celtic FC"
+                placeholder="e.g., Villarreal FC"
                 placeholderTextColor={colors.textPlaceholder}
                 editable={!submitting}
               />
@@ -758,7 +761,7 @@ export function CreateEventModal({
                       minimumDate={minEndRepeatDate}
                       maximumDate={addMonths(new Date(eventDate), 2)}
                       onChange={(_, d) => {
-                        if (d) setEndRepeatDate(d.toISOString().split('T')[0]);
+                        if (d) setEndRepeatDate(formatDateForPayload(d));
                       }}
                       textColor="#ffffff"
                       themeVariant="dark"

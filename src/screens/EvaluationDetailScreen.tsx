@@ -590,16 +590,6 @@ export default function EvaluationDetailScreen({ route, navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.backButtonIcon}>←</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Evaluation Details</Text>
-        <View style={styles.headerRight} />
-      </View>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
       {/* Player Header */}
       <View style={styles.playerHeader}>
@@ -779,39 +769,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#13111C',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#0f172a',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e293b',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#1e293b',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backButtonIcon: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '600',
-  },
-  headerTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-    flex: 1,
-    textAlign: 'center',
-  },
-  headerRight: {
-    width: 40,
   },
   scrollView: {
     flex: 1,

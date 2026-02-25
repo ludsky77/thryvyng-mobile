@@ -147,6 +147,10 @@ export function useCreatePoll() {
       allowAddOptions?: boolean;
       endsAt?: Date | null;
       teamId?: string;
+      /** When migration adds send_reminder column, persist this */
+      sendReminder?: boolean;
+      /** When migration adds reminder_before_minutes column, persist (60, 120, or 1440) */
+      reminderBeforeMinutes?: number;
     } = {}
   ) => {
     if (!user) return null;

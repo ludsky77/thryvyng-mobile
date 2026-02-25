@@ -215,7 +215,7 @@ function HomeStack() {
       <Stack.Screen
         name="EvaluationDetail"
         component={EvaluationDetailScreen}
-        options={{ title: 'Evaluation' }}
+        options={{ title: 'Evaluation Details' }}
       />
       <Stack.Screen
         name="CertificateViewer"

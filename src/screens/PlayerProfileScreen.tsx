@@ -147,63 +147,78 @@ export default function PlayerProfileScreen({ route, navigation }: any) {
 
   return (
     <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.avatarContainer}>
-          {player.photo_url ? (
-            <Image source={{ uri: player.photo_url }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarText}>
-                {player.first_name.charAt(0)}
-                {player.last_name.charAt(0)}
-              </Text>
-            </View>
-          )}
-          {player.jersey_number != null && (
-            <View style={styles.jerseyBadge}>
-              <Text style={styles.jerseyText}>#{player.jersey_number}</Text>
-            </View>
-          )}
+      {/* Player Info Card - Horizontal Layout */}
+      <View style={styles.profileCard}>
+        <View style={styles.profileRow}>
+          {/* Photo with jersey badge */}
+          <View style={styles.photoContainer}>
+            {player.photo_url ? (
+              <Image source={{ uri: player.photo_url }} style={styles.profilePhoto} />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <Text style={styles.avatarText}>
+                  {player.first_name.charAt(0)}
+                  {player.last_name.charAt(0)}
+                </Text>
+              </View>
+            )}
+            {player.jersey_number != null && (
+              <View style={styles.jerseyBadge}>
+                <Text style={styles.jerseyNumber}>#{player.jersey_number}</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Name and team info */}
+          <View style={styles.profileInfo}>
+            <Text style={styles.playerName}>
+              {player.first_name} {player.last_name}
+            </Text>
+            {player.teams && (
+              <View style={styles.teamRow}>
+                <Text style={styles.teamIcon}>⚽</Text>
+                <Text style={styles.teamName}>{player.teams.name}</Text>
+              </View>
+            )}
+            {player.teams?.clubs && (
+              <View style={styles.clubRow}>
+                <Text style={styles.clubIcon}>🏆</Text>
+                <Text style={styles.clubName}>{player.teams.clubs.name}</Text>
+              </View>
+            )}
+          </View>
         </View>
-
-        <Text style={styles.playerName}>
-          {player.first_name} {player.last_name}
-        </Text>
-
-        {player.teams && (
-          <Text style={styles.teamName}>⚽ {player.teams.name}</Text>
-        )}
-
-        {player.teams?.clubs && (
-          <Text style={styles.clubName}>🏆 {player.teams.clubs.name}</Text>
-        )}
       </View>
 
-      <View style={styles.statsRow}>
-        <View style={styles.statBox}>
+      {/* Stats Card - Separate Section */}
+      <View style={styles.statsCard}>
+        <View style={styles.statItem}>
           <Text style={styles.statValue}>{player.total_xp ?? 0}</Text>
           <Text style={styles.statLabel}>Total XP</Text>
         </View>
-        <View style={styles.statBox}>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
           <Text style={styles.statValue}>{age ?? '-'}</Text>
           <Text style={styles.statLabel}>Age</Text>
         </View>
-        <View style={styles.statBox}>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
           <Text style={styles.statValue}>{evaluations.length}</Text>
           <Text style={styles.statLabel}>Evaluations</Text>
         </View>
       </View>
 
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>📊 Recent Evaluations</Text>
-          {evaluations.length > 0 && (
-            <TouchableOpacity>
-              <Text style={styles.seeAllText}>See All</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
+      {/* Recent Evaluations Section */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionIcon}>📊</Text>
+        <Text style={styles.sectionTitle}>Recent Evaluations</Text>
+        {evaluations.length > 0 && (
+          <TouchableOpacity style={styles.seeAllTouchable}>
+            <Text style={styles.seeAllText}>See All</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+      <View style={styles.sectionContent}>
         {evaluations.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>📋</Text>
@@ -243,9 +258,12 @@ export default function PlayerProfileScreen({ route, navigation }: any) {
         )}
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>⚡ Actions</Text>
-
+      {/* Actions Section */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionIcon}>⚡</Text>
+        <Text style={styles.sectionTitle}>Actions</Text>
+      </View>
+      <View style={styles.sectionContent}>
         <TouchableOpacity style={styles.actionButton}>
           <Text style={styles.actionIcon}>📜</Text>
           <Text style={styles.actionText}>View Certificates</Text>
@@ -293,116 +311,150 @@ const styles = StyleSheet.create({
     color: '#ef4444',
     fontSize: 16,
   },
-  header: {
+  // Profile Card - Contains photo and name
+  profileCard: {
+    backgroundColor: '#1F2937',
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 12,
+    padding: 16,
+  },
+  profileRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 30,
-    paddingHorizontal: 20,
-    backgroundColor: '#2a2a4e',
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
   },
-  avatarContainer: {
+  photoContainer: {
     position: 'relative',
-    marginBottom: 16,
+    marginRight: 16,
   },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+  profilePhoto: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
   },
   avatarPlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: '#10b981',
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarText: {
-    fontSize: 36,
+    fontSize: 28,
     fontWeight: '700',
     color: '#fff',
   },
   jerseyBadge: {
     position: 'absolute',
-    bottom: 0,
-    right: -5,
-    backgroundColor: '#8b5cf6',
+    bottom: -4,
+    right: -4,
+    backgroundColor: '#8B5CF6',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#1a1a2e',
   },
-  jerseyText: {
-    color: '#fff',
-    fontSize: 14,
+  jerseyNumber: {
+    color: 'white',
+    fontSize: 12,
     fontWeight: '700',
+  },
+  profileInfo: {
+    flex: 1,
   },
   playerName: {
-    fontSize: 26,
+    color: 'white',
+    fontSize: 22,
     fontWeight: '700',
-    color: '#fff',
-    marginBottom: 8,
+    marginBottom: 6,
   },
-  teamName: {
-    fontSize: 16,
-    color: '#8b5cf6',
+  teamRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 4,
   },
-  clubName: {
+  teamIcon: {
     fontSize: 14,
-    color: '#888',
+    marginRight: 6,
   },
-  statsRow: {
+  teamName: {
+    color: '#A78BFA',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  clubRow: {
     flexDirection: 'row',
-    marginHorizontal: 16,
-    marginTop: -20,
-    backgroundColor: '#2a2a4e',
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  statBox: {
-    flex: 1,
     alignItems: 'center',
+  },
+  clubIcon: {
+    fontSize: 14,
+    marginRight: 6,
+  },
+  clubName: {
+    color: '#9CA3AF',
+    fontSize: 13,
+  },
+  // Stats Card - Separate section below
+  statsCard: {
+    backgroundColor: '#1F2937',
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+  },
+  statItem: {
+    alignItems: 'center',
+    flex: 1,
   },
   statValue: {
+    color: 'white',
     fontSize: 24,
     fontWeight: '700',
-    color: '#fff',
   },
   statLabel: {
+    color: '#9CA3AF',
     fontSize: 12,
-    color: '#888',
     marginTop: 4,
   },
-  section: {
-    padding: 16,
-    marginTop: 8,
+  statDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
+  // Section headers
   sectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginHorizontal: 16,
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  sectionIcon: {
+    fontSize: 18,
+    marginRight: 8,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#fff',
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+    flex: 1,
+  },
+  seeAllTouchable: {
+    padding: 4,
   },
   seeAllText: {
     color: '#8b5cf6',
     fontSize: 14,
     fontWeight: '600',
   },
+  sectionContent: {
+    marginHorizontal: 16,
+  },
   emptyState: {
-    backgroundColor: '#2a2a4e',
+    backgroundColor: '#1F2937',
     borderRadius: 12,
     padding: 30,
     alignItems: 'center',
@@ -416,7 +468,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   evaluationCard: {
-    backgroundColor: '#2a2a4e',
+    backgroundColor: '#1F2937',
     borderRadius: 12,
     padding: 16,
     marginBottom: 10,
@@ -460,7 +512,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
   },
   actionButton: {
-    backgroundColor: '#2a2a4e',
+    backgroundColor: '#1F2937',
     borderRadius: 12,
     padding: 16,
     marginBottom: 10,

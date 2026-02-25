@@ -5,11 +5,11 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   Share,
   Alert,
 } from 'react-native';
+import PlayerAvatar from '../PlayerAvatar';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -28,7 +28,7 @@ interface Player {
   referral_code: string | null;
   photo_url: string | null;
   team_id: string;
-  teams?: { id: string; name: string; clubs?: { id: string; name: string } | null } | null;
+  teams?: { id: string; name: string; color?: string | null; clubs?: { id: string; name: string } | null } | null;
 }
 
 interface EnrolledCourse {
@@ -65,7 +65,7 @@ export default function PlayerDashboard({ playerId, navigation }: PlayerDashboar
           referral_code,
           photo_url,
           team_id,
-          teams(id, name, clubs(id, name))
+          teams(id, name, color, clubs(id, name))
         `)
         .eq('id', playerId)
         .single();
@@ -178,16 +178,14 @@ export default function PlayerDashboard({ playerId, navigation }: PlayerDashboar
     <ScrollView style={styles.container}>
       {/* Player Header: [Photo] Name, team • club, XP badge, jersey */}
       <View style={styles.playerHeader}>
-        {player.photo_url ? (
-          <Image source={{ uri: player.photo_url }} style={styles.playerPhoto} />
-        ) : (
-          <View style={styles.playerPhotoPlaceholder}>
-            <Text style={styles.playerPhotoText}>
-              {player.first_name.charAt(0)}
-              {player.last_name.charAt(0)}
-            </Text>
-          </View>
-        )}
+        <PlayerAvatar
+          photoUrl={player.photo_url}
+          jerseyNumber={player.jersey_number}
+          firstName={player.first_name}
+          lastName={player.last_name}
+          size={64}
+          teamColor={player.teams?.color || '#8b5cf6'}
+        />
         <View style={styles.playerInfo}>
           <Text
             style={styles.playerName}

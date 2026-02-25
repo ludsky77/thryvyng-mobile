@@ -16,6 +16,14 @@ import { Slider } from '@miblanchard/react-native-slider';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
+/** Format date as YYYY-MM-DD (local date, no timezone shift) */
+function formatDateLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 const EVALUATION_ATTRIBUTES = {
   technical: [
     { id: '938b9d53-acd1-43de-befa-2bfcddea12ac', name: 'Passing' },
@@ -232,7 +240,7 @@ export default function CreateEvaluationScreen() {
           evaluator_id: user?.id,
           scale_type: '1-10',
           scale_max: 10,
-          evaluation_date: new Date().toISOString().split('T')[0],
+          evaluation_date: formatDateLocal(new Date()),
           // Positions
           primary_position: selectedPositions[0] || null,
           secondary_position: selectedPositions[1] || null,
@@ -332,6 +340,7 @@ export default function CreateEvaluationScreen() {
       </View>
       <Slider
         containerStyle={styles.slider}
+        trackStyle={styles.sliderTrack}
         minimumValue={1}
         maximumValue={10}
         step={1}
@@ -740,37 +749,38 @@ const styles = StyleSheet.create({
   tabsContainer: {
     flexDirection: 'row',
     backgroundColor: '#1F2937',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     gap: 8,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    borderRadius: 12,
-    backgroundColor: '#111827',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: '#1F2937',
   },
   tabActive: {
-    backgroundColor: '#1F2937',
+    backgroundColor: '#374151',
     borderWidth: 1,
-    borderColor: '#374151',
+    borderColor: '#06B6D4',
   },
   tabIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   tabLabel: {
-    color: '#6B7280',
-    fontSize: 10,
-    fontWeight: '600',
+    color: '#9CA3AF',
+    fontSize: 11,
+    fontWeight: '500',
   },
   tabAverage: {
+    color: '#06B6D4',
     fontSize: 12,
     fontWeight: '700',
     marginTop: 2,
@@ -779,41 +789,53 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   slidersSection: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 20,
   },
   sliderContainer: {
-    marginBottom: 20,
+    marginBottom: 2,
+    paddingVertical: 0,
   },
   sliderHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 0,
+    paddingVertical: 0,
   },
   attributeName: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '600',
   },
   scoreValue: {
-    color: '#8B5CF6',
-    fontSize: 20,
+    color: '#A78BFA',
+    fontSize: 18,
     fontWeight: '700',
     minWidth: 30,
     textAlign: 'right',
   },
   slider: {
     width: '100%',
-    height: 40,
+    height: 24,
+    marginVertical: 0,
+  },
+  sliderTrack: {
+    height: 6,
+    borderRadius: 3,
   },
   sliderLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 4,
+    paddingVertical: 0,
+    marginTop: -2,
+    marginBottom: 0,
   },
   sliderLabel: {
     color: '#6B7280',
-    fontSize: 12,
+    fontSize: 11,
   },
   section: {
     padding: 16,

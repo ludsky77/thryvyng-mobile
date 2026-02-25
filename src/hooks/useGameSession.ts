@@ -122,7 +122,8 @@ export function useGameSession({ gameId, gameSlug }: UseGameSessionProps) {
       }
 
       // 3. Update daily game time
-      const today = new Date().toISOString().split('T')[0];
+      const d = new Date();
+      const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const minutesPlayed = Math.ceil(durationSeconds / 60);
 
       const { data: existingDaily } = await supabase

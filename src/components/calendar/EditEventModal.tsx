@@ -48,8 +48,12 @@ function parseTime(timeStr: string | null): Date {
   return d;
 }
 
+/** Format date as YYYY-MM-DD (local date, no timezone shift) */
 function formatDate(d: Date): string {
-  return d.toISOString().split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function formatTime(d: Date): string {
@@ -272,7 +276,7 @@ export function EditEventModal({
                 style={[styles.input, errors.title && styles.inputError]}
                 value={opponent}
                 onChangeText={setOpponent}
-                placeholder="e.g., Celtic FC"
+                placeholder="e.g., Villarreal FC"
                 placeholderTextColor={colors.textPlaceholder}
                 editable={!submitting}
               />

@@ -17,7 +17,10 @@ import { openInMaps } from '../lib/maps';
 import { getEventTypeConfig } from '../types';
 import type { CalendarEvent } from '../types';
 import { EditEventModal } from '../components/calendar/EditEventModal';
+import { CantGoReasonModal } from '../components/calendar/CantGoReasonModal';
+import PlayerAvatar from '../components/PlayerAvatar';
 import { notifyTeamOfEvent } from '../services/eventNotifications';
+import { isEventPast } from '../utils/calendar';
 
 function formatTime(time: string | null): string {
   if (!time) return '';
@@ -39,6 +42,22 @@ function formatDateParts(dateStr: string): { day: string; date: string; month: s
   };
 }
 
+function getEventTypeLabel(eventType: string): string {
+  switch (eventType?.toLowerCase()) {
+    case 'game': return 'GAME';
+    case 'practice': return 'PRACTICE';
+    case 'tournament': return 'TOURNAMENT';
+    case 'meeting': return 'MEETING';
+    case 'party': return 'PARTY';
+    case 'scrimmage': return 'SCRIMMAGE';
+    case 'tryout': return 'TRYOUT';
+    case 'camp': return 'CAMP';
+    case 'other_event': return 'OTHER';
+    case 'club_event': return 'CLUB';
+    default: return 'EVENT';
+  }
+}
+
 interface AttendanceRecord {
   id: string;
   player_id: string;
@@ -48,6 +67,7 @@ interface AttendanceRecord {
     first_name: string;
     last_name: string;
     photo_url?: string;
+    jersey_number?: number | null;
   };
 }
 
@@ -58,10 +78,12 @@ export default function EventDetailScreen({ route, navigation }: any) {
   const [event, setEvent] = useState<CalendarEvent | null>(eventParam || null);
   const [loading, setLoading] = useState(!eventParam && !!eventId);
   const [rsvpLoading, setRsvpLoading] = useState(false);
+  const [cantGoModalVisible, setCantGoModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [activeTab, setActiveTab] = useState<'details' | 'attendance'>('details');
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [eventRsvps, setEventRsvps] = useState<Array<{ player_id: string | null; user_id: string; status: string; decline_reason: string | null }>>([]);
 
   const isManager = event?.team_id ? canManageTeam(event.team_id) : false;
 
@@ -75,7 +97,10 @@ export default function EventDetailScreen({ route, navigation }: any) {
     try {
       const { data, error } = await supabase
         .from('cal_events')
-        .select('*')
+        .select(`
+          *,
+          team:teams(id, name, color)
+        `)
         .eq('id', id)
         .single();
 
@@ -88,6 +113,7 @@ export default function EventDetailScreen({ route, navigation }: any) {
           .eq('event_id', data.id);
 
         const rsvps = rsvpsData || [];
+        setEventRsvps(rsvps);
         const rsvp_counts = {
           yes: rsvps.filter((r: any) => r.status === 'yes').length,
           no: rsvps.filter((r: any) => r.status === 'no').length,
@@ -109,7 +135,7 @@ export default function EventDetailScreen({ route, navigation }: any) {
     try {
       const { data: players, error: playersError } = await supabase
         .from('players')
-        .select('id, first_name, last_name, photo_url')
+        .select('id, first_name, last_name, photo_url, jersey_number')
         .eq('team_id', event.team_id)
         .order('last_name');
 
@@ -165,11 +191,19 @@ export default function EventDetailScreen({ route, navigation }: any) {
   const typeConfig = event ? getEventTypeConfig(event.event_type) : getEventTypeConfig('other_event');
   const dateParts = event ? formatDateParts(event.event_date) : { day: '', date: '', month: '' };
 
-  const handleRsvp = async (status: 'yes' | 'maybe' | 'no') => {
+  const handleRsvp = async (status: 'yes' | 'no', declineReason?: string | null) => {
     if (!user || !event) return;
     setRsvpLoading(true);
 
     try {
+      const payload: Record<string, unknown> = {
+        status,
+        responded_at: new Date().toISOString(),
+      };
+      if (status === 'no') {
+        payload.decline_reason = declineReason ?? null;
+      }
+
       const { data: existing } = await supabase
         .from('cal_event_rsvps')
         .select('id')
@@ -180,7 +214,7 @@ export default function EventDetailScreen({ route, navigation }: any) {
       if (existing) {
         await supabase
           .from('cal_event_rsvps')
-          .update({ status, responded_at: new Date().toISOString() })
+          .update(payload)
           .eq('id', existing.id);
       } else {
         await supabase.from('cal_event_rsvps').insert({
@@ -188,9 +222,11 @@ export default function EventDetailScreen({ route, navigation }: any) {
           user_id: user.id,
           status,
           responded_at: new Date().toISOString(),
+          ...(status === 'no' ? { decline_reason: declineReason ?? null } : {}),
         });
       }
 
+      setCantGoModalVisible(false);
       fetchEvent();
       onRefetch?.();
     } catch (err) {
@@ -200,6 +236,9 @@ export default function EventDetailScreen({ route, navigation }: any) {
       setRsvpLoading(false);
     }
   };
+
+  const handleCantGoSkip = () => handleRsvp('no', null);
+  const handleCantGoSubmit = (reason: string) => handleRsvp('no', reason.trim() || null);
 
   const handleCancelEvent = async () => {
     if (!event) return;
@@ -408,17 +447,30 @@ export default function EventDetailScreen({ route, navigation }: any) {
     }
   };
 
-  const renderAttendanceItem = ({ item }: { item: AttendanceRecord }) => (
+  const renderAttendanceItem = ({ item }: { item: AttendanceRecord }) => {
+    const rsvp = eventRsvps.find((r) => r.player_id === item.player_id);
+    const showDeclineReason = rsvp?.status === 'no' && rsvp?.decline_reason;
+    return (
     <View style={styles.attendanceRow}>
       <View style={styles.attendancePlayer}>
-        <View style={styles.playerAvatar}>
-          <Text style={styles.playerAvatarText}>
-            {item.player?.first_name?.charAt(0) || '?'}
+        <PlayerAvatar
+          photoUrl={item.player?.photo_url}
+          jerseyNumber={item.player?.jersey_number}
+          firstName={item.player?.first_name}
+          lastName={item.player?.last_name}
+          size={40}
+          teamColor={(event as { team?: { color?: string } })?.team?.color || '#5B7BB5'}
+        />
+        <View style={styles.attendancePlayerInfo}>
+          <Text style={styles.playerName}>
+            {item.player?.first_name} {item.player?.last_name}
           </Text>
+          {showDeclineReason && (
+            <Text style={styles.declineReasonText} numberOfLines={2}>
+              {rsvp.decline_reason}
+            </Text>
+          )}
         </View>
-        <Text style={styles.playerName}>
-          {item.player?.first_name} {item.player?.last_name}
-        </Text>
       </View>
       <View style={styles.attendanceButtons}>
         {(['present', 'absent', 'late', 'excused'] as const).map((status) => (
@@ -431,12 +483,15 @@ export default function EventDetailScreen({ route, navigation }: any) {
               item.status === status && status === 'absent' && { backgroundColor: '#ef4444' },
               item.status === status && status === 'late' && { backgroundColor: '#f59e0b' },
               item.status === status && status === 'excused' && { backgroundColor: '#6b7280' },
+              event && isEventPast(event) && styles.attendanceBtnDisabled,
             ]}
             onPress={() => handleAttendanceUpdate(item.player_id, status)}
+            disabled={event ? isEventPast(event) : false}
           >
             <Text style={[
               styles.attendanceBtnText,
               item.status === status && styles.attendanceBtnTextActive,
+              event && isEventPast(event) && styles.attendanceBtnTextDisabled,
             ]}>
               {status === 'present' ? '✓' : status === 'absent' ? '✗' : status === 'late' ? '⏰' : '🎫'}
             </Text>
@@ -445,6 +500,7 @@ export default function EventDetailScreen({ route, navigation }: any) {
       </View>
     </View>
   );
+  };
 
   if (loading || !event) {
     return (
@@ -500,30 +556,45 @@ export default function EventDetailScreen({ route, navigation }: any) {
         <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
           {/* Main Event Card */}
           <View style={[
-            styles.mainCard,
+            styles.eventCard,
             event.is_cancelled && styles.mainCardCancelled
           ]}>
-            {/* Date Column */}
-            <View style={styles.dateColumn}>
-              <Text style={styles.dateDay}>{dateParts.day}</Text>
+            {/* Left section: Team color background */}
+            <View
+              style={[
+                styles.dateSection,
+                { backgroundColor: (event as any).team?.color || '#5B7BB5' },
+              ]}
+            >
+              <Text style={styles.eventTypeLabel}>
+                {getEventTypeLabel(event.event_type)}
+              </Text>
+              <Text style={styles.dayName}>{dateParts.day}</Text>
               <Text style={styles.dateNumber}>{dateParts.date}</Text>
-              <Text style={styles.dateMonth}>{dateParts.month}</Text>
-              <View style={[styles.colorBar, { backgroundColor: typeConfig.color }]} />
+              <Text style={styles.monthName}>{dateParts.month}</Text>
             </View>
 
-            {/* Content Column */}
-            <View style={styles.contentColumn}>
+            {/* Right section: Event details */}
+            <View style={styles.eventDetails}>
               {/* Title Row with Edit */}
               <View style={styles.titleRow}>
-                <Text 
-                  style={[
-                    styles.eventTitle,
-                    event.is_cancelled && styles.eventTitleCancelled
-                  ]} 
-                  numberOfLines={2}
-                >
-                  {event.title}
-                </Text>
+                <View style={styles.titleAndTeam}>
+                  <Text 
+                    style={[
+                      styles.eventTitle,
+                      event.is_cancelled && styles.eventTitleCancelled
+                    ]} 
+                    numberOfLines={2}
+                  >
+                    {event.title}
+                  </Text>
+                  {(event as any).team?.name && (
+                    <View style={styles.teamNameRow}>
+                      <View style={[styles.teamDot, { backgroundColor: (event as any).team?.color || '#5B7BB5' }]} />
+                      <Text style={styles.teamNameText}>{(event as any).team.name}</Text>
+                    </View>
+                  )}
+                </View>
                 {isManager && (
                   <TouchableOpacity
                     style={styles.editButton}
@@ -602,8 +673,8 @@ export default function EventDetailScreen({ route, navigation }: any) {
                     <View
                       style={[
                         styles.venueBadge,
-                        event.home_away === 'home' && { backgroundColor: '#22c55e' },
-                        event.home_away === 'away' && { backgroundColor: '#ef4444' },
+                        event.home_away === 'home' && { backgroundColor: '#5BA58C' },
+                        event.home_away === 'away' && { backgroundColor: '#B57B7B' },
                         event.home_away === 'neutral' && { backgroundColor: '#6b7280' },
                       ]}
                     >
@@ -646,46 +717,57 @@ export default function EventDetailScreen({ route, navigation }: any) {
                 <Text style={styles.responseLabel}>Going</Text>
               </View>
               <View style={styles.responseItem}>
-                <Text style={styles.responseCount}>{event.rsvp_counts?.maybe || 0}</Text>
-                <Text style={styles.responseLabel}>Maybe</Text>
-              </View>
-              <View style={styles.responseItem}>
                 <Text style={styles.responseCount}>{event.rsvp_counts?.no || 0}</Text>
                 <Text style={styles.responseLabel}>Can't Go</Text>
               </View>
             </View>
           </View>
 
-          {/* RSVP Buttons */}
-          <View style={styles.rsvpButtons}>
-            <TouchableOpacity
-              style={[styles.rsvpButton, styles.rsvpGoing]}
-              onPress={() => handleRsvp('yes')}
-              disabled={rsvpLoading}
-            >
-              <Text style={styles.rsvpButtonText}>✓ Going</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.rsvpButton, styles.rsvpMaybe]}
-              onPress={() => handleRsvp('maybe')}
-              disabled={rsvpLoading}
-            >
-              <Text style={styles.rsvpButtonText}>? Maybe</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.rsvpButton, styles.rsvpNo]}
-              onPress={() => handleRsvp('no')}
-              disabled={rsvpLoading}
-            >
-              <Text style={styles.rsvpButtonText}>✗ Can't Go</Text>
-            </TouchableOpacity>
-          </View>
+          {/* RSVP Buttons - hidden for past events */}
+          {isEventPast(event) ? (
+            <View style={styles.pastEventNotice}>
+              <Text style={styles.pastEventNoticeText}>This event has passed</Text>
+            </View>
+          ) : (
+            <>
+              <View style={styles.rsvpButtons}>
+                <TouchableOpacity
+                  style={[styles.rsvpButton, styles.rsvpGoing]}
+                  onPress={() => handleRsvp('yes')}
+                  disabled={rsvpLoading}
+                >
+                  <Text style={styles.rsvpButtonText}>✓ Going</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.rsvpButton, styles.rsvpNo]}
+                  onPress={() => setCantGoModalVisible(true)}
+                  disabled={rsvpLoading}
+                >
+                  <Text style={styles.rsvpButtonText}>✗ Can't Go</Text>
+                </TouchableOpacity>
+              </View>
+              <CantGoReasonModal
+                visible={cantGoModalVisible}
+                onClose={() => setCantGoModalVisible(false)}
+                onSkip={handleCantGoSkip}
+                onSubmit={handleCantGoSubmit}
+                submitting={rsvpLoading}
+              />
+            </>
+          )}
 
           <View style={styles.bottomPadding} />
         </ScrollView>
       ) : (
         /* Attendance Tab */
         <View style={styles.attendanceContainer}>
+          {isEventPast(event) && (
+            <View style={styles.pastEventBanner}>
+              <Text style={styles.pastEventBannerText}>
+                ⏱️ This event has passed. Attendance cannot be modified.
+              </Text>
+            </View>
+          )}
           <View style={styles.attendanceLegend}>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: '#22c55e' }]} />
@@ -817,47 +899,51 @@ const styles = StyleSheet.create({
   scroll: {
     flex: 1,
   },
-  mainCard: {
+  eventCard: {
     flexDirection: 'row',
-    backgroundColor: '#1e293b',
-    margin: 16,
-    borderRadius: 16,
+    backgroundColor: '#1F2937',
+    borderRadius: 12,
     overflow: 'hidden',
+    marginHorizontal: 16,
+    marginTop: 16,
   },
   mainCardCancelled: {
     opacity: 0.6,
   },
-  dateColumn: {
-    width: 70,
-    backgroundColor: '#0f172a',
+  dateSection: {
+    width: 80,
+    paddingVertical: 20,
+    paddingHorizontal: 12,
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 8,
+    justifyContent: 'flex-start',
   },
-  dateDay: {
-    color: '#8b5cf6',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 1,
+  eventTypeLabel: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 2,
   },
-  dateNumber: {
-    color: '#fff',
-    fontSize: 32,
-    fontWeight: '700',
-    marginVertical: 4,
-  },
-  dateMonth: {
-    color: '#64748b',
+  dayName: {
+    color: 'white',
     fontSize: 12,
     fontWeight: '600',
+    textTransform: 'uppercase',
+    opacity: 0.9,
   },
-  colorBar: {
-    width: 4,
-    flex: 1,
-    marginTop: 12,
-    borderRadius: 2,
+  dateNumber: {
+    color: 'white',
+    fontSize: 36,
+    fontWeight: 'bold',
+    marginVertical: 2,
   },
-  contentColumn: {
+  monthName: {
+    color: 'white',
+    fontSize: 12,
+    textTransform: 'uppercase',
+    opacity: 0.9,
+  },
+  eventDetails: {
     flex: 1,
     padding: 16,
   },
@@ -868,6 +954,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 12,
+  },
+  titleAndTeam: {
+    flex: 1,
+    marginRight: 8,
+  },
+  teamNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  teamDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  teamNameText: {
+    color: '#9CA3AF',
+    fontSize: 14,
   },
   eventTitle: {
     flex: 1,
@@ -1008,17 +1113,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   responseCount: {
-    color: '#fff',
-    fontSize: 24,
+    color: '#FFFFFF',
+    fontSize: 28,
     fontWeight: '700',
   },
   responseLabel: {
-    color: '#64748b',
-    fontSize: 12,
+    color: '#E9D5FF',
+    fontSize: 13,
     marginTop: 4,
   },
 
   // RSVP Buttons
+  pastEventNotice: {
+    backgroundColor: '#374151',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  pastEventNoticeText: {
+    color: '#9CA3AF',
+    fontSize: 14,
+  },
   rsvpButtons: {
     flexDirection: 'row',
     paddingHorizontal: 16,
@@ -1032,13 +1149,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   rsvpGoing: {
-    backgroundColor: '#22c55e',
+    backgroundColor: '#8B5CF6',
   },
-  rsvpMaybe: {
-    backgroundColor: '#f59e0b',
+  rsvpGoingSelected: {
+    backgroundColor: '#7C3AED',
   },
   rsvpNo: {
-    backgroundColor: '#ef4444',
+    backgroundColor: '#4C1D95',
+  },
+  rsvpNoSelected: {
+    backgroundColor: '#5B21B6',
   },
   rsvpButtonText: {
     color: '#fff',
@@ -1089,6 +1209,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
+  attendancePlayerInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  declineReasonText: {
+    color: '#64748b',
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
   playerAvatar: {
     width: 36,
     height: 36,
@@ -1128,6 +1258,24 @@ const styles = StyleSheet.create({
   },
   attendanceBtnTextActive: {
     color: '#fff',
+  },
+  attendanceBtnDisabled: {
+    opacity: 0.4,
+  },
+  attendanceBtnTextDisabled: {
+    color: '#6B7280',
+  },
+  pastEventBanner: {
+    backgroundColor: 'rgba(107, 114, 128, 0.3)',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 8,
+  },
+  pastEventBannerText: {
+    color: '#9CA3AF',
+    fontSize: 13,
+    textAlign: 'center',
   },
   emptyText: {
     color: '#64748b',

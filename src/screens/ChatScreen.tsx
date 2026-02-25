@@ -36,23 +36,39 @@ interface EnrichedConversation {
   unreadCount: number;
   channel_type?: string;
   team_id?: string | null;
+  team?: { id: string; name: string; color?: string } | null;
   name?: string;
 }
 
 function getChannelColor(conversation: EnrichedConversation): string {
+  if (conversation.team?.color) {
+    return conversation.team.color;
+  }
+  if (conversation.team_id) {
+    return '#5B7BB5';
+  }
   if (conversation.displayType === 'dm' || conversation.channel_type === 'dm') {
-    return '#3B82F6';
+    return '#8B6BAD';
   }
   if (conversation.channel_type === 'group_dm') {
-    return '#8B5CF6';
+    return '#9B7BB5';
   }
+  const name = (conversation.name || conversation.displayName || '').toLowerCase();
   if (
+    name.includes('announcement') ||
+    name.includes('club') ||
     conversation.channel_type === 'club' ||
     conversation.channel_type === 'broadcast'
   ) {
-    return '#F59E0B';
+    return '#C4976D';
   }
-  return '#10B981';
+  if (name.includes('coach') || name.includes('lounge')) {
+    return '#7B6BAD';
+  }
+  if (name.includes('manager')) {
+    return '#8B6BAD';
+  }
+  return '#8B6BAD';
 }
 
 function ConversationItem({
@@ -361,6 +377,7 @@ export default function ChatScreen({ navigation, route }: any) {
           unreadCount,
           channel_type: channel.channel_type,
           team_id: channel.team_id,
+          team: team ? { id: team.id, name: team.name, color: team.color } : null,
           name: channel.name,
         };
       });

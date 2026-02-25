@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useCreatePoll } from '../../hooks/usePolls';
 
 const MAX_QUESTION_LENGTH = 500;
@@ -28,6 +29,50 @@ const POLL_TYPES = [
 export type PollType = 'single' | 'multiple' | 'yes_no';
 
 const INITIAL_OPTIONS = ['', ''];
+
+type DeadlineMode = '24h' | '48h' | '72h' | '1week' | 'custom';
+type ReminderBefore = '1h' | '2h' | '1d';
+
+const DEADLINE_OPTIONS: { value: DeadlineMode; label: string }[] = [
+  { value: '24h', label: '24 hours' },
+  { value: '48h', label: '48 hours' },
+  { value: '72h', label: '72 hours' },
+  { value: '1week', label: '1 week' },
+  { value: 'custom', label: 'Custom' },
+];
+
+const REMINDER_OPTIONS: { value: ReminderBefore; label: string }[] = [
+  { value: '1h', label: '1 hour before' },
+  { value: '2h', label: '2 hours before' },
+  { value: '1d', label: '1 day before' },
+];
+
+function getTomorrow(): Date {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function timeStringToDate(date: Date, timeStr: string): Date {
+  const [h, m] = timeStr.split(':').map(Number);
+  const d = new Date(date);
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
+function formatTimeDisplay(timeStr: string): string {
+  const [h, m] = timeStr.split(':').map(Number);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour12 = h % 12 || 12;
+  return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+const REMINDER_BEFORE_MINUTES: Record<ReminderBefore, number> = {
+  '1h': 60,
+  '2h': 120,
+  '1d': 1440,
+};
 
 interface CreatePollModalProps {
   visible: boolean;
@@ -49,9 +94,48 @@ export function CreatePollModal({
   const [options, setOptions] = useState<string[]>(['', '']);
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [showResultsLive, setShowResultsLive] = useState(true);
-  const [deadlineHours, setDeadlineHours] = useState('');
+  const [deadlineMode, setDeadlineMode] = useState<DeadlineMode>('24h');
+  const [customDate, setCustomDate] = useState<Date>(() => getTomorrow());
+  const [customTime, setCustomTime] = useState<string>('18:00');
+  const [sendReminder, setSendReminder] = useState(false);
+  const [reminderBefore, setReminderBefore] = useState<ReminderBefore>('1h');
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ question?: string; options?: string }>({});
+  const [customDateExpanded, setCustomDateExpanded] = useState(false);
+  const [customTimeExpanded, setCustomTimeExpanded] = useState(false);
+
+  const getClosesAt = (): Date | null => {
+    const now = new Date();
+    if (deadlineMode === 'custom') {
+      return timeStringToDate(customDate, customTime);
+    }
+    if (deadlineMode === '24h') {
+      const d = new Date(now);
+      d.setHours(d.getHours() + 24);
+      return d;
+    }
+    if (deadlineMode === '48h') {
+      const d = new Date(now);
+      d.setHours(d.getHours() + 48);
+      return d;
+    }
+    if (deadlineMode === '72h') {
+      const d = new Date(now);
+      d.setHours(d.getHours() + 72);
+      return d;
+    }
+    if (deadlineMode === '1week') {
+      const d = new Date(now);
+      d.setDate(d.getDate() + 7);
+      return d;
+    }
+    return null;
+  };
+
+  const customDateTime = useMemo(
+    () => timeStringToDate(customDate, customTime),
+    [customDate, customTime]
+  );
 
   // Reset form when modal closes
   useEffect(() => {
@@ -61,7 +145,13 @@ export function CreatePollModal({
       setOptions(['', '']);
       setIsAnonymous(false);
       setShowResultsLive(true);
-      setDeadlineHours('');
+      setDeadlineMode('24h');
+      setCustomDate(getTomorrow());
+      setCustomTime('18:00');
+      setSendReminder(false);
+      setReminderBefore('1h');
+      setCustomDateExpanded(false);
+      setCustomTimeExpanded(false);
       setErrors({});
     }
   }, [visible]);
@@ -110,21 +200,14 @@ export function CreatePollModal({
     setSubmitting(true);
     try {
       const opts = getOptionsForSubmit();
-      const endsAt =
-        deadlineHours.trim() !== ''
-          ? (() => {
-              const hours = parseInt(deadlineHours, 10);
-              if (Number.isNaN(hours) || hours <= 0) return null;
-              const d = new Date();
-              d.setHours(d.getHours() + hours);
-              return d;
-            })()
-          : null;
+      const endsAt = getClosesAt();
 
       const poll = await createPoll(channelId, question.trim(), pollType, opts, {
         isAnonymous,
         showResultsLive,
         endsAt,
+        sendReminder: sendReminder || undefined,
+        reminderBeforeMinutes: sendReminder ? REMINDER_BEFORE_MINUTES[reminderBefore] : undefined,
       });
 
       if (poll) {
@@ -312,19 +395,150 @@ export function CreatePollModal({
                 thumbColor="#fff"
               />
             </View>
+          </View>
 
-            <View style={styles.deadlineRow}>
-              <Text style={styles.toggleLabel}>Deadline (hours)</Text>
-              <TextInput
-                style={styles.deadlineInput}
-                placeholder="Optional"
-                placeholderTextColor="#666"
-                value={deadlineHours}
-                onChangeText={setDeadlineHours}
-                keyboardType="number-pad"
-                editable={!submitting}
+          {/* Closes at */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Closes at</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.deadlinePillsScroll}
+              style={styles.deadlinePillsScrollView}
+            >
+              {DEADLINE_OPTIONS.map(({ value, label }) => (
+                <TouchableOpacity
+                  key={value}
+                  style={[
+                    styles.deadlinePill,
+                    deadlineMode === value && styles.deadlinePillActive,
+                  ]}
+                  onPress={() => setDeadlineMode(value)}
+                  disabled={submitting}
+                >
+                  <Text
+                    style={[
+                      styles.deadlinePillLabel,
+                      deadlineMode === value && styles.deadlinePillLabelActive,
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {deadlineMode === 'custom' && (
+              <View style={styles.customDateTimeBlock}>
+                <TouchableOpacity
+                  style={styles.customPickerRow}
+                  onPress={() => setCustomDateExpanded(!customDateExpanded)}
+                  disabled={submitting}
+                >
+                  <Text style={styles.customPickerLabel}>Date</Text>
+                  <Text style={styles.customPickerValue}>
+                    {customDate.toLocaleDateString('en-US', {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </Text>
+                  <Text style={styles.chevron}>
+                    {customDateExpanded ? '▲' : '▼'}
+                  </Text>
+                </TouchableOpacity>
+                {customDateExpanded && (
+                  <DateTimePicker
+                    value={customDate}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    minimumDate={(() => {
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      return today;
+                    })()}
+                    onChange={(_, d) => {
+                      if (d) setCustomDate(d);
+                    }}
+                    textColor="#fff"
+                    themeVariant="dark"
+                  />
+                )}
+
+                <TouchableOpacity
+                  style={styles.customPickerRow}
+                  onPress={() => setCustomTimeExpanded(!customTimeExpanded)}
+                  disabled={submitting}
+                >
+                  <Text style={styles.customPickerLabel}>Time</Text>
+                  <Text style={styles.customPickerValue}>
+                    {formatTimeDisplay(customTime)}
+                  </Text>
+                  <Text style={styles.chevron}>
+                    {customTimeExpanded ? '▲' : '▼'}
+                  </Text>
+                </TouchableOpacity>
+                {customTimeExpanded && (
+                  <DateTimePicker
+                    value={customDateTime}
+                    mode="time"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    minuteInterval={30}
+                    onChange={(_, d) => {
+                      if (d) {
+                        const h = d.getHours();
+                        const m = d.getMinutes();
+                        setCustomTime(
+                          `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+                        );
+                      }
+                    }}
+                    textColor="#fff"
+                    themeVariant="dark"
+                  />
+                )}
+              </View>
+            )}
+          </View>
+
+          {/* Reminders */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Reminders</Text>
+            <View style={styles.toggleRow}>
+              <Text style={styles.toggleLabel}>Send reminder before close</Text>
+              <Switch
+                value={sendReminder}
+                onValueChange={setSendReminder}
+                disabled={submitting}
+                trackColor={{ false: '#3a3a6e', true: '#8b5cf6' }}
+                thumbColor="#fff"
               />
             </View>
+            {sendReminder && (
+              <View style={styles.reminderPillsRow}>
+                {REMINDER_OPTIONS.map(({ value, label }) => (
+                  <TouchableOpacity
+                    key={value}
+                    style={[
+                      styles.reminderPill,
+                      reminderBefore === value && styles.reminderPillActive,
+                    ]}
+                    onPress={() => setReminderBefore(value)}
+                    disabled={submitting}
+                  >
+                    <Text
+                      style={[
+                        styles.reminderPillLabel,
+                        reminderBefore === value && styles.reminderPillLabelActive,
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
           </View>
 
           <View style={styles.bottomSpacer} />
@@ -514,22 +728,87 @@ const styles = StyleSheet.create({
     fontSize: 15,
     flex: 1,
   },
-  deadlineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
+  deadlinePillsScrollView: {
+    marginHorizontal: -16,
   },
-  deadlineInput: {
-    width: 80,
+  deadlinePillsScroll: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  deadlinePill: {
     backgroundColor: '#2a2a4e',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#3a3a6e',
-    paddingHorizontal: 12,
+  },
+  deadlinePillActive: {
+    borderColor: '#8b5cf6',
+  },
+  deadlinePillLabel: {
+    color: '#999',
+    fontSize: 14,
+  },
+  deadlinePillLabelActive: {
+    color: '#8b5cf6',
+    fontWeight: '600',
+  },
+  customDateTimeBlock: {
+    marginTop: 12,
+    backgroundColor: '#2a2a4e',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#3a3a6e',
+    padding: 12,
+  },
+  customPickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#3a3a6e',
+  },
+  customPickerLabel: {
     color: '#fff',
     fontSize: 15,
+  },
+  customPickerValue: {
+    color: '#8b5cf6',
+    fontSize: 15,
+  },
+  chevron: {
+    color: '#666',
+    fontSize: 12,
+  },
+  reminderPillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  reminderPill: {
+    backgroundColor: '#2a2a4e',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#3a3a6e',
+  },
+  reminderPillActive: {
+    borderColor: '#8b5cf6',
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+  },
+  reminderPillLabel: {
+    color: '#999',
+    fontSize: 13,
+  },
+  reminderPillLabelActive: {
+    color: '#8b5cf6',
+    fontWeight: '600',
   },
   bottomSpacer: {
     height: 40,

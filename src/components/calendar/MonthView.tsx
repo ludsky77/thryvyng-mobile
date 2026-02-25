@@ -17,21 +17,38 @@ import {
   isToday,
 } from 'date-fns';
 import type { CalendarEvent } from '../../types';
-import { getEventTypeConfig } from '../../types';
+import { isEventPast } from '../../utils/calendar';
+
+type CalendarEventWithTeam = CalendarEvent & { team?: { color?: string } };
 
 interface MonthViewProps {
   currentDate: Date;
   events: CalendarEvent[];
-  onDatePress: (date: Date) => void;
+  onDayPress: (date: Date) => void;
   onEventPress: (event: CalendarEvent) => void;
   onPrevMonth: () => void;
   onNextMonth: () => void;
 }
 
+const MAX_VISIBLE_EVENTS = 2;
+
+function getEventIcon(eventType: string): string {
+  switch (eventType?.toLowerCase()) {
+    case 'game':
+      return '🏆';
+    case 'tournament':
+      return '🎯';
+    case 'meeting':
+      return '👥';
+    default:
+      return '⚽';
+  }
+}
+
 export function MonthView({
   currentDate,
   events,
-  onDatePress,
+  onDayPress,
   onEventPress,
   onPrevMonth,
   onNextMonth,
@@ -68,7 +85,8 @@ export function MonthView({
             !isCurrentMonth && styles.dayCellOutside,
             isCurrentDay && styles.dayCellToday,
           ]}
-          onPress={() => onDatePress(currentDay)}
+          onPress={() => onDayPress(currentDay)}
+          activeOpacity={0.7}
         >
           <Text
             style={[
@@ -81,22 +99,34 @@ export function MonthView({
           </Text>
 
           <View style={styles.eventsContainer}>
-            {dayEvents.slice(0, 3).map((event) => {
-              const typeConfig = getEventTypeConfig(event.event_type);
+            {dayEvents.slice(0, MAX_VISIBLE_EVENTS).map((event) => {
+              const past = isEventPast(event);
               return (
-                <TouchableOpacity
-                  key={event.id}
-                  style={[styles.eventDot, { backgroundColor: typeConfig.color }]}
-                  onPress={() => onEventPress(event)}
-                >
-                  <Text style={styles.eventDotText} numberOfLines={1}>
-                    {event.title}
-                  </Text>
-                </TouchableOpacity>
-              );
+              <TouchableOpacity
+                key={event.id}
+                style={[
+                  styles.eventChip,
+                  {
+                    backgroundColor: past
+                      ? '#4B5563'
+                      : (event as CalendarEventWithTeam).team?.color || '#5B7BB5',
+                    opacity: past ? 0.5 : 1,
+                  },
+                ]}
+                onPress={() => onEventPress(event)}
+              >
+                <Text style={styles.eventChipText} numberOfLines={1}>
+                  {getEventIcon(event.event_type)} {event.title}
+                </Text>
+              </TouchableOpacity>
+            );
             })}
-            {dayEvents.length > 3 && (
-              <Text style={styles.moreEvents}>+{dayEvents.length - 3}</Text>
+            {dayEvents.length > MAX_VISIBLE_EVENTS && (
+              <TouchableOpacity onPress={() => onDayPress(currentDay)}>
+                <Text style={styles.moreEvents}>
+                  +{dayEvents.length - MAX_VISIBLE_EVENTS} more
+                </Text>
+              </TouchableOpacity>
             )}
           </View>
         </TouchableOpacity>
@@ -210,20 +240,19 @@ const styles = StyleSheet.create({
   eventsContainer: {
     flex: 1,
   },
-  eventDot: {
+  eventChip: {
     borderRadius: 3,
-    paddingHorizontal: 3,
-    paddingVertical: 1,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
     marginBottom: 2,
   },
-  eventDotText: {
+  eventChipText: {
     color: '#fff',
-    fontSize: 9,
-    fontWeight: '500',
+    fontSize: 10,
   },
   moreEvents: {
-    color: '#666',
+    color: '#9CA3AF',
     fontSize: 9,
-    textAlign: 'center',
+    marginTop: 2,
   },
 });

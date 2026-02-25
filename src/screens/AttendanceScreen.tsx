@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import PlayerAvatar from '../components/PlayerAvatar';
 
 type AttendanceStatus = 'yes' | 'no' | 'maybe';
 
@@ -27,6 +28,7 @@ interface Player {
   first_name: string;
   last_name: string;
   jersey_number: number | null;
+  photo_url?: string | null;
 }
 
 interface Rsvp {
@@ -34,6 +36,7 @@ interface Rsvp {
   player_id: string | null;
   user_id: string | null;
   status: string;
+  decline_reason: string | null;
 }
 
 function formatTime(time: string | null): string {
@@ -89,7 +92,7 @@ export default function AttendanceScreen({ route, navigation }: any) {
       const teamId = (eventData as any).team_id;
       const { data: playersData } = await supabase
         .from('players')
-        .select('id, first_name, last_name, jersey_number')
+        .select('id, first_name, last_name, jersey_number, photo_url')
         .eq('team_id', teamId)
         .order('jersey_number', { ascending: true, nullsFirst: false })
         .order('last_name', { ascending: true });
@@ -99,10 +102,16 @@ export default function AttendanceScreen({ route, navigation }: any) {
 
       const { data: rsvpsData } = await supabase
         .from('cal_event_rsvps')
-        .select('id, player_id, user_id, status')
+        .select('*')
         .eq('event_id', event_id);
 
-      const rsvpsList = (rsvpsData || []) as Rsvp[];
+      const rsvpsList = (rsvpsData || []).map((r: any) => ({
+        id: r.id,
+        player_id: r.player_id,
+        user_id: r.user_id,
+        status: r.status,
+        decline_reason: r.decline_reason ?? null,
+      })) as Rsvp[];
       setRsvps(rsvpsList);
 
       const initial: Record<string, AttendanceStatus> = {};
@@ -135,9 +144,12 @@ export default function AttendanceScreen({ route, navigation }: any) {
     const rsvp = rsvps.find((r) => r.player_id === playerId);
     if (!rsvp) return 'No response';
     if (rsvp.status === 'yes') return 'Previously: Going';
-    if (rsvp.status === 'no') return 'Previously: Not going';
-    if (rsvp.status === 'maybe') return 'Previously: Maybe';
-    return 'Previously: Unknown';
+    if (rsvp.status === 'no') {
+      return rsvp.decline_reason
+        ? `Previously: Can't go — ${rsvp.decline_reason}`
+        : 'Previously: Can\'t go';
+    }
+    return 'No response';
   };
 
   const handleSave = async () => {
@@ -225,6 +237,14 @@ export default function AttendanceScreen({ route, navigation }: any) {
             const config = STATUS_OPTIONS.find((o) => o.value === status)!;
             return (
               <View key={player.id} style={styles.playerRow}>
+                <PlayerAvatar
+                  photoUrl={player.photo_url}
+                  jerseyNumber={player.jersey_number}
+                  firstName={player.first_name}
+                  lastName={player.last_name}
+                  size={44}
+                  teamColor="#5B7BB5"
+                />
                 <View style={styles.playerInfo}>
                   <Text style={styles.playerName}>
                     {player.first_name} {player.last_name}
@@ -347,6 +367,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#3a3a6e',
+    gap: 12,
   },
   playerInfo: {
     flex: 1,

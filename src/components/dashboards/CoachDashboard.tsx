@@ -56,12 +56,12 @@ interface RecentActivity {
 }
 
 const QUICK_ACTION_ICONS = [
-  { id: 'roster', label: 'View Roster', icon: 'people', color: '#06B6D4' },
-  { id: 'staff', label: 'Team Staff', icon: 'person-add', color: '#F97316' },
-  { id: 'evaluations', label: 'Evaluations', icon: 'clipboard', color: '#10B981' },
-  { id: 'messages', label: 'Messages', icon: 'chatbubble', color: '#8B5CF6' },
-  { id: 'calendar', label: 'Calendar', icon: 'calendar', color: '#3B82F6' },
-  { id: 'certificates', label: 'Certificates', icon: 'trophy', color: '#F59E0B' },
+  { id: 'roster', label: 'View Roster', icon: 'people', color: '#4A9B8B' },
+  { id: 'staff', label: 'Team Staff', icon: 'person-add', color: '#C48B6B' },
+  { id: 'evaluations', label: 'Evaluations', icon: 'clipboard', color: '#5BA58C' },
+  { id: 'messages', label: 'Messages', icon: 'chatbubble', color: '#8B6BAD' },
+  { id: 'calendar', label: 'Calendar', icon: 'calendar', color: '#5B7BB5' },
+  { id: 'certificates', label: 'Certificates', icon: 'trophy', color: '#C4976D' },
 ];
 
 export default function CoachDashboard({ teamId }: CoachDashboardProps) {
@@ -553,6 +553,7 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: 16,
+    paddingBottom: 20,
     backgroundColor: '#2a2a4e',
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
@@ -628,7 +629,7 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     marginHorizontal: 16,
-    marginTop: -20,
+    marginTop: 16,
     backgroundColor: '#2a2a4e',
     borderRadius: 16,
     padding: 16,

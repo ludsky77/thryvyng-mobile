@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import PlayerAvatar from '../components/PlayerAvatar';
 
 const ROLE_LABELS: Record<string, string> = {
   head_coach: 'Head Coach',
@@ -32,6 +33,11 @@ interface MyKidsItem {
   playerName: string;
   teamName: string;
   jersey?: string | null;
+  firstName?: string;
+  lastName?: string;
+  photoUrl?: string | null;
+  jerseyNumber?: number | null;
+  teamColor?: string;
 }
 
 type TeamItem = CoachingItem | MyKidsItem;
@@ -85,21 +91,19 @@ export default function TeamsScreen({ navigation }: any) {
         const playerId = role.entity_id || role.player?.id;
         if (!playerId) continue;
 
-        let jersey: string | null = null;
         const { data: player } = await supabase
           .from('players')
-          .select('jersey_number')
+          .select('first_name, last_name, jersey_number, photo_url, teams!team_id(id, color)')
           .eq('id', playerId)
           .single();
 
-        if (player?.jersey_number != null) {
-          jersey = `#${player.jersey_number}`;
-        }
-
+        const jersey = player?.jersey_number != null ? `#${player.jersey_number}` : null;
         const playerName =
-          role.player?.first_name && role.player?.last_name
-            ? `${role.player.first_name} ${role.player.last_name}`
-            : role.entityName?.split(' ')[0] || 'Player';
+          player?.first_name && player?.last_name
+            ? `${player.first_name} ${player.last_name}`
+            : role.player?.first_name && role.player?.last_name
+              ? `${role.player.first_name} ${role.player.last_name}`
+              : role.entityName?.split(' ')[0] || 'Player';
 
         kidsList.push({
           id: playerId,
@@ -108,6 +112,11 @@ export default function TeamsScreen({ navigation }: any) {
           playerName,
           teamName: role.team?.name || 'Unknown Team',
           jersey: jersey || null,
+          firstName: player?.first_name,
+          lastName: player?.last_name,
+          photoUrl: player?.photo_url ?? null,
+          jerseyNumber: player?.jersey_number ?? null,
+          teamColor: (player as any)?.teams?.color || '#5B7BB5',
         });
       }
 
@@ -172,7 +181,14 @@ export default function TeamsScreen({ navigation }: any) {
         }
         activeOpacity={0.7}
       >
-        <Text style={styles.cardIcon}>👤</Text>
+        <PlayerAvatar
+          photoUrl={k.photoUrl}
+          jerseyNumber={k.jerseyNumber}
+          firstName={k.firstName}
+          lastName={k.lastName}
+          size={44}
+          teamColor={k.teamColor || '#5B7BB5'}
+        />
         <View style={styles.cardContent}>
           <Text style={styles.cardTitle}>{k.playerName}</Text>
           <Text style={styles.cardSubtitle}>

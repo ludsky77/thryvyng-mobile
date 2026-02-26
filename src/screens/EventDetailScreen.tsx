@@ -20,6 +20,7 @@ import { EditEventModal } from '../components/calendar/EditEventModal';
 import { CantGoReasonModal } from '../components/calendar/CantGoReasonModal';
 import PlayerAvatar from '../components/PlayerAvatar';
 import { notifyTeamOfEvent } from '../services/eventNotifications';
+import { GameEntryButton } from '../components/game-stats/GameEntryButton';
 import { isEventPast } from '../utils/calendar';
 
 function formatTime(time: string | null): string {
@@ -722,6 +723,17 @@ export default function EventDetailScreen({ route, navigation }: any) {
               </View>
             </View>
           </View>
+
+          {/* Game entry - for game events */}
+          {event.event_type === 'game' && event.team_id && (
+            <View style={{ marginBottom: 16 }}>
+              <GameEntryButton
+                eventId={event.id}
+                teamId={event.team_id}
+                eventType={event.event_type}
+              />
+            </View>
+          )}
 
           {/* RSVP Buttons - hidden for past events */}
           {isEventPast(event) ? (

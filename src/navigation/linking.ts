@@ -24,6 +24,10 @@ export type RootStackParamList = {
   Notifications: undefined;
   NotificationSettings: undefined;
   EventDetail: { eventId?: string; event?: any; onRefetch?: () => void };
+  PreGameSetup: { eventId: string; teamId: string };
+  StatsConsole: { sessionId: string };
+  LiveSpectator: { sessionId: string };
+  MatchSummary: { sessionId: string };
   // Registration screens
   JoinTeam: { code: string; role?: string };
   JoinStaff: { code: string };

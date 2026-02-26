@@ -11,6 +11,7 @@ import {
   Image,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
+import { LiveGamesWidget } from '../game-stats/LiveGamesWidget';
 
 interface ClubAdminDashboardProps {
   clubId: string | null;
@@ -163,6 +164,9 @@ export default function ClubAdminDashboard({
 
   return (
     <ScrollView style={styles.container}>
+      {/* Live Games Widget */}
+      {clubId && <LiveGamesWidget clubId={clubId} />}
+
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerRow}>

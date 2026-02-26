@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import { formatDistanceToNow } from 'date-fns';
+import { LiveGamesWidget } from '../game-stats/LiveGamesWidget';
 
 interface CoachDashboardProps {
   teamId: string | null;
@@ -322,6 +323,9 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      {/* Live Games Widget */}
+      {teamId && <LiveGamesWidget teamId={teamId} />}
+
       {/* 1. Team Header */}
       <View style={styles.header}>
         <View style={styles.teamHeader}>

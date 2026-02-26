@@ -72,6 +72,10 @@ import InvitationCheckoutScreen from '../screens/invitation/InvitationCheckoutSc
 import InvitationAuthWrapper from '../screens/invitation/InvitationAuthWrapper';
 import InvitationSuccessScreen from '../screens/invitation/InvitationSuccessScreen';
 import InvitationCancelScreen from '../screens/invitation/InvitationCancelScreen';
+import PreGameSetupScreen from '../screens/game-stats/PreGameSetupScreen';
+import StatsConsoleScreen from '../screens/game-stats/StatsConsoleScreen';
+import MatchSummaryScreen from '../screens/game-stats/MatchSummaryScreen';
+import LiveSpectatorScreen from '../screens/game-stats/LiveSpectatorScreen';
 
 const Stack = createNativeStackNavigator();
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -442,6 +446,26 @@ function CalendarStack() {
         options={{ headerShown: false }}
       />
       <Stack.Screen
+        name="PreGameSetup"
+        component={PreGameSetupScreen}
+        options={{ headerShown: false, presentation: 'modal' }}
+      />
+      <Stack.Screen
+        name="StatsConsole"
+        component={StatsConsoleScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="LiveSpectator"
+        component={LiveSpectatorScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="MatchSummary"
+        component={MatchSummaryScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
         name="Attendance"
         component={AttendanceScreen}
         options={{ title: 'Take Attendance' }}
@@ -614,6 +638,26 @@ function RootStackNavigator() {
       <RootStack.Screen
         name="EventDetail"
         component={EventDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <RootStack.Screen
+        name="PreGameSetup"
+        component={PreGameSetupScreen}
+        options={{ headerShown: false, presentation: 'modal' }}
+      />
+      <RootStack.Screen
+        name="StatsConsole"
+        component={StatsConsoleScreen}
+        options={{ headerShown: false }}
+      />
+      <RootStack.Screen
+        name="LiveSpectator"
+        component={LiveSpectatorScreen}
+        options={{ headerShown: false }}
+      />
+      <RootStack.Screen
+        name="MatchSummary"
+        component={MatchSummaryScreen}
         options={{ headerShown: false }}
       />
       <RootStack.Screen

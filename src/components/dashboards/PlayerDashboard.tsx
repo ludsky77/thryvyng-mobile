@@ -13,6 +13,7 @@ import PlayerAvatar from '../PlayerAvatar';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { LiveGamesWidget } from '../game-stats/LiveGamesWidget';
 
 interface PlayerDashboardProps {
   playerId: string | null;
@@ -176,6 +177,9 @@ export default function PlayerDashboard({ playerId, navigation }: PlayerDashboar
 
   return (
     <ScrollView style={styles.container}>
+      {/* Live Games Widget */}
+      {player.team_id && <LiveGamesWidget teamId={player.team_id} />}
+
       {/* Player Header: [Photo] Name, team • club, XP badge, jersey */}
       <View style={styles.playerHeader}>
         <PlayerAvatar

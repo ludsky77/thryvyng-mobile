@@ -4,8 +4,16 @@ import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserRole } from '../types';
 import { registerForPushNotifications, deactivatePushToken } from '../services/notifications';
-import { setUserContext, clearUserContext } from '../services/sentry';
 import Constants from 'expo-constants';
+
+const withTimeout = <T,>(promise: Promise<T>, ms: number = 10000): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error('Request timeout')), ms)
+    )
+  ]);
+};
 
 export interface AuthContextType {
   user: User | null;
@@ -41,51 +49,55 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return { ...role, entityName, team, club, player };
       }
 
-      // Team-related roles
-      if (['team_manager', 'head_coach', 'assistant_coach'].includes(role.role)) {
-        const { data: teamData } = await supabase
-          .from('teams')
-          .select('id, name, club_id')
-          .eq('id', role.entity_id)
-          .single();
-        if (teamData) {
-          team = teamData;
-          entityName = teamData.name || '';
-        }
-      }
-      // Club admin
-      else if (role.role === 'club_admin') {
-        const { data: clubData } = await supabase
-          .from('clubs')
-          .select('id, name')
-          .eq('id', role.entity_id)
-          .single();
-        if (clubData) {
-          club = clubData;
-          entityName = clubData.name || '';
-        }
-      }
-      // Parent role - show child's name and team
-      else if (role.role === 'parent') {
-        const { data: playerData } = await supabase
-          .from('players')
-          .select('id, first_name, last_name, teams(id, name, club_id)')
-          .eq('id', role.entity_id)
-          .single();
-        if (playerData) {
-          player = {
-            id: playerData.id,
-            first_name: playerData.first_name,
-            last_name: playerData.last_name,
-          };
-          const teamData = (playerData as any).teams;
+      try {
+        // Team-related roles
+        if (['team_manager', 'head_coach', 'assistant_coach'].includes(role.role)) {
+          const { data: teamData } = await withTimeout(supabase
+            .from('teams')
+            .select('id, name, club_id')
+            .eq('id', role.entity_id)
+            .single());
           if (teamData) {
-            team = { id: teamData.id, name: teamData.name, club_id: teamData.club_id };
-            entityName = `${playerData.first_name} ${playerData.last_name} (${teamData.name})`;
-          } else {
-            entityName = `${playerData.first_name} ${playerData.last_name}`;
+            team = teamData;
+            entityName = teamData.name || '';
           }
         }
+        // Club admin
+        else if (role.role === 'club_admin') {
+          const { data: clubData } = await withTimeout(supabase
+            .from('clubs')
+            .select('id, name')
+            .eq('id', role.entity_id)
+            .single());
+          if (clubData) {
+            club = clubData;
+            entityName = clubData.name || '';
+          }
+        }
+        // Parent role - show child's name and team
+        else if (role.role === 'parent') {
+          const { data: playerData } = await withTimeout(supabase
+            .from('players')
+            .select('id, first_name, last_name, teams(id, name, club_id)')
+            .eq('id', role.entity_id)
+            .single());
+          if (playerData) {
+            player = {
+              id: playerData.id,
+              first_name: playerData.first_name,
+              last_name: playerData.last_name,
+            };
+            const teamData = (playerData as any).teams;
+            if (teamData) {
+              team = { id: teamData.id, name: teamData.name, club_id: teamData.club_id };
+              entityName = `${playerData.first_name} ${playerData.last_name} (${teamData.name})`;
+            } else {
+              entityName = `${playerData.first_name} ${playerData.last_name}`;
+            }
+          }
+        }
+      } catch {
+        // Return role with empty entityName and null team/club/player on failure
       }
 
       return { ...role, entityName, team, club, player };
@@ -93,10 +105,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const fetchUserRoles = async (userId: string) => {
-    const { data: roles, error } = await supabase
+    const { data: roles, error } = await withTimeout(supabase
       .from('user_roles')
       .select('*')
-      .eq('user_id', userId);
+      .eq('user_id', userId));
 
     if (error) {
       console.error('Error fetching roles:', error);
@@ -128,26 +140,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Set up auth state listener first
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        // #region agent log
-        const _logA = { location: 'AuthContext.tsx:onAuthStateChange:entry', message: 'Auth state change', data: { event, hasSession: !!session, userId: session?.user?.id }, hypothesisId: 'H2' };
-        console.log('[DEBUG]', JSON.stringify(_logA));
-        fetch('http://127.0.0.1:7242/ingest/d8dadf68-0309-483d-b3ac-248851d8ac12',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({..._logA,timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         setSession(session);
         setUser(session?.user ?? null);
 
         if (session?.user) {
           try {
-            // #region agent log
-            const _logB = { location: 'AuthContext.tsx:onAuthStateChange:beforeProfile', message: 'Before profile fetch', data: { userId: session.user.id }, hypothesisId: 'H2' };
-            console.log('[DEBUG]', JSON.stringify(_logB));
-            fetch('http://127.0.0.1:7242/ingest/d8dadf68-0309-483d-b3ac-248851d8ac12',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({..._logB,timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
-            const { data: profileData } = await supabase
+            const { data: profileData } = await withTimeout(supabase
               .from('profiles')
               .select('*')
               .eq('id', session.user.id)
-              .single();
+              .single());
             setProfile(profileData ?? null);
 
             const roles = await fetchUserRoles(session.user.id);
@@ -164,24 +166,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               setCurrentRole(role);
             }
             setLoading(false);
-            // Set Sentry user context
-            const roleNames = (roles || []).map((r: any) => r.role).filter(Boolean);
-            setUserContext(session.user.id, session.user.email ?? undefined, roleNames);
             // Register for push notifications (skip in Expo Go)
             if (session?.user?.id && Constants.appOwnership !== 'expo') {
               registerForPushNotifications(session.user.id);
             }
-            // #region agent log
-            const _logC = { location: 'AuthContext.tsx:onAuthStateChange:success', message: 'Listener done, setLoading(false)', data: { event }, hypothesisId: 'H2' };
-            console.log('[DEBUG]', JSON.stringify(_logC));
-            fetch('http://127.0.0.1:7242/ingest/d8dadf68-0309-483d-b3ac-248851d8ac12',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({..._logC,timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
           } catch (err) {
-            // #region agent log
-            const _logE = { location: 'AuthContext.tsx:onAuthStateChange:catch', message: 'Listener threw', data: { message: (err as Error)?.message }, hypothesisId: 'H5' };
-            console.log('[DEBUG]', JSON.stringify(_logE));
-            fetch('http://127.0.0.1:7242/ingest/d8dadf68-0309-483d-b3ac-248851d8ac12',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({..._logE,timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
             setLoading(false);
           }
         } else {
@@ -189,55 +178,51 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setAllRoles([]);
           setCurrentRole(null);
           setLoading(false);
-          clearUserContext();
         }
       }
     );
 
     // Check for existing session
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      // #region agent log
-      const _logG = { location: 'AuthContext.tsx:getSession:entry', message: 'Initial getSession', data: { hasSession: !!session, userId: session?.user?.id }, hypothesisId: 'H3' };
-      console.log('[DEBUG]', JSON.stringify(_logG));
-      fetch('http://127.0.0.1:7242/ingest/d8dadf68-0309-483d-b3ac-248851d8ac12',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({..._logG,timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      setSession(session);
-      setUser(session?.user ?? null);
+      try {
+        setSession(session);
+        setUser(session?.user ?? null);
 
-      if (session?.user) {
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-        setProfile(profileData ?? null);
+        if (session?.user) {
+          const { data: profileData } = await withTimeout(supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single());
+          setProfile(profileData ?? null);
 
-        const roles = await fetchUserRoles(session.user.id);
-        setAllRoles(roles);
+          const roles = await fetchUserRoles(session.user.id);
+          setAllRoles(roles);
 
-        // Auto-select if user has exactly one role
-        if (roles.length === 1 && !currentRole) {
-          setCurrentRole(roles[0]);
+          // Auto-select if user has exactly one role
+          if (roles.length === 1 && !currentRole) {
+            setCurrentRole(roles[0]);
+          } else {
+            const savedRoleId = await AsyncStorage.getItem('lastRoleId') ?? await AsyncStorage.getItem('currentRoleId');
+            const role = savedRoleId
+              ? roles.find((r) => r.id === savedRoleId) || roles[0]
+              : roles[0];
+            setCurrentRole(role);
+          }
+          // Register for push notifications (skip in Expo Go)
+          if (session?.user?.id && Constants.appOwnership !== 'expo') {
+            registerForPushNotifications(session.user.id);
+          }
         } else {
-          const savedRoleId = await AsyncStorage.getItem('lastRoleId') ?? await AsyncStorage.getItem('currentRoleId');
-          const role = savedRoleId
-            ? roles.find((r) => r.id === savedRoleId) || roles[0]
-            : roles[0];
-          setCurrentRole(role);
+          setProfile(null);
         }
+      } catch {
+        // Fall through to ensure loading is cleared
+      } finally {
         setLoading(false);
-        // Set Sentry user context
-        const roleNames = (roles || []).map((r: any) => r.role).filter(Boolean);
-        setUserContext(session.user.id, session.user.email ?? undefined, roleNames);
-        // Register for push notifications (skip in Expo Go)
-        if (session?.user?.id && Constants.appOwnership !== 'expo') {
-          registerForPushNotifications(session.user.id);
-        }
-      } else {
-        setProfile(null);
-        setLoading(false);
-        clearUserContext();
       }
+    }).catch(() => {
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
@@ -266,7 +251,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setAllRoles([]);
     await AsyncStorage.removeItem('currentRoleId');
     await AsyncStorage.removeItem('lastRoleId');
-    clearUserContext();
   };
 
   return (

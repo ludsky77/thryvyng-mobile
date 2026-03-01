@@ -9,7 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
-import { useUserTeams } from '../hooks/useUserTeams';
+import { useAuth } from '../contexts/AuthContext';
 
 const TEAM_COLOR_PALETTE = [
   { hex: '#5B7BB5', name: 'Soft Blue' },
@@ -48,7 +48,7 @@ const TEAM_COLOR_PALETTE = [
 
 export default function TeamDetailScreen({ route }: any) {
   const { teamId, teamName } = route.params || {};
-  const { canManageTeam } = useUserTeams();
+  const { user } = useAuth();
 
   const [team, setTeam] = useState<{
     id: string;
@@ -59,8 +59,26 @@ export default function TeamDetailScreen({ route }: any) {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [selectedColor, setSelectedColor] = useState('#5B7BB5');
   const [isSavingColor, setIsSavingColor] = useState(false);
+  const [isStaffInTeam, setIsStaffInTeam] = useState(false);
 
-  const canManage = teamId ? canManageTeam(teamId) : false;
+  useEffect(() => {
+    const checkStaffPermission = async () => {
+      if (!teamId || !user?.id) {
+        setIsStaffInTeam(false);
+        return;
+      }
+      const { data } = await supabase
+        .from('team_staff')
+        .select('id')
+        .eq('team_id', teamId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      setIsStaffInTeam(!!data);
+    };
+    checkStaffPermission();
+  }, [teamId, user?.id]);
+
+  const canManage = isStaffInTeam;
 
   const fetchTeam = useCallback(async () => {
     if (!teamId) {

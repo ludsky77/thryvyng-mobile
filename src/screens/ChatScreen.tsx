@@ -18,6 +18,7 @@ import {
   Keyboard,
   Alert,
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserTeams } from '../hooks/useUserTeams';
 import { supabase } from '../lib/supabase';
@@ -172,6 +173,7 @@ export default function ChatScreen({ navigation, route }: any) {
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [newChatStep, setNewChatStep] = useState<NewChatStep>('choose');
   const [isClubAdmin, setIsClubAdmin] = useState(false);
+  const [clubId, setClubId] = useState<string | null>(null);
 
   const [dmSearchQuery, setDmSearchQuery] = useState('');
   const [dmSearchResults, setDmSearchResults] = useState<ProfileResult[]>([]);
@@ -419,16 +421,18 @@ export default function ChatScreen({ navigation, route }: any) {
           .eq('user_id', user.id);
         if (clubStaff && clubStaff.length > 0) {
           setIsClubAdmin(true);
+          setClubId(clubStaff[0].club_id);
           return;
         }
         const { data: userRoles } = await supabase
           .from('user_roles')
-          .select('id')
+          .select('id, entity_id')
           .eq('user_id', user.id)
           .eq('role', 'club_admin')
           .limit(1);
-        if (userRoles && userRoles.length > 0) {
+        if (userRoles && userRoles.length > 0 && userRoles[0].entity_id) {
           setIsClubAdmin(true);
+          setClubId(userRoles[0].entity_id);
           return;
         }
         const { data: clubAdmin } = await supabase
@@ -438,12 +442,14 @@ export default function ChatScreen({ navigation, route }: any) {
           .limit(1);
         if (clubAdmin && clubAdmin.length > 0) {
           setIsClubAdmin(true);
+          setClubId(clubAdmin[0].id);
           return;
         }
       } catch (_) {
         // Tables may not exist
       }
       setIsClubAdmin(false);
+      setClubId(null);
     };
     checkClubAdmin();
   }, [user?.id]);
@@ -990,6 +996,29 @@ export default function ChatScreen({ navigation, route }: any) {
                   <View style={styles.typeContent}>
                     <Text style={styles.typeTitle}>Club-Wide Message</Text>
                     <Text style={styles.typeDescription}>Send to all members of your club</Text>
+                  </View>
+                  <Text style={styles.typeArrow}>→</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.typeOption}
+                  onPress={() => {
+                    if (clubId) {
+                      closeModal();
+                      navigation.navigate('StaffMessage', { clubId });
+                    } else {
+                      Alert.alert(
+                        'Unable to Load',
+                        'Club information could not be loaded. Please try again.'
+                      );
+                    }
+                  }}
+                >
+                  <View style={[styles.typeIconContainer, { backgroundColor: '#f59e0b' }]}>
+                    <Feather name="users" size={24} color="#fff" />
+                  </View>
+                  <View style={styles.typeContent}>
+                    <Text style={styles.typeTitle}>Staff Message</Text>
+                    <Text style={styles.typeDescription}>Message coaches & managers</Text>
                   </View>
                   <Text style={styles.typeArrow}>→</Text>
                 </TouchableOpacity>

@@ -12,7 +12,6 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
-import { NotificationBell } from '../components/NotificationBell';
 
 const HELP_URL = 'https://thryvyng.com/help';
 const TERMS_URL = 'https://thryvyng.com/terms';
@@ -40,10 +39,6 @@ export default function ProfileScreen({ navigation }: any) {
 
   return (
     <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Profile</Text>
-        <NotificationBell />
-      </View>
       <View style={styles.profileHeader}>
         <View style={styles.avatarContainer}>
           {profile?.avatar_url ? (
@@ -197,79 +192,71 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#1a1a2e',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 50,
-    paddingBottom: 12,
-    backgroundColor: '#2a2a4e',
-  },
-  headerTitle: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '700',
-  },
   profileHeader: {
     alignItems: 'center',
-    paddingVertical: 30,
-    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
+    marginHorizontal: 16,
+    marginTop: 0,
+    marginBottom: 12,
     backgroundColor: '#2a2a4e',
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
   },
   avatarContainer: {
-    marginBottom: 16,
+    marginBottom: 6,
   },
   avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
   },
   avatarPlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: '#8b5cf6',
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarText: {
-    fontSize: 40,
+    fontSize: 24,
     fontWeight: '700',
     color: '#fff',
   },
   userName: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700',
     color: '#fff',
-    marginBottom: 4,
+    marginTop: 6,
+    marginBottom: 2,
   },
   userEmail: {
     fontSize: 14,
-    color: '#888',
-    marginBottom: 12,
+    color: '#94a3b8',
+    marginTop: 2,
   },
   currentRoleBadge: {
     backgroundColor: 'rgba(139, 92, 246, 0.2)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
     borderRadius: 20,
+    marginTop: 6,
   },
   currentRoleText: {
     color: '#a78bfa',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     textTransform: 'capitalize',
   },
   menuSection: {
-    marginTop: 24,
+    marginTop: 16,
     paddingHorizontal: 16,
   },
   menuSectionTitle: {
     color: '#666',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     marginBottom: 8,
     marginLeft: 4,
@@ -280,19 +267,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#2a2a4e',
-    padding: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minHeight: 44,
     borderRadius: 12,
     marginBottom: 8,
   },
   menuIcon: {
     fontSize: 20,
-    marginRight: 14,
+    marginRight: 12,
   },
   menuIconWrap: {
-    marginRight: 14,
+    marginRight: 12,
   },
   menuIconContainer: {
-    marginRight: 14,
+    marginRight: 12,
   },
   menuItemText: {
     flex: 1,
@@ -310,7 +299,7 @@ const styles = StyleSheet.create({
   signOutButton: {
     backgroundColor: '#ef4444',
     marginHorizontal: 16,
-    marginTop: 30,
+    marginTop: 20,
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
@@ -321,6 +310,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   bottomPadding: {
-    height: 40,
+    height: 24,
   },
 });

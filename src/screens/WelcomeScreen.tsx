@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -83,13 +84,19 @@ export const WelcomeScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.logoSection}>
-        <Text style={styles.logoEmoji}>🏆</Text>
-        <Text style={styles.logoText}>Thryvyng</Text>
-        <Text style={styles.tagline}>Elevating Youth Soccer</Text>
-      </View>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        <View style={styles.logoSection}>
+          <Text style={styles.logoEmoji}>🏆</Text>
+          <Text style={styles.logoText}>Thryvyng</Text>
+          <Text style={styles.tagline}>Elevating Youth Soccer</Text>
+        </View>
 
-      <View style={styles.optionsSection}>
+        <View style={styles.optionsSection}>
         <TouchableOpacity
           style={styles.primaryButton}
           onPress={() => navigation.navigate('Login')}
@@ -148,13 +155,14 @@ export const WelcomeScreen: React.FC = () => {
           </View>
           <Ionicons name="chevron-forward" size={20} color="#6B7280" />
         </TouchableOpacity>
-      </View>
+        </View>
 
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          By continuing, you agree to our Terms of Service and Privacy Policy
-        </Text>
-      </View>
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>
+            By continuing, you agree to our Terms of Service and Privacy Policy
+          </Text>
+        </View>
+      </ScrollView>
 
       <Modal
         visible={showCodeModal}
@@ -237,11 +245,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#121212',
     padding: 24,
   },
-  logoSection: {
+  scrollView: {
     flex: 1,
-    justifyContent: 'center',
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 24,
+  },
+  logoSection: {
+    flexShrink: 0,
     alignItems: 'center',
     paddingTop: 40,
+    paddingBottom: 8,
+    marginBottom: 32,
   },
   logoEmoji: {
     fontSize: 64,
@@ -258,7 +274,7 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
   },
   optionsSection: {
-    flex: 2,
+    flex: 1,
     justifyContent: 'center',
   },
   primaryButton: {
@@ -266,6 +282,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
+    marginTop: 8,
     marginBottom: 24,
   },
   primaryButtonText: {

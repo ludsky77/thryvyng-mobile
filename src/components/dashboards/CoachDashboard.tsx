@@ -697,8 +697,8 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: 'center',
     width: '31%',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1.5,
+    borderColor: '#a78bfa',
   },
   quickActionIconContainer: {
     width: 48,

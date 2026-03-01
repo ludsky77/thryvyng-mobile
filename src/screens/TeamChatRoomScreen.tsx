@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -28,7 +28,6 @@ import {
   type ReactionDetailItem,
 } from '../components/chat/ReactionDetailsModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { canCreatePoll } from '../lib/permissions';
 import { useChannelMembers } from '../hooks/useChannelMembers';
 import type { Message } from '../types';
 
@@ -67,8 +66,9 @@ function getReactionsSummary(
 
 export default function TeamChatRoomScreen({ route, navigation }: any) {
   const { channelId, channelName, teamName, channelType } = route.params || {};
-  const { user, currentRole } = useAuth();
+  const { user } = useAuth();
   const flatListRef = useRef<FlatList>(null);
+  const prevMessagesLengthRef = useRef(0);
   const isGroupDm = channelType === 'group_dm';
 
   const [sending, setSending] = useState(false);
@@ -90,6 +90,9 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   const [selectedMessageReactions, setSelectedMessageReactions] = useState<
     ReactionDetailItem[]
   >([]);
+  const [isStaffInChannel, setIsStaffInChannel] = useState(false);
+  const [permissionsLoaded, setPermissionsLoaded] = useState(false);
+  const [channelTeamId, setChannelTeamId] = useState<string | null>(null);
 
   const {
     messages,
@@ -101,12 +104,45 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   const { members: channelMembers, updateLastReadMessage } =
     useChannelMembers(channelId);
 
-  const isCoach =
-    currentRole?.role &&
-    ['head_coach', 'assistant_coach', 'team_manager'].includes(
-      currentRole.role
-    );
   const messageIds = messages.map((m) => m.id);
+
+  const isCoach = isStaffInChannel;
+
+  useEffect(() => {
+    const checkStaffPermission = async () => {
+      if (!channelId || !user?.id) {
+        setChannelTeamId(null);
+        setPermissionsLoaded(true);
+        return;
+      }
+      try {
+        const { data: channelData } = await supabase
+          .from('comm_channels')
+          .select('team_id')
+          .eq('id', channelId)
+          .single();
+        if (!channelData?.team_id) {
+          setChannelTeamId(null);
+          setPermissionsLoaded(true);
+          return;
+        }
+        setChannelTeamId(channelData.team_id);
+        const { data: staffData } = await supabase
+          .from('team_staff')
+          .select('id')
+          .eq('team_id', channelData.team_id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+        setIsStaffInChannel(!!staffData);
+      } catch (err) {
+        console.log('Error checking staff permission:', err);
+        setIsStaffInChannel(false);
+      } finally {
+        setPermissionsLoaded(true);
+      }
+    };
+    checkStaffPermission();
+  }, [channelId, user?.id]);
 
   useEffect(() => {
     if (channelId && user?.id && messages.length > 0) {
@@ -116,7 +152,8 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   }, [channelId, user?.id, messages.length, updateLastReadMessage]);
 
   useEffect(() => {
-    if (messages.length > 0) {
+    if (messages.length > prevMessagesLengthRef.current) {
+      prevMessagesLengthRef.current = messages.length;
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 100);
@@ -210,6 +247,13 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     }
   };
 
+  const canUserCreatePoll = useMemo(() => {
+    if (channelType === 'group_dm' || channelType === 'direct') {
+      return true;
+    }
+    return isStaffInChannel;
+  }, [channelType, isStaffInChannel]);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await refetch();
@@ -257,7 +301,7 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
             </View>
           )}
           <View style={styles.messageContainer}>
-            <PollCard pollId={item.poll_id} compact={true} />
+            <PollCard pollId={item.poll_id} compact={true} isStaffInChannel={isStaffInChannel} />
           </View>
         </>
       );
@@ -364,16 +408,18 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
             </Text>
           )}
         </TouchableOpacity>
-        {isGroupDm ? (
-          <TouchableOpacity
-            style={styles.headerIconButton}
-            onPress={() => navigation.navigate('GroupInfo', { channelId })}
-          >
-            <Feather name="info" size={24} color="#8B5CF6" />
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.headerIconButton} />
-        )}
+        <TouchableOpacity
+          style={styles.headerMenuButton}
+          onPress={() => navigation.navigate('ChatInfo', {
+            channelId,
+            channelName,
+            teamId: channelTeamId,
+            channelType,
+          })}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Feather name="more-vertical" size={22} color="#fff" />
+        </TouchableOpacity>
       </View>
 
       {/* Chat Area with Keyboard Handling */}
@@ -389,12 +435,13 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           renderItem={renderItem}
           keyExtractor={(item, index) => `${item.id}-${index}`}
           contentContainerStyle={styles.messagesList}
-          onContentSizeChange={() =>
-            flatListRef.current?.scrollToEnd({ animated: false })
-          }
-          onLayout={() =>
-            flatListRef.current?.scrollToEnd({ animated: false })
-          }
+          onContentSizeChange={() => {
+            const currentLength = messages?.length || 0;
+            if (currentLength > prevMessagesLengthRef.current) {
+              prevMessagesLengthRef.current = currentLength;
+              flatListRef.current?.scrollToEnd({ animated: false });
+            }
+          }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           refreshControl={
@@ -408,11 +455,7 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
 
         <ChatInputBar
           onSendMessage={handleSendMessage}
-          onPollPress={
-            canCreatePoll(currentRole?.role)
-              ? () => setPollModalVisible(true)
-              : undefined
-          }
+          onPollPress={canUserCreatePoll ? () => setPollModalVisible(true) : undefined}
           placeholder="Type a message..."
           replyingTo={
             replyingTo
@@ -503,6 +546,9 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerMenuButton: {
+    padding: 8,
   },
   chatArea: {
     flex: 1,

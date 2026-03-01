@@ -1,27 +1,89 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePoll } from '../../hooks/usePolls';
-import { canCreatePoll } from '../../lib/permissions';
+import { supabase } from '../../lib/supabase';
 
 interface PollCardProps {
   pollId: string;
   compact?: boolean;
+  isStaffInChannel?: boolean;
 }
 
-export function PollCard({ pollId, compact = false }: PollCardProps) {
-  const { user, currentRole } = useAuth();
+function getTimeRemaining(endsAt: string): string {
+  const now = new Date();
+  const end = new Date(endsAt);
+  const diff = end.getTime() - now.getTime();
+
+  if (diff <= 0) return 'Ended';
+
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+
+  if (days > 0) return `Ends in ${days} day${days > 1 ? 's' : ''}`;
+  if (hours > 0) return `Ends in ${hours} hour${hours > 1 ? 's' : ''}`;
+  return 'Ends soon';
+}
+
+export function PollCard({ pollId, compact = false, isStaffInChannel = false }: PollCardProps) {
+  // 1. ALL HOOKS FIRST (before any conditions or returns)
+  const { user } = useAuth();
   const { poll, loading, vote, removeVote, closePoll } = usePoll(pollId);
   const [voting, setVoting] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [nonVoters, setNonVoters] = useState<string[]>([]);
+  const [reminderSending, setReminderSending] = useState(false);
+  const [reminderSent, setReminderSent] = useState(false);
 
+  // 2. Derived values (safe when poll is null)
+  const totalVotes = poll?.options?.reduce((sum, opt) => sum + (opt.vote_count || 0), 0) ?? 0;
+  const isCreator = poll?.created_by === user?.id;
+  const canSendReminder = isStaffInChannel || isCreator;
+
+  // 3. useCallback - must be before useEffect
+  const fetchNonVoters = useCallback(async () => {
+    if (!poll?.id || !poll?.channel_id) return;
+
+    try {
+      const { data: channelMembers } = await supabase
+        .from('comm_channel_members')
+        .select('user_id')
+        .eq('channel_id', poll.channel_id);
+
+      const { data: votes } = await supabase
+        .from('comm_poll_votes')
+        .select('user_id')
+        .eq('poll_id', poll.id);
+
+      const votedUserIds = votes?.map((v: { user_id: string }) => v.user_id) || [];
+      const nonVoterIds =
+        channelMembers
+          ?.filter((cm: { user_id: string }) => !votedUserIds.includes(cm.user_id))
+          .map((cm: { user_id: string }) => cm.user_id) || [];
+
+      setNonVoters(nonVoterIds);
+    } catch (err) {
+      console.error('[PollCard] Error fetching non-voters:', err);
+      setNonVoters([]);
+    }
+  }, [poll?.id, poll?.channel_id]);
+
+  // 4. useEffect
+  useEffect(() => {
+    if (poll?.id && poll?.channel_id && canSendReminder) {
+      fetchNonVoters();
+    }
+  }, [poll?.id, poll?.channel_id, canSendReminder, fetchNonVoters, totalVotes]);
+
+  // 5. Early return (after all hooks)
   if (loading || !poll) {
     return (
       <View style={styles.loadingContainer}>
@@ -31,15 +93,50 @@ export function PollCard({ pollId, compact = false }: PollCardProps) {
     );
   }
 
-  const totalVotes = poll.options?.reduce((sum, opt) => sum + (opt.vote_count || 0), 0) || 0;
+  // 6. Derived values (poll is guaranteed after early return)
   const userVotedOptionIds = poll.user_votes?.map(v => v.option_id) || [];
   const hasVoted = userVotedOptionIds.length > 0;
-  const isCreator = poll.created_by === user?.id;
   const isExpired = poll.ends_at && new Date(poll.ends_at) < new Date();
   const isClosed = !poll.is_active || isExpired;
-  const canClose = isCreator && canCreatePoll(currentRole?.role);
-
+  const canClose = isStaffInChannel || isCreator;
   const showResults = hasVoted || isClosed || poll.show_results_live;
+
+  // 7. Functions
+  const handleSendPollReminder = async () => {
+    if (nonVoters.length === 0 || reminderSending || !poll) return;
+
+    setReminderSending(true);
+
+    try {
+      const timeRemaining = poll.ends_at ? getTimeRemaining(poll.ends_at) : '';
+
+      const { error } = await supabase.functions.invoke('send-push-notification', {
+        body: {
+          user_ids: nonVoters,
+          title: '📊 Your Vote Needed',
+          body: `"${poll.question}"${timeRemaining ? ` - ${timeRemaining}` : ''} - Vote now!`,
+          type: 'poll_reminder',
+          data: {
+            reference_type: 'poll',
+            reference_id: poll.id,
+            channel_id: poll.channel_id,
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      setReminderSent(true);
+      Alert.alert('Reminder Sent', `Notified ${nonVoters.length} member(s) to vote`);
+
+      setTimeout(() => setReminderSent(false), 60 * 60 * 1000);
+    } catch (err) {
+      console.error('[PollCard] Failed to send poll reminder:', err);
+      Alert.alert('Error', 'Failed to send reminder. Please try again.');
+    } finally {
+      setReminderSending(false);
+    }
+  };
 
   const handleVote = async (optionId: string) => {
     if (voting || isClosed) return;
@@ -102,11 +199,11 @@ export function PollCard({ pollId, compact = false }: PollCardProps) {
                 </Text>
               </View>
             </View>
-            <TouchableOpacity style={styles.expandButton}>
+            <View style={styles.expandButton}>
               <Text style={styles.expandButtonText}>
                 {isExpanded ? '🔼 Hide' : '🔽 View'}
               </Text>
-            </TouchableOpacity>
+            </View>
           </View>
         </TouchableOpacity>
 
@@ -176,11 +273,46 @@ export function PollCard({ pollId, compact = false }: PollCardProps) {
             )}
 
             {canClose && (
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.closePollButton}
                 onPress={handleClosePoll}
               >
                 <Text style={styles.closePollButtonText}>Close Poll</Text>
+              </TouchableOpacity>
+            )}
+
+            {canSendReminder && !isClosed && (
+              <TouchableOpacity
+                style={[
+                  styles.pollReminderButton,
+                  (nonVoters.length === 0 || reminderSent) && styles.pollReminderButtonDisabled,
+                ]}
+                onPress={handleSendPollReminder}
+                disabled={nonVoters.length === 0 || reminderSending || reminderSent}
+              >
+                {reminderSending ? (
+                  <ActivityIndicator size="small" color="#8b5cf6" />
+                ) : (
+                  <>
+                    <Feather
+                      name={reminderSent ? 'check' : 'bell'}
+                      size={16}
+                      color={reminderSent || nonVoters.length === 0 ? '#64748b' : '#8b5cf6'}
+                    />
+                    <Text
+                      style={[
+                        styles.pollReminderText,
+                        (reminderSent || nonVoters.length === 0) && styles.pollReminderTextDisabled,
+                      ]}
+                    >
+                      {reminderSent
+                        ? 'Reminder Sent'
+                        : nonVoters.length === 0
+                          ? 'All Voted'
+                          : `Remind ${nonVoters.length} to Vote`}
+                    </Text>
+                  </>
+                )}
               </TouchableOpacity>
             )}
           </View>
@@ -367,6 +499,29 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '600',
+  },
+  pollReminderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#8b5cf6',
+    marginTop: 12,
+    gap: 6,
+  },
+  pollReminderButtonDisabled: {
+    borderColor: '#475569',
+  },
+  pollReminderText: {
+    color: '#8b5cf6',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  pollReminderTextDisabled: {
+    color: '#64748b',
   },
   fullContainer: {
     backgroundColor: '#2a2a4e',

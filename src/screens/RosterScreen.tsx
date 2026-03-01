@@ -11,7 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
-import { useUserTeams } from '../hooks/useUserTeams';
+import { useAuth } from '../contexts/AuthContext';
 import PlayerAvatar from '../components/PlayerAvatar';
 
 const TEAM_COLOR_PALETTE = [
@@ -70,7 +70,7 @@ interface Player {
 
 export default function RosterScreen({ route, navigation }: any) {
   const team_id = route.params?.team_id ?? route.params?.teamId;
-  const { canManageTeam } = useUserTeams();
+  const { user } = useAuth();
   const [team, setTeam] = useState<Team | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,8 +79,26 @@ export default function RosterScreen({ route, navigation }: any) {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [selectedColor, setSelectedColor] = useState('#5B7BB5');
   const [isSavingColor, setIsSavingColor] = useState(false);
+  const [isStaffInTeam, setIsStaffInTeam] = useState(false);
 
-  const canManage = team_id ? canManageTeam(team_id) : false;
+  useEffect(() => {
+    const checkStaffPermission = async () => {
+      if (!team_id || !user?.id) {
+        setIsStaffInTeam(false);
+        return;
+      }
+      const { data } = await supabase
+        .from('team_staff')
+        .select('id')
+        .eq('team_id', team_id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      setIsStaffInTeam(!!data);
+    };
+    checkStaffPermission();
+  }, [team_id, user?.id]);
+
+  const canManage = isStaffInTeam;
 
   const fetchData = useCallback(async () => {
     if (!team_id) {

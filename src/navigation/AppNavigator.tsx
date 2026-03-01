@@ -29,10 +29,16 @@ import TeamChatRoomScreen from '../screens/TeamChatRoomScreen';
 import DirectMessagesScreen from '../screens/DirectMessagesScreen';
 import DMChatScreen from '../screens/DMChatScreen';
 import GroupInfoScreen from '../screens/GroupInfoScreen';
+import ChatInfoScreen from '../screens/ChatInfoScreen';
+import ChannelPollsScreen from '../screens/ChannelPollsScreen';
+import ChannelFilesScreen from '../screens/ChannelFilesScreen';
+import ChannelLinksScreen from '../screens/ChannelLinksScreen';
+import StaffMessageScreen from '../screens/StaffMessageScreen';
 import CalendarScreen from '../screens/CalendarScreen';
 import EventDetailScreen from '../screens/EventDetailScreen';
 import AttendanceScreen from '../screens/AttendanceScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import { NotificationBell } from '../components/NotificationBell';
 import TeamsScreen from '../screens/TeamsScreen';
 import TeamDetailScreen from '../screens/TeamDetailScreen';
 import RosterScreen from '../screens/RosterScreen';
@@ -422,6 +428,31 @@ function ChatStack() {
         component={GroupInfoScreen}
         options={{ headerShown: false }}
       />
+      <Stack.Screen
+        name="ChatInfo"
+        component={ChatInfoScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="ChannelPolls"
+        component={ChannelPollsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="ChannelFiles"
+        component={ChannelFilesScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="ChannelLinks"
+        component={ChannelLinksScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="StaffMessage"
+        component={StaffMessageScreen}
+        options={{ headerShown: false }}
+      />
     </Stack.Navigator>
   );
 }
@@ -486,12 +517,15 @@ function ProfileStack() {
       <Stack.Screen
         name="Profile"
         component={ProfileScreen}
-        options={{ title: 'Profile' }}
+        options={{
+          title: 'Profile',
+          headerRight: () => <NotificationBell />,
+        }}
       />
       <Stack.Screen
         name="EditProfile"
         component={EditProfileScreen}
-        options={{ title: 'Edit Profile' }}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="PaymentMethods"

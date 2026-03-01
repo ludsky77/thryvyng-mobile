@@ -10,8 +10,8 @@ import {
   FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
-import { useUserTeams } from '../hooks/useUserTeams';
 import { supabase } from '../lib/supabase';
 import { openInMaps } from '../lib/maps';
 import { getEventTypeConfig } from '../types';
@@ -74,8 +74,7 @@ interface AttendanceRecord {
 
 export default function EventDetailScreen({ route, navigation }: any) {
   const { event: eventParam, eventId, onRefetch } = route.params || {};
-  const { user } = useAuth();
-  const { canManageTeam } = useUserTeams();
+  const { user, currentRole } = useAuth();
   const [event, setEvent] = useState<CalendarEvent | null>(eventParam || null);
   const [loading, setLoading] = useState(!eventParam && !!eventId);
   const [rsvpLoading, setRsvpLoading] = useState(false);
@@ -85,8 +84,30 @@ export default function EventDetailScreen({ route, navigation }: any) {
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [eventRsvps, setEventRsvps] = useState<Array<{ player_id: string | null; user_id: string; status: string; decline_reason: string | null }>>([]);
+  const [nonResponders, setNonResponders] = useState<string[]>([]);
+  const [reminderSending, setReminderSending] = useState(false);
+  const [reminderSent, setReminderSent] = useState(false);
+  const [isStaffInTeam, setIsStaffInTeam] = useState(false);
 
-  const isManager = event?.team_id ? canManageTeam(event.team_id) : false;
+  useEffect(() => {
+    const checkStaffPermission = async () => {
+      if (!event?.team_id || !user?.id) {
+        setIsStaffInTeam(false);
+        return;
+      }
+      const { data } = await supabase
+        .from('team_staff')
+        .select('id')
+        .eq('team_id', event.team_id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      setIsStaffInTeam(!!data);
+    };
+    checkStaffPermission();
+  }, [event?.team_id, user?.id]);
+
+  const isManager = isStaffInTeam;
+  const isStaff = isManager || (currentRole && ['club_admin', 'platform_admin'].includes(currentRole.role));
 
   const fetchEvent = useCallback(async () => {
     if (!eventId && !eventParam) return;
@@ -175,6 +196,54 @@ export default function EventDetailScreen({ route, navigation }: any) {
     }
   }, [event?.id, event?.team_id]);
 
+  const fetchNonResponders = useCallback(async () => {
+    if (!event?.team_id || !event?.id) return;
+
+    try {
+      // Get team members: team_staff + parents of players (users who should RSVP)
+      const { data: staffData } = await supabase
+        .from('team_staff')
+        .select('user_id')
+        .eq('team_id', event.team_id);
+
+      const { data: playersData } = await supabase
+        .from('players')
+        .select('parent_email, secondary_parent_email')
+        .eq('team_id', event.team_id);
+
+      const emails = new Set<string>();
+      (playersData || []).forEach((p: any) => {
+        if (p.parent_email) emails.add(p.parent_email);
+        if (p.secondary_parent_email) emails.add(p.secondary_parent_email);
+      });
+
+      let parentUserIds: string[] = [];
+      if (emails.size > 0) {
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('id')
+          .in('email', Array.from(emails));
+        parentUserIds = (profilesData || []).map((p: any) => p.id);
+      }
+
+      const staffUserIds = (staffData || []).map((s: any) => s.user_id);
+      const teamMemberIds = [...new Set([...staffUserIds, ...parentUserIds])];
+
+      const { data: rsvps } = await supabase
+        .from('cal_event_rsvps')
+        .select('user_id')
+        .eq('event_id', event.id);
+
+      const respondedUserIds = new Set((rsvps || []).map((r: any) => r.user_id));
+      const nonResponderIds = teamMemberIds.filter((id) => !respondedUserIds.has(id));
+
+      setNonResponders(nonResponderIds);
+    } catch (err) {
+      console.error('[EventDetail] Error fetching non-responders:', err);
+      setNonResponders([]);
+    }
+  }, [event?.id, event?.team_id]);
+
   useEffect(() => {
     if (eventParam) {
       setEvent(eventParam);
@@ -188,6 +257,12 @@ export default function EventDetailScreen({ route, navigation }: any) {
       fetchAttendance();
     }
   }, [activeTab, event?.id, fetchAttendance]);
+
+  useEffect(() => {
+    if (event?.id && event?.team_id && isStaff) {
+      fetchNonResponders();
+    }
+  }, [event?.id, event?.team_id, isStaff, fetchNonResponders]);
 
   const typeConfig = event ? getEventTypeConfig(event.event_type) : getEventTypeConfig('other_event');
   const dateParts = event ? formatDateParts(event.event_date) : { day: '', date: '', month: '' };
@@ -229,6 +304,7 @@ export default function EventDetailScreen({ route, navigation }: any) {
 
       setCantGoModalVisible(false);
       fetchEvent();
+      fetchNonResponders();
       onRefetch?.();
     } catch (err) {
       console.error('[EventDetail] RSVP error:', err);
@@ -240,6 +316,47 @@ export default function EventDetailScreen({ route, navigation }: any) {
 
   const handleCantGoSkip = () => handleRsvp('no', null);
   const handleCantGoSubmit = (reason: string) => handleRsvp('no', reason.trim() || null);
+
+  const handleSendReminder = async () => {
+    if (nonResponders.length === 0 || reminderSending || !event) return;
+
+    setReminderSending(true);
+
+    try {
+      const dateStr = event.event_date
+        ? new Date(event.event_date + 'T12:00:00').toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+          })
+        : '';
+
+      const { error } = await supabase.functions.invoke('send-push-notification', {
+        body: {
+          user_ids: nonResponders,
+          title: '📅 RSVP Needed',
+          body: `${event.title} on ${dateStr} at ${formatTime(event.start_time)}. Please respond!`,
+          type: 'event_reminder',
+          data: {
+            reference_type: 'event',
+            reference_id: event.id,
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      setReminderSent(true);
+      Alert.alert('Reminder Sent', `Notified ${nonResponders.length} team member(s)`);
+
+      setTimeout(() => setReminderSent(false), 60 * 60 * 1000);
+    } catch (err) {
+      console.error('[EventDetail] Failed to send reminder:', err);
+      Alert.alert('Error', 'Failed to send reminder. Please try again.');
+    } finally {
+      setReminderSending(false);
+    }
+  };
 
   const handleCancelEvent = async () => {
     if (!event) return;
@@ -765,6 +882,36 @@ export default function EventDetailScreen({ route, navigation }: any) {
                 onSubmit={handleCantGoSubmit}
                 submitting={rsvpLoading}
               />
+
+              {isStaff && (
+                <TouchableOpacity
+                  style={[
+                    styles.reminderButton,
+                    (nonResponders.length === 0 || reminderSent) && styles.reminderButtonDisabled,
+                  ]}
+                  onPress={handleSendReminder}
+                  disabled={nonResponders.length === 0 || reminderSending || reminderSent}
+                >
+                  {reminderSending ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Feather
+                        name={reminderSent ? 'check' : 'bell'}
+                        size={18}
+                        color="#fff"
+                      />
+                      <Text style={styles.reminderButtonText}>
+                        {reminderSent
+                          ? 'Reminder Sent'
+                          : nonResponders.length === 0
+                            ? 'All Responded'
+                            : `Remind ${nonResponders.length} to RSVP`}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
             </>
           )}
 
@@ -1176,6 +1323,27 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
     fontSize: 14,
+  },
+
+  reminderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#8b5cf6',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginTop: 16,
+    marginHorizontal: 16,
+    gap: 8,
+  },
+  reminderButtonDisabled: {
+    backgroundColor: '#475569',
+  },
+  reminderButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 
   // Attendance

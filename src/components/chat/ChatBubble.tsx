@@ -35,6 +35,7 @@ interface ChatBubbleProps {
   senderName?: string;
   senderAvatar?: string | null;
   senderRole?: string;
+  playerLabel?: string;
   showSenderInfo?: boolean;
   reactions?: ReactionSummary[];
   replyTo?: { content: string; senderName: string };
@@ -51,6 +52,7 @@ export function ChatBubble({
   senderName,
   senderAvatar,
   senderRole,
+  playerLabel,
   showSenderInfo = true,
   reactions = [],
   replyTo,
@@ -175,9 +177,14 @@ export function ChatBubble({
         >
           {!isOwnMessage && showSenderInfo && (
             <>
-              {senderName && (
-                <Text style={styles.senderName}>{senderName}</Text>
-              )}
+              <View style={styles.senderInfo}>
+                {senderName && (
+                  <Text style={styles.senderName}>{senderName}</Text>
+                )}
+                {playerLabel && (
+                  <Text style={styles.playerLabel}>({playerLabel}'s)</Text>
+                )}
+              </View>
               {getRoleIcon()}
             </>
           )}
@@ -326,10 +333,20 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
 
+  senderInfo: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+  },
   senderName: {
     fontSize: 13,
     fontWeight: '600',
     color: '#9CA3AF',
+  },
+  playerLabel: {
+    fontSize: 12,
+    color: '#94a3b8',
+    fontWeight: '400',
   },
 
   messageTime: {

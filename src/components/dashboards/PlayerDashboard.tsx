@@ -14,6 +14,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { LiveGamesWidget } from '../game-stats/LiveGamesWidget';
+import QuickActionsCard from '../QuickActionsCard';
+import WellnessParentAlert from '../WellnessParentAlert';
 
 interface PlayerDashboardProps {
   playerId: string | null;
@@ -41,7 +43,7 @@ interface EnrolledCourse {
 }
 
 export default function PlayerDashboard({ playerId, navigation }: PlayerDashboardProps) {
-  const { user } = useAuth();
+  const { user, currentRole } = useAuth();
   const [player, setPlayer] = useState<Player | null>(null);
   const [enrolledCourses, setEnrolledCourses] = useState<EnrolledCourse[]>([]);
   const [topPlayers, setTopPlayers] = useState<{ id: string; first_name: string; last_name: string; total_xp: number }[]>([]);
@@ -215,52 +217,75 @@ export default function PlayerDashboard({ playerId, navigation }: PlayerDashboar
         </View>
       </View>
 
-      {/* Action Buttons Row */}
-      <View style={styles.actionButtonsRow}>
-        <TouchableOpacity
-          style={styles.actionButtonCard}
-          onPress={() => navigation.navigate('Courses' as never)}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.actionButtonIcon, { backgroundColor: '#3B82F6' }]}>
-            <Ionicons name="library-outline" size={28} color="#FFFFFF" />
-          </View>
-          <Text style={styles.actionButtonLabel}>Courses</Text>
-        </TouchableOpacity>
+      {/* Quick Actions - 2 Rows */}
+      <QuickActionsCard
+        actions={[
+          {
+            id: 'courses',
+            icon: 'library-outline',
+            label: 'Courses',
+            color: '#3b82f6',
+            onPress: () => navigation.navigate('Courses' as never),
+          },
+          {
+            id: 'games',
+            icon: 'game-controller-outline',
+            label: 'Games',
+            color: '#8b5cf6',
+            onPress: () => navigation.navigate('GamesHub' as never),
+          },
+          {
+            id: 'store',
+            icon: 'cart-outline',
+            label: 'Store',
+            color: '#10b981',
+            onPress: () => navigation.navigate('ProductStore' as never),
+          },
+          {
+            id: 'evals',
+            icon: 'clipboard-outline',
+            label: 'Evals',
+            color: '#f59e0b',
+            onPress: () => navigation.navigate('Evaluations' as never),
+          },
+          {
+            id: 'team',
+            icon: 'people-outline',
+            label: 'Team Resources',
+            color: '#06b6d4',
+            onPress: () =>
+              navigation.navigate('TeamResources' as never, {
+                playerId,
+                userId: user?.id,
+              }),
+          },
+          {
+            id: 'health',
+            icon: 'fitness-outline',
+            label: 'Health',
+            color: '#ec4899',
+            onPress: () =>
+              navigation.navigate('Health' as never, {
+                playerId,
+                userId: user?.id,
+              }),
+          },
+        ]}
+      />
 
-        <TouchableOpacity
-          style={styles.actionButtonCard}
-          onPress={() => navigation.navigate('GamesHub' as never)}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.actionButtonIcon, { backgroundColor: '#8B5CF6' }]}>
-            <Ionicons name="game-controller-outline" size={28} color="#FFFFFF" />
+      {/* Wellness Section - Only shows for parents viewing a female athlete */}
+      {currentRole?.role === 'parent' &&
+        playerId &&
+        user?.id &&
+        player && (
+          <View style={styles.wellnessSection}>
+            <WellnessParentAlert
+              playerId={playerId}
+              playerName={playerName}
+              userId={user.id}
+            />
           </View>
-          <Text style={styles.actionButtonLabel}>Games</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.actionButtonCard}
-          onPress={() => navigation.navigate('ProductStore' as never)}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.actionButtonIcon, { backgroundColor: '#10B981' }]}>
-            <Ionicons name="cart-outline" size={28} color="#FFFFFF" />
-          </View>
-          <Text style={styles.actionButtonLabel}>Store</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.actionButtonCard}
-          onPress={() => navigation.navigate('Evaluations' as never)}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.actionButtonIcon, { backgroundColor: '#F59E0B' }]}>
-            <Ionicons name="clipboard-outline" size={28} color="#FFFFFF" />
-          </View>
-          <Text style={styles.actionButtonLabel}>Evals</Text>
-        </TouchableOpacity>
-      </View>
+        )}
 
       {/* YOUR PROGRESS */}
       <View style={styles.section}>
@@ -489,6 +514,10 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 12,
     gap: 8,
+  },
+  wellnessSection: {
+    paddingHorizontal: 12,
+    marginBottom: 12,
   },
   actionButtonCard: {
     flex: 1,

@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   FlatList,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, Ionicons } from '@expo/vector-icons';
@@ -25,6 +26,8 @@ interface Poll {
   total_votes: number;
   options: { id: string; text: string; vote_count: number }[];
   user_voted: boolean;
+  user_voted_option_id: string | null;
+  non_voter_count: number;
 }
 
 export default function ChannelPollsScreen() {
@@ -36,6 +39,38 @@ export default function ChannelPollsScreen() {
   const [loading, setLoading] = useState(true);
   const [polls, setPolls] = useState<Poll[]>([]);
   const [filter, setFilter] = useState<'all' | 'active' | 'closed'>('all');
+  const [votingPollId, setVotingPollId] = useState<string | null>(null);
+  const [sendingReminder, setSendingReminder] = useState<string | null>(null);
+  const [closingPoll, setClosingPoll] = useState<string | null>(null);
+  const [isStaffInChannel, setIsStaffInChannel] = useState(false);
+  const [channelTeamId, setChannelTeamId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const checkStaffAndTeam = async () => {
+      if (!channelId || !user?.id) return;
+
+      const { data: channelData } = await supabase
+        .from('comm_channels')
+        .select('team_id')
+        .eq('id', channelId)
+        .single();
+
+      if (channelData?.team_id) {
+        setChannelTeamId(channelData.team_id);
+
+        const { data: staffData } = await supabase
+          .from('team_staff')
+          .select('id')
+          .eq('team_id', channelData.team_id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        setIsStaffInChannel(!!staffData);
+      }
+    };
+
+    checkStaffAndTeam();
+  }, [channelId, user?.id]);
 
   useEffect(() => {
     if (channelId) {
@@ -82,6 +117,7 @@ export default function ChannelPollsScreen() {
         );
       }
       let votedPollIds = new Set<string>();
+      let votedOptionsMap = new Map<string, string>();
       let votesByPoll: Record<string, { option_id: string }[]> = {};
 
       if (pollIds.length > 0) {
@@ -96,11 +132,18 @@ export default function ChannelPollsScreen() {
           votesByPoll[v.poll_id].push(v);
         });
         if (user?.id) {
-          votedPollIds = new Set(
-            votes.filter((v: any) => v.user_id === user.id).map((v: any) => v.poll_id)
+          const userVoteList = votes.filter((v: any) => v.user_id === user.id);
+          votedPollIds = new Set(userVoteList.map((v: any) => v.poll_id));
+          votedOptionsMap = new Map(
+            userVoteList.map((v: any) => [v.poll_id, v.option_id])
           );
         }
       }
+
+      const { count: memberCount } = await supabase
+        .from('comm_channel_members')
+        .select('id', { count: 'exact', head: true })
+        .eq('channel_id', channelId);
 
       const formattedPolls: Poll[] = (pollsData || []).map((p: any) => {
         const isExpired = p.ends_at && new Date(p.ends_at) < new Date();
@@ -135,6 +178,8 @@ export default function ChannelPollsScreen() {
           options,
           total_votes,
           user_voted: votedPollIds.has(p.id),
+          user_voted_option_id: votedOptionsMap.get(p.id) || null,
+          non_voter_count: Math.max(0, (memberCount || 0) - total_votes),
         };
       });
 
@@ -145,6 +190,125 @@ export default function ChannelPollsScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleVote = async (pollId: string, optionId: string) => {
+    if (!user?.id) return;
+
+    setVotingPollId(pollId);
+
+    try {
+      const { data: existingVote } = await supabase
+        .from('comm_poll_votes')
+        .select('id')
+        .eq('poll_id', pollId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (existingVote) {
+        await supabase
+          .from('comm_poll_votes')
+          .update({ option_id: optionId })
+          .eq('poll_id', pollId)
+          .eq('user_id', user.id);
+      } else {
+        await supabase.from('comm_poll_votes').insert({
+          poll_id: pollId,
+          option_id: optionId,
+          user_id: user.id,
+        });
+      }
+
+      await fetchPolls();
+    } catch (err) {
+      console.error('Error voting:', err);
+    } finally {
+      setVotingPollId(null);
+    }
+  };
+
+  const handleRemindToVote = async (poll: Poll) => {
+    if (!channelId) return;
+
+    setSendingReminder(poll.id);
+
+    try {
+      const { data: channelMembers } = await supabase
+        .from('comm_channel_members')
+        .select('user_id')
+        .eq('channel_id', channelId);
+
+      const { data: votes } = await supabase
+        .from('comm_poll_votes')
+        .select('user_id')
+        .eq('poll_id', poll.id);
+
+      const votedUserIds = new Set(votes?.map((v: any) => v.user_id) || []);
+      const nonVoterIds =
+        channelMembers
+          ?.filter((cm: any) => !votedUserIds.has(cm.user_id))
+          .map((cm: any) => cm.user_id) || [];
+
+      if (nonVoterIds.length === 0) {
+        Alert.alert('All Voted', 'Everyone has already voted on this poll!');
+        return;
+      }
+
+      const { error } = await supabase.functions.invoke('send-push-notification', {
+        body: {
+          user_ids: nonVoterIds,
+          title: '📊 Your Vote Needed',
+          body: `"${poll.question}" - Vote now!`,
+          type: 'poll_reminder',
+          data: {
+            reference_type: 'poll',
+            reference_id: poll.id,
+            channel_id: channelId,
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      Alert.alert(
+        'Reminder Sent',
+        `Notified ${nonVoterIds.length} member(s) to vote`
+      );
+    } catch (err) {
+      console.error('Error sending reminder:', err);
+      Alert.alert('Error', 'Failed to send reminder');
+    } finally {
+      setSendingReminder(null);
+    }
+  };
+
+  const handleClosePoll = async (pollId: string) => {
+    Alert.alert(
+      'Close Poll',
+      'Are you sure you want to close this poll? No more votes will be accepted.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Close Poll',
+          style: 'destructive',
+          onPress: async () => {
+            setClosingPoll(pollId);
+            try {
+              await supabase
+                .from('comm_polls')
+                .update({ is_active: false })
+                .eq('id', pollId);
+
+              await fetchPolls();
+            } catch (err) {
+              console.error('Error closing poll:', err);
+            } finally {
+              setClosingPoll(null);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const filteredPolls = polls.filter((p) => {
@@ -158,12 +322,12 @@ export default function ChannelPollsScreen() {
 
   const renderPoll = ({ item }: { item: Poll }) => {
     const isActive = item.status === 'active';
+    const isVoting = votingPollId === item.id;
+    const isCreator = item.created_by === user?.id;
+    const canManagePoll = isStaffInChannel || isCreator;
 
     return (
-      <TouchableOpacity
-        style={styles.pollCard}
-        onPress={() => navigation.goBack()}
-      >
+      <View style={styles.pollCard}>
         <View style={styles.pollHeader}>
           <View
             style={[
@@ -196,41 +360,111 @@ export default function ChannelPollsScreen() {
           </Text>
           <Text style={styles.pollMetaDot}>•</Text>
           <Text style={styles.pollMetaText}>
-            {item.options.length} option{item.options.length !== 1 ? 's' : ''}
-          </Text>
-          <Text style={styles.pollMetaDot}>•</Text>
-          <Text style={styles.pollMetaText}>
             {format(new Date(item.created_at), 'MMM d')}
           </Text>
         </View>
 
         <Text style={styles.creatorText}>by {item.creator_name}</Text>
 
-        {item.options.slice(0, 3).map((opt) => {
-          const percentage =
-            item.total_votes > 0
-              ? Math.round((opt.vote_count / item.total_votes) * 100)
-              : 0;
-          return (
-            <View key={opt.id} style={styles.optionRow}>
-              <View style={styles.optionBarBg}>
-                <View
-                  style={[styles.optionBarFill, { width: `${percentage}%` }]}
-                />
-              </View>
-              <Text style={styles.optionText} numberOfLines={1}>
-                {opt.text}
-              </Text>
-              <Text style={styles.optionPercent}>{percentage}%</Text>
-            </View>
-          );
-        })}
-        {item.options.length > 3 && (
-          <Text style={styles.moreOptions}>
-            +{item.options.length - 3} more options
-          </Text>
+        {isVoting ? (
+          <ActivityIndicator
+            size="small"
+            color="#8b5cf6"
+            style={{ marginTop: 12 }}
+          />
+        ) : (
+          <View style={styles.optionsContainer}>
+            {item.options.map((opt) => {
+              const percentage =
+                item.total_votes > 0
+                  ? Math.round((opt.vote_count / item.total_votes) * 100)
+                  : 0;
+              const isSelected = item.user_voted_option_id === opt.id;
+
+              return (
+                <TouchableOpacity
+                  key={opt.id}
+                  style={[
+                    styles.optionButton,
+                    isSelected && styles.optionButtonSelected,
+                    !isActive && styles.optionButtonDisabled,
+                  ]}
+                  onPress={() => isActive && handleVote(item.id, opt.id)}
+                  disabled={!isActive}
+                  activeOpacity={isActive ? 0.7 : 1}
+                >
+                  <View
+                    style={[
+                      styles.optionProgress,
+                      { width: `${percentage}%` },
+                      isSelected && styles.optionProgressSelected,
+                    ]}
+                  />
+                  <View style={styles.optionContent}>
+                    <View style={styles.optionLeft}>
+                      {isSelected ? (
+                        <Feather
+                          name="check-circle"
+                          size={18}
+                          color="#8b5cf6"
+                        />
+                      ) : (
+                        <View style={styles.radioOuter} />
+                      )}
+                      <Text
+                        style={[
+                          styles.optionText,
+                          isSelected && styles.optionTextSelected,
+                        ]}
+                      >
+                        {opt.text}
+                      </Text>
+                    </View>
+                    <Text style={styles.optionPercent}>{percentage}%</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         )}
-      </TouchableOpacity>
+
+        {canManagePoll && isActive && (
+          <View style={styles.staffControls}>
+            {item.non_voter_count > 0 && (
+              <TouchableOpacity
+                style={styles.remindButton}
+                onPress={() => handleRemindToVote(item)}
+                disabled={sendingReminder === item.id}
+              >
+                {sendingReminder === item.id ? (
+                  <ActivityIndicator size="small" color="#8b5cf6" />
+                ) : (
+                  <>
+                    <Feather name="bell" size={16} color="#8b5cf6" />
+                    <Text style={styles.remindButtonText}>
+                      Remind {item.non_voter_count} to Vote
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => handleClosePoll(item.id)}
+              disabled={closingPoll === item.id}
+            >
+              {closingPoll === item.id ? (
+                <ActivityIndicator size="small" color="#64748b" />
+              ) : (
+                <>
+                  <Feather name="x-circle" size={16} color="#64748b" />
+                  <Text style={styles.closeButtonText}>Close Poll</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
     );
   };
 
@@ -454,39 +688,109 @@ const styles = StyleSheet.create({
     color: '#64748b',
     marginBottom: 12,
   },
-  optionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
+  optionsContainer: {
+    marginTop: 12,
     gap: 8,
   },
-  optionBarBg: {
-    width: 60,
-    height: 6,
-    backgroundColor: '#334155',
-    borderRadius: 3,
+  optionButton: {
+    position: 'relative',
+    backgroundColor: '#1e293b',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
     overflow: 'hidden',
   },
-  optionBarFill: {
-    height: '100%',
-    backgroundColor: '#8b5cf6',
-    borderRadius: 3,
+  optionButtonSelected: {
+    borderColor: '#8b5cf6',
+  },
+  optionButtonDisabled: {
+    opacity: 0.8,
+  },
+  optionProgress: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+  },
+  optionProgressSelected: {
+    backgroundColor: 'rgba(139, 92, 246, 0.25)',
+  },
+  optionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  optionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 10,
+  },
+  radioOuter: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: '#64748b',
   },
   optionText: {
+    fontSize: 14,
+    color: '#e2e8f0',
     flex: 1,
-    fontSize: 13,
-    color: '#94a3b8',
+  },
+  optionTextSelected: {
+    color: '#fff',
+    fontWeight: '500',
   },
   optionPercent: {
-    fontSize: 12,
-    color: '#64748b',
-    width: 35,
+    fontSize: 13,
+    color: '#94a3b8',
+    fontWeight: '500',
+    minWidth: 40,
     textAlign: 'right',
   },
-  moreOptions: {
-    fontSize: 12,
+  staffControls: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+  },
+  remindButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#8b5cf6',
+  },
+  remindButtonText: {
+    fontSize: 13,
+    color: '#8b5cf6',
+    fontWeight: '500',
+  },
+  closeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#475569',
+  },
+  closeButtonText: {
+    fontSize: 13,
     color: '#64748b',
-    marginTop: 4,
+    fontWeight: '500',
   },
   emptyState: {
     alignItems: 'center',

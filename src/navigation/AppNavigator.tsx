@@ -62,6 +62,14 @@ import PlayerEvaluationsScreen from '../screens/PlayerEvaluationsScreen';
 import EvaluationsScreen from '../screens/EvaluationsScreen';
 import TeamCertificatesScreen from '../screens/TeamCertificatesScreen';
 import GamesHubScreen from '../screens/GamesHubScreen';
+import WellnessHubScreen from '../screens/WellnessHubScreen';
+import WellnessCategoryScreen from '../screens/WellnessCategoryScreen';
+import WellnessTopicScreen from '../screens/WellnessTopicScreen';
+import WellnessParentDashboardScreen from '../screens/WellnessParentDashboardScreen';
+import HealthScreen from '../screens/HealthScreen';
+import ResourcesScreen from '../screens/ResourcesScreen';
+import SkillsLibraryScreen from '../screens/SkillsLibraryScreen';
+import TeamResourcesScreen from '../screens/TeamResourcesScreen';
 import GamePlayScreen from '../screens/GamePlayScreen';
 import ProductStoreScreen from '../screens/ProductStoreScreen';
 import ProductDetailScreen from '../screens/ProductDetailScreen';
@@ -298,6 +306,47 @@ function HomeStack() {
         component={GamesHubScreen as any}
         options={{ headerShown: false }}
       />
+      {/* Health & Wellness Routes */}
+      <Stack.Screen
+        name="Health"
+        component={HealthScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Resources"
+        component={ResourcesScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="WellnessHub"
+        component={WellnessHubScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="WellnessCategory"
+        component={WellnessCategoryScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="WellnessTopic"
+        component={WellnessTopicScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="WellnessParentDashboard"
+        component={WellnessParentDashboardScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="SkillsLibrary"
+        component={SkillsLibraryScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="TeamResources"
+        component={TeamResourcesScreen}
+        options={{ headerShown: false }}
+      />
       <Stack.Screen
         name="GamePlay"
         component={GamePlayScreen as any}
@@ -389,6 +438,46 @@ function TeamsStack() {
         name="TeamCertificates"
         component={TeamCertificatesScreen}
         options={{ title: 'Team Certificates' }}
+      />
+      <Stack.Screen
+        name="Resources"
+        component={ResourcesScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Health"
+        component={HealthScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="WellnessHub"
+        component={WellnessHubScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="WellnessCategory"
+        component={WellnessCategoryScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="WellnessTopic"
+        component={WellnessTopicScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="WellnessParentDashboard"
+        component={WellnessParentDashboardScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="SkillsLibrary"
+        component={SkillsLibraryScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="TeamResources"
+        component={TeamResourcesScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

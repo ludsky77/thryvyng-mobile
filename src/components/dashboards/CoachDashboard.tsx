@@ -15,6 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import { formatDistanceToNow } from 'date-fns';
 import { LiveGamesWidget } from '../game-stats/LiveGamesWidget';
+import QuickActionsCard from '../QuickActionsCard';
 
 interface CoachDashboardProps {
   teamId: string | null;
@@ -55,15 +56,6 @@ interface RecentActivity {
   timeAgo: string;
   created_at: string;
 }
-
-const QUICK_ACTION_ICONS = [
-  { id: 'roster', label: 'View Roster', icon: 'people', color: '#4A9B8B' },
-  { id: 'staff', label: 'Team Staff', icon: 'person-add', color: '#C48B6B' },
-  { id: 'evaluations', label: 'Evaluations', icon: 'clipboard', color: '#5BA58C' },
-  { id: 'messages', label: 'Messages', icon: 'chatbubble', color: '#8B6BAD' },
-  { id: 'calendar', label: 'Calendar', icon: 'calendar', color: '#5B7BB5' },
-  { id: 'certificates', label: 'Certificates', icon: 'trophy', color: '#C4976D' },
-];
 
 export default function CoachDashboard({ teamId }: CoachDashboardProps) {
   const navigation = useNavigation<any>();
@@ -407,35 +399,66 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
 
       {/* 4. Quick Actions Grid */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>⚡ QUICK ACTIONS</Text>
-        <View style={styles.quickActionsGrid}>
-          {QUICK_ACTION_ICONS.map((item) => (
-            <TouchableOpacity
-              key={item.id}
-              style={styles.quickAction}
-              onPress={() => {
-                if (item.id === 'roster') {
-                  navigateToScreen('Roster', { teamId: teamId, team_id: teamId, teamName: team?.name || '' });
-                } else if (item.id === 'staff') {
-                  navigateToScreen('TeamStaff', { teamId: teamId, team_id: teamId });
-                } else if (item.id === 'evaluations') {
-                  navigateToScreen('EvaluationRoster', { teamId: teamId, team_id: teamId, teamName: team?.name || '' });
-                } else if (item.id === 'messages') {
-                  navigateToScreen('ChatTab');
-                } else if (item.id === 'calendar') {
-                  navigateToScreen('CalendarTab');
-                } else if (item.id === 'certificates') {
-                  navigateToScreen('TeamCertificates', { teamId: teamId });
-                }
-              }}
-            >
-              <View style={[styles.quickActionIconContainer, { backgroundColor: item.color + '20' }]}>
-                <Ionicons name={item.icon as any} size={28} color={item.color} />
-              </View>
-              <Text style={styles.quickActionText}>{item.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <QuickActionsCard
+          title="Quick Actions"
+          actions={[
+            {
+              id: 'roster',
+              icon: 'people-outline',
+              label: 'View Roster',
+              color: '#8b5cf6',
+              onPress: () =>
+                navigateToScreen('Roster', {
+                  teamId,
+                  team_id: teamId,
+                  teamName: team?.name || '',
+                }),
+            },
+            {
+              id: 'staff',
+              icon: 'person-add-outline',
+              label: 'Team Staff',
+              color: '#f59e0b',
+              onPress: () =>
+                navigateToScreen('TeamStaff', { teamId, team_id: teamId }),
+            },
+            {
+              id: 'evals',
+              icon: 'clipboard-outline',
+              label: 'Evaluations',
+              color: '#10b981',
+              onPress: () =>
+                navigateToScreen('EvaluationRoster', {
+                  teamId,
+                  team_id: teamId,
+                  teamName: team?.name || '',
+                }),
+            },
+            {
+              id: 'resources',
+              icon: 'folder-outline',
+              label: 'Team Resources',
+              color: '#06b6d4',
+              onPress: () =>
+                navigateToScreen('TeamResources', { teamId, team_id: teamId }),
+            },
+            {
+              id: 'calendar',
+              icon: 'calendar-outline',
+              label: 'Calendar',
+              color: '#3b82f6',
+              onPress: () => navigateToScreen('CalendarTab'),
+            },
+            {
+              id: 'certs',
+              icon: 'trophy-outline',
+              label: 'Certificates',
+              color: '#eab308',
+              onPress: () =>
+                navigateToScreen('TeamCertificates', { teamId }),
+            },
+          ]}
+        />
       </View>
 
       {/* 5. Team Performance Stats */}
@@ -684,35 +707,6 @@ const styles = StyleSheet.create({
   inviteHint: {
     color: '#666',
     fontSize: 11,
-  },
-  // Quick Actions Grid
-  quickActionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  quickAction: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    width: '31%',
-    borderWidth: 1.5,
-    borderColor: '#a78bfa',
-  },
-  quickActionIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  quickActionText: {
-    color: '#fff',
-    fontSize: 11,
-    textAlign: 'center',
-    fontWeight: '500',
   },
   // Team Performance
   performanceRow: {

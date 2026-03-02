@@ -9,6 +9,7 @@ import {
   Image,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Player {
   id: string;
@@ -38,6 +39,7 @@ interface Evaluation {
 
 export default function PlayerProfileScreen({ route, navigation }: any) {
   const { playerId, playerName } = route.params;
+  const { user } = useAuth();
   const [player, setPlayer] = useState<Player | null>(null);
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -264,6 +266,36 @@ export default function PlayerProfileScreen({ route, navigation }: any) {
         <Text style={styles.sectionTitle}>Actions</Text>
       </View>
       <View style={styles.sectionContent}>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() =>
+            navigation.navigate('Resources', {
+              playerId,
+              playerName: player.first_name + ' ' + player.last_name,
+              userId: user?.id,
+            })
+          }
+        >
+          <Text style={styles.actionIcon}>📋</Text>
+          <Text style={styles.actionText}>Resources</Text>
+          <Text style={styles.actionArrow}>›</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() =>
+            navigation.navigate('WellnessParentDashboard', {
+              playerId,
+              playerName: player.first_name + ' ' + player.last_name,
+              userId: user?.id,
+            })
+          }
+        >
+          <Text style={styles.actionIcon}>💜</Text>
+          <Text style={styles.actionText}>Women's Wellness (Parent)</Text>
+          <Text style={styles.actionArrow}>›</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.actionButton}>
           <Text style={styles.actionIcon}>📜</Text>
           <Text style={styles.actionText}>View Certificates</Text>

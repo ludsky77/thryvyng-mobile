@@ -93,6 +93,10 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   const [isStaffInChannel, setIsStaffInChannel] = useState(false);
   const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [channelTeamId, setChannelTeamId] = useState<string | null>(null);
+  const [parentPlayerNames, setParentPlayerNames] = useState<
+    Map<string, string>
+  >(new Map());
+  const [staffUserIds, setStaffUserIds] = useState<Set<string>>(new Set());
 
   const {
     messages,
@@ -143,6 +147,80 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     };
     checkStaffPermission();
   }, [channelId, user?.id]);
+
+  useEffect(() => {
+    if (!channelTeamId) {
+      setParentPlayerNames(new Map());
+      setStaffUserIds(new Set());
+      return;
+    }
+    const fetchParentPlayerNames = async () => {
+      if (messages.length === 0) return;
+      const senderIds = [...new Set(messages.map((m) => m.user_id))];
+      if (senderIds.length === 0) return;
+
+      try {
+        const { data: staffMembers } = await supabase
+          .from('team_staff')
+          .select('user_id')
+          .eq('team_id', channelTeamId)
+          .in('user_id', senderIds);
+
+        const staffSet = new Set(
+          staffMembers?.map((s: any) => s.user_id) || []
+        );
+        setStaffUserIds(staffSet);
+
+        const parentSenderIds = senderIds.filter((id) => !staffSet.has(id));
+        if (parentSenderIds.length === 0) {
+          setParentPlayerNames(new Map());
+          return;
+        }
+
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, email')
+          .in('id', parentSenderIds);
+
+        const emailToUserId = new Map<string, string>();
+        (profiles || []).forEach((p: any) => {
+          if (p.email) emailToUserId.set(p.email.toLowerCase(), p.id);
+        });
+        const parentEmails = Array.from(emailToUserId.keys());
+        if (parentEmails.length === 0) {
+          setParentPlayerNames(new Map());
+          return;
+        }
+
+        const { data: players } = await supabase
+          .from('players')
+          .select('first_name, parent_email, secondary_parent_email')
+          .eq('team_id', channelTeamId);
+
+        const parentMap = new Map<string, string>();
+        (players || []).forEach((p: any) => {
+          const primaryEmail = p.parent_email?.toLowerCase();
+          const secondaryEmail = p.secondary_parent_email?.toLowerCase();
+          const userId =
+            (primaryEmail && emailToUserId.get(primaryEmail)) ||
+            (secondaryEmail && emailToUserId.get(secondaryEmail));
+          if (!userId) return;
+          const name = p.first_name || '';
+          const existing = parentMap.get(userId);
+          if (existing) {
+            parentMap.set(userId, `${existing} & ${name}`);
+          } else {
+            parentMap.set(userId, name);
+          }
+        });
+        setParentPlayerNames(parentMap);
+      } catch (err) {
+        console.error('Error fetching parent player names:', err);
+      }
+    };
+
+    fetchParentPlayerNames();
+  }, [channelTeamId, messages]);
 
   useEffect(() => {
     if (channelId && user?.id && messages.length > 0) {
@@ -309,6 +387,9 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
 
     const isOwnMessage = item.user_id === user?.id;
     const reactionsSummary = getReactionsSummary(item.reactions, user?.id);
+    const isStaff = staffUserIds.has(item.user_id);
+    const playerLabel = !isStaff ? parentPlayerNames.get(item.user_id) : null;
+
     const replyTo =
       item.reply_to_id && (item.reply_to_content != null || item.reply_to_sender != null)
         ? {
@@ -343,6 +424,7 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           senderName={
             (item as any).profiles?.full_name || item.profile?.full_name
           }
+          playerLabel={playerLabel ?? undefined}
           senderAvatar={
             (item as any).profiles?.avatar_url || item.profile?.avatar_url
           }

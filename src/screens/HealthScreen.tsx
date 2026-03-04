@@ -79,7 +79,7 @@ export default function HealthScreen() {
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <Ionicons name="arrow-back" size={24} color="#374151" />
+          <Ionicons name="arrow-back" size={24} color="#ffffff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Health</Text>
         <View style={styles.headerSpacer} />
@@ -108,7 +108,7 @@ export default function HealthScreen() {
               <Text style={styles.itemTitle}>{item.title}</Text>
               <Text style={styles.itemSubtitle}>{item.subtitle}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#d1d5db" />
+            <Ionicons name="chevron-forward" size={20} color="#64748b" />
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -117,23 +117,23 @@ export default function HealthScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f9fafb' },
+  container: { flex: 1, backgroundColor: '#0f172a' },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#0f172a',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#fff',
+    backgroundColor: '#0f172a',
     paddingTop: 60,
     paddingBottom: 16,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    borderBottomColor: '#1e293b',
   },
   backButton: {
     width: 40,
@@ -142,24 +142,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#1f2937' },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#ffffff' },
   headerSpacer: { width: 40 },
   scrollView: { flex: 1 },
   scrollContent: { padding: 20 },
   itemCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#1e293b',
     padding: 16,
     borderRadius: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#f3f4f6',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    borderColor: '#334155',
   },
   itemIcon: {
     width: 56,
@@ -169,6 +164,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   itemContent: { flex: 1, marginLeft: 16 },
-  itemTitle: { fontSize: 16, fontWeight: '600', color: '#1f2937' },
-  itemSubtitle: { fontSize: 13, color: '#6b7280', marginTop: 2 },
+  itemTitle: { fontSize: 16, fontWeight: '600', color: '#ffffff' },
+  itemSubtitle: { fontSize: 13, color: '#94a3b8', marginTop: 2 },
 });

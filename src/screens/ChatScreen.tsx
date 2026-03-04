@@ -81,6 +81,49 @@ function ConversationItem({
 }) {
   const borderColor = getChannelColor(conversation);
 
+  // Determine badge content based on type
+  const renderBadge = () => {
+    // DM: Show avatar or initials
+    if (conversation.displayType === 'dm' || conversation.channel_type === 'dm') {
+      if (conversation.displayAvatar) {
+        return (
+          <Image
+            source={{ uri: conversation.displayAvatar }}
+            style={styles.badgeAvatar}
+          />
+        );
+      }
+      // Generate initials from name (e.g., "Manuel Vega" → "MV")
+      const nameParts = (conversation.displayName || '').split(' ');
+      const initials = nameParts.length >= 2
+        ? `${nameParts[0].charAt(0)}${nameParts[nameParts.length - 1].charAt(0)}`.toUpperCase()
+        : (conversation.displayName || '?').charAt(0).toUpperCase();
+
+      return (
+        <View style={[styles.badgeCircle, { backgroundColor: borderColor }]}>
+          <Text style={styles.badgeInitials}>{initials}</Text>
+        </View>
+      );
+    }
+
+    // Group: Show people icon
+    if (conversation.channel_type === 'group_dm') {
+      return (
+        <View style={[styles.badgeCircle, { backgroundColor: '#9B7BB5' }]}>
+          <Text style={styles.badgeEmoji}>👥</Text>
+        </View>
+      );
+    }
+
+    // Team: Show colored circle with team icon or first letter
+    const teamColor = conversation.team?.color || borderColor;
+    return (
+      <View style={[styles.badgeCircle, { backgroundColor: teamColor }]}>
+        <Text style={styles.badgeTeamIcon}>⚽</Text>
+      </View>
+    );
+  };
+
   return (
     <TouchableOpacity
       style={[styles.conversationCard, { borderLeftColor: borderColor }]}
@@ -88,14 +131,7 @@ function ConversationItem({
       activeOpacity={0.7}
     >
       <View style={styles.conversationIcon}>
-        {conversation.displayAvatar ? (
-          <Image
-            source={{ uri: conversation.displayAvatar }}
-            style={styles.avatar}
-          />
-        ) : (
-          <Text style={styles.chatIcon}>{conversation.displayInitial}</Text>
-        )}
+        {renderBadge()}
       </View>
 
       <View style={styles.conversationContent}>
@@ -281,17 +317,18 @@ export default function ChatScreen({ navigation, route }: any) {
 
       const { data: lastMessages } = await supabase
         .from('comm_messages')
-        .select('channel_id, content, created_at')
+        .select('channel_id, content, created_at, user_id')
         .in('channel_id', channelIds)
         .eq('is_deleted', false)
         .order('created_at', { ascending: false });
 
-      const lastMessageMap = new Map<string, { content: string; created_at: string }>();
+      const lastMessageMap = new Map<string, { content: string; created_at: string; user_id: string }>();
       (lastMessages || []).forEach((msg: any) => {
         if (!lastMessageMap.has(msg.channel_id)) {
           lastMessageMap.set(msg.channel_id, {
             content: msg.content,
             created_at: msg.created_at,
+            user_id: msg.user_id,
           });
         }
       });
@@ -325,7 +362,12 @@ export default function ChatScreen({ navigation, route }: any) {
         const lastMsg = lastMessageMap.get(channel.id);
         const lastRead = lastReadMap.get(channel.id);
         let unreadCount = 0;
-        if (lastMsg) {
+
+        // Only count as unread if:
+        // 1. There's a last message
+        // 2. It's NOT from the current user
+        // 3. It's newer than last_read_at (or never read)
+        if (lastMsg && lastMsg.user_id !== user.id) {
           if (!lastRead) unreadCount = 1;
           else if (new Date(lastMsg.created_at) > new Date(lastRead)) unreadCount = 1;
         }
@@ -1729,6 +1771,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+  },
+  badgeCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  badgeInitials: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  badgeEmoji: {
+    fontSize: 18,
+  },
+  badgeTeamIcon: {
+    fontSize: 16,
   },
   chatIcon: {
     fontSize: 18,

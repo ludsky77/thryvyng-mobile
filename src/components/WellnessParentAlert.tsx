@@ -95,6 +95,7 @@ export default function WellnessParentAlert({
 const styles = StyleSheet.create({
   container: {
     gap: 12,
+    marginTop: 16,
   },
   alertCard: {
     flexDirection: 'row',
@@ -127,11 +128,11 @@ const styles = StyleSheet.create({
     color: '#b45309',
   },
   statsCard: {
-    backgroundColor: '#fdf2f8',
+    backgroundColor: '#831843',
     padding: 16,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#fbcfe8',
+    borderColor: '#9d174d',
   },
   statsHeader: {
     flexDirection: 'row',
@@ -150,27 +151,27 @@ const styles = StyleSheet.create({
   statsTitle: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#1f2937',
+    color: '#ffffff',
   },
   statsSubtitle: {
     fontSize: 12,
-    color: '#6b7280',
+    color: '#f9a8d4',
   },
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    backgroundColor: 'rgba(236, 72, 153, 0.3)',
     padding: 10,
     borderRadius: 10,
     gap: 6,
   },
   statsText: {
     fontSize: 13,
-    color: '#4b5563',
+    color: '#fce7f3',
     flex: 1,
   },
   statsTime: {
     fontSize: 11,
-    color: '#9ca3af',
+    color: '#f9a8d4',
   },
 });

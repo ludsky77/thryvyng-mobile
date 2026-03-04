@@ -109,6 +109,7 @@ export interface Channel {
     created_by: string;
     question: string;
     poll_type: 'single' | 'multiple' | 'ranked' | 'yes_no';
+    display_style?: 'standard' | 'board_room';
     allow_add_options: boolean;
     is_anonymous: boolean;
     show_results_live: boolean;
@@ -135,6 +136,7 @@ export interface Channel {
     option_id: string;
     user_id: string;
     rank: number | null;
+    comment?: string | null;
   }
   
   // Calendar Types

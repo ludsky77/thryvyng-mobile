@@ -6,11 +6,13 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  TextInput,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePoll } from '../../hooks/usePolls';
 import { supabase } from '../../lib/supabase';
+import { BoardVoteContainer } from '../polls/BoardVoteContainer';
 
 interface PollCardProps {
   pollId: string;
@@ -42,6 +44,7 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
   const [nonVoters, setNonVoters] = useState<string[]>([]);
   const [reminderSending, setReminderSending] = useState(false);
   const [reminderSent, setReminderSent] = useState(false);
+  const [voteComment, setVoteComment] = useState('');
 
   // 2. Derived values (safe when poll is null)
   const totalVotes = poll?.options?.reduce((sum, opt) => sum + (opt.vote_count || 0), 0) ?? 0;
@@ -76,12 +79,12 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
     }
   }, [poll?.id, poll?.channel_id]);
 
-  // 4. useEffect
+  // 4. useEffect - fetch non-voters for staff/creator (reminders) or board_room (preview pending count)
   useEffect(() => {
-    if (poll?.id && poll?.channel_id && canSendReminder) {
+    if (poll?.id && poll?.channel_id && (canSendReminder || poll?.display_style === 'board_room')) {
       fetchNonVoters();
     }
-  }, [poll?.id, poll?.channel_id, canSendReminder, fetchNonVoters, totalVotes]);
+  }, [poll?.id, poll?.channel_id, poll?.display_style, canSendReminder, fetchNonVoters, totalVotes]);
 
   // 5. Early return (after all hooks)
   if (loading || !poll) {
@@ -138,7 +141,7 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
     }
   };
 
-  const handleVote = async (optionId: string) => {
+  const handleVote = async (optionId: string, comment?: string | null) => {
     if (voting || isClosed) return;
     setVoting(true);
 
@@ -150,12 +153,13 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
           await vote(optionId);
         }
       } else {
-        await vote(optionId);
+        await vote(optionId, comment ?? undefined);
       }
     } catch (error) {
       console.error('Voting error:', error);
     } finally {
       setVoting(false);
+      setVoteComment('');
     }
   };
 
@@ -171,11 +175,26 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
     ? Math.max(...sortedOptions.map(o => Math.round((o.vote_count || 0) / totalVotes * 100)))
     : 0;
 
+  const isBoardRoom = poll.display_style === 'board_room';
+  const quickEmojis = ['👍', '👎', '✅', '❌', '🎉', '🤔', '⚠️', '💯'];
+
+  // Board room vote summary (Yes/No/Pending) for compact preview
+  const yesOption = sortedOptions.find((o) => o.option_text?.toLowerCase() === 'yes');
+  const noOption = sortedOptions.find((o) => o.option_text?.toLowerCase() === 'no');
+  const yesVotes = yesOption?.vote_count ?? sortedOptions[0]?.vote_count ?? 0;
+  const noVotes = noOption?.vote_count ?? sortedOptions[1]?.vote_count ?? 0;
+  const pending = nonVoters.length;
+  const yesLabel = yesOption ? 'Yes' : (sortedOptions[0]?.option_text ?? 'Yes');
+  const noLabel = noOption ? 'No' : (sortedOptions[1]?.option_text ?? 'No');
+
   // Compact version for inline chat display
   if (compact) {
     return (
-      <View style={styles.compactContainer}>
-        {/* Header - Always Visible */}
+      <View style={[
+        styles.compactContainer,
+        isBoardRoom && isExpanded && styles.pollCardBoardRoom,
+      ]}>
+        {/* Header - Always Visible (compact preview) */}
         <TouchableOpacity 
           style={styles.compactHeader}
           onPress={() => setIsExpanded(!isExpanded)}
@@ -183,7 +202,11 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
           <View style={styles.compactHeaderContent}>
             <View style={styles.compactInfo}>
               <View style={styles.pollBadge}>
-                <Feather name="bar-chart-2" size={16} color="#8B5CF6" />
+                {isBoardRoom ? (
+                  <Text style={styles.pollBadgeEmoji}>🏛️</Text>
+                ) : (
+                  <Feather name="bar-chart-2" size={16} color="#8B5CF6" />
+                )}
                 <Text style={styles.pollBadgeText}>Poll</Text>
                 {isClosed && <Text style={styles.closedBadge}>Closed</Text>}
               </View>
@@ -198,6 +221,30 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
                   👥 {totalVotes} vote{totalVotes !== 1 ? 's' : ''}
                 </Text>
               </View>
+              {/* Compact vote summary for board_room (only when collapsed) */}
+              {isBoardRoom && !isExpanded && (
+                <View style={styles.boardVotePreview}>
+                  <View style={styles.voteSummaryRow}>
+                    <View style={styles.voteChip}>
+                      <View style={[styles.voteDot, styles.voteDotYes]} />
+                      <Text style={styles.voteCountText}>{yesVotes}</Text>
+                      <Text style={styles.voteLabel}>{yesLabel}</Text>
+                    </View>
+                    <View style={styles.voteChip}>
+                      <View style={[styles.voteDot, styles.voteDotNo]} />
+                      <Text style={styles.voteCountText}>{noVotes}</Text>
+                      <Text style={styles.voteLabel}>{noLabel}</Text>
+                    </View>
+                    {pending > 0 && (
+                      <View style={styles.voteChip}>
+                        <View style={[styles.voteDot, styles.voteDotPending]} />
+                        <Text style={styles.voteCountText}>{pending}</Text>
+                        <Text style={styles.voteLabel}>Pending</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )}
             </View>
             <View style={styles.expandButton}>
               <Text style={styles.expandButtonText}>
@@ -207,9 +254,110 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
           </View>
         </TouchableOpacity>
 
-        {/* Expandable Options */}
+        {/* Expandable Options or Board Room */}
         {isExpanded && (
           <View style={styles.expandableContent}>
+            {isBoardRoom ? (
+              <>
+                {poll.channel_id && (
+                  <BoardVoteContainer
+                    pollId={poll.id}
+                    channelId={poll.channel_id}
+                    question={poll.question}
+                  />
+                )}
+                {!isClosed && !hasVoted && (
+                  <View style={styles.boardRoomVoteSection}>
+                    <View style={styles.boardRoomOptionsRow}>
+                      {sortedOptions.map((option) => {
+                        const isUserVote = userVotedOptionIds.includes(option.id);
+                        return (
+                          <TouchableOpacity
+                            key={option.id}
+                            style={[
+                              styles.boardRoomOptionButton,
+                              isUserVote && styles.boardRoomOptionSelected,
+                            ]}
+                            onPress={() => handleVote(option.id, voteComment || undefined)}
+                            disabled={voting}
+                          >
+                            <Text style={styles.boardRoomOptionText}>{option.option_text}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    <View style={styles.commentSection}>
+                      <Text style={styles.commentLabel}>Add a note (optional)</Text>
+                      <View style={styles.quickEmojis}>
+                        {quickEmojis.map((emoji) => (
+                          <TouchableOpacity
+                            key={emoji}
+                            onPress={() => setVoteComment((prev) => (prev === emoji ? '' : emoji))}
+                            style={[
+                              styles.emojiButton,
+                              voteComment === emoji && styles.emojiButtonSelected,
+                            ]}
+                          >
+                            <Text style={styles.emoji}>{emoji}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                      <TextInput
+                        style={styles.commentInput}
+                        placeholder="Or type a short note..."
+                        placeholderTextColor="#64748b"
+                        value={voteComment}
+                        onChangeText={setVoteComment}
+                        maxLength={50}
+                      />
+                    </View>
+                  </View>
+                )}
+                {canClose && (
+                  <TouchableOpacity
+                    style={styles.closePollButton}
+                    onPress={handleClosePoll}
+                  >
+                    <Text style={styles.closePollButtonText}>Close Poll</Text>
+                  </TouchableOpacity>
+                )}
+                {canSendReminder && !isClosed && (
+                  <TouchableOpacity
+                    style={[
+                      styles.pollReminderButton,
+                      (nonVoters.length === 0 || reminderSent) && styles.pollReminderButtonDisabled,
+                    ]}
+                    onPress={handleSendPollReminder}
+                    disabled={nonVoters.length === 0 || reminderSending || reminderSent}
+                  >
+                    {reminderSending ? (
+                      <ActivityIndicator size="small" color="#8b5cf6" />
+                    ) : (
+                      <>
+                        <Feather
+                          name={reminderSent ? 'check' : 'bell'}
+                          size={16}
+                          color={reminderSent || nonVoters.length === 0 ? '#64748b' : '#8b5cf6'}
+                        />
+                        <Text
+                          style={[
+                            styles.pollReminderText,
+                            (reminderSent || nonVoters.length === 0) && styles.pollReminderTextDisabled,
+                          ]}
+                        >
+                          {reminderSent
+                            ? 'Reminder Sent'
+                            : nonVoters.length === 0
+                              ? 'All Voted'
+                              : `Remind ${nonVoters.length} to Vote`}
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </>
+            ) : (
+            <>
             {sortedOptions.map((option) => {
               const percentage = totalVotes > 0 
                 ? Math.round((option.vote_count || 0) / totalVotes * 100) 
@@ -315,6 +463,8 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
                 )}
               </TouchableOpacity>
             )}
+            </>
+            )}
           </View>
         )}
       </View>
@@ -323,9 +473,18 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
 
   // Full-size version (for future use in poll sheets/modals)
   return (
-    <View style={styles.fullContainer}>
+    <View style={[styles.fullContainer, isBoardRoom && styles.pollCardBoardRoom]}>
       <Text style={styles.fullQuestion}>{poll.question}</Text>
-      {/* Full version implementation would go here */}
+      {isBoardRoom && poll.channel_id ? (
+        <BoardVoteContainer
+          pollId={poll.id}
+          channelId={poll.channel_id}
+          question={poll.question}
+        />
+      ) : (
+        /* Standard options would go here */
+        null
+      )}
     </View>
   );
 }
@@ -350,6 +509,73 @@ const styles = StyleSheet.create({
     borderColor: '#8b5cf6',
     overflow: 'hidden',
   },
+  pollCardBoardRoom: {
+    minHeight: 400,
+    paddingBottom: 60,
+  },
+  boardRoomVoteSection: {
+    marginTop: 16,
+    gap: 12,
+  },
+  boardRoomOptionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'center',
+  },
+  boardRoomOptionButton: {
+    backgroundColor: '#3a3a6e',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#8b5cf6',
+  },
+  boardRoomOptionSelected: {
+    backgroundColor: '#8b5cf6',
+    borderColor: '#a78bfa',
+  },
+  boardRoomOptionText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  commentSection: {
+    marginTop: 8,
+    gap: 8,
+  },
+  commentLabel: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  quickEmojis: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  emojiButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#3a3a6e',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  emojiButtonSelected: {
+    borderColor: '#8b5cf6',
+    backgroundColor: '#4c1d95',
+  },
+  emoji: {
+    fontSize: 18,
+  },
+  commentInput: {
+    backgroundColor: '#1e293b',
+    borderRadius: 8,
+    padding: 10,
+    color: '#fff',
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
   compactHeader: {
     padding: 12,
   },
@@ -367,6 +593,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginBottom: 6,
+  },
+  pollBadgeEmoji: {
+    fontSize: 16,
   },
   pollBadgeText: {
     color: '#8b5cf6',
@@ -399,6 +628,43 @@ const styles = StyleSheet.create({
   voteCount: {
     color: '#999',
     fontSize: 11,
+  },
+  boardVotePreview: {
+    paddingVertical: 8,
+    marginTop: 4,
+  },
+  voteSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  voteChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  voteDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  voteDotYes: {
+    backgroundColor: '#10b981',
+  },
+  voteDotNo: {
+    backgroundColor: '#ef4444',
+  },
+  voteDotPending: {
+    backgroundColor: '#64748b',
+  },
+  voteCountText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  voteLabel: {
+    color: '#94a3b8',
+    fontSize: 12,
   },
   expandButton: {
     backgroundColor: '#8b5cf6',

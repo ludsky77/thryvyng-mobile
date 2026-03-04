@@ -77,7 +77,7 @@ export function usePoll(pollId: string | null) {
     };
   }, [pollId, fetchPoll]);
 
-  const vote = async (optionId: string) => {
+  const vote = async (optionId: string, comment?: string | null) => {
     if (!user || !poll) return false;
 
     if (poll.poll_type === 'single' || poll.poll_type === 'yes_no') {
@@ -88,11 +88,16 @@ export function usePoll(pollId: string | null) {
         .eq('user_id', user.id);
     }
 
-    const { error } = await supabase.from('comm_poll_votes').insert({
+    const insertPayload: { poll_id: string; option_id: string; user_id: string; comment?: string } = {
       poll_id: poll.id,
       option_id: optionId,
-      user_id: user.id
-    });
+      user_id: user.id,
+    };
+    if (comment != null && comment !== '') {
+      insertPayload.comment = comment;
+    }
+
+    const { error } = await supabase.from('comm_poll_votes').insert(insertPayload);
 
     if (!error) {
       await fetchPoll();
@@ -147,6 +152,7 @@ export function useCreatePoll() {
       allowAddOptions?: boolean;
       endsAt?: Date | null;
       teamId?: string;
+      displayStyle?: 'standard' | 'board_room';
       /** When migration adds send_reminder column, persist this */
       sendReminder?: boolean;
       /** When migration adds reminder_before_minutes column, persist (60, 120, or 1440) */
@@ -177,7 +183,8 @@ export function useCreatePoll() {
         is_anonymous: settings.isAnonymous || false,
         show_results_live: settings.showResultsLive ?? true,
         allow_add_options: settings.allowAddOptions || false,
-        ends_at: settings.endsAt?.toISOString() || null
+        ends_at: settings.endsAt?.toISOString() || null,
+        display_style: settings.displayStyle || 'standard',
       })
       .select()
       .single();

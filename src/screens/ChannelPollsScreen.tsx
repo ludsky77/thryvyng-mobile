@@ -7,6 +7,7 @@ import {
   FlatList,
   ActivityIndicator,
   Alert,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, Ionicons } from '@expo/vector-icons';
@@ -14,6 +15,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
+import { BoardVoteContainer } from '../components/polls/BoardVoteContainer';
 
 interface Poll {
   id: string;
@@ -24,6 +26,7 @@ interface Poll {
   created_by: string;
   creator_name: string;
   total_votes: number;
+  display_style?: 'standard' | 'board_room';
   options: { id: string; text: string; vote_count: number }[];
   user_voted: boolean;
   user_voted_option_id: string | null;
@@ -46,6 +49,7 @@ export default function ChannelPollsScreen() {
   const [expandedPolls, setExpandedPolls] = useState<Set<string>>(new Set());
   const [isStaffInChannel, setIsStaffInChannel] = useState(false);
   const [channelTeamId, setChannelTeamId] = useState<string | null>(null);
+  const [voteComments, setVoteComments] = useState<Record<string, string>>({});
 
   const togglePollExpanded = (pollId: string) => {
     setExpandedPolls(prev => {
@@ -111,6 +115,7 @@ export default function ChannelPollsScreen() {
           created_at,
           ends_at,
           created_by,
+          display_style,
           options:comm_poll_options(id, option_text)
         `)
         .eq('channel_id', channelId)
@@ -141,7 +146,7 @@ export default function ChannelPollsScreen() {
       if (pollIds.length > 0) {
         const { data: allVotes } = await supabase
           .from('comm_poll_votes')
-          .select('poll_id, option_id, user_id')
+          .select('poll_id, option_id, user_id, comment')
           .in('poll_id', pollIds);
 
         const votes = allVotes || [];
@@ -193,6 +198,7 @@ export default function ChannelPollsScreen() {
           ends_at: p.ends_at,
           created_by: p.created_by,
           creator_name: profileMap.get(p.created_by) || 'Unknown',
+          display_style: p.display_style,
           options,
           total_votes,
           user_voted: votedPollIds.has(p.id),
@@ -210,12 +216,15 @@ export default function ChannelPollsScreen() {
     }
   };
 
-  const handleVote = async (pollId: string, optionId: string) => {
+  const handleVote = async (pollId: string, optionId: string, comment?: string | null) => {
     if (!user?.id) return;
 
     setVotingPollId(pollId);
 
     try {
+      const payload: { option_id: string; comment?: string } = { option_id: optionId };
+      if (comment != null && comment !== '') payload.comment = comment;
+
       const { data: existingVote } = await supabase
         .from('comm_poll_votes')
         .select('id')
@@ -226,7 +235,7 @@ export default function ChannelPollsScreen() {
       if (existingVote) {
         await supabase
           .from('comm_poll_votes')
-          .update({ option_id: optionId })
+          .update(payload)
           .eq('poll_id', pollId)
           .eq('user_id', user.id);
       } else {
@@ -234,9 +243,15 @@ export default function ChannelPollsScreen() {
           poll_id: pollId,
           option_id: optionId,
           user_id: user.id,
+          ...(payload.comment ? { comment: payload.comment } : {}),
         });
       }
 
+      setVoteComments((prev) => {
+        const next = { ...prev };
+        delete next[pollId];
+        return next;
+      });
       await fetchPolls();
     } catch (err) {
       console.error('Error voting:', err);
@@ -390,15 +405,19 @@ export default function ChannelPollsScreen() {
   const activeCount = polls.filter((p) => p.status === 'active').length;
   const closedCount = polls.filter((p) => p.status === 'closed').length;
 
+  const quickEmojis = ['👍', '👎', '✅', '❌', '🎉', '🤔', '⚠️', '💯'];
+
   const renderPoll = ({ item }: { item: Poll }) => {
     const isActive = item.status === 'active';
     const isVoting = votingPollId === item.id;
     const isCreator = item.created_by === user?.id;
     const canManagePoll = isStaffInChannel || isCreator;
     const isExpanded = expandedPolls.has(item.id);
+    const isBoardRoom = item.display_style === 'board_room';
+    const voteComment = voteComments[item.id] ?? '';
 
     return (
-      <View style={styles.pollCard}>
+      <View style={[styles.pollCard, isBoardRoom && isExpanded && styles.pollCardBoardRoom]}>
         {/* HEADER - Tappable for expand/collapse */}
         <TouchableOpacity
           onPress={() => togglePollExpanded(item.id)}
@@ -452,10 +471,68 @@ export default function ChannelPollsScreen() {
           </View>
         </TouchableOpacity>
 
-        {/* EXPANDED CONTENT - Options and Actions */}
+        {/* EXPANDED CONTENT - Options / Board Room and Actions */}
         {isExpanded && (
           <>
-            {isVoting ? (
+            {isBoardRoom ? (
+              <>
+                <BoardVoteContainer
+                  pollId={item.id}
+                  channelId={channelId!}
+                  question={item.question}
+                />
+                {isActive && !item.user_voted && !isVoting && (
+                  <View style={styles.boardRoomVoteSection}>
+                    <View style={styles.boardRoomOptionsRow}>
+                      {item.options.map((opt) => (
+                        <TouchableOpacity
+                          key={opt.id}
+                          style={[
+                            styles.boardRoomOptionButton,
+                            item.user_voted_option_id === opt.id && styles.boardRoomOptionSelected,
+                          ]}
+                          onPress={() => handleVote(item.id, opt.id, voteComment || undefined)}
+                        >
+                          <Text style={styles.boardRoomOptionText}>{opt.text}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <View style={styles.commentSection}>
+                      <Text style={styles.commentLabel}>Add a note (optional)</Text>
+                      <View style={styles.quickEmojis}>
+                        {quickEmojis.map((emoji) => (
+                          <TouchableOpacity
+                            key={emoji}
+                            onPress={() =>
+                              setVoteComments((prev) => ({
+                                ...prev,
+                                [item.id]: (prev[item.id] ?? '') === emoji ? '' : emoji,
+                              }))
+                            }
+                            style={[
+                              styles.emojiButton,
+                              voteComment === emoji && styles.emojiButtonSelected,
+                            ]}
+                          >
+                            <Text style={styles.emoji}>{emoji}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                      <TextInput
+                        style={styles.commentInput}
+                        placeholder="Or type a short note..."
+                        placeholderTextColor="#64748b"
+                        value={voteComment}
+                        onChangeText={(t) =>
+                          setVoteComments((prev) => ({ ...prev, [item.id]: t }))
+                        }
+                        maxLength={50}
+                      />
+                    </View>
+                  </View>
+                )}
+              </>
+            ) : isVoting ? (
               <ActivityIndicator
                 size="small"
                 color="#8b5cf6"
@@ -756,6 +833,73 @@ const styles = StyleSheet.create({
     backgroundColor: '#1e293b',
     borderRadius: 12,
     padding: 16,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  pollCardBoardRoom: {
+    minHeight: 400,
+    paddingBottom: 60,
+  },
+  boardRoomVoteSection: {
+    marginTop: 16,
+    gap: 12,
+  },
+  boardRoomOptionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'center',
+  },
+  boardRoomOptionButton: {
+    backgroundColor: '#334155',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#8b5cf6',
+  },
+  boardRoomOptionSelected: {
+    backgroundColor: '#8b5cf6',
+    borderColor: '#a78bfa',
+  },
+  boardRoomOptionText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  commentSection: {
+    marginTop: 8,
+    gap: 8,
+  },
+  commentLabel: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  quickEmojis: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  emojiButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#334155',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  emojiButtonSelected: {
+    borderColor: '#8b5cf6',
+    backgroundColor: '#4c1d95',
+  },
+  emoji: {
+    fontSize: 18,
+  },
+  commentInput: {
+    backgroundColor: '#0f172a',
+    borderRadius: 8,
+    padding: 10,
+    color: '#fff',
+    fontSize: 14,
     borderWidth: 1,
     borderColor: '#334155',
   },

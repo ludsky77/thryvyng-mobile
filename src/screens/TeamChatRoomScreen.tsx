@@ -9,6 +9,7 @@ import {
   Platform,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
@@ -19,6 +20,7 @@ import { CreatePollModal } from '../components/chat/CreatePollModal';
 import { ChatBubble, type ReactionSummary } from '../components/chat/ChatBubble';
 import { ChatInputBar, type AttachmentData } from '../components/chat/ChatInputBar';
 import { ReactionPicker } from '../components/chat/ReactionPicker';
+import { MessageActionsModal } from '../components/chat/MessageActionsModal';
 import {
   CelebrationOverlay,
   type CelebrationType,
@@ -82,6 +84,10 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   const [reactionPickerVisible, setReactionPickerVisible] = useState(false);
   const [reactionPickerMessage, setReactionPickerMessage] =
     useState<Message | null>(null);
+  const [actionsModalVisible, setActionsModalVisible] = useState(false);
+  const [actionsModalMessage, setActionsModalMessage] =
+    useState<Message | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [celebration, setCelebration] = useState<{
     type: CelebrationType;
     visible: boolean;
@@ -301,6 +307,78 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     setShowReactionDetails(true);
   };
 
+  const openActionsModal = (message: Message) => {
+    setActionsModalMessage(message);
+    setActionsModalVisible(true);
+  };
+
+  const handleDeleteMessage = async (messageId: string) => {
+    try {
+      const { error } = await supabase
+        .from('comm_messages')
+        .update({ is_deleted: true })
+        .eq('id', messageId);
+
+      if (error) {
+        Alert.alert('Error', 'Failed to delete message');
+        return;
+      }
+      await refetch();
+    } catch (err) {
+      console.error('Error deleting message:', err);
+      Alert.alert('Error', 'Failed to delete message');
+    }
+  };
+
+  const handleEditMessage = (messageId: string) => {
+    setEditingMessageId(messageId);
+    // TODO: Implement edit UI - for now just show alert
+    Alert.alert('Edit', 'Edit functionality coming soon');
+  };
+
+  const handleViewReadHistory = (messageId: string) => {
+    // Navigate to read history or show modal
+    navigation.navigate('MessageReadHistory', { messageId, channelId });
+  };
+
+  const handleMuteUser = async (userId: string, userName: string) => {
+    // TODO: Implement mute in database
+    Alert.alert('Muted', `${userName} has been muted in this conversation`);
+  };
+
+  const handleBlockUser = async (userId: string, userName: string) => {
+    // TODO: Implement block in database
+    Alert.alert('Blocked', `${userName} has been blocked from this channel`);
+  };
+
+  const handleViewProfile = (userId: string) => {
+    navigation.navigate('UserProfile', { userId });
+  };
+
+  const openReactionPickerFromActions = () => {
+    setActionsModalVisible(false);
+    if (actionsModalMessage) {
+      setReactionPickerMessage(actionsModalMessage);
+      setReactionPickerVisible(true);
+    }
+  };
+
+  const startReplyFromActions = () => {
+    if (actionsModalMessage) {
+      setReplyingTo({
+        messageId: actionsModalMessage.id,
+        content:
+          actionsModalMessage.content?.trim() ||
+          (actionsModalMessage.attachment_name
+            ? `📎 ${actionsModalMessage.attachment_name}`
+            : 'Attachment'),
+        senderName:
+          actionsModalMessage.profile?.full_name ?? 'Unknown',
+      });
+    }
+    setActionsModalVisible(false);
+  };
+
   const startReply = () => {
     if (reactionPickerMessage) {
       setReplyingTo({
@@ -436,7 +514,7 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           showSenderInfo={true}
           reactions={reactionsSummary.length > 0 ? reactionsSummary : undefined}
           replyTo={replyTo}
-          onLongPress={() => openReactionPicker(item)}
+          onLongPress={() => openActionsModal(item)}
           onReplyPress={
             item.reply_to_id
               ? () => scrollToMessageId(item.reply_to_id!)
@@ -575,6 +653,25 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
         visible={showReactionDetails}
         onClose={() => setShowReactionDetails(false)}
         reactions={selectedMessageReactions}
+      />
+
+      <MessageActionsModal
+        visible={actionsModalVisible}
+        onClose={() => {
+          setActionsModalVisible(false);
+          setActionsModalMessage(null);
+        }}
+        message={actionsModalMessage}
+        currentUserId={user?.id || ''}
+        isStaff={isStaffInChannel}
+        onEdit={handleEditMessage}
+        onDelete={handleDeleteMessage}
+        onReply={startReplyFromActions}
+        onAddReaction={openReactionPickerFromActions}
+        onViewReadHistory={handleViewReadHistory}
+        onMuteUser={handleMuteUser}
+        onBlockUser={handleBlockUser}
+        onViewProfile={handleViewProfile}
       />
     </SafeAreaView>
   );

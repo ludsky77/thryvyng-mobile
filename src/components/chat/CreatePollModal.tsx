@@ -99,6 +99,7 @@ export function CreatePollModal({
   const [customTime, setCustomTime] = useState<string>('18:00');
   const [sendReminder, setSendReminder] = useState(false);
   const [reminderBefore, setReminderBefore] = useState<ReminderBefore>('1h');
+  const [displayStyle, setDisplayStyle] = useState<'standard' | 'board_room'>('standard');
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ question?: string; options?: string }>({});
   const [customDateExpanded, setCustomDateExpanded] = useState(false);
@@ -150,6 +151,7 @@ export function CreatePollModal({
       setCustomTime('18:00');
       setSendReminder(false);
       setReminderBefore('1h');
+      setDisplayStyle('standard');
       setCustomDateExpanded(false);
       setCustomTimeExpanded(false);
       setErrors({});
@@ -206,6 +208,7 @@ export function CreatePollModal({
         isAnonymous,
         showResultsLive,
         endsAt,
+        displayStyle,
         sendReminder: sendReminder || undefined,
         reminderBeforeMinutes: sendReminder ? REMINDER_BEFORE_MINUTES[reminderBefore] : undefined,
       });
@@ -541,6 +544,49 @@ export function CreatePollModal({
             )}
           </View>
 
+          {/* Display Style Selector */}
+          <View style={styles.displaySection}>
+            <Text style={styles.displaySectionLabel}>Results Display</Text>
+
+            <TouchableOpacity
+              style={[
+                styles.displayOption,
+                displayStyle === 'standard' && styles.displayOptionSelected,
+              ]}
+              onPress={() => setDisplayStyle('standard')}
+              disabled={submitting}
+            >
+              <View style={styles.displayOptionRadio}>
+                {displayStyle === 'standard' && <View style={styles.radioFill} />}
+              </View>
+              <View style={styles.displayOptionContent}>
+                <Text style={styles.displayOptionTitle}>📊 Standard</Text>
+                <Text style={styles.displayOptionDesc}>
+                  Progress bars showing vote percentages
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.displayOption,
+                displayStyle === 'board_room' && styles.displayOptionSelected,
+              ]}
+              onPress={() => setDisplayStyle('board_room')}
+              disabled={submitting}
+            >
+              <View style={styles.displayOptionRadio}>
+                {displayStyle === 'board_room' && <View style={styles.radioFill} />}
+              </View>
+              <View style={styles.displayOptionContent}>
+                <Text style={styles.displayOptionTitle}>🪑 Board Room</Text>
+                <Text style={styles.displayOptionDesc}>
+                  Visual seats showing each voter's response
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+
           <View style={styles.bottomSpacer} />
         </ScrollView>
       </KeyboardAvoidingView>
@@ -809,6 +855,60 @@ const styles = StyleSheet.create({
   reminderPillLabelActive: {
     color: '#8b5cf6',
     fontWeight: '600',
+  },
+  displaySection: {
+    marginTop: 16,
+  },
+  displaySectionLabel: {
+    color: '#94a3b8',
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  displayOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#1e293b',
+    borderRadius: 10,
+    marginBottom: 8,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  displayOptionSelected: {
+    borderColor: '#8b5cf6',
+    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+  },
+  displayOptionRadio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#64748b',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  radioFill: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#8b5cf6',
+  },
+  displayOptionContent: {
+    flex: 1,
+  },
+  displayOptionTitle: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  displayOptionDesc: {
+    color: '#94a3b8',
+    fontSize: 12,
   },
   bottomSpacer: {
     height: 40,

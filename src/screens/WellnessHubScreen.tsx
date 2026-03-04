@@ -25,12 +25,12 @@ const iconMap: Record<string, string> = {
 };
 
 const gradientColors: Record<string, { primary: string; bg: string }> = {
-  'from-purple-400 to-violet-500': { primary: '#8b5cf6', bg: '#f3e8ff' },
-  'from-green-400 to-emerald-500': { primary: '#10b981', bg: '#d1fae5' },
-  'from-orange-400 to-amber-500': { primary: '#f59e0b', bg: '#fef3c7' },
-  'from-blue-400 to-cyan-500': { primary: '#06b6d4', bg: '#cffafe' },
-  'from-rose-400 to-pink-500': { primary: '#ec4899', bg: '#fce7f3' },
-  'from-gray-400 to-slate-500': { primary: '#64748b', bg: '#f1f5f9' },
+  'from-purple-400 to-violet-500': { primary: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.15)' },
+  'from-green-400 to-emerald-500': { primary: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
+  'from-orange-400 to-amber-500': { primary: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' },
+  'from-blue-400 to-cyan-500': { primary: '#06b6d4', bg: 'rgba(6, 182, 212, 0.15)' },
+  'from-rose-400 to-pink-500': { primary: '#ec4899', bg: 'rgba(236, 72, 153, 0.15)' },
+  'from-gray-400 to-slate-500': { primary: '#64748b', bg: 'rgba(100, 116, 139, 0.15)' },
 };
 
 export default function WellnessHubScreen() {
@@ -274,16 +274,16 @@ export default function WellnessHubScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#0f172a',
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#0f172a',
     justifyContent: 'center',
     alignItems: 'center',
   },
   header: {
-    backgroundColor: '#ec4899',
+    backgroundColor: '#be185d',
     paddingTop: 60,
     paddingBottom: 24,
     paddingHorizontal: 20,
@@ -316,7 +316,7 @@ const styles = StyleSheet.create({
     marginTop: -20,
     padding: 12,
     borderRadius: 12,
-    backgroundColor: '#db2777',
+    backgroundColor: '#9d174d',
   },
   statsIcon: {
     width: 40,
@@ -348,16 +348,16 @@ const styles = StyleSheet.create({
   },
   skeletonCard: {
     height: 80,
-    backgroundColor: '#e5e7eb',
+    backgroundColor: '#1e293b',
     borderRadius: 12,
   },
   errorContainer: {
-    backgroundColor: '#fee2e2',
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
     padding: 16,
     borderRadius: 12,
   },
   errorText: {
-    color: '#dc2626',
+    color: '#fca5a5',
     textAlign: 'center',
   },
   categoryCard: {
@@ -366,6 +366,8 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 16,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   categoryIcon: {
     width: 56,
@@ -398,10 +400,10 @@ const styles = StyleSheet.create({
   categoryName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1f2937',
+    color: '#ffffff',
   },
   pendingBadge: {
-    backgroundColor: '#fef3c7',
+    backgroundColor: 'rgba(245, 158, 11, 0.2)',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
@@ -409,11 +411,11 @@ const styles = StyleSheet.create({
   pendingText: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#b45309',
+    color: '#fbbf24',
   },
   categoryDescription: {
     fontSize: 13,
-    color: '#6b7280',
+    color: '#94a3b8',
     marginTop: 2,
   },
   lockedText: {
@@ -424,29 +426,31 @@ const styles = StyleSheet.create({
   },
   lockedLabel: {
     fontSize: 11,
-    color: '#e11d48',
+    color: '#f87171',
   },
   categoryMeta: {
     alignItems: 'flex-end',
   },
   topicCount: {
     fontSize: 11,
-    color: '#9ca3af',
+    color: '#64748b',
     marginBottom: 4,
   },
   expertBadge: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: '#f1f5f9',
+    backgroundColor: '#1e293b',
     padding: 16,
     borderRadius: 12,
     marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
   },
   expertIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: '#334155',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -457,11 +461,11 @@ const styles = StyleSheet.create({
   expertTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1f2937',
+    color: '#e2e8f0',
   },
   expertText: {
     fontSize: 12,
-    color: '#6b7280',
+    color: '#94a3b8',
     marginTop: 4,
     lineHeight: 18,
   },

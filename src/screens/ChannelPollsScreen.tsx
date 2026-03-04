@@ -42,8 +42,26 @@ export default function ChannelPollsScreen() {
   const [votingPollId, setVotingPollId] = useState<string | null>(null);
   const [sendingReminder, setSendingReminder] = useState<string | null>(null);
   const [closingPoll, setClosingPoll] = useState<string | null>(null);
+  const [deletingPoll, setDeletingPoll] = useState<string | null>(null);
+  const [expandedPolls, setExpandedPolls] = useState<Set<string>>(new Set());
   const [isStaffInChannel, setIsStaffInChannel] = useState(false);
   const [channelTeamId, setChannelTeamId] = useState<string | null>(null);
+
+  const togglePollExpanded = (pollId: string) => {
+    setExpandedPolls(prev => {
+      const next = new Set(prev);
+      if (next.has(pollId)) {
+        next.delete(pollId);
+      } else {
+        next.add(pollId);
+      }
+      return next;
+    });
+  };
+
+  const collapseAllPolls = () => {
+    setExpandedPolls(new Set());
+  };
 
   useEffect(() => {
     const checkStaffAndTeam = async () => {
@@ -311,6 +329,58 @@ export default function ChannelPollsScreen() {
     );
   };
 
+  const handleDeletePoll = async (poll: Poll) => {
+    // Only creator can delete
+    if (poll.created_by !== user?.id) return;
+
+    Alert.alert(
+      'Delete Poll',
+      'Are you sure you want to permanently delete this poll? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingPoll(poll.id);
+            try {
+              // Delete votes first (foreign key constraint)
+              await supabase
+                .from('comm_poll_votes')
+                .delete()
+                .eq('poll_id', poll.id);
+
+              // Delete options
+              await supabase
+                .from('comm_poll_options')
+                .delete()
+                .eq('poll_id', poll.id);
+
+              // Delete the poll message that references this poll
+              await supabase
+                .from('comm_messages')
+                .delete()
+                .eq('poll_id', poll.id);
+
+              // Delete the poll itself
+              await supabase
+                .from('comm_polls')
+                .delete()
+                .eq('id', poll.id);
+
+              await fetchPolls();
+            } catch (err) {
+              console.error('Error deleting poll:', err);
+              Alert.alert('Error', 'Failed to delete poll');
+            } finally {
+              setDeletingPoll(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const filteredPolls = polls.filter((p) => {
     if (filter === 'active') return p.status === 'active';
     if (filter === 'closed') return p.status === 'closed';
@@ -325,144 +395,199 @@ export default function ChannelPollsScreen() {
     const isVoting = votingPollId === item.id;
     const isCreator = item.created_by === user?.id;
     const canManagePoll = isStaffInChannel || isCreator;
+    const isExpanded = expandedPolls.has(item.id);
 
     return (
       <View style={styles.pollCard}>
-        <View style={styles.pollHeader}>
-          <View
-            style={[
-              styles.statusBadge,
-              isActive ? styles.statusActive : styles.statusClosed,
-            ]}
-          >
-            <Text
-              style={[
-                styles.statusText,
-                isActive ? styles.statusTextActive : styles.statusTextClosed,
-              ]}
-            >
-              {isActive ? 'Active' : 'Closed'}
-            </Text>
-          </View>
-          {item.user_voted && (
-            <View style={styles.votedBadge}>
-              <Feather name="check" size={12} color="#10b981" />
-              <Text style={styles.votedText}>Voted</Text>
-            </View>
-          )}
-        </View>
-
-        <Text style={styles.pollQuestion}>{item.question}</Text>
-
-        <View style={styles.pollMeta}>
-          <Text style={styles.pollMetaText}>
-            {item.total_votes} vote{item.total_votes !== 1 ? 's' : ''}
-          </Text>
-          <Text style={styles.pollMetaDot}>•</Text>
-          <Text style={styles.pollMetaText}>
-            {format(new Date(item.created_at), 'MMM d')}
-          </Text>
-        </View>
-
-        <Text style={styles.creatorText}>by {item.creator_name}</Text>
-
-        {isVoting ? (
-          <ActivityIndicator
-            size="small"
-            color="#8b5cf6"
-            style={{ marginTop: 12 }}
-          />
-        ) : (
-          <View style={styles.optionsContainer}>
-            {item.options.map((opt) => {
-              const percentage =
-                item.total_votes > 0
-                  ? Math.round((opt.vote_count / item.total_votes) * 100)
-                  : 0;
-              const isSelected = item.user_voted_option_id === opt.id;
-
-              return (
-                <TouchableOpacity
-                  key={opt.id}
-                  style={[
-                    styles.optionButton,
-                    isSelected && styles.optionButtonSelected,
-                    !isActive && styles.optionButtonDisabled,
-                  ]}
-                  onPress={() => isActive && handleVote(item.id, opt.id)}
-                  disabled={!isActive}
-                  activeOpacity={isActive ? 0.7 : 1}
-                >
-                  <View
-                    style={[
-                      styles.optionProgress,
-                      { width: `${percentage}%` },
-                      isSelected && styles.optionProgressSelected,
-                    ]}
-                  />
-                  <View style={styles.optionContent}>
-                    <View style={styles.optionLeft}>
-                      {isSelected ? (
-                        <Feather
-                          name="check-circle"
-                          size={18}
-                          color="#8b5cf6"
-                        />
-                      ) : (
-                        <View style={styles.radioOuter} />
-                      )}
-                      <Text
-                        style={[
-                          styles.optionText,
-                          isSelected && styles.optionTextSelected,
-                        ]}
-                      >
-                        {opt.text}
-                      </Text>
-                    </View>
-                    <Text style={styles.optionPercent}>{percentage}%</Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
-
-        {canManagePoll && isActive && (
-          <View style={styles.staffControls}>
-            {item.non_voter_count > 0 && (
-              <TouchableOpacity
-                style={styles.remindButton}
-                onPress={() => handleRemindToVote(item)}
-                disabled={sendingReminder === item.id}
+        {/* HEADER - Tappable for expand/collapse */}
+        <TouchableOpacity
+          onPress={() => togglePollExpanded(item.id)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.pollHeader}>
+            <View style={styles.pollHeaderLeft}>
+              <View
+                style={[
+                  styles.statusBadge,
+                  isActive ? styles.statusActive : styles.statusClosed,
+                ]}
               >
-                {sendingReminder === item.id ? (
-                  <ActivityIndicator size="small" color="#8b5cf6" />
-                ) : (
-                  <>
-                    <Feather name="bell" size={16} color="#8b5cf6" />
-                    <Text style={styles.remindButtonText}>
-                      Remind {item.non_voter_count} to Vote
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => handleClosePoll(item.id)}
-              disabled={closingPoll === item.id}
-            >
-              {closingPoll === item.id ? (
-                <ActivityIndicator size="small" color="#64748b" />
-              ) : (
-                <>
-                  <Feather name="x-circle" size={16} color="#64748b" />
-                  <Text style={styles.closeButtonText}>Close Poll</Text>
-                </>
+                <Text
+                  style={[
+                    styles.statusText,
+                    isActive ? styles.statusTextActive : styles.statusTextClosed,
+                  ]}
+                >
+                  {isActive ? 'Active' : 'Closed'}
+                </Text>
+              </View>
+              {item.user_voted && (
+                <View style={styles.votedBadge}>
+                  <Feather name="check" size={12} color="#10b981" />
+                  <Text style={styles.votedText}>Voted</Text>
+                </View>
               )}
-            </TouchableOpacity>
+            </View>
+            <Feather
+              name={isExpanded ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color="#64748b"
+            />
           </View>
+
+          <Text style={styles.pollQuestion} numberOfLines={isExpanded ? undefined : 1}>
+            {item.question}
+          </Text>
+
+          <View style={styles.pollMeta}>
+            <Text style={styles.pollMetaText}>
+              {item.total_votes} vote{item.total_votes !== 1 ? 's' : ''}
+            </Text>
+            <Text style={styles.pollMetaDot}>•</Text>
+            <Text style={styles.pollMetaText}>
+              {format(new Date(item.created_at), 'MMM d')}
+            </Text>
+            <Text style={styles.pollMetaDot}>•</Text>
+            <Text style={styles.pollMetaText}>{item.creator_name}</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* EXPANDED CONTENT - Options and Actions */}
+        {isExpanded && (
+          <>
+            {isVoting ? (
+              <ActivityIndicator
+                size="small"
+                color="#8b5cf6"
+                style={{ marginTop: 12 }}
+              />
+            ) : (
+              <View style={styles.optionsContainer}>
+                {item.options.map((opt) => {
+                  const percentage =
+                    item.total_votes > 0
+                      ? Math.round((opt.vote_count / item.total_votes) * 100)
+                      : 0;
+                  const isSelected = item.user_voted_option_id === opt.id;
+
+                  return (
+                    <TouchableOpacity
+                      key={opt.id}
+                      style={[
+                        styles.optionButton,
+                        isSelected && styles.optionButtonSelected,
+                        !isActive && styles.optionButtonDisabled,
+                      ]}
+                      onPress={() => isActive && handleVote(item.id, opt.id)}
+                      disabled={!isActive}
+                      activeOpacity={isActive ? 0.7 : 1}
+                    >
+                      <View
+                        style={[
+                          styles.optionProgress,
+                          { width: `${percentage}%` },
+                          isSelected && styles.optionProgressSelected,
+                        ]}
+                      />
+                      <View style={styles.optionContent}>
+                        <View style={styles.optionLeft}>
+                          {isSelected ? (
+                            <Feather
+                              name="check-circle"
+                              size={18}
+                              color="#8b5cf6"
+                            />
+                          ) : (
+                            <View style={styles.radioOuter} />
+                          )}
+                          <Text
+                            style={[
+                              styles.optionText,
+                              isSelected && styles.optionTextSelected,
+                            ]}
+                          >
+                            {opt.text}
+                          </Text>
+                        </View>
+                        <Text style={styles.optionPercent}>{percentage}%</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* Staff controls for ACTIVE polls */}
+            {canManagePoll && isActive && (
+              <View style={styles.staffControls}>
+                {item.non_voter_count > 0 && (
+                  <TouchableOpacity
+                    style={styles.remindButton}
+                    onPress={() => handleRemindToVote(item)}
+                    disabled={sendingReminder === item.id}
+                  >
+                    {sendingReminder === item.id ? (
+                      <ActivityIndicator size="small" color="#8b5cf6" />
+                    ) : (
+                      <>
+                        <Feather name="bell" size={16} color="#8b5cf6" />
+                        <Text style={styles.remindButtonText}>
+                          Remind {item.non_voter_count}
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => handleClosePoll(item.id)}
+                  disabled={closingPoll === item.id}
+                >
+                  {closingPoll === item.id ? (
+                    <ActivityIndicator size="small" color="#64748b" />
+                  ) : (
+                    <>
+                      <Feather name="x-circle" size={16} color="#64748b" />
+                      <Text style={styles.closeButtonText}>Close</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                {isCreator && (
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={() => handleDeletePoll(item)}
+                    disabled={deletingPoll === item.id}
+                  >
+                    {deletingPoll === item.id ? (
+                      <ActivityIndicator size="small" color="#ef4444" />
+                    ) : (
+                      <Feather name="trash-2" size={16} color="#ef4444" />
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {/* Delete option for CLOSED polls (creator only) */}
+            {isCreator && !isActive && (
+              <View style={styles.staffControls}>
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={() => handleDeletePoll(item)}
+                  disabled={deletingPoll === item.id}
+                >
+                  {deletingPoll === item.id ? (
+                    <ActivityIndicator size="small" color="#ef4444" />
+                  ) : (
+                    <>
+                      <Feather name="trash-2" size={16} color="#ef4444" />
+                      <Text style={styles.deleteButtonText}>Delete Poll</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+          </>
         )}
       </View>
     );
@@ -492,7 +617,12 @@ export default function ChannelPollsScreen() {
           <Feather name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Polls ({polls.length})</Text>
-        <View style={{ width: 24 }} />
+        <TouchableOpacity
+          onPress={collapseAllPolls}
+          style={styles.collapseAllButton}
+        >
+          <Feather name="minimize-2" size={20} color="#10b981" />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.filterTabs}>
@@ -585,6 +715,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
+  collapseAllButton: {
+    padding: 4,
+  },
   loadingContainer: {
     flex: 1,
     alignItems: 'center',
@@ -629,8 +762,14 @@ const styles = StyleSheet.create({
   pollHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  pollHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
-    marginBottom: 10,
+    flex: 1,
   },
   statusBadge: {
     paddingVertical: 4,
@@ -672,6 +811,7 @@ const styles = StyleSheet.create({
   pollMeta: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     marginBottom: 4,
   },
   pollMetaText: {
@@ -682,11 +822,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#475569',
     marginHorizontal: 6,
-  },
-  creatorText: {
-    fontSize: 12,
-    color: '#64748b',
-    marginBottom: 12,
   },
   optionsContainer: {
     marginTop: 12,
@@ -790,6 +925,22 @@ const styles = StyleSheet.create({
   closeButtonText: {
     fontSize: 13,
     color: '#64748b',
+    fontWeight: '500',
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ef4444',
+  },
+  deleteButtonText: {
+    fontSize: 13,
+    color: '#ef4444',
     fontWeight: '500',
   },
   emptyState: {

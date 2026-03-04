@@ -236,7 +236,11 @@ export const JoinTeamScreen: React.FC = () => {
         console.log('[JoinTeam] Team found:', team.name);
       }
 
-      setTeamInfo(team as TeamInfo);
+      const teamInfo = {
+        ...team,
+        club: Array.isArray(team.club) ? team.club[0] : team.club,
+      };
+      setTeamInfo(teamInfo as TeamInfo);
       setScreenState('valid');
 
       // Auto-select role if provided via deep link

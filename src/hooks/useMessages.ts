@@ -179,10 +179,40 @@ export function useMessages(channelId: string | null) {
     const { data: messageData, error: messageError } = await supabase
       .from('comm_messages')
       .insert(insertPayload)
-      .select('id')
+      .select('id, created_at')
       .single();
 
     if (messageError || !messageData) return false;
+
+    // OPTIMISTIC UI: Add message to local state immediately
+    const optimisticMessage: Message = {
+      id: messageData.id,
+      channel_id: channelId,
+      user_id: user.id,
+      content: (content && content.trim()) || '',
+      message_type: 'standard',
+      parent_id: options?.parentMessageId ?? null,
+      poll_id: null,
+      thread_count: 0,
+      is_pinned: false,
+      is_edited: false,
+      is_deleted: false,
+      edited_at: null,
+      created_at: messageData.created_at || new Date().toISOString(),
+      profile: {
+        id: user.id,
+        full_name: user.user_metadata?.full_name || user.email || 'You',
+        avatar_url: user.user_metadata?.avatar_url || null,
+      },
+      reactions: [],
+      comm_message_attachments: [],
+    } as Message;
+
+    // Add to state immediately (deduplication in subscription will handle if it arrives again)
+    setMessages(prev => {
+      if (prev.some(m => m.id === optimisticMessage.id)) return prev;
+      return [...prev, optimisticMessage];
+    });
 
     if (options?.attachment && messageData) {
       const att = options.attachment;

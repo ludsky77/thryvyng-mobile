@@ -39,7 +39,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   const enrichRolesWithEntityNames = async (roles: UserRole[]): Promise<any[]> => {
-    return await Promise.all(roles.map(async (role) => {
+    if (!roles.length) return [];
+
+    // Collect all entity IDs by type
+    const teamRoles = roles.filter(r => ['team_manager', 'head_coach', 'assistant_coach'].includes(r.role) && r.entity_id);
+    const clubRoles = roles.filter(r => r.role === 'club_admin' && r.entity_id);
+    const parentRoles = roles.filter(r => r.role === 'parent' && r.entity_id);
+
+    const teamIds = teamRoles.map(r => r.entity_id!);
+    const clubIds = clubRoles.map(r => r.entity_id!);
+    const playerIds = parentRoles.map(r => r.entity_id!);
+
+    // Batch fetch all data in parallel (3 queries max instead of N)
+    const [teamsResult, clubsResult, playersResult] = (await Promise.all([
+      teamIds.length > 0
+        ? withTimeout(supabase.from('teams').select('id, name, club_id').in('id', teamIds) as unknown as Promise<{ data: any }>)
+        : Promise.resolve({ data: [] }),
+      clubIds.length > 0
+        ? withTimeout(supabase.from('clubs').select('id, name').in('id', clubIds) as unknown as Promise<{ data: any }>)
+        : Promise.resolve({ data: [] }),
+      playerIds.length > 0
+        ? withTimeout(supabase.from('players').select('id, first_name, last_name, team_id, teams(id, name, club_id)').in('id', playerIds) as unknown as Promise<{ data: any }>)
+        : Promise.resolve({ data: [] }),
+    ])) as [{ data: any[] }, { data: any[] }, { data: any[] }];
+
+    // Build lookup maps
+    const teamsMap = new Map((teamsResult.data || []).map((t: any) => [t.id, t]));
+    const clubsMap = new Map((clubsResult.data || []).map((c: any) => [c.id, c]));
+    const playersMap = new Map((playersResult.data || []).map((p: any) => [p.id, p]));
+
+    // Enrich each role using the maps (no additional queries)
+    return roles.map(role => {
       let entityName = '';
       let team: { id: string; name: string; club_id?: string } | null = null;
       let club: { id: string; name: string } | null = null;
@@ -49,59 +79,43 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return { ...role, entityName, team, club, player };
       }
 
-      try {
-        // Team-related roles
-        if (['team_manager', 'head_coach', 'assistant_coach'].includes(role.role)) {
-          const { data: teamData } = await withTimeout(supabase
-            .from('teams')
-            .select('id, name, club_id')
-            .eq('id', role.entity_id)
-            .single());
+      // Team-related roles
+      if (['team_manager', 'head_coach', 'assistant_coach'].includes(role.role)) {
+        const teamData = teamsMap.get(role.entity_id);
+        if (teamData) {
+          team = teamData;
+          entityName = teamData.name || '';
+        }
+      }
+      // Club admin
+      else if (role.role === 'club_admin') {
+        const clubData = clubsMap.get(role.entity_id);
+        if (clubData) {
+          club = clubData;
+          entityName = clubData.name || '';
+        }
+      }
+      // Parent role
+      else if (role.role === 'parent') {
+        const playerData = playersMap.get(role.entity_id);
+        if (playerData) {
+          player = {
+            id: playerData.id,
+            first_name: playerData.first_name,
+            last_name: playerData.last_name,
+          };
+          const teamData = (playerData as any).teams;
           if (teamData) {
-            team = teamData;
-            entityName = teamData.name || '';
+            team = { id: teamData.id, name: teamData.name, club_id: teamData.club_id };
+            entityName = `${playerData.first_name} ${playerData.last_name} (${teamData.name})`;
+          } else {
+            entityName = `${playerData.first_name} ${playerData.last_name}`;
           }
         }
-        // Club admin
-        else if (role.role === 'club_admin') {
-          const { data: clubData } = await withTimeout(supabase
-            .from('clubs')
-            .select('id, name')
-            .eq('id', role.entity_id)
-            .single());
-          if (clubData) {
-            club = clubData;
-            entityName = clubData.name || '';
-          }
-        }
-        // Parent role - show child's name and team
-        else if (role.role === 'parent') {
-          const { data: playerData } = await withTimeout(supabase
-            .from('players')
-            .select('id, first_name, last_name, teams(id, name, club_id)')
-            .eq('id', role.entity_id)
-            .single());
-          if (playerData) {
-            player = {
-              id: playerData.id,
-              first_name: playerData.first_name,
-              last_name: playerData.last_name,
-            };
-            const teamData = (playerData as any).teams;
-            if (teamData) {
-              team = { id: teamData.id, name: teamData.name, club_id: teamData.club_id };
-              entityName = `${playerData.first_name} ${playerData.last_name} (${teamData.name})`;
-            } else {
-              entityName = `${playerData.first_name} ${playerData.last_name}`;
-            }
-          }
-        }
-      } catch {
-        // Return role with empty entityName and null team/club/player on failure
       }
 
       return { ...role, entityName, team, club, player };
-    }));
+    });
   };
 
   const fetchUserRoles = async (userId: string) => {
@@ -182,48 +196,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     );
 
-    // Check for existing session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      try {
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        if (session?.user) {
-          const { data: profileData } = await withTimeout(supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single());
-          setProfile(profileData ?? null);
-
-          const roles = await fetchUserRoles(session.user.id);
-          setAllRoles(roles);
-
-          // Auto-select if user has exactly one role
-          if (roles.length === 1 && !currentRole) {
-            setCurrentRole(roles[0]);
-          } else {
-            const savedRoleId = await AsyncStorage.getItem('lastRoleId') ?? await AsyncStorage.getItem('currentRoleId');
-            const role = savedRoleId
-              ? roles.find((r) => r.id === savedRoleId) || roles[0]
-              : roles[0];
-            setCurrentRole(role);
-          }
-          // Register for push notifications (skip in Expo Go)
-          if (session?.user?.id && Constants.appOwnership !== 'expo') {
-            registerForPushNotifications(session.user.id);
-          }
-        } else {
-          setProfile(null);
-        }
-      } catch {
-        // Fall through to ensure loading is cleared
-      } finally {
-        setLoading(false);
-      }
-    }).catch(() => {
-      setLoading(false);
-    });
+    // Check for existing session - this triggers onAuthStateChange which handles fetching
+    supabase.auth.getSession();
 
     return () => subscription.unsubscribe();
   }, []);

@@ -29,10 +29,15 @@ export default function SplashScreen({ onFinish, isReady = false }: SplashScreen
   const dot2Opacity = useRef(new Animated.Value(0.3)).current;
   const dot3Opacity = useRef(new Animated.Value(0.3)).current;
 
-  const minDisplayTime = 2500;
-  const safetyTimeout = 10000;
+  const minDisplayTime = 1500;
+  const safetyTimeout = 8000;
   const hasCalledFinish = useRef(false);
   const minElapsed = useRef(false);
+  const isReadyRef = useRef(isReady);
+
+  useEffect(() => {
+    isReadyRef.current = isReady;
+  }, [isReady]);
 
   const tryFinish = () => {
     if (hasCalledFinish.current || !onFinish) return;
@@ -43,7 +48,7 @@ export default function SplashScreen({ onFinish, isReady = false }: SplashScreen
   useEffect(() => {
     const minTimer = setTimeout(() => {
       minElapsed.current = true;
-      if (isReady) {
+      if (isReadyRef.current) {
         tryFinish();
       }
     }, minDisplayTime);

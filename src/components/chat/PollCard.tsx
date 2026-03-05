@@ -116,7 +116,7 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
       const { error } = await supabase.functions.invoke('send-push-notification', {
         body: {
           user_ids: nonVoters,
-          title: '📊 Your Vote Needed',
+          title: 'Your Vote Needed',
           body: `"${poll.question}"${timeRemaining ? ` - ${timeRemaining}` : ''} - Vote now!`,
           type: 'poll_reminder',
           data: {
@@ -176,7 +176,6 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
     : 0;
 
   const isBoardRoom = poll.display_style === 'board_room';
-  const quickEmojis = ['👍', '👎', '✅', '❌', '🎉', '🤔', '⚠️', '💯'];
 
   // Board room vote summary (Yes/No/Pending) for compact preview
   const yesOption = sortedOptions.find((o) => o.option_text?.toLowerCase() === 'yes');
@@ -202,11 +201,11 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
           <View style={styles.compactHeaderContent}>
             <View style={styles.compactInfo}>
               <View style={styles.pollBadge}>
-                {isBoardRoom ? (
-                  <Text style={styles.pollBadgeEmoji}>🏛️</Text>
-                ) : (
-                  <Feather name="bar-chart-2" size={16} color="#8B5CF6" />
-                )}
+                <Feather
+                  name={isBoardRoom ? 'users' : 'bar-chart-2'}
+                  size={16}
+                  color="#8B5CF6"
+                />
                 <Text style={styles.pollBadgeText}>Poll</Text>
                 {isClosed && <Text style={styles.closedBadge}>Closed</Text>}
               </View>
@@ -215,11 +214,17 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
               </Text>
               <View style={styles.compactMeta}>
                 {hasVoted && (
-                  <Text style={styles.votedIndicator}>✅ Voted</Text>
+                  <View style={styles.votedIndicator}>
+                    <Feather name="check" size={12} color="#10b981" />
+                    <Text style={styles.votedIndicatorText}>Voted</Text>
+                  </View>
                 )}
-                <Text style={styles.voteCount}>
-                  👥 {totalVotes} vote{totalVotes !== 1 ? 's' : ''}
-                </Text>
+                <View style={styles.voteCountRow}>
+                  <Feather name="users" size={12} color="#94a3b8" />
+                  <Text style={styles.voteCount}>
+                    {totalVotes} vote{totalVotes !== 1 ? 's' : ''}
+                  </Text>
+                </View>
               </View>
               {/* Compact vote summary for board_room (only when collapsed) */}
               {isBoardRoom && !isExpanded && (
@@ -247,8 +252,13 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
               )}
             </View>
             <View style={styles.expandButton}>
+              <Feather
+                name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                size={14}
+                color="#fff"
+              />
               <Text style={styles.expandButtonText}>
-                {isExpanded ? '🔼 Hide' : '🔽 View'}
+                {isExpanded ? 'Hide' : 'View'}
               </Text>
             </View>
           </View>
@@ -288,23 +298,9 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
                     </View>
                     <View style={styles.commentSection}>
                       <Text style={styles.commentLabel}>Add a note (optional)</Text>
-                      <View style={styles.quickEmojis}>
-                        {quickEmojis.map((emoji) => (
-                          <TouchableOpacity
-                            key={emoji}
-                            onPress={() => setVoteComment((prev) => (prev === emoji ? '' : emoji))}
-                            style={[
-                              styles.emojiButton,
-                              voteComment === emoji && styles.emojiButtonSelected,
-                            ]}
-                          >
-                            <Text style={styles.emoji}>{emoji}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
                       <TextInput
                         style={styles.commentInput}
-                        placeholder="Or type a short note..."
+                        placeholder="Type a short note..."
                         placeholderTextColor="#64748b"
                         value={voteComment}
                         onChangeText={setVoteComment}
@@ -390,9 +386,11 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
                   
                   <View style={styles.optionContent}>
                     <View style={styles.optionLeft}>
-                      <Text style={styles.checkmark}>
-                        {isUserVote ? '✅' : '⚪'}
-                      </Text>
+                      {isUserVote ? (
+                        <Feather name="check-circle" size={18} color="#10b981" />
+                      ) : (
+                        <Feather name="circle" size={18} color="#94a3b8" />
+                      )}
                       <Text style={[
                         styles.optionText,
                         isUserVote && styles.selectedOptionText,
@@ -548,25 +546,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
-  quickEmojis: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  emojiButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: '#3a3a6e',
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  emojiButtonSelected: {
-    borderColor: '#8b5cf6',
-    backgroundColor: '#4c1d95',
-  },
-  emoji: {
-    fontSize: 18,
-  },
   commentInput: {
     backgroundColor: '#1e293b',
     borderRadius: 8,
@@ -593,9 +572,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginBottom: 6,
-  },
-  pollBadgeEmoji: {
-    fontSize: 16,
   },
   pollBadgeText: {
     color: '#8b5cf6',
@@ -625,8 +601,23 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
+  votedIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  votedIndicatorText: {
+    color: '#10b981',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  voteCountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   voteCount: {
-    color: '#999',
+    color: '#94a3b8',
     fontSize: 11,
   },
   boardVotePreview: {
@@ -667,6 +658,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   expandButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: '#8b5cf6',
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -724,9 +718,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     flex: 1,
-  },
-  checkmark: {
-    fontSize: 12,
   },
   optionText: {
     color: '#fff',

@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import {
@@ -64,29 +65,32 @@ export default function WellnessParentAlert({
         </TouchableOpacity>
       )}
 
-      <TouchableOpacity
-        style={styles.statsCard}
-        onPress={handlePress}
-        activeOpacity={0.7}
-      >
-        <View style={styles.statsHeader}>
-          <View style={styles.statsIcon}>
-            <Ionicons name="heart" size={20} color="#fff" />
+      <TouchableOpacity onPress={handlePress} activeOpacity={0.7}>
+        <LinearGradient
+          colors={['#1e1b4b', '#312e81']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.statsCard}
+        >
+          <View style={styles.statsHeader}>
+            <View style={styles.statsIcon}>
+              <Ionicons name="heart" size={20} color="#fff" />
+            </View>
+            <View>
+              <Text style={styles.statsTitle}>Women's Wellness</Text>
+              <Text style={styles.statsSubtitle}>View {playerName}'s activity</Text>
+            </View>
           </View>
-          <View>
-            <Text style={styles.statsTitle}>Women's Wellness</Text>
-            <Text style={styles.statsSubtitle}>View {playerName}'s activity</Text>
+          <View style={styles.statsRow}>
+            <Ionicons name="eye-outline" size={16} color="#a5b4fc" />
+            <Text style={styles.statsText}>
+              {engagement?.total_views || 0} topics viewed
+            </Text>
+            <Text style={styles.statsTime}>
+              {formatTime(engagement?.total_time_seconds || 0)} total
+            </Text>
           </View>
-        </View>
-        <View style={styles.statsRow}>
-          <Ionicons name="eye-outline" size={16} color="#ec4899" />
-          <Text style={styles.statsText}>
-            {engagement?.total_views || 0} topics viewed
-          </Text>
-          <Text style={styles.statsTime}>
-            {formatTime(engagement?.total_time_seconds || 0)} total
-          </Text>
-        </View>
+        </LinearGradient>
       </TouchableOpacity>
     </View>
   );
@@ -128,11 +132,10 @@ const styles = StyleSheet.create({
     color: '#b45309',
   },
   statsCard: {
-    backgroundColor: '#831843',
     padding: 16,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#9d174d',
+    borderColor: '#334155',
   },
   statsHeader: {
     flexDirection: 'row',
@@ -155,23 +158,23 @@ const styles = StyleSheet.create({
   },
   statsSubtitle: {
     fontSize: 12,
-    color: '#f9a8d4',
+    color: '#cbd5e1',
   },
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(236, 72, 153, 0.3)',
+    backgroundColor: 'rgba(99, 102, 241, 0.2)',
     padding: 10,
     borderRadius: 10,
     gap: 6,
   },
   statsText: {
     fontSize: 13,
-    color: '#fce7f3',
+    color: '#e2e8f0',
     flex: 1,
   },
   statsTime: {
     fontSize: 11,
-    color: '#f9a8d4',
+    color: '#94a3b8',
   },
 });

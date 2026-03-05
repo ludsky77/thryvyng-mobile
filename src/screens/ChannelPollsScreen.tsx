@@ -290,7 +290,7 @@ export default function ChannelPollsScreen() {
       const { error } = await supabase.functions.invoke('send-push-notification', {
         body: {
           user_ids: nonVoterIds,
-          title: '📊 Your Vote Needed',
+          title: 'Your Vote Needed',
           body: `"${poll.question}" - Vote now!`,
           type: 'poll_reminder',
           data: {
@@ -405,8 +405,6 @@ export default function ChannelPollsScreen() {
   const activeCount = polls.filter((p) => p.status === 'active').length;
   const closedCount = polls.filter((p) => p.status === 'closed').length;
 
-  const quickEmojis = ['👍', '👎', '✅', '❌', '🎉', '🤔', '⚠️', '💯'];
-
   const renderPoll = ({ item }: { item: Poll }) => {
     const isActive = item.status === 'active';
     const isVoting = votingPollId === item.id;
@@ -499,28 +497,9 @@ export default function ChannelPollsScreen() {
                     </View>
                     <View style={styles.commentSection}>
                       <Text style={styles.commentLabel}>Add a note (optional)</Text>
-                      <View style={styles.quickEmojis}>
-                        {quickEmojis.map((emoji) => (
-                          <TouchableOpacity
-                            key={emoji}
-                            onPress={() =>
-                              setVoteComments((prev) => ({
-                                ...prev,
-                                [item.id]: (prev[item.id] ?? '') === emoji ? '' : emoji,
-                              }))
-                            }
-                            style={[
-                              styles.emojiButton,
-                              voteComment === emoji && styles.emojiButtonSelected,
-                            ]}
-                          >
-                            <Text style={styles.emoji}>{emoji}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
                       <TextInput
                         style={styles.commentInput}
-                        placeholder="Or type a short note..."
+                        placeholder="Type a short note..."
                         placeholderTextColor="#64748b"
                         value={voteComment}
                         onChangeText={(t) =>
@@ -874,25 +853,6 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     fontSize: 12,
     fontWeight: '500',
-  },
-  quickEmojis: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  emojiButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: '#334155',
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  emojiButtonSelected: {
-    borderColor: '#8b5cf6',
-    backgroundColor: '#4c1d95',
-  },
-  emoji: {
-    fontSize: 18,
   },
   commentInput: {
     backgroundColor: '#0f172a',

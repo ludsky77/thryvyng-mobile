@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -70,6 +70,11 @@ import HealthScreen from '../screens/HealthScreen';
 import ResourcesScreen from '../screens/ResourcesScreen';
 import SkillsLibraryScreen from '../screens/SkillsLibraryScreen';
 import TeamResourcesScreen from '../screens/TeamResourcesScreen';
+import TrainingStudioScreen from '../screens/TrainingStudioScreen';
+import SessionDetailScreen from '../screens/training/SessionDetailScreen';
+import DrillDetailScreen from '../screens/training/DrillDetailScreen';
+import SeasonPlanDetailScreen from '../screens/training/SeasonPlanDetailScreen';
+import CurriculumDetailScreen from '../screens/training/CurriculumDetailScreen';
 import GamePlayScreen from '../screens/GamePlayScreen';
 import ProductStoreScreen from '../screens/ProductStoreScreen';
 import ProductDetailScreen from '../screens/ProductDetailScreen';
@@ -345,6 +350,41 @@ function HomeStack() {
       <Stack.Screen
         name="TeamResources"
         component={TeamResourcesScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="TrainingStudio"
+        component={TrainingStudioScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="SessionDetail"
+        options={{ headerShown: false }}
+      >
+        {() => (
+          <Suspense fallback={<LoadingScreen />}>
+            <SessionDetailScreen />
+          </Suspense>
+        )}
+      </Stack.Screen>
+      <Stack.Screen
+        name="DrillDetail"
+        options={{ headerShown: false }}
+      >
+        {() => (
+          <Suspense fallback={<LoadingScreen />}>
+            <DrillDetailScreen />
+          </Suspense>
+        )}
+      </Stack.Screen>
+      <Stack.Screen
+        name="SeasonPlanDetail"
+        component={SeasonPlanDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CurriculumDetail"
+        component={CurriculumDetailScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen

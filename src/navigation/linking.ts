@@ -62,6 +62,12 @@ export type RootStackParamList = {
   ProductDetail: { productId: string };
   Cart: undefined;
   CheckoutSuccess: { sessionId?: string };
+  // Training Studio
+  TrainingStudio: { teamId?: string; clubId?: string };
+  SessionDetail: { sessionId: string };
+  DrillDetail: { drillId: string };
+  SeasonPlanDetail: { plan: any };
+  CurriculumDetail: { curriculum: any };
   // Fallback
   NotFound: undefined;
 };

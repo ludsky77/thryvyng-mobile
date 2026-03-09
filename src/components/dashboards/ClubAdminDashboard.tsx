@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { LiveGamesWidget } from '../game-stats/LiveGamesWidget';
+import QuickActionsCard from '../QuickActionsCard';
 
 interface ClubAdminDashboardProps {
   clubId: string | null;
@@ -234,6 +235,23 @@ export default function ClubAdminDashboard({
             </View>
           ))
         )}
+      </View>
+
+      {/* QUICK ACTIONS */}
+      <View style={styles.section}>
+        <QuickActionsCard
+          title="Quick Actions"
+          actions={[
+            {
+              id: 'training',
+              icon: 'fitness-outline',
+              label: 'Training Studio',
+              color: '#06b6d4',
+              onPress: () =>
+                navigation.navigate('TrainingStudio', { clubId }),
+            },
+          ]}
+        />
       </View>
 
       {/* 🏟️ TEAMS */}

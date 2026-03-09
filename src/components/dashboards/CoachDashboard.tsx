@@ -443,11 +443,15 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
                 navigateToScreen('TeamResources', { teamId, team_id: teamId }),
             },
             {
-              id: 'calendar',
-              icon: 'calendar-outline',
-              label: 'Calendar',
-              color: '#3b82f6',
-              onPress: () => navigateToScreen('CalendarTab'),
+              id: 'training',
+              icon: 'fitness-outline',
+              label: 'Training Studio',
+              color: '#06b6d4',
+              onPress: () =>
+                navigateToScreen('TrainingStudio', {
+                  teamId,
+                  clubId: (team as any)?.club_id ?? undefined,
+                }),
             },
             {
               id: 'certs',

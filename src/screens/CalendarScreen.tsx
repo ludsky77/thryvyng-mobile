@@ -56,6 +56,17 @@ const EVENT_TYPE_LABEL_COLORS: Record<string, string> = {
   club_event: '#3b82f6',
 };
 
+const EVENT_TYPE_EDGE: Record<string, string> = {
+  game: '#0d9488',
+  scrimmage: '#d97706',
+  tournament: '#eab308',
+  practice: 'transparent',
+  meeting: '#64748b',
+  other: '#64748b',
+  other_event: '#64748b',
+  club_event: '#64748b',
+};
+
 function formatEventTimeRange(event: { start_time?: string | null; end_time?: string | null; is_all_day?: boolean }): string {
   if (event.is_all_day) return 'All Day';
   if (!event.start_time) return 'All Day';
@@ -514,11 +525,22 @@ export default function CalendarScreen({ route, navigation }: any) {
                             event.event_date + 'T12:00:00'
                           );
                           const eventPast = isEventPast(event);
+                          const edgeColor =
+                            EVENT_TYPE_EDGE[event.event_type || ''] ||
+                            EVENT_TYPE_EDGE['other'];
                           return (
                             <TouchableOpacity
                               key={event.id}
                               style={[
                                 styles.eventCard,
+                                {
+                                  borderLeftWidth:
+                                    event.event_type === 'practice' ? 0 : 4,
+                                  borderLeftColor:
+                                    edgeColor || 'transparent',
+                                  borderTopLeftRadius: 8,
+                                  borderBottomLeftRadius: 8,
+                                },
                                 event.is_cancelled && styles.eventCardCancelled,
                                 eventPast && styles.eventCardPast,
                               ]}
@@ -668,11 +690,21 @@ export default function CalendarScreen({ route, navigation }: any) {
                     event.event_date + 'T12:00:00'
                   );
                   const eventPast = isEventPast(event);
+                  const edgeColor =
+                    EVENT_TYPE_EDGE[event.event_type || ''] ||
+                    EVENT_TYPE_EDGE['other'];
                   return (
                     <TouchableOpacity
                       key={event.id}
                       style={[
                         styles.eventCard,
+                        {
+                          borderLeftWidth:
+                            event.event_type === 'practice' ? 0 : 4,
+                          borderLeftColor: edgeColor || 'transparent',
+                          borderTopLeftRadius: 8,
+                          borderBottomLeftRadius: 8,
+                        },
                         event.is_cancelled && styles.eventCardCancelled,
                         eventPast && styles.eventCardPast,
                       ]}
@@ -683,7 +715,7 @@ export default function CalendarScreen({ route, navigation }: any) {
                         })
                       }
                     >
-                      {/* Date block - team color background, event type left border */}
+                      {/* Date block - team color background */}
                       <View
                         style={[
                           styles.eventDateBlock,

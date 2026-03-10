@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   TextInput,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -24,6 +25,7 @@ interface LineupItem {
   status?: string | null;
   opponent_name?: string | null;
   notes?: string | null;
+  event_id?: string | null;
   created_at: string;
   updated_at: string;
   event?: { id: string; title?: string | null; event_date?: string | null; start_time?: string | null } | null;
@@ -40,6 +42,9 @@ export default function LineupListScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [eventPickerVisible, setEventPickerVisible] = useState(false);
+  const [eventPickerLineupId, setEventPickerLineupId] = useState<string | null>(null);
+  const [availableEvents, setAvailableEvents] = useState<any[]>([]);
 
   const isDirector = !teamId && !!clubId;
 
@@ -59,7 +64,7 @@ export default function LineupListScreen() {
         const { data, error } = await supabase
           .from('lineup_formations')
           .select(
-            'id, name, field_type, formation_template, status, opponent_name, notes, created_at, updated_at, event:cal_events(id, title, event_date, start_time), team:teams(id, name)'
+            'id, name, field_type, formation_template, status, opponent_name, notes, event_id, created_at, updated_at, event:cal_events(id, title, event_date, start_time), team:teams(id, name)'
           )
           .eq(col, val)
           .order('updated_at', { ascending: false })
@@ -92,30 +97,86 @@ export default function LineupListScreen() {
     navigation.navigate('LineupEditor', { lineupId: lineup.id, teamId: tid });
   };
 
-  const handleDelete = (lineup: LineupItem) => {
-    Alert.alert(
-      'Delete Lineup',
-      'Delete this lineup?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error } = await supabase
-                .from('lineup_formations')
-                .delete()
-                .eq('id', lineup.id);
-              if (error) throw error;
-              setLineups((prev) => prev.filter((l) => l.id !== lineup.id));
-            } catch (err: any) {
-              Alert.alert('Error', err?.message || 'Failed to delete');
-            }
-          },
+  const showEventPicker = async (lineupId: string, forTeamId: string) => {
+    const { data } = await supabase
+      .from('cal_events')
+      .select('id, title, event_date, start_time')
+      .eq('team_id', forTeamId)
+      .eq('event_type', 'game')
+      .gte('event_date', new Date().toISOString().split('T')[0])
+      .order('event_date')
+      .limit(20);
+    setAvailableEvents(data || []);
+    setEventPickerLineupId(lineupId);
+    setEventPickerVisible(true);
+  };
+
+  const handleCardMenu = (lineup: LineupItem) => {
+    const tid = lineup.team?.id || teamId;
+    const opts = [
+      { text: 'Cancel', style: 'cancel' as const },
+      {
+        text: 'Edit Name',
+        onPress: () => {
+          (Alert as any).prompt(
+            'Edit Lineup Name',
+            '',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Save',
+                onPress: async (newName: string) => {
+                  if (!newName?.trim()) return;
+                  await supabase
+                    .from('lineup_formations')
+                    .update({ name: newName.trim(), updated_at: new Date().toISOString() })
+                    .eq('id', lineup.id);
+                  fetchLineups();
+                },
+              },
+            ],
+            'plain-text',
+            lineup.name
+          );
         },
-      ]
-    );
+      },
+      {
+        text: lineup.event_id || lineup.event?.id ? 'Change Event' : 'Link to Event',
+        onPress: () => showEventPicker(lineup.id, tid || ''),
+      },
+      ...(lineup.event_id || lineup.event?.id
+        ? [
+            {
+              text: 'Remove Event Link',
+              onPress: async () => {
+                await supabase
+                  .from('lineup_formations')
+                  .update({ event_id: null, updated_at: new Date().toISOString() })
+                  .eq('id', lineup.id);
+                fetchLineups();
+              },
+            },
+          ]
+        : []),
+      {
+        text: 'Delete Lineup',
+        style: 'destructive' as const,
+        onPress: () => {
+          Alert.alert('Delete Lineup', 'Are you sure? This cannot be undone.', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Delete',
+              style: 'destructive',
+              onPress: async () => {
+                await supabase.from('lineup_formations').delete().eq('id', lineup.id);
+                fetchLineups();
+              },
+            },
+          ]);
+        },
+      },
+    ];
+    Alert.alert(lineup.name, '', opts);
   };
 
   const handleCreateSuccess = (newId: string, createdTeamId?: string) => {
@@ -179,9 +240,15 @@ export default function LineupListScreen() {
           <TouchableOpacity
             style={styles.card}
             onPress={() => handleCardPress(item)}
-            onLongPress={() => handleDelete(item)}
             activeOpacity={0.7}
           >
+            <TouchableOpacity
+              style={styles.cardMenuBtn}
+              onPress={() => handleCardMenu(item)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Feather name="more-vertical" size={18} color="#64748b" />
+            </TouchableOpacity>
             <Text style={styles.cardTitle}>{item.name}</Text>
             <View style={styles.pillsRow}>
               <View style={styles.pill}>
@@ -267,6 +334,60 @@ export default function LineupListScreen() {
           onSuccess={(id, tid) => handleCreateSuccess(id, tid)}
         />
       )}
+
+      <Modal visible={eventPickerVisible} transparent animationType="fade">
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}
+          activeOpacity={1}
+          onPress={() => setEventPickerVisible(false)}
+        >
+          <View
+            style={{
+              backgroundColor: '#1e293b',
+              borderTopLeftRadius: 16,
+              borderTopRightRadius: 16,
+              paddingBottom: 34,
+              maxHeight: '50%',
+            }}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: '#334155' }}>
+              <Text style={{ fontSize: 16, fontWeight: '600', color: '#fff' }}>Link to Game Event</Text>
+            </View>
+            {availableEvents.length === 0 ? (
+              <Text style={{ color: '#64748b', textAlign: 'center', padding: 24 }}>No upcoming games</Text>
+            ) : (
+              <FlatList
+                data={availableEvents}
+                keyExtractor={(e) => e.id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: '#334155' }}
+                    onPress={async () => {
+                      if (eventPickerLineupId) {
+                        await supabase
+                          .from('lineup_formations')
+                          .update({ event_id: item.id, updated_at: new Date().toISOString() })
+                          .eq('id', eventPickerLineupId);
+                      }
+                      setEventPickerVisible(false);
+                      fetchLineups();
+                    }}
+                  >
+                    <Text style={{ fontSize: 15, color: '#fff' }}>{item.title || 'Game'}</Text>
+                    <Text style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                      {new Date(item.event_date).toLocaleDateString()}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              />
+            )}
+            <TouchableOpacity style={{ padding: 14, alignItems: 'center' }} onPress={() => setEventPickerVisible(false)}>
+              <Text style={{ color: '#8b5cf6', fontSize: 15, fontWeight: '600' }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -345,17 +466,20 @@ const CreateLineupModal = ({
 
     setSaving(true);
     try {
+      const { data: session } = await supabase.auth.getSession();
       const { data, error } = await supabase
         .from('lineup_formations')
         .insert({
           name: name.trim(),
           team_id: tid,
           club_id: clubId || null,
+          created_by: session?.session?.user?.id || null,
           field_type: fieldType,
           formation_template: formation,
           status: 'draft',
           event_id: eventId || null,
           notes: notes.trim() || null,
+          jersey_config: {},
         })
         .select('id')
         .single();
@@ -440,7 +564,7 @@ const CreateLineupModal = ({
         </View>
 
         <Text style={styles.inputLabel}>Formation</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.formationScroll}>
+        <View style={styles.formationRow}>
           {formations.map((f) => (
             <TouchableOpacity
               key={f}
@@ -457,7 +581,7 @@ const CreateLineupModal = ({
               </Text>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </View>
 
         <Text style={styles.inputLabel}>Link to Event</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.eventScroll}>
@@ -499,14 +623,14 @@ const CreateLineupModal = ({
         />
 
         <TouchableOpacity
-          style={[styles.createBtn, saving && styles.createBtnDisabled]}
+          style={[styles.createLineupBtn, saving && styles.createBtnDisabled]}
           onPress={handleCreate}
           disabled={saving}
         >
           {saving ? (
             <ActivityIndicator color="#fff" size="small" />
           ) : (
-            <Text style={styles.createBtnText}>Create</Text>
+            <Text style={styles.createLineupBtnText}>Create Lineup</Text>
           )}
         </TouchableOpacity>
         </ScrollView>
@@ -574,6 +698,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
+    position: 'relative',
+  },
+  cardMenuBtn: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    padding: 4,
   },
   cardTitle: {
     fontSize: 16,
@@ -749,14 +880,16 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
-  formationScroll: {
+  formationRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
     marginBottom: 16,
   },
   formationPill: {
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderRadius: 10,
-    marginRight: 8,
     borderWidth: 1,
     borderColor: '#475569',
   },
@@ -818,19 +951,20 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
-  createBtn: {
+  createLineupBtn: {
     backgroundColor: '#8b5cf6',
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 16,
+    width: '100%',
   },
   createBtnDisabled: {
     opacity: 0.8,
   },
-  createBtnText: {
+  createLineupBtnText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#fff',
   },
 });

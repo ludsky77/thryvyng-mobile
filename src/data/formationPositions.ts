@@ -1,6 +1,6 @@
 /**
  * Default position coordinates for formations (x, y as 0-100 percentage of field).
- * y=0 is top (own goal), y=100 is bottom (opponent goal).
+ * y=0 is top (attacking goal), y=100 is bottom (defending goal).
  */
 
 export const FORMATIONS_BY_FIELD: Record<string, string[]> = {
@@ -28,8 +28,7 @@ export function getFormationPositions(
 }
 
 function getDefaultPositions(formation: string, fieldType: string): FormationPosition[] {
-  const vbH = fieldType === '11v11' ? 65 : fieldType === '9v9' ? 55 : fieldType === '7v7' ? 45 : 35;
-  const gk: FormationPosition = { code: 'GK', x: 50, y: 4, role: 'goalkeeper' };
+  const gk: FormationPosition = { code: 'GK', x: 50, y: 92, role: 'goalkeeper' };
   const codes = parseFormationCodes(formation, fieldType);
   const byLayer = new Map<number, string[]>();
   for (const code of codes) {
@@ -38,11 +37,11 @@ function getDefaultPositions(formation: string, fieldType: string): FormationPos
     byLayer.get(layer)!.push(code);
   }
   const positions: FormationPosition[] = [gk];
-  const layers = [1, 2, 3];
-  for (const layer of layers) {
+  const layerY: Record<number, number> = { 1: 78, 2: 58, 3: 27 };
+  for (const layer of [1, 2, 3]) {
     const codesInLayer = byLayer.get(layer) || [];
     const n = codesInLayer.length;
-    const yBase = vbH * (0.12 + (layer / 3) * 0.75);
+    const yBase = layerY[layer];
     for (let i = 0; i < n; i++) {
       const x = n === 1 ? 50 : 15 + (70 * (i + 1)) / (n + 1);
       positions.push({
@@ -106,4 +105,17 @@ function getRoleForCode(code: string): 'goalkeeper' | 'defender' | 'midfielder' 
   return 'forward';
 }
 
+// Pre-populate explicit positions for all formations (used by lineup editor)
 const FORMATION_POSITIONS: Record<string, FormationPosition[]> = {};
+
+function initFormationPositions() {
+  for (const fieldType of Object.keys(FORMATIONS_BY_FIELD)) {
+    for (const formation of FORMATIONS_BY_FIELD[fieldType]) {
+      const key = `${fieldType}:${formation}`;
+      if (!FORMATION_POSITIONS[key]) {
+        FORMATION_POSITIONS[key] = getDefaultPositions(formation, fieldType);
+      }
+    }
+  }
+}
+initFormationPositions();

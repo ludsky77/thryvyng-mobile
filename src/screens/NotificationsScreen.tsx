@@ -36,6 +36,8 @@ function mapContextNotificationToItem(n: {
     data.evaluation_id = n.reference_id;
   } else if (n.reference_type === 'event' && n.reference_id) {
     data.event_id = n.reference_id;
+  } else if (n.reference_type === 'lineup_team' && n.reference_id) {
+    data.team_id = n.reference_id;
   } else if (n.reference_id) {
     data.reference_id = n.reference_id;
     data.reference_type = n.reference_type;
@@ -110,6 +112,16 @@ export default function NotificationsScreen({ navigation }: any) {
           });
         }
         break;
+      case 'lineup_published':
+        if (data?.event_id) {
+          navigation.navigate('EventDetail', {
+            eventId: data.event_id,
+            onRefetch: () => {},
+          });
+        } else if (data?.team_id) {
+          navigation.navigate('LineupList', { teamId: data.team_id });
+        }
+        break;
       default:
         if (data?.course_id) {
           navigation.navigate('CourseDetail', { courseId: data.course_id });
@@ -134,6 +146,8 @@ export default function NotificationsScreen({ navigation }: any) {
       case 'chat_message':
       case 'message':
         return { name: 'chatbubble-outline', color: '#3b82f6' };
+      case 'lineup_published':
+        return { name: 'git-network-outline', color: '#f59e0b' };
       case 'announcement':
         return { name: 'megaphone-outline', color: '#ec4899' };
       default:

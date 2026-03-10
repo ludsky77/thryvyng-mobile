@@ -15,6 +15,7 @@ export type NotificationType =
   | 'evaluation'
   | 'poll'
   | 'rsvp_reminder'
+  | 'lineup_published'
   | 'push';
 
 export interface Notification {

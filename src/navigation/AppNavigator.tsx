@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useRegistration } from '../contexts/RegistrationContext';
 import { FamilyCheckoutProvider } from '../contexts/FamilyCheckoutContext';
 import { linking, type RootStackParamList } from './linking';
+import { addNotificationListeners } from '../services/notifications';
 import {
   JoinTeamScreen,
   JoinStaffScreen,
@@ -79,6 +80,7 @@ import GamePlayScreen from '../screens/GamePlayScreen';
 
 const LineupListScreen = lazy(() => import('../screens/lineup/LineupListScreen'));
 const LineupEditorScreen = lazy(() => import('../screens/lineup/LineupEditorScreen'));
+const LineupViewScreen = lazy(() => import('../screens/lineup/LineupViewScreen'));
 import ProductStoreScreen from '../screens/ProductStoreScreen';
 import ProductDetailScreen from '../screens/ProductDetailScreen';
 import CartScreen from '../screens/CartScreen';
@@ -629,6 +631,16 @@ function CalendarStack() {
         options={{ headerShown: false }}
       />
       <Stack.Screen
+        name="LineupView"
+        options={{ headerShown: false }}
+      >
+        {() => (
+          <Suspense fallback={<LoadingScreen />}>
+            <LineupViewScreen />
+          </Suspense>
+        )}
+      </Stack.Screen>
+      <Stack.Screen
         name="PreGameSetup"
         component={PreGameSetupScreen}
         options={{ headerShown: false, presentation: 'modal' }}
@@ -915,6 +927,35 @@ export default function AppNavigator() {
       }
     }
   }, [user, loading, pendingProgramId, setPendingProgramId]);
+
+  // Handle push notification taps (e.g. lineup_published, event_reminder)
+  React.useEffect(() => {
+    const unsubscribe = addNotificationListeners(undefined, (response) => {
+      const data = response.notification.request.content.data as Record<string, any> | undefined;
+      if (!data || !navigationRef.current) return;
+
+      const type = data.type ?? data.reference_type;
+      if (type === 'lineup_published') {
+        if (data.event_id) {
+          navigationRef.current.navigate('EventDetail', {
+            eventId: data.event_id,
+            onRefetch: () => {},
+          });
+        } else if (data.team_id) {
+          navigationRef.current.navigate('Main', {
+            screen: 'HomeTab',
+            params: { screen: 'LineupList', params: { teamId: data.team_id } },
+          });
+        }
+      } else if ((type === 'event_reminder' || data.reference_type === 'event') && data.reference_id) {
+        navigationRef.current.navigate('EventDetail', {
+          eventId: data.reference_id,
+          onRefetch: () => {},
+        });
+      }
+    });
+    return unsubscribe;
+  }, []);
 
   if (loading) {
     return (

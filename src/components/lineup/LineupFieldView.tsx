@@ -229,7 +229,7 @@ export const LineupFieldView = memo(function LineupFieldView({
       onPositionTap &&
       positions.map((pos, i) => {
         const xPx = (pos.x / 100) * width;
-        const yPx = (pos.y / vbH) * height;
+        const yPx = (sy(pos.y) / vbH) * height;
         return (
           <TouchableOpacity
             key={`hit-${i}`}

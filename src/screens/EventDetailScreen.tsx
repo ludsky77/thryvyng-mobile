@@ -23,168 +23,7 @@ import PlayerAvatar from '../components/PlayerAvatar';
 import { notifyTeamOfEvent } from '../services/eventNotifications';
 import { GameEntryButton } from '../components/game-stats/GameEntryButton';
 import { isEventPast } from '../utils/calendar';
-import { LineupFieldView } from '../components/lineup/LineupFieldView';
-import { PlayViewer } from '../components/lineup/PlayViewer';
-import { getFormationPositions } from '../data/formationPositions';
-
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-function LineupSection({
-  lineup,
-  highlightPlayerId,
-  isParentView,
-  fieldWidth,
-  language,
-}: {
-  lineup: any;
-  highlightPlayerId: string | null;
-  isParentView: boolean;
-  fieldWidth: number;
-  language: 'en' | 'es';
-}) {
-  const [expandedPlayId, setExpandedPlayId] = useState<string | null>(null);
-  const formation = lineup.formation_template || '4-3-3';
-  const fieldType = lineup.field_type || '11v11';
-  const basePositions = getFormationPositions(formation, fieldType);
-  const players = lineup.players || [];
-
-  const byCode = new Map<string, any[]>();
-  players.forEach((p: any) => {
-    if (p.position_code) {
-      const list = byCode.get(p.position_code) || [];
-      list.push(p);
-      byCode.set(p.position_code, list);
-    }
-  });
-  const used = new Set<string>();
-
-  const positions = basePositions.map((pos) => {
-    const list = byCode.get(pos.code) || [];
-    const lp = list.find((p) => !used.has(p.id));
-    if (lp) used.add(lp.id);
-    const profile = lp?.player_profile;
-    const fullName = profile
-      ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
-      : lp?.guest_name || '';
-    return {
-      ...pos,
-      x: lp?.position_x ?? pos.x,
-      y: lp?.position_y ?? pos.y,
-      assignedPlayer: lp
-        ? {
-            id: lp.player_id || lp.id,
-            full_name: fullName,
-            jersey_number: lp.jersey_number ?? profile?.jersey_number,
-            is_captain: lp.is_captain,
-          }
-        : undefined,
-    };
-  });
-
-  const starters = players
-    .filter((p: any) => p.is_starter)
-    .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-  const substitutes = players
-    .filter((p: any) => !p.is_starter)
-    .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-
-  const getPlayerName = (p: any) => {
-    const profile = p.player_profile;
-    return profile
-      ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
-      : p.guest_name || '—';
-  };
-
-  const isHighlighted = (p: any) => highlightPlayerId && (p.player_id === highlightPlayerId);
-  const badge = isParentView ? 'YOUR CHILD' : 'YOU';
-
-  const plays = lineup.plays || [];
-
-  return (
-    <>
-      <LineupFieldView
-        fieldType={fieldType}
-        positions={positions}
-        jerseyConfig={lineup.jersey_config || {}}
-        width={fieldWidth}
-        readOnly
-        highlightPlayerId={highlightPlayerId}
-      />
-      <Text style={styles.lineupListTitle}>Starting XI</Text>
-      {starters.map((p: any) => (
-        <View key={p.id} style={styles.lineupPlayerRow}>
-          <Text style={[styles.lineupPlayerName, isHighlighted(p) && styles.lineupPlayerHighlight]}>
-            {p.position_code} {getPlayerName(p)} #{p.jersey_number ?? '—'}
-          </Text>
-          {isHighlighted(p) && (
-            <View style={styles.youBadge}>
-              <Text style={styles.youBadgeText}>{badge}</Text>
-            </View>
-          )}
-        </View>
-      ))}
-      {substitutes.length > 0 && (
-        <>
-          <Text style={styles.lineupListTitle}>Substitutes</Text>
-          {substitutes.map((p: any) => (
-            <View key={p.id} style={styles.lineupPlayerRow}>
-              <Text style={[styles.lineupPlayerName, isHighlighted(p) && styles.lineupPlayerHighlight]}>
-                {getPlayerName(p)} #{p.jersey_number ?? '—'}
-              </Text>
-              {isHighlighted(p) && (
-                <View style={styles.youBadge}>
-                  <Text style={styles.youBadgeText}>{badge}</Text>
-                </View>
-              )}
-            </View>
-          ))}
-        </>
-      )}
-      {lineup.notes && (
-        <>
-          <Text style={styles.lineupListTitle}>Coach Notes</Text>
-          <Text style={styles.lineupNotes}>{lineup.notes}</Text>
-        </>
-      )}
-      {plays.length > 0 && (
-        <>
-          <Text style={styles.lineupListTitle}>TACTICAL PLAYS ({plays.length})</Text>
-          {plays.map((play: any) => (
-            <View key={play.id} style={styles.playCard}>
-              <TouchableOpacity
-                style={styles.playCardHeader}
-                onPress={() => setExpandedPlayId(expandedPlayId === play.id ? null : play.id)}
-              >
-                <Text style={styles.playCardName}>
-                  {language === 'es' && play.name_es ? play.name_es : play.name || 'Play'}
-                </Text>
-                {play.category && (
-                  <View style={styles.playCategoryBadge}>
-                    <Text style={styles.playCategoryText}>{play.category}</Text>
-                  </View>
-                )}
-                <Feather
-                  name={expandedPlayId === play.id ? 'chevron-up' : 'chevron-down'}
-                  size={20}
-                  color="#94a3b8"
-                />
-              </TouchableOpacity>
-              {expandedPlayId === play.id && (
-                <PlayViewer
-                  play={play}
-                  fieldType={fieldType}
-                  jerseyConfig={lineup.jersey_config}
-                  language={language}
-                  width={fieldWidth}
-                />
-              )}
-            </View>
-          ))}
-        </>
-      )}
-    </>
-  );
-}
 
 function formatTime(time: string | null): string {
   if (!time) return '';
@@ -1049,30 +888,38 @@ export default function EventDetailScreen({ route, navigation }: any) {
 
           {/* LINEUP Section - when published lineup linked to event */}
           {lineup && (
-            <View style={styles.lineupCard}>
-              <View style={styles.lineupHeader}>
-                <Text style={styles.lineupSectionTitle}>LINEUP</Text>
-                <View style={styles.lineupPills}>
-                  <View style={styles.lineupPill}>
-                    <Text style={styles.lineupPillText}>{lineup.formation_template || '4-3-3'}</Text>
+            <TouchableOpacity
+              style={{
+                backgroundColor: '#1e293b',
+                borderWidth: 1,
+                borderColor: '#334155',
+                borderRadius: 12,
+                padding: 16,
+                marginHorizontal: 16,
+                marginVertical: 8,
+                flexDirection: 'row',
+                alignItems: 'center',
+              }}
+              onPress={() =>
+                navigation.navigate('LineupView', {
+                  lineupId: lineup.id,
+                  eventTitle: event?.title,
+                })
+              }
+            >
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>LINEUP</Text>
+                  <View style={{ backgroundColor: '#334155', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                    <Text style={{ fontSize: 11, color: '#94a3b8' }}>{lineup.formation_template || '4-3-3'}</Text>
                   </View>
-                  {lineup.opponent_name && (
-                    <Text style={styles.lineupOpponent}>vs {lineup.opponent_name}</Text>
-                  )}
                 </View>
+                <Text style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+                  {lineup.players?.filter((p: any) => p.is_starter).length || 0} starters · Tap to view
+                </Text>
               </View>
-              <LineupSection
-                lineup={lineup}
-                highlightPlayerId={
-                  !isStaff && (currentRole?.role === 'player' || currentRole?.role === 'parent')
-                    ? currentRole?.entity_id ?? null
-                    : null
-                }
-                isParentView={currentRole?.role === 'parent'}
-                fieldWidth={SCREEN_WIDTH - 48}
-                language={language}
-              />
-            </View>
+              <Feather name="chevron-right" size={20} color="#64748b" />
+            </TouchableOpacity>
           )}
 
           {/* RSVP Buttons - hidden for past events */}

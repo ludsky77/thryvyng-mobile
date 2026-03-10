@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   FlatList,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Feather } from '@expo/vector-icons';
@@ -22,6 +23,168 @@ import PlayerAvatar from '../components/PlayerAvatar';
 import { notifyTeamOfEvent } from '../services/eventNotifications';
 import { GameEntryButton } from '../components/game-stats/GameEntryButton';
 import { isEventPast } from '../utils/calendar';
+import { LineupFieldView } from '../components/lineup/LineupFieldView';
+import { PlayViewer } from '../components/lineup/PlayViewer';
+import { getFormationPositions } from '../data/formationPositions';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+function LineupSection({
+  lineup,
+  highlightPlayerId,
+  isParentView,
+  fieldWidth,
+  language,
+}: {
+  lineup: any;
+  highlightPlayerId: string | null;
+  isParentView: boolean;
+  fieldWidth: number;
+  language: 'en' | 'es';
+}) {
+  const [expandedPlayId, setExpandedPlayId] = useState<string | null>(null);
+  const formation = lineup.formation_template || '4-3-3';
+  const fieldType = lineup.field_type || '11v11';
+  const basePositions = getFormationPositions(formation, fieldType);
+  const players = lineup.players || [];
+
+  const byCode = new Map<string, any[]>();
+  players.forEach((p: any) => {
+    if (p.position_code) {
+      const list = byCode.get(p.position_code) || [];
+      list.push(p);
+      byCode.set(p.position_code, list);
+    }
+  });
+  const used = new Set<string>();
+
+  const positions = basePositions.map((pos) => {
+    const list = byCode.get(pos.code) || [];
+    const lp = list.find((p) => !used.has(p.id));
+    if (lp) used.add(lp.id);
+    const profile = lp?.player_profile;
+    const fullName = profile
+      ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
+      : lp?.guest_name || '';
+    return {
+      ...pos,
+      x: lp?.position_x ?? pos.x,
+      y: lp?.position_y ?? pos.y,
+      assignedPlayer: lp
+        ? {
+            id: lp.player_id || lp.id,
+            full_name: fullName,
+            jersey_number: lp.jersey_number ?? profile?.jersey_number,
+            is_captain: lp.is_captain,
+          }
+        : undefined,
+    };
+  });
+
+  const starters = players
+    .filter((p: any) => p.is_starter)
+    .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  const substitutes = players
+    .filter((p: any) => !p.is_starter)
+    .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+  const getPlayerName = (p: any) => {
+    const profile = p.player_profile;
+    return profile
+      ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
+      : p.guest_name || '—';
+  };
+
+  const isHighlighted = (p: any) => highlightPlayerId && (p.player_id === highlightPlayerId);
+  const badge = isParentView ? 'YOUR CHILD' : 'YOU';
+
+  const plays = lineup.plays || [];
+
+  return (
+    <>
+      <LineupFieldView
+        fieldType={fieldType}
+        positions={positions}
+        jerseyConfig={lineup.jersey_config || {}}
+        width={fieldWidth}
+        readOnly
+        highlightPlayerId={highlightPlayerId}
+      />
+      <Text style={styles.lineupListTitle}>Starting XI</Text>
+      {starters.map((p: any) => (
+        <View key={p.id} style={styles.lineupPlayerRow}>
+          <Text style={[styles.lineupPlayerName, isHighlighted(p) && styles.lineupPlayerHighlight]}>
+            {p.position_code} {getPlayerName(p)} #{p.jersey_number ?? '—'}
+          </Text>
+          {isHighlighted(p) && (
+            <View style={styles.youBadge}>
+              <Text style={styles.youBadgeText}>{badge}</Text>
+            </View>
+          )}
+        </View>
+      ))}
+      {substitutes.length > 0 && (
+        <>
+          <Text style={styles.lineupListTitle}>Substitutes</Text>
+          {substitutes.map((p: any) => (
+            <View key={p.id} style={styles.lineupPlayerRow}>
+              <Text style={[styles.lineupPlayerName, isHighlighted(p) && styles.lineupPlayerHighlight]}>
+                {getPlayerName(p)} #{p.jersey_number ?? '—'}
+              </Text>
+              {isHighlighted(p) && (
+                <View style={styles.youBadge}>
+                  <Text style={styles.youBadgeText}>{badge}</Text>
+                </View>
+              )}
+            </View>
+          ))}
+        </>
+      )}
+      {lineup.notes && (
+        <>
+          <Text style={styles.lineupListTitle}>Coach Notes</Text>
+          <Text style={styles.lineupNotes}>{lineup.notes}</Text>
+        </>
+      )}
+      {plays.length > 0 && (
+        <>
+          <Text style={styles.lineupListTitle}>TACTICAL PLAYS ({plays.length})</Text>
+          {plays.map((play: any) => (
+            <View key={play.id} style={styles.playCard}>
+              <TouchableOpacity
+                style={styles.playCardHeader}
+                onPress={() => setExpandedPlayId(expandedPlayId === play.id ? null : play.id)}
+              >
+                <Text style={styles.playCardName}>
+                  {language === 'es' && play.name_es ? play.name_es : play.name || 'Play'}
+                </Text>
+                {play.category && (
+                  <View style={styles.playCategoryBadge}>
+                    <Text style={styles.playCategoryText}>{play.category}</Text>
+                  </View>
+                )}
+                <Feather
+                  name={expandedPlayId === play.id ? 'chevron-up' : 'chevron-down'}
+                  size={20}
+                  color="#94a3b8"
+                />
+              </TouchableOpacity>
+              {expandedPlayId === play.id && (
+                <PlayViewer
+                  play={play}
+                  fieldType={fieldType}
+                  jerseyConfig={lineup.jersey_config}
+                  language={language}
+                  width={fieldWidth}
+                />
+              )}
+            </View>
+          ))}
+        </>
+      )}
+    </>
+  );
+}
 
 function formatTime(time: string | null): string {
   if (!time) return '';
@@ -88,6 +251,8 @@ export default function EventDetailScreen({ route, navigation }: any) {
   const [reminderSending, setReminderSending] = useState(false);
   const [reminderSent, setReminderSent] = useState(false);
   const [isStaffInTeam, setIsStaffInTeam] = useState(false);
+  const [lineup, setLineup] = useState<any | null>(null);
+  const [language] = useState<'en' | 'es'>('en');
 
   useEffect(() => {
     const checkStaffPermission = async () => {
@@ -117,15 +282,26 @@ export default function EventDetailScreen({ route, navigation }: any) {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('cal_events')
-        .select(`
-          *,
-          team:teams(id, name, color)
-        `)
-        .eq('id', id)
-        .single();
+      const [eventRes, lineupRes] = await Promise.all([
+        supabase
+          .from('cal_events')
+          .select(`*, team:teams(id, name, color)`)
+          .eq('id', id)
+          .single(),
+        supabase
+          .from('lineup_formations')
+          .select(
+            `id, name, formation_template, field_type, status, jersey_config, opponent_name, notes,
+            players:lineup_players(id, player_id, guest_name, jersey_number, position_code, position_x, position_y, is_starter, is_captain, sort_order,
+              player_profile:players(id, first_name, last_name)),
+            plays:lineup_plays(id, name, name_es, category, subcategory, animation_data, coaching_points, coaching_points_es)`
+          )
+          .eq('event_id', id)
+          .eq('status', 'published')
+          .maybeSingle(),
+      ]);
 
+      const { data, error } = eventRes;
       if (error) throw error;
 
       if (data) {
@@ -142,6 +318,12 @@ export default function EventDetailScreen({ route, navigation }: any) {
           maybe: rsvps.filter((r: any) => r.status === 'maybe').length,
         };
         setEvent({ ...data, rsvp_counts } as CalendarEvent);
+      }
+
+      if (lineupRes.data) {
+        setLineup(lineupRes.data);
+      } else {
+        setLineup(null);
       }
     } catch (err) {
       console.error('[EventDetail] Error fetching event:', err);
@@ -247,6 +429,19 @@ export default function EventDetailScreen({ route, navigation }: any) {
   useEffect(() => {
     if (eventParam) {
       setEvent(eventParam);
+      const id = eventParam.id;
+      supabase
+        .from('lineup_formations')
+        .select(
+          `id, name, formation_template, field_type, status, jersey_config, opponent_name, notes,
+          players:lineup_players(id, player_id, guest_name, jersey_number, position_code, position_x, position_y, is_starter, is_captain, sort_order,
+            player_profile:players(id, first_name, last_name)),
+          plays:lineup_plays(id, name, name_es, category, subcategory, animation_data, coaching_points, coaching_points_es)`
+        )
+        .eq('event_id', id)
+        .eq('status', 'published')
+        .maybeSingle()
+        .then(({ data }) => setLineup(data));
     } else {
       fetchEvent();
     }
@@ -852,6 +1047,34 @@ export default function EventDetailScreen({ route, navigation }: any) {
             </View>
           )}
 
+          {/* LINEUP Section - when published lineup linked to event */}
+          {lineup && (
+            <View style={styles.lineupCard}>
+              <View style={styles.lineupHeader}>
+                <Text style={styles.lineupSectionTitle}>LINEUP</Text>
+                <View style={styles.lineupPills}>
+                  <View style={styles.lineupPill}>
+                    <Text style={styles.lineupPillText}>{lineup.formation_template || '4-3-3'}</Text>
+                  </View>
+                  {lineup.opponent_name && (
+                    <Text style={styles.lineupOpponent}>vs {lineup.opponent_name}</Text>
+                  )}
+                </View>
+              </View>
+              <LineupSection
+                lineup={lineup}
+                highlightPlayerId={
+                  !isStaff && (currentRole?.role === 'player' || currentRole?.role === 'parent')
+                    ? currentRole?.entity_id ?? null
+                    : null
+                }
+                isParentView={currentRole?.role === 'parent'}
+                fieldWidth={SCREEN_WIDTH - 48}
+                language={language}
+              />
+            </View>
+          )}
+
           {/* RSVP Buttons - hidden for past events */}
           {isEventPast(event) ? (
             <View style={styles.pastEventNotice}>
@@ -1280,6 +1503,116 @@ const styles = StyleSheet.create({
     color: '#E9D5FF',
     fontSize: 13,
     marginTop: 4,
+  },
+
+  // Lineup Section
+  lineupCard: {
+    backgroundColor: '#1e293b',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+    padding: 16,
+  },
+  lineupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  lineupSectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+  },
+  lineupPills: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  lineupPill: {
+    backgroundColor: '#334155',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  lineupPillText: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  lineupOpponent: {
+    fontSize: 13,
+    color: '#94a3b8',
+  },
+  lineupListTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  lineupPlayerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    gap: 8,
+  },
+  lineupPlayerName: {
+    fontSize: 14,
+    color: '#e2e8f0',
+  },
+  lineupPlayerHighlight: {
+    color: '#06b6d4',
+    fontWeight: '700',
+  },
+  youBadge: {
+    backgroundColor: 'rgba(6, 182, 212, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  youBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#06b6d4',
+  },
+  lineupNotes: {
+    fontSize: 14,
+    color: '#94a3b8',
+    marginTop: 4,
+  },
+  playCard: {
+    backgroundColor: '#0f172a',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  playCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  playCardName: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  playCategoryBadge: {
+    backgroundColor: '#334155',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  playCategoryText: {
+    fontSize: 11,
+    color: '#94a3b8',
   },
 
   // RSVP Buttons

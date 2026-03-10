@@ -76,6 +76,9 @@ import DrillDetailScreen from '../screens/training/DrillDetailScreen';
 import SeasonPlanDetailScreen from '../screens/training/SeasonPlanDetailScreen';
 import CurriculumDetailScreen from '../screens/training/CurriculumDetailScreen';
 import GamePlayScreen from '../screens/GamePlayScreen';
+
+const LineupListScreen = lazy(() => import('../screens/lineup/LineupListScreen'));
+const LineupEditorScreen = lazy(() => import('../screens/lineup/LineupEditorScreen'));
 import ProductStoreScreen from '../screens/ProductStoreScreen';
 import ProductDetailScreen from '../screens/ProductDetailScreen';
 import CartScreen from '../screens/CartScreen';
@@ -387,6 +390,26 @@ function HomeStack() {
         component={CurriculumDetailScreen}
         options={{ headerShown: false }}
       />
+      <Stack.Screen
+        name="LineupList"
+        options={{ headerShown: false }}
+      >
+        {() => (
+          <Suspense fallback={<LoadingScreen />}>
+            <LineupListScreen />
+          </Suspense>
+        )}
+      </Stack.Screen>
+      <Stack.Screen
+        name="LineupEditor"
+        options={{ headerShown: false }}
+      >
+        {() => (
+          <Suspense fallback={<LoadingScreen />}>
+            <LineupEditorScreen />
+          </Suspense>
+        )}
+      </Stack.Screen>
       <Stack.Screen
         name="GamePlay"
         component={GamePlayScreen as any}

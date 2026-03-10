@@ -415,14 +415,6 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
                 }),
             },
             {
-              id: 'staff',
-              icon: 'person-add-outline',
-              label: 'Team Staff',
-              color: '#f59e0b',
-              onPress: () =>
-                navigateToScreen('TeamStaff', { teamId, team_id: teamId }),
-            },
-            {
               id: 'evals',
               icon: 'clipboard-outline',
               label: 'Evaluations',
@@ -435,14 +427,6 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
                 }),
             },
             {
-              id: 'resources',
-              icon: 'folder-outline',
-              label: 'Team Resources',
-              color: '#06b6d4',
-              onPress: () =>
-                navigateToScreen('TeamResources', { teamId, team_id: teamId }),
-            },
-            {
               id: 'training',
               icon: 'fitness-outline',
               label: 'Training Studio',
@@ -452,6 +436,25 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
                   teamId,
                   clubId: (team as any)?.club_id ?? undefined,
                 }),
+            },
+            {
+              id: 'lineup',
+              icon: 'git-network-outline',
+              label: 'Lineup Master',
+              color: '#f59e0b',
+              onPress: () =>
+                navigateToScreen('LineupList', {
+                  teamId,
+                  clubId: (team as any)?.club_id ?? undefined,
+                }),
+            },
+            {
+              id: 'resources',
+              icon: 'folder-outline',
+              label: 'Team Resources',
+              color: '#06b6d4',
+              onPress: () =>
+                navigateToScreen('TeamResources', { teamId, team_id: teamId }),
             },
             {
               id: 'certs',

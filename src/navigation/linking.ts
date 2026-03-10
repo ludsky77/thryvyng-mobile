@@ -68,6 +68,8 @@ export type RootStackParamList = {
   DrillDetail: { drillId: string };
   SeasonPlanDetail: { plan: any };
   CurriculumDetail: { curriculum: any };
+  LineupList: { teamId?: string; clubId?: string };
+  LineupEditor: { lineupId: string; teamId: string };
   // Fallback
   NotFound: undefined;
 };

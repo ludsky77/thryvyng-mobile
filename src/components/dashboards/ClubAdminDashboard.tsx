@@ -250,6 +250,14 @@ export default function ClubAdminDashboard({
               onPress: () =>
                 navigation.navigate('TrainingStudio', { clubId }),
             },
+            {
+              id: 'lineup',
+              icon: 'git-network-outline',
+              label: 'Lineup Master',
+              color: '#f59e0b',
+              onPress: () =>
+                navigation.navigate('LineupList', { clubId }),
+            },
           ]}
         />
       </View>

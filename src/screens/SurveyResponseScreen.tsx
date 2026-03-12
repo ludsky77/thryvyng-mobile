@@ -133,8 +133,6 @@ export default function SurveyResponseScreen() {
         .eq('survey_id', surveyRow.id)
         .order('display_order', { ascending: true });
 
-      console.log('[SurveyResponse] questions:', JSON.stringify(qData), 'error:', qErr?.message);
-
       if (qErr || !qData?.length) {
         setQuestions([]);
         setLoading(false);
@@ -153,8 +151,6 @@ export default function SurveyResponseScreen() {
         const { sv_question_options: _, ...rest } = q;
         return { ...rest, options: opts };
       });
-
-      console.log('[SurveyResponse] parsed questions:', qs.length);
 
       setQuestions(qs);
 

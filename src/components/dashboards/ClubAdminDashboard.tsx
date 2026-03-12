@@ -260,6 +260,14 @@ export default function ClubAdminDashboard({
               onPress: () =>
                 navigation.navigate('LineupList', { clubId }),
             },
+            {
+              id: 'surveys',
+              icon: 'clipboard-outline',
+              label: 'Surveys',
+              color: '#8b5cf6',
+              onPress: () =>
+                navigation.navigate('SurveyList', { clubId }),
+            },
           ]}
         />
       </View>

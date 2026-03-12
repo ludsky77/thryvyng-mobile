@@ -38,6 +38,8 @@ import StaffMessageScreen from '../screens/StaffMessageScreen';
 import CalendarScreen from '../screens/CalendarScreen';
 import EventDetailScreen from '../screens/EventDetailScreen';
 import SurveyResponseScreen from '../screens/SurveyResponseScreen';
+import SurveyListScreen from '../screens/SurveyListScreen';
+import SurveyResultsScreen from '../screens/SurveyResultsScreen';
 import AttendanceScreen from '../screens/AttendanceScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import { NotificationBell } from '../components/NotificationBell';
@@ -232,6 +234,16 @@ function HomeStack() {
       <Stack.Screen
         name="SurveyResponse"
         component={SurveyResponseScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="SurveyList"
+        component={SurveyListScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="SurveyResults"
+        component={SurveyResultsScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen

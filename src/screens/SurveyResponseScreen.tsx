@@ -129,9 +129,11 @@ export default function SurveyResponseScreen() {
 
       const { data: qData, error: qErr } = await supabase
         .from('sv_questions')
-        .select('id, survey_id, question_text, question_text_es, question_type, display_order, is_required, scale_label_min, scale_label_max, scale_label_min_es, scale_label_max_es, sv_question_options(id, question_id, option_text, option_text_es, display_order)')
+        .select('id, survey_id, question_text, question_text_es, question_type, display_order, is_required, scale_label_min, scale_label_max, scale_label_min_es, scale_label_max_es, sv_question_options(id, question_id, option_label, option_label_es, display_order)')
         .eq('survey_id', surveyRow.id)
         .order('display_order', { ascending: true });
+
+      console.log('[SurveyResponse] questions:', JSON.stringify(qData), 'error:', qErr?.message);
 
       if (qErr || !qData?.length) {
         setQuestions([]);
@@ -140,11 +142,21 @@ export default function SurveyResponseScreen() {
       }
 
       const qs: Question[] = (qData as any[]).map((q) => {
-        const opts = (q.sv_question_options || []) as QuestionOption[];
+        const rawOpts = q.sv_question_options;
+        const rawArr = Array.isArray(rawOpts) ? rawOpts : rawOpts ? [rawOpts] : [];
+        const opts: QuestionOption[] = rawArr.map((o: any) => ({
+          ...o,
+          option_text: o.option_label ?? o.option_text,
+          option_text_es: o.option_label_es ?? o.option_text_es,
+        }));
         opts.sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
         const { sv_question_options: _, ...rest } = q;
         return { ...rest, options: opts };
       });
+
+      console.log('[SurveyResponse] parsed questions:', qs.length);
+
+      setQuestions(qs);
 
       const initial: Record<string, AnswerState> = {};
       qs.forEach((q) => {

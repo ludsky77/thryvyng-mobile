@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { RoleSwitcher } from '../components/RoleSwitcher';
@@ -13,8 +15,19 @@ import PlayerDashboard from '../components/dashboards/PlayerDashboard';
 import CoachDashboard from '../components/dashboards/CoachDashboard';
 import ClubAdminDashboard from '../components/dashboards/ClubAdminDashboard';
 
+const SHOW_LINEUP_WIDGET_KEY = 'show_lineup_widget';
+
 export default function DashboardScreen({ navigation }: any) {
   const { user, profile, currentRole, loading: authLoading } = useAuth();
+  const [showLineupWidget, setShowLineupWidget] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      AsyncStorage.getItem(SHOW_LINEUP_WIDGET_KEY).then((val) => {
+        setShowLineupWidget(val !== 'false');
+      });
+    }, [])
+  );
 
   const renderDashboard = () => {
     const role = currentRole?.role;
@@ -23,7 +36,13 @@ export default function DashboardScreen({ navigation }: any) {
     switch (role) {
       case 'player':
       case 'parent':
-        return <PlayerDashboard playerId={entityId} navigation={navigation} />;
+        return (
+          <PlayerDashboard
+            playerId={entityId}
+            navigation={navigation}
+            showLineupWidget={showLineupWidget}
+          />
+        );
       case 'head_coach':
       case 'assistant_coach':
       case 'team_manager':

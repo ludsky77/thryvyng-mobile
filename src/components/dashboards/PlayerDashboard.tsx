@@ -16,10 +16,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { LiveGamesWidget } from '../game-stats/LiveGamesWidget';
 import QuickActionsCard from '../QuickActionsCard';
 import WellnessParentAlert from '../WellnessParentAlert';
+import PendingSurveyBanner from '../surveys/PendingSurveyBanner';
 
 interface PlayerDashboardProps {
   playerId: string | null;
   navigation: any;
+  showLineupWidget?: boolean;
 }
 
 interface Player {
@@ -52,7 +54,7 @@ interface UpcomingLineup {
   players?: { id: string; player_id?: string | null; position_code?: string | null; is_starter?: boolean; is_captain?: boolean }[];
 }
 
-export default function PlayerDashboard({ playerId, navigation }: PlayerDashboardProps) {
+export default function PlayerDashboard({ playerId, navigation, showLineupWidget = true }: PlayerDashboardProps) {
   const { user, currentRole } = useAuth();
   const [player, setPlayer] = useState<Player | null>(null);
   const [enrolledCourses, setEnrolledCourses] = useState<EnrolledCourse[]>([]);
@@ -215,6 +217,7 @@ export default function PlayerDashboard({ playerId, navigation }: PlayerDashboar
 
   return (
     <ScrollView style={styles.container}>
+      <PendingSurveyBanner navigation={navigation} />
       {/* Live Games Widget */}
       {player.team_id && <LiveGamesWidget teamId={player.team_id} />}
 
@@ -309,83 +312,55 @@ export default function PlayerDashboard({ playerId, navigation }: PlayerDashboar
         ]}
       />
 
-      {/* Upcoming Lineup Widget */}
-      {upcomingLineups.length > 0 && (
-        <View style={styles.lineupWidget}>
-          <Text style={styles.lineupWidgetTitle}>Your Next Lineup</Text>
-          {upcomingLineups.slice(0, 3).map((l, idx) => {
+      {/* Upcoming Lineup Widget - Compact thin bars */}
+      {showLineupWidget && upcomingLineups.length > 0 && (
+        <View style={styles.lineupWidgetContainer}>
+          {upcomingLineups.slice(0, 3).map((l) => {
             const mySlot = (l.players || []).find((p) => p.player_id === playerId);
-            const eventTitle = l.event?.title || l.name;
+            const eventLabel = l.opponent_name || l.event?.title || l.name;
             const eventDate = l.event?.event_date
               ? new Date(l.event.event_date + 'T12:00:00').toLocaleDateString('en-US', {
                   month: 'short',
                   day: 'numeric',
                 })
               : '';
-            const eventTime = l.event?.start_time
-              ? (() => {
-                  const [h, m] = l.event!.start_time!.split(':');
-                  const hour = parseInt(h || '0', 10);
-                  const ampm = hour >= 12 ? 'PM' : 'AM';
-                  const hour12 = hour % 12 || 12;
-                  return `${hour12}:${m || '00'} ${ampm}`;
-                })()
-              : '';
             const posLabel = mySlot?.position_code || 'Bench';
             const isStarter = mySlot?.is_starter ?? false;
             const isCaptain = mySlot?.is_captain ?? false;
+            const starterLabel = isStarter ? 'Starting XI' : 'Substitute';
 
             return (
-              <View key={l.id} style={[styles.lineupWidgetItem, idx === 0 && { borderTopWidth: 0 }]}>
-                <Text style={styles.lineupWidgetEvent}>
-                  {eventTitle}
-                  {l.opponent_name ? ` vs ${l.opponent_name}` : ''} — {eventDate}
-                  {eventTime ? `, ${eventTime}` : ''}
+              <TouchableOpacity
+                key={l.id}
+                style={styles.lineupWidgetBar}
+                activeOpacity={0.8}
+                onPress={() => {
+                  const params = {
+                    eventId: l.event?.id,
+                    event: l.event ? { ...l.event, id: l.event.id } : undefined,
+                  };
+                  const nav = navigation.getParent?.()?.getParent?.();
+                  if (nav) {
+                    (nav as any).navigate('CalendarTab', {
+                      screen: 'EventDetail',
+                      params,
+                    });
+                  } else {
+                    navigation.navigate('EventDetail' as never, params);
+                  }
+                }}
+              >
+                <Text style={styles.lineupWidgetBarEmoji}>⚽</Text>
+                <Text style={styles.lineupWidgetBarText} numberOfLines={1}>
+                  {eventLabel} · {eventDate} · {posLabel}
+                  {isCaptain ? (
+                    <Text style={styles.lineupWidgetBarCaptain}> C</Text>
+                  ) : null}
+                  {' · '}
+                  {starterLabel}
                 </Text>
-                <View style={styles.lineupWidgetBadges}>
-                  <View style={styles.lineupWidgetPill}>
-                    <Text style={styles.lineupWidgetPillText}>{l.formation_template || '4-3-3'}</Text>
-                  </View>
-                  {isStarter ? (
-                    <View style={styles.lineupWidgetStarter}>
-                      <Text style={styles.lineupWidgetStarterText}>Starting XI</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.lineupWidgetSub}>
-                      <Text style={styles.lineupWidgetSubText}>Substitute</Text>
-                    </View>
-                  )}
-                  {isCaptain && (
-                    <View style={styles.lineupWidgetCaptain}>
-                      <Text style={styles.lineupWidgetCaptainText}>Captain</Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={styles.lineupWidgetPosition}>
-                  {currentRole?.role === 'parent' ? "Your child's position: " : "You're playing "}
-                  <Text style={styles.lineupWidgetPositionBold}>{posLabel}</Text>
-                </Text>
-                <TouchableOpacity
-                  style={styles.lineupWidgetButton}
-                  onPress={() => {
-                    const params = {
-                      eventId: l.event?.id,
-                      event: l.event ? { ...l.event, id: l.event.id } : undefined,
-                    };
-                    const nav = navigation.getParent?.()?.getParent?.();
-                    if (nav) {
-                      (nav as any).navigate('CalendarTab', {
-                        screen: 'EventDetail',
-                        params,
-                      });
-                    } else {
-                      navigation.navigate('EventDetail' as never, params);
-                    }
-                  }}
-                >
-                  <Text style={styles.lineupWidgetButtonText}>View Lineup</Text>
-                </TouchableOpacity>
-              </View>
+                <Text style={styles.lineupWidgetBarChevron}>▸</Text>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -633,102 +608,38 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     gap: 8,
   },
-  lineupWidget: {
-    marginHorizontal: 20,
+  lineupWidgetContainer: {
+    marginHorizontal: 16,
     marginBottom: 16,
+    gap: 6,
+  },
+  lineupWidgetBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 48,
+    paddingHorizontal: 12,
     backgroundColor: '#1e293b',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#334155',
-    padding: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#8b5cf6',
+    borderColor: '#8b5cf6',
   },
-  lineupWidgetTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 12,
+  lineupWidgetBarEmoji: {
+    fontSize: 18,
+    marginRight: 8,
   },
-  lineupWidgetItem: {
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#334155',
-  },
-  lineupWidgetEvent: {
+  lineupWidgetBarText: {
+    flex: 1,
     fontSize: 14,
     color: '#e2e8f0',
-    marginBottom: 8,
   },
-  lineupWidgetBadges: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 8,
-  },
-  lineupWidgetPill: {
-    backgroundColor: '#334155',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  lineupWidgetPillText: {
-    fontSize: 12,
-    color: '#94a3b8',
-  },
-  lineupWidgetStarter: {
-    backgroundColor: 'rgba(16, 185, 129, 0.2)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  lineupWidgetStarterText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#10b981',
-  },
-  lineupWidgetSub: {
-    backgroundColor: 'rgba(245, 158, 11, 0.2)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  lineupWidgetSubText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#f59e0b',
-  },
-  lineupWidgetCaptain: {
-    backgroundColor: 'rgba(245, 158, 11, 0.3)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  lineupWidgetCaptainText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#f59e0b',
-  },
-  lineupWidgetPosition: {
-    fontSize: 14,
-    color: '#94a3b8',
-    marginBottom: 8,
-  },
-  lineupWidgetPositionBold: {
+  lineupWidgetBarCaptain: {
+    color: '#fbbf24',
     fontWeight: '700',
-    color: '#fff',
   },
-  lineupWidgetButton: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#8b5cf6',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  lineupWidgetButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
+  lineupWidgetBarChevron: {
+    fontSize: 16,
+    color: '#8b5cf6',
+    marginLeft: 4,
   },
   wellnessSection: {
     paddingHorizontal: 12,

@@ -318,22 +318,19 @@ export default function LineupEditorScreen() {
     if (a) {
       const p = a.playerId ? roster.find((r) => r.id === a.playerId) : null;
       const name = a.guestName || (p ? getPlayerDisplayName(p) : '');
+      const currentCaptainCount = Array.from(assignments.values()).filter((x) => x.isCaptain).length;
+      const captainOption =
+        a.isCaptain
+          ? { text: 'Remove Captain', onPress: () => setAssignments((prev) => { const n = new Map(prev); const cur = n.get(index); if (cur) n.set(index, { ...cur, isCaptain: false }); return n; }) }
+          : currentCaptainCount >= 4
+            ? { text: 'Set as Captain (max reached)' as const, onPress: () => Alert.alert('Maximum Captains', 'You can assign up to 4 captains per lineup.') }
+            : { text: 'Set as Captain' as const, onPress: () => setAssignments((prev) => { const n = new Map(prev); const cur = n.get(index); if (cur) n.set(index, { ...cur, isCaptain: true }); return n; }) };
       Alert.alert(
         `${name} #${a.jerseyNumber ?? '?'}`,
         '',
         [
           { text: 'Cancel', style: 'cancel' },
-          {
-            text: a.isCaptain ? 'Remove Captain' : 'Set Captain',
-            onPress: () => {
-              setAssignments((prev) => {
-                const n = new Map(prev);
-                const nextCaptain = a.isCaptain ? false : true;
-                n.forEach((v, k) => n.set(k, { ...v, isCaptain: k === index && nextCaptain }));
-                return n;
-              });
-            },
-          },
+          captainOption,
           {
             text: 'Move to Bench',
             onPress: () => {

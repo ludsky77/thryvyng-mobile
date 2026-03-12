@@ -37,6 +37,7 @@ import ChannelLinksScreen from '../screens/ChannelLinksScreen';
 import StaffMessageScreen from '../screens/StaffMessageScreen';
 import CalendarScreen from '../screens/CalendarScreen';
 import EventDetailScreen from '../screens/EventDetailScreen';
+import SurveyResponseScreen from '../screens/SurveyResponseScreen';
 import AttendanceScreen from '../screens/AttendanceScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import { NotificationBell } from '../components/NotificationBell';
@@ -226,6 +227,11 @@ function HomeStack() {
       <Stack.Screen
         name="Dashboard"
         component={DashboardScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="SurveyResponse"
+        component={SurveyResponseScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen
@@ -952,6 +958,16 @@ export default function AppNavigator() {
           eventId: data.reference_id,
           onRefetch: () => {},
         });
+      } else if (type === 'survey' || type === 'survey_reminder') {
+        if (data.survey_id) {
+          navigationRef.current.navigate('Main', {
+            screen: 'HomeTab',
+            params: {
+              screen: 'SurveyResponse',
+              params: { surveyId: data.survey_id },
+            },
+          });
+        }
       }
     });
     return unsubscribe;

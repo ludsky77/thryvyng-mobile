@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,10 +8,14 @@ import {
   Image,
   Linking,
   Alert,
+  Switch,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
+
+const SHOW_LINEUP_WIDGET_KEY = 'show_lineup_widget';
 
 const HELP_URL = 'https://thryvyng.com/help';
 const TERMS_URL = 'https://thryvyng.com/terms';
@@ -20,6 +24,18 @@ const SUPPORT_URL = 'mailto:support@thryvyng.com';
 
 export default function ProfileScreen({ navigation }: any) {
   const { user, profile, currentRole, signOut } = useAuth();
+  const [showLineupWidget, setShowLineupWidget] = useState(true);
+
+  useEffect(() => {
+    AsyncStorage.getItem(SHOW_LINEUP_WIDGET_KEY).then((val) => {
+      setShowLineupWidget(val !== 'false');
+    });
+  }, []);
+
+  const handleLineupWidgetToggle = async (value: boolean) => {
+    setShowLineupWidget(value);
+    await AsyncStorage.setItem(SHOW_LINEUP_WIDGET_KEY, String(value));
+  };
 
   const handleSignOut = async () => {
     try {
@@ -97,6 +113,21 @@ export default function ProfileScreen({ navigation }: any) {
           <Text style={styles.menuItemText}>Notification Settings</Text>
           <Ionicons name="chevron-forward" size={20} color="#6b7280" />
         </TouchableOpacity>
+
+        <View style={[styles.menuItem, styles.toggleRow]}>
+          <View style={styles.toggleLabelWrap}>
+            <Text style={styles.menuItemText}>Show Lineup on Dashboard</Text>
+            <Text style={styles.toggleDescription}>
+              Display your upcoming lineup position on the home screen
+            </Text>
+          </View>
+          <Switch
+            value={showLineupWidget}
+            onValueChange={handleLineupWidgetToggle}
+            trackColor={{ false: '#334155', true: '#8b5cf6' }}
+            thumbColor="#fff"
+          />
+        </View>
 
         <TouchableOpacity
           style={styles.menuItem}
@@ -282,6 +313,20 @@ const styles = StyleSheet.create({
   },
   menuIconContainer: {
     marginRight: 12,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  toggleLabelWrap: {
+    flex: 1,
+    marginRight: 12,
+  },
+  toggleDescription: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginTop: 4,
   },
   menuItemText: {
     flex: 1,

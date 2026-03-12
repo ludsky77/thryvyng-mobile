@@ -13,6 +13,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { LiveGamesWidget } from '../game-stats/LiveGamesWidget';
 import QuickActionsCard from '../QuickActionsCard';
+import PendingSurveyBanner from '../surveys/PendingSurveyBanner';
 
 interface ClubAdminDashboardProps {
   clubId: string | null;
@@ -165,6 +166,7 @@ export default function ClubAdminDashboard({
 
   return (
     <ScrollView style={styles.container}>
+      <PendingSurveyBanner navigation={navigation} />
       {/* Live Games Widget */}
       {clubId && <LiveGamesWidget clubId={clubId} />}
 

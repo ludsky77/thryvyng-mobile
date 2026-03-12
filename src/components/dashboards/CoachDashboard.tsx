@@ -16,6 +16,7 @@ import { supabase } from '../../lib/supabase';
 import { formatDistanceToNow } from 'date-fns';
 import { LiveGamesWidget } from '../game-stats/LiveGamesWidget';
 import QuickActionsCard from '../QuickActionsCard';
+import PendingSurveyBanner from '../surveys/PendingSurveyBanner';
 
 interface CoachDashboardProps {
   teamId: string | null;
@@ -315,6 +316,7 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <PendingSurveyBanner navigation={navigation} />
       {/* Live Games Widget */}
       {teamId && <LiveGamesWidget teamId={teamId} />}
 

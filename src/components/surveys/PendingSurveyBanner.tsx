@@ -89,14 +89,10 @@ export default function PendingSurveyBanner({ navigation }: PendingSurveyBannerP
   };
 
   const handleRespond = (surveyId: string) => {
-    const nav = navigation.getParent?.()?.getParent?.();
-    if (nav) {
-      (nav as any).navigate('HomeTab', {
-        screen: 'SurveyResponse',
-        params: { surveyId },
-      });
-    } else {
+    try {
       navigation.navigate('SurveyResponse' as never, { surveyId });
+    } catch {
+      navigation.getParent()?.navigate('SurveyResponse' as never, { surveyId });
     }
   };
 

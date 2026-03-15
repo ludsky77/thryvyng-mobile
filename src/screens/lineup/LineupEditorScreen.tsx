@@ -565,7 +565,7 @@ export default function LineupEditorScreen() {
             eventTitle: lineup.event?.title ?? null,
             coachName: authProfile?.full_name || 'Coach',
           });
-        } catch {}
+        } catch { /* share notification non-critical */ }
       }
       Alert.alert('Saved', 'Lineup updated successfully');
     } catch (err: any) {

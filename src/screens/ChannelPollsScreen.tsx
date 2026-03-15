@@ -141,7 +141,7 @@ export default function ChannelPollsScreen() {
       }
       let votedPollIds = new Set<string>();
       let votedOptionsMap = new Map<string, string>();
-      let votesByPoll: Record<string, { option_id: string }[]> = {};
+      const votesByPoll: Record<string, { option_id: string }[]> = {};
 
       if (pollIds.length > 0) {
         const { data: allVotes } = await supabase

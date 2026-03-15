@@ -165,7 +165,7 @@ export default function CalendarScreen({ route, navigation }: any) {
       if (error) throw error;
 
       const eventIds = (eventsData || []).map((e: CalendarEvent) => e.id);
-      let rsvpsByEvent: Record<string, any[]> = {};
+      const rsvpsByEvent: Record<string, any[]> = {};
 
       if (eventIds.length > 0) {
         const { data: rsvpsData } = await supabase

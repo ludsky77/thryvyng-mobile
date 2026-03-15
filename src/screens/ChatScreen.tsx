@@ -289,8 +289,8 @@ export default function ChatScreen({ navigation, route }: any) {
         )
         .filter(Boolean);
 
-      let profileMap = new Map<string, { id: string; full_name: string | null; avatar_url: string | null }>();
-      let roleMap = new Map<string, string>();
+      const profileMap = new Map<string, { id: string; full_name: string | null; avatar_url: string | null }>();
+      const roleMap = new Map<string, string>();
 
       if (otherUserIds.length > 0) {
         const { data: profiles } = await supabase
@@ -347,7 +347,7 @@ export default function ChatScreen({ navigation, route }: any) {
       });
 
       const groupChannels = channels.filter((c: any) => c.channel_type === 'group_dm');
-      let memberCountMap = new Map<string, number>();
+      const memberCountMap = new Map<string, number>();
       if (groupChannels.length > 0) {
         const { data: memberRows } = await supabase
           .from('comm_channel_members')
@@ -556,7 +556,7 @@ export default function ChatScreen({ navigation, route }: any) {
         .ilike('full_name', `%${query}%`)
         .limit(20);
       const userIds = (profiles || []).map((p: any) => p.id);
-      let roleMap = new Map<string, string>();
+      const roleMap = new Map<string, string>();
       if (userIds.length > 0) {
         const { data: roles } = await supabase
           .from('user_roles')

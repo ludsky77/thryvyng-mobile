@@ -122,7 +122,7 @@ export default function PatternPlayGame({
 
   const fetchScenarios = async () => {
     try {
-      let categories = ['build_out'];
+      const categories = ['build_out'];
       if (levelNumber >= 3) categories.push('possession');
       if (levelNumber >= 6) categories.push('switch');
       if (levelNumber >= 10) categories.push('attacking');

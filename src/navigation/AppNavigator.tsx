@@ -471,6 +471,22 @@ function HomeStack() {
         component={CheckoutSuccessScreen}
         options={{ headerShown: false }}
       />
+      {/* Event & Lineup screens reachable from Dashboard without hiding the tab bar */}
+      <Stack.Screen
+        name="EventDetail"
+        component={EventDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="LineupView"
+        options={{ headerShown: false }}
+      >
+        {() => (
+          <Suspense fallback={<LoadingScreen />}>
+            <LineupViewScreen />
+          </Suspense>
+        )}
+      </Stack.Screen>
     </Stack.Navigator>
   );
 }
@@ -865,11 +881,6 @@ function RootStackNavigator() {
       <RootStack.Screen
         name="InvitationCancel"
         component={InvitationCancelScreen}
-        options={{ headerShown: false }}
-      />
-      <RootStack.Screen
-        name="Notifications"
-        component={NotificationsScreen}
         options={{ headerShown: false }}
       />
       <RootStack.Screen

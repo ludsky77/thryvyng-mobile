@@ -7,6 +7,7 @@ import {
   StyleSheet,
   FlatList,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -16,24 +17,59 @@ const ROLE_LABELS: Record<string, string> = {
   assistant_coach: 'Assistant Coach',
   team_manager: 'Team Manager',
   club_admin: 'Club Admin',
+  club_director: 'Club Director',
   platform_admin: 'Platform Admin',
   content_creator: 'Content Creator',
   sales_director: 'Sales Director',
   evaluator: 'Evaluator',
 };
 
-const ROLE_ICONS: Record<string, string> = {
-  parent: '👨‍👩‍👧',
-  player: '⚽',
-  head_coach: '📋',
-  assistant_coach: '🏃',
-  team_manager: '📊',
-  club_admin: '🏢',
-  platform_admin: '👑',
-  content_creator: '🎬',
-  sales_director: '💼',
-  evaluator: '📝',
+interface RoleIconConfig {
+  name: string;
+  color: string;
+}
+
+const ROLE_ICON_MAP: Record<string, RoleIconConfig> = {
+  head_coach:       { name: 'megaphone',            color: '#c4b5fd' },
+  assistant_coach:  { name: 'flag',                 color: '#a78bfa' },
+  club_admin:       { name: 'business',             color: '#8b5cf6' },
+  club_director:    { name: 'star',                 color: '#7c3aed' },
+  team_manager:     { name: 'clipboard',            color: '#6d28d9' },
+  parent:           { name: 'heart',                color: '#ddd6fe' },
+  player:           { name: 'football',             color: '#ede9fe' },
+  platform_admin:   { name: 'settings',             color: '#a855f7' },
+  content_creator:  { name: 'brush',                color: '#a78bfa' },
+  sales_director:   { name: 'trending-up',          color: '#a78bfa' },
+  evaluator:        { name: 'document-text',        color: '#a78bfa' },
 };
+
+const DEFAULT_ICON: RoleIconConfig = { name: 'person-outline', color: '#a78bfa' };
+
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function RoleIconCircle({ role, size = 40 }: { role: string; size?: number }) {
+  const config = ROLE_ICON_MAP[role] ?? DEFAULT_ICON;
+  return (
+    <View
+      style={[
+        styles.iconCircle,
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: hexToRgba(config.color, 0.15),
+        },
+      ]}
+    >
+      <Ionicons name={config.name as any} size={size * 0.55} color={config.color} />
+    </View>
+  );
+}
 
 interface RoleSwitcherProps {
   embedded?: boolean;
@@ -49,7 +85,6 @@ export function RoleSwitcher({ embedded }: RoleSwitcherProps) {
 
   const getRoleDisplayName = (role: any) => {
     const label = ROLE_LABELS[role.role] || role.role;
-    // Use entityName from AuthContext (parent: "Player Name (Team)", coach: team name, club_admin: club name)
     if (role.entityName) return `${label} - ${role.entityName}`;
     if (role.team?.name) return `${label} - ${role.team.name}`;
     if (role.club?.name) return `${label} - ${role.club.name}`;
@@ -71,9 +106,7 @@ export function RoleSwitcher({ embedded }: RoleSwitcherProps) {
         ]}
         onPress={() => setModalVisible(true)}
       >
-        <Text style={styles.roleIcon}>
-          {ROLE_ICONS[currentRole.role] || '👤'}
-        </Text>
+        <RoleIconCircle role={currentRole.role} size={40} />
         <View style={styles.roleInfo}>
           <Text style={styles.roleLabel}>
             {ROLE_LABELS[currentRole.role] || currentRole.role}
@@ -82,7 +115,7 @@ export function RoleSwitcher({ embedded }: RoleSwitcherProps) {
             {currentRole.entityName || currentRole.team?.name || currentRole.club?.name || ''}
           </Text>
         </View>
-        <Text style={styles.switchIcon}>▼</Text>
+        <Ionicons name="chevron-down" size={14} color="#8b5cf6" style={styles.chevron} />
       </TouchableOpacity>
 
       <Modal
@@ -113,9 +146,7 @@ export function RoleSwitcher({ embedded }: RoleSwitcherProps) {
                   ]}
                   onPress={() => handleSelectRole(item)}
                 >
-                  <Text style={styles.roleOptionIcon}>
-                    {ROLE_ICONS[item.role] || '👤'}
-                  </Text>
+                  <RoleIconCircle role={item.role} size={40} />
                   <Text
                     style={[
                       styles.roleOptionText,
@@ -125,7 +156,7 @@ export function RoleSwitcher({ embedded }: RoleSwitcherProps) {
                     {getRoleDisplayName(item)}
                   </Text>
                   {currentRole.id === item.id && (
-                    <Text style={styles.checkmark}>✓</Text>
+                    <Ionicons name="checkmark" size={18} color="#fff" />
                   )}
                 </TouchableOpacity>
               )}
@@ -152,8 +183,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 0,
     marginVertical: 0,
   },
-  roleIcon: {
-    fontSize: 24,
+  iconCircle: {
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: 10,
   },
   roleInfo: {
@@ -169,9 +201,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
-  switchIcon: {
-    color: '#8b5cf6',
-    fontSize: 12,
+  chevron: {
     marginLeft: 8,
   },
   modalOverlay: {
@@ -197,7 +227,8 @@ const styles = StyleSheet.create({
   roleOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderRadius: 10,
     marginBottom: 8,
     backgroundColor: '#2a2a4e',
@@ -205,21 +236,13 @@ const styles = StyleSheet.create({
   roleOptionActive: {
     backgroundColor: '#8b5cf6',
   },
-  roleOptionIcon: {
-    fontSize: 20,
-    marginRight: 12,
-  },
   roleOptionText: {
     color: '#fff',
     fontSize: 15,
     flex: 1,
+    marginLeft: 4,
   },
   roleOptionTextActive: {
     fontWeight: '600',
-  },
-  checkmark: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
   },
 });

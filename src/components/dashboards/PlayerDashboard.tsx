@@ -119,23 +119,21 @@ export default function PlayerDashboard({ playerId, navigation, showLineupWidget
         const { data: lineupsData } = await supabase
           .from('lineup_formations')
           .select(
-            'id, name, formation_template, field_type, opponent_name, event_id, event:cal_events(id, title, event_date, start_time), players:lineup_players(id, player_id, position_code, is_starter, is_captain)'
+            'id, name, formation_template, field_type, opponent_name, event_id, event:cal_events!inner(id, title, event_date, start_time), players:lineup_players(id, player_id, position_code, is_starter, is_captain)'
           )
           .eq('team_id', teamId)
           .eq('status', 'published')
           .not('event_id', 'is', null)
-          .limit(10);
+          .gte('cal_events.event_date', today)
+          .limit(20);
 
         const lineups = (lineupsData || []) as UpcomingLineup[];
         const withMyPlayer = lineups.filter((l) =>
           (l.players || []).some((p) => p.player_id === playerId)
         );
-        const sorted = withMyPlayer.sort((a, b) => {
-          const da = a.event?.event_date || '';
-          const db = b.event?.event_date || '';
-          return da.localeCompare(db);
-        });
-        const upcoming = sorted.filter((l) => (l.event?.event_date || '') >= today).slice(0, 3);
+        const upcoming = withMyPlayer
+          .sort((a, b) => (a.event?.event_date || '').localeCompare(b.event?.event_date || ''))
+          .slice(0, 3);
         setUpcomingLineups(upcoming);
       } else {
         setUpcomingLineups([]);
@@ -335,19 +333,10 @@ export default function PlayerDashboard({ playerId, navigation, showLineupWidget
                 style={styles.lineupWidgetBar}
                 activeOpacity={0.8}
                 onPress={() => {
-                  const params = {
+                  navigation.navigate('EventDetail' as never, {
                     eventId: l.event?.id,
-                    event: l.event ? { ...l.event, id: l.event.id } : undefined,
-                  };
-                  const nav = navigation.getParent?.()?.getParent?.();
-                  if (nav) {
-                    (nav as any).navigate('CalendarTab', {
-                      screen: 'EventDetail',
-                      params,
-                    });
-                  } else {
-                    navigation.navigate('EventDetail' as never, params);
-                  }
+                    onRefetch: () => {},
+                  });
                 }}
               >
                 <Text style={styles.lineupWidgetBarEmoji}>⚽</Text>

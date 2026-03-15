@@ -161,53 +161,65 @@ export default function NotificationsScreen({ navigation }: any) {
     }
 
     const { type, data } = notification;
-    const referenceId = data?.evaluation_id ?? data?.reference_id;
 
-    switch (type) {
-      case 'event':
-      case 'event_created':
-      case 'event_cancelled':
-      case 'event_changed':
-        if (data?.event_id) {
-          navigation.navigate('EventDetail', {
-            eventId: data.event_id,
-            onRefetch: () => {},
-          });
-        }
-        break;
-      case 'evaluation':
-        if (referenceId) {
-          navigation.navigate('EvaluationDetail', {
-            evaluationId: referenceId,
-          });
-        } else {
-          navigation.navigate('Evaluations');
-        }
-        break;
-      case 'chat':
-      case 'message':
-        if (data?.chat_id || data?.team_id) {
-          navigation.navigate('Chat', {
-            chatId: data.chat_id,
-            teamId: data.team_id,
-          });
-        }
-        break;
-      case 'lineup_published':
-        if (data?.event_id) {
-          navigation.navigate('EventDetail', {
-            eventId: data.event_id,
-            onRefetch: () => {},
-          });
-        } else if (data?.team_id) {
-          navigation.navigate('LineupList', { teamId: data.team_id });
-        }
-        break;
-      default:
-        if (data?.course_id) {
-          navigation.navigate('CourseDetail', { courseId: data.course_id });
-        }
-        break;
+    // Chat / message notifications
+    if (type === 'chat_message' || type === 'chat' || type === 'message') {
+      const channelId = data?.channel_id ?? data?.chat_id;
+      if (channelId) {
+        navigation.navigate('TeamChatRoom', { channelId });
+      } else {
+        navigation.navigate('Conversations');
+      }
+      return;
+    }
+
+    // Event notifications
+    if (
+      type === 'event_reminder' ||
+      type === 'event_created' ||
+      type === 'event_changed' ||
+      type === 'event_cancelled' ||
+      type === 'event'
+    ) {
+      const eventId = data?.event_id ?? data?.reference_id;
+      if (eventId) {
+        navigation.navigate('EventDetail', { eventId, onRefetch: () => {} });
+      }
+      return;
+    }
+
+    // Survey notifications
+    if (type === 'survey' || type === 'survey_reminder') {
+      const surveyId = data?.survey_id;
+      const slug = data?.slug ?? data?.public_slug;
+      if (surveyId || slug) {
+        navigation.navigate('SurveyResponse', { surveyId, slug });
+      }
+      return;
+    }
+
+    // Lineup notifications
+    if (type === 'lineup_published') {
+      if (data?.event_id) {
+        navigation.navigate('EventDetail', { eventId: data.event_id, onRefetch: () => {} });
+      } else if (data?.team_id) {
+        navigation.navigate('LineupList', { teamId: data.team_id });
+      }
+      return;
+    }
+
+    // Evaluation notifications
+    if (type === 'evaluation') {
+      const evaluationId = data?.evaluation_id ?? data?.reference_id;
+      if (evaluationId) {
+        navigation.navigate('EvaluationDetail', { evaluationId });
+      }
+      return;
+    }
+
+    // Course notifications
+    if (data?.course_id) {
+      navigation.navigate('CourseDetail', { courseId: data.course_id });
     }
   };
 
@@ -225,8 +237,12 @@ export default function NotificationsScreen({ navigation }: any) {
       case 'evaluation':
         return { name: 'document-text-outline', color: '#8b5cf6' };
       case 'chat_message':
+      case 'chat':
       case 'message':
         return { name: 'chatbubble-outline', color: '#3b82f6' };
+      case 'survey':
+      case 'survey_reminder':
+        return { name: 'clipboard-outline', color: '#f59e0b' };
       case 'lineup_published':
         return { name: 'git-network-outline', color: '#f59e0b' };
       case 'announcement':

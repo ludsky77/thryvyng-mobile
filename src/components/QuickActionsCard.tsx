@@ -61,6 +61,7 @@ const styles = StyleSheet.create({
   container: {
     marginHorizontal: 20,
     marginTop: 16,
+    marginBottom: 16,
   },
   titleRow: {
     flexDirection: 'row',
@@ -94,9 +95,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(139, 92, 246, 0.4)',
     borderRadius: 16,
-    paddingVertical: 16,
+    height: 104,
     paddingHorizontal: 8,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   iconBox: {
     width: 52,

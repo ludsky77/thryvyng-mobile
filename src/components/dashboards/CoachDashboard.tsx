@@ -107,129 +107,123 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
 
       setTeam(teamData as Team);
 
-      // Fetch player count
-      const { count } = await supabase
-        .from('players')
-        .select('*', { count: 'exact', head: true })
-        .eq('team_id', teamId);
-      setPlayerCount(count || 0);
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
 
-      // Fetch players with XP for stats and leaderboard
-      const { data: playersData } = await supabase
-        .from('players')
-        .select('id, first_name, last_name, total_xp')
-        .eq('team_id', teamId)
-        .order('total_xp', { ascending: false });
-
-      if (playersData) {
-        setTopPlayers(playersData.slice(0, 5) as TopPlayer[]);
-        const totalXP = playersData.reduce((sum, p) => sum + (p.total_xp || 0), 0);
-        setTeamTotalXP(totalXP);
-      }
-
-      // Fetch revenue stats (from orders table if it exists)
-      try {
-        const { data: ordersData } = await supabase
+      // Run all independent queries in parallel
+      const [
+        countResult,
+        playersResult,
+        ordersResult,
+        coursesResult,
+        fundraisingResult,
+        recentEventsResult,
+        recentEvalsResult,
+      ] = await Promise.all([
+        supabase
+          .from('players')
+          .select('*', { count: 'exact', head: true })
+          .eq('team_id', teamId),
+        supabase
+          .from('players')
+          .select('id, first_name, last_name, total_xp')
+          .eq('team_id', teamId)
+          .order('total_xp', { ascending: false }),
+        supabase
           .from('orders')
           .select('total_amount')
-          .eq('team_id', teamId);
-        const revenue = ordersData?.reduce((sum, o) => sum + (o.total_amount || 0), 0) || 0;
-        setTotalRevenue(revenue);
-      } catch {
-        setTotalRevenue(0);
-      }
-
-      // Fetch course enrollments count
-      try {
-        const { count: coursesCount } = await supabase
+          .eq('team_id', teamId)
+          .then((res) => res)
+          .catch(() => ({ data: [] })),
+        supabase
           .from('course_enrollments')
           .select('*', { count: 'exact', head: true })
-          .eq('team_id', teamId);
-        setCoursesPurchased(coursesCount || 0);
-      } catch {
-        setCoursesPurchased(0);
-      }
-
-      // Fetch top fundraisers (this month)
-      try {
-        const startOfMonth = new Date();
-        startOfMonth.setDate(1);
-        startOfMonth.setHours(0, 0, 0, 0);
-
-        const { data: fundraisingData } = await supabase
+          .eq('team_id', teamId)
+          .then((res) => res)
+          .catch(() => ({ count: 0 })),
+        supabase
           .from('referral_transactions')
           .select('player_id, amount, players!player_id(first_name, last_name)')
           .eq('team_id', teamId)
-          .gte('created_at', startOfMonth.toISOString());
-
-        if (fundraisingData && fundraisingData.length > 0) {
-          // Aggregate by player
-          const playerTotals: Record<string, TopFundraiser> = {};
-          fundraisingData.forEach((txn: any) => {
-            const playerId = txn.player_id;
-            if (!playerTotals[playerId]) {
-              playerTotals[playerId] = {
-                id: playerId,
-                first_name: txn.players?.first_name || '',
-                last_name: txn.players?.last_name || '',
-                amount: 0,
-              };
-            }
-            playerTotals[playerId].amount += txn.amount || 0;
-          });
-          const sorted = Object.values(playerTotals).sort((a, b) => b.amount - a.amount);
-          setTopFundraisers(sorted.slice(0, 5));
-        }
-      } catch {
-        setTopFundraisers([]);
-      }
-
-      // Fetch recent activity
-      try {
-        const activities: RecentActivity[] = [];
-
-        // Get recent events
-        const { data: recentEvents } = await supabase
+          .gte('created_at', startOfMonth.toISOString())
+          .then((res) => res)
+          .catch(() => ({ data: [] })),
+        supabase
           .from('cal_events')
           .select('id, title, created_at')
           .eq('team_id', teamId)
           .order('created_at', { ascending: false })
-          .limit(3);
-
-        recentEvents?.forEach((event: any) => {
-          activities.push({
-            id: `event-${event.id}`,
-            icon: '📅',
-            description: `New event created: ${event.title}`,
-            timeAgo: formatDistanceToNow(new Date(event.created_at), { addSuffix: true }),
-            created_at: event.created_at,
-          });
-        });
-
-        // Get recent evaluations
-        const { data: recentEvals } = await supabase
+          .limit(3)
+          .then((res) => res)
+          .catch(() => ({ data: [] })),
+        supabase
           .from('player_evaluations')
           .select('id, created_at, player:players!player_id(first_name, last_name)')
           .eq('team_id', teamId)
           .order('created_at', { ascending: false })
-          .limit(3);
+          .limit(3)
+          .then((res) => res)
+          .catch(() => ({ data: [] })),
+      ]);
 
-        recentEvals?.forEach((eval_: any) => {
-          activities.push({
-            id: `eval-${eval_.id}`,
-            icon: '📝',
-            description: `Evaluation created for ${eval_.player?.first_name || 'player'}`,
-            timeAgo: formatDistanceToNow(new Date(eval_.created_at), { addSuffix: true }),
-            created_at: eval_.created_at,
-          });
-        });
+      // Process results
+      setPlayerCount(countResult.count || 0);
 
-        // Sort by date and take top 5
-        activities.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        setRecentActivity(activities.slice(0, 5));
-      } catch {
-        setRecentActivity([]);
+      if (playersResult.data) {
+        setTopPlayers(playersResult.data.slice(0, 5) as TopPlayer[]);
+        const totalXP = playersResult.data.reduce((sum: number, p: any) => sum + (p.total_xp || 0), 0);
+        setTeamTotalXP(totalXP);
       }
+
+      const revenue = ((ordersResult as any).data || []).reduce(
+        (sum: number, o: any) => sum + (o.total_amount || 0),
+        0
+      );
+      setTotalRevenue(revenue);
+
+      setCoursesPurchased((coursesResult as any).count || 0);
+
+      const fundraisingData = (fundraisingResult as any).data || [];
+      if (fundraisingData.length > 0) {
+        const playerTotals: Record<string, TopFundraiser> = {};
+        fundraisingData.forEach((txn: any) => {
+          const playerId = txn.player_id;
+          if (!playerTotals[playerId]) {
+            playerTotals[playerId] = {
+              id: playerId,
+              first_name: txn.players?.first_name || '',
+              last_name: txn.players?.last_name || '',
+              amount: 0,
+            };
+          }
+          playerTotals[playerId].amount += txn.amount || 0;
+        });
+        const sorted = Object.values(playerTotals).sort((a, b) => b.amount - a.amount);
+        setTopFundraisers(sorted.slice(0, 5));
+      }
+
+      const activities: RecentActivity[] = [];
+      ((recentEventsResult as any).data || []).forEach((event: any) => {
+        activities.push({
+          id: `event-${event.id}`,
+          icon: '📅',
+          description: `New event created: ${event.title}`,
+          timeAgo: formatDistanceToNow(new Date(event.created_at), { addSuffix: true }),
+          created_at: event.created_at,
+        });
+      });
+      ((recentEvalsResult as any).data || []).forEach((eval_: any) => {
+        activities.push({
+          id: `eval-${eval_.id}`,
+          icon: '📝',
+          description: `Evaluation created for ${eval_.player?.first_name || 'player'}`,
+          timeAgo: formatDistanceToNow(new Date(eval_.created_at), { addSuffix: true }),
+          created_at: eval_.created_at,
+        });
+      });
+      activities.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setRecentActivity(activities.slice(0, 5));
     } catch (err: any) {
       console.error('Error fetching coach dashboard:', err);
       setError(err?.message || 'Something went wrong');

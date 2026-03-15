@@ -89,55 +89,59 @@ export default function PlayerDashboard({ playerId, navigation, showLineupWidget
       if (playerError || !playerData) throw new Error('Player not found');
       setPlayer(playerData as Player);
 
-      let enrollments: any[] = [];
-      if (user?.id) {
-        const { data } = await supabase
-          .from('course_enrollments')
-          .select('id, course_id, progress_percentage, completed_at, course:courses(id, title, category)')
-          .eq('user_id', user.id);
-        enrollments = data || [];
-      }
+      const teamId = (playerData as any).team_id;
+      const today = new Date().toISOString().split('T')[0];
 
+      // Run independent queries in parallel
+      const [enrollmentsResult, topPlayersResult, lineupsResult] = await Promise.all([
+        user?.id
+          ? supabase
+              .from('course_enrollments')
+              .select('id, course_id, progress_percentage, completed_at, course:courses(id, title, category)')
+              .eq('user_id', user.id)
+          : Promise.resolve({ data: [] }),
+        teamId
+          ? supabase
+              .from('players')
+              .select('id, first_name, last_name, total_xp')
+              .eq('team_id', teamId)
+              .order('total_xp', { ascending: false })
+              .limit(5)
+          : Promise.resolve({ data: [] }),
+        teamId
+          ? supabase
+              .from('lineup_formations')
+              .select(
+                'id, name, formation_template, field_type, opponent_name, event_id, event:cal_events!inner(id, title, event_date, start_time), players:lineup_players(id, player_id, position_code, is_starter, is_captain)'
+              )
+              .eq('team_id', teamId)
+              .eq('status', 'published')
+              .not('event_id', 'is', null)
+              .gte('cal_events.event_date', today)
+              .limit(20)
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      // Process enrollments
       const courseRel = (e: any) => e.course;
-      const courses = (enrollments || []).map((e: any) => ({
+      const courses = (enrollmentsResult.data || []).map((e: any) => ({
         ...e,
         course: Array.isArray(courseRel(e)) ? courseRel(e)[0] : courseRel(e),
       }));
       setEnrolledCourses(courses);
 
-      const teamId = (playerData as any).team_id;
-      if (teamId) {
-        const { data: players } = await supabase
-          .from('players')
-          .select('id, first_name, last_name, total_xp')
-          .eq('team_id', teamId)
-          .order('total_xp', { ascending: false })
-          .limit(5);
-        setTopPlayers((players || []) as any);
+      // Process leaderboard
+      setTopPlayers((topPlayersResult.data || []) as any);
 
-        const today = new Date().toISOString().split('T')[0];
-        const { data: lineupsData } = await supabase
-          .from('lineup_formations')
-          .select(
-            'id, name, formation_template, field_type, opponent_name, event_id, event:cal_events!inner(id, title, event_date, start_time), players:lineup_players(id, player_id, position_code, is_starter, is_captain)'
-          )
-          .eq('team_id', teamId)
-          .eq('status', 'published')
-          .not('event_id', 'is', null)
-          .gte('cal_events.event_date', today)
-          .limit(20);
-
-        const lineups = (lineupsData || []) as UpcomingLineup[];
-        const withMyPlayer = lineups.filter((l) =>
-          (l.players || []).some((p) => p.player_id === playerId)
-        );
-        const upcoming = withMyPlayer
-          .sort((a, b) => (a.event?.event_date || '').localeCompare(b.event?.event_date || ''))
-          .slice(0, 3);
-        setUpcomingLineups(upcoming);
-      } else {
-        setUpcomingLineups([]);
-      }
+      // Process lineups
+      const lineups = (lineupsResult.data || []) as UpcomingLineup[];
+      const withMyPlayer = lineups.filter((l) =>
+        (l.players || []).some((p) => p.player_id === playerId)
+      );
+      const upcoming = withMyPlayer
+        .sort((a, b) => (a.event?.event_date || '').localeCompare(b.event?.event_date || ''))
+        .slice(0, 3);
+      setUpcomingLineups(upcoming);
     } catch (err) {
       console.error('Error fetching player dashboard:', err);
     } finally {

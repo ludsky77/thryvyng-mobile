@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import type { Poll, PollOption } from '../types';
+import type { Poll, PollOption, VoterProfile } from '../types';
 
 export function usePoll(pollId: string | null) {
   const { user } = useAuth();
@@ -29,15 +29,22 @@ export function usePoll(pollId: string | null) {
 
     const { data: votes } = await supabase
       .from('comm_poll_votes')
-      .select('*')
+      .select('id, poll_id, option_id, user_id, rank, comment, profiles:profiles!user_id(id, full_name, avatar_url)')
       .eq('poll_id', pollId);
 
     const userVotes = votes?.filter(v => v.user_id === user?.id) || [];
 
-    const optionsWithCounts = pollData.options?.map((opt: PollOption) => ({
-      ...opt,
-      vote_count: votes?.filter(v => v.option_id === opt.id).length || 0
-    })) || [];
+    const optionsWithCounts = pollData.options?.map((opt: PollOption) => {
+      const optVotes = votes?.filter(v => v.option_id === opt.id) || [];
+      const voters = optVotes
+        .map((v: any) => v.profiles)
+        .filter(Boolean) as VoterProfile[];
+      return {
+        ...opt,
+        vote_count: optVotes.length,
+        voters,
+      };
+    }) || [];
 
     setPoll({
       ...pollData,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useMessages } from '../hooks/useMessages';
@@ -79,13 +80,23 @@ export default function DMChatScreen({ route, navigation }: any) {
   const [reactionPickerMessage, setReactionPickerMessage] =
     useState<Message | null>(null);
 
+  const markChannelRead = useCallback(() => {
+    if (!channelId || !user?.id) return;
+    supabase
+      .from('comm_channel_members')
+      .update({ last_read_at: new Date().toISOString() })
+      .eq('channel_id', channelId)
+      .eq('user_id', user.id)
+      .then(() => {});
+  }, [channelId, user?.id]);
+
   const {
     messages,
     loading,
     sendMessage,
     toggleReaction,
     refetch,
-  } = useMessages(channelId);
+  } = useMessages(channelId, markChannelRead);
 
   const fetchChannelInfo = useCallback(async () => {
     if (!channelId || !user?.id) {
@@ -154,16 +165,14 @@ export default function DMChatScreen({ route, navigation }: any) {
     fetchChannelInfo();
   }, [fetchChannelInfo]);
 
+  // 1. Mark read on mount
   useEffect(() => {
-    if (channelId && user?.id) {
-      supabase
-        .from('comm_channel_members')
-        .update({ last_read_at: new Date().toISOString() })
-        .eq('channel_id', channelId)
-        .eq('user_id', user.id)
-        .then(() => {});
-    }
-  }, [channelId, user?.id]);
+    if (channelId) markChannelRead();
+  }, [channelId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 2. Mark read whenever screen regains focus
+  useFocusEffect(useCallback(() => { markChannelRead(); }, [markChannelRead]));
+  // Note: new-message real-time case is handled via onNewMessage callback in useMessages
 
   useEffect(() => {
     if (messages.length > 0) {

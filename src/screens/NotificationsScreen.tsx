@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,57 +7,133 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNotifications } from '../contexts/NotificationContext';
 
-interface NotificationItem {
-  id: string;
-  type: string;
-  title: string;
-  body: string | null;
-  data: any;
-  is_read: boolean;
-  created_at: string;
+const DELETE_THRESHOLD = 80;
+
+function SwipeableRow({ children, onDelete }: { children: React.ReactNode; onDelete: () => void }) {
+  const translateX = useRef(new Animated.Value(0)).current;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) =>
+        Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy),
+      onPanResponderMove: (_, g) => {
+        if (g.dx < 0) translateX.setValue(g.dx);
+      },
+      onPanResponderRelease: (_, g) => {
+        if (g.dx < -DELETE_THRESHOLD) {
+          Animated.timing(translateX, {
+            toValue: -400,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => onDelete());
+        } else {
+          Animated.spring(translateX, {
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
+  const deleteOpacity = translateX.interpolate({
+    inputRange: [-DELETE_THRESHOLD, 0],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
+  return (
+    <View style={swipeStyles.container}>
+      <Animated.View style={[swipeStyles.deleteReveal, { opacity: deleteOpacity }]}>
+        <Ionicons name="trash-outline" size={22} color="#fff" />
+      </Animated.View>
+      <Animated.View
+        style={{ transform: [{ translateX }] }}
+        {...panResponder.panHandlers}
+      >
+        {children}
+      </Animated.View>
+    </View>
+  );
 }
 
-function mapContextNotificationToItem(n: {
-  id: string;
-  notification_type: string;
-  title: string;
-  body: string | null;
-  reference_type: string | null;
-  reference_id: string | null;
-  is_read: boolean;
-  created_at: string;
-}): NotificationItem {
-  const data: any = {};
-  if (n.reference_type === 'player_evaluation' && n.reference_id) {
-    data.evaluation_id = n.reference_id;
-  } else if (n.reference_type === 'event' && n.reference_id) {
-    data.event_id = n.reference_id;
-  } else if (n.reference_type === 'lineup_team' && n.reference_id) {
-    data.team_id = n.reference_id;
-  } else if (n.reference_id) {
-    data.reference_id = n.reference_id;
-    data.reference_type = n.reference_type;
-  }
-  return {
-    id: n.id,
-    type: n.notification_type,
-    title: n.title,
-    body: n.body,
-    data,
-    is_read: n.is_read,
-    created_at: n.created_at,
-  };
+type NotifItem = ReturnType<typeof useNotifications>['notifications'][number];
+
+function NotificationRow({
+  item,
+  onPress,
+  getIcon,
+  formatTime,
+}: {
+  item: NotifItem;
+  onPress: () => void;
+  getIcon: (type: string) => { name: string; color: string };
+  formatTime: (d: string) => string;
+}) {
+  const icon = getIcon(item.type);
+  return (
+    <TouchableOpacity
+      style={[styles.notificationItem, !item.is_read && styles.unreadItem]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <View style={[styles.iconContainer, { backgroundColor: icon.color + '20' }]}>
+        <Ionicons name={icon.name as any} size={22} color={icon.color} />
+      </View>
+      <View style={styles.contentContainer}>
+        <Text style={[styles.title, !item.is_read && styles.unreadTitle]}>
+          {item.title}
+        </Text>
+        {item.body && (
+          <Text style={styles.body} numberOfLines={2}>
+            {item.body}
+          </Text>
+        )}
+        <Text style={styles.time}>{formatTime(item.created_at)}</Text>
+      </View>
+      {!item.is_read && <View style={styles.unreadDot} />}
+    </TouchableOpacity>
+  );
 }
+
+const swipeStyles = StyleSheet.create({
+  container: {
+    marginBottom: 10,
+    overflow: 'hidden',
+    borderRadius: 12,
+  },
+  deleteReveal: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 72,
+    backgroundColor: '#ef4444',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});
 
 export default function NotificationsScreen({ navigation }: any) {
-  const { notifications: contextNotifications, unreadCount, loading, markAsRead: contextMarkAsRead, markAllAsRead: contextMarkAllAsRead, refetch } = useNotifications();
+  const {
+    notifications,
+    unreadCount,
+    loading,
+    markAsRead: contextMarkAsRead,
+    markAllAsRead: contextMarkAllAsRead,
+    deleteNotification,
+    clearAllNotifications,
+    refetch,
+  } = useNotifications();
   const [refreshing, setRefreshing] = useState(false);
-
-  const notifications: NotificationItem[] = contextNotifications.map(mapContextNotificationToItem);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -65,16 +141,21 @@ export default function NotificationsScreen({ navigation }: any) {
     setRefreshing(false);
   };
 
-  const markAsRead = async (notificationId: string) => {
-    await contextMarkAsRead(notificationId);
+  const markAsRead = (notificationId: string) => contextMarkAsRead(notificationId);
+  const markAllAsRead = () => contextMarkAllAsRead();
+
+  const handleClearAll = () => {
+    Alert.alert(
+      'Clear All Notifications',
+      'Are you sure? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Clear All', style: 'destructive', onPress: clearAllNotifications },
+      ]
+    );
   };
 
-  const markAllAsRead = async () => {
-    await contextMarkAllAsRead();
-  };
-
-  const handleNotificationPress = (notification: NotificationItem) => {
-    // Mark as read first
+  const handleNotificationPress = (notification: ReturnType<typeof useNotifications>['notifications'][number]) => {
     if (!notification.is_read) {
       markAsRead(notification.id);
     }
@@ -171,31 +252,19 @@ export default function NotificationsScreen({ navigation }: any) {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  const renderNotification = ({ item }: { item: NotificationItem }) => {
-    const icon = getNotificationIcon(item.type);
-
+  const renderNotification = ({ item }: { item: ReturnType<typeof useNotifications>['notifications'][number] }) => {
     return (
-      <TouchableOpacity
-        style={[styles.notificationItem, !item.is_read && styles.unreadItem]}
-        onPress={() => handleNotificationPress(item)}
-        activeOpacity={0.7}
+      <SwipeableRow
+        key={item.id}
+        onDelete={() => deleteNotification(item.id)}
       >
-        <View style={[styles.iconContainer, { backgroundColor: icon.color + '20' }]}>
-          <Ionicons name={icon.name as any} size={22} color={icon.color} />
-        </View>
-        <View style={styles.contentContainer}>
-          <Text style={[styles.title, !item.is_read && styles.unreadTitle]}>
-            {item.title}
-          </Text>
-          {item.body && (
-            <Text style={styles.body} numberOfLines={2}>
-              {item.body}
-            </Text>
-          )}
-          <Text style={styles.time}>{formatTime(item.created_at)}</Text>
-        </View>
-        {!item.is_read && <View style={styles.unreadDot} />}
-      </TouchableOpacity>
+        <NotificationRow
+          item={item}
+          onPress={() => handleNotificationPress(item)}
+          getIcon={getNotificationIcon}
+          formatTime={formatTime}
+        />
+      </SwipeableRow>
     );
   };
 
@@ -215,11 +284,18 @@ export default function NotificationsScreen({ navigation }: any) {
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Notifications</Text>
-        {unreadCount > 0 && (
-          <TouchableOpacity style={styles.markAllButton} onPress={markAllAsRead}>
-            <Text style={styles.markAllText}>Mark all read</Text>
-          </TouchableOpacity>
-        )}
+        <View style={styles.headerActions}>
+          {unreadCount > 0 && (
+            <TouchableOpacity style={styles.markAllButton} onPress={markAllAsRead}>
+              <Text style={styles.markAllText}>Mark all read</Text>
+            </TouchableOpacity>
+          )}
+          {notifications.length > 0 && (
+            <TouchableOpacity style={styles.clearAllButton} onPress={handleClearAll}>
+              <Text style={styles.clearAllText}>Clear All</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {notifications.length === 0 ? (
@@ -282,15 +358,31 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginLeft: 12,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   markAllButton: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 6,
     backgroundColor: 'rgba(139, 92, 246, 0.2)',
   },
   markAllText: {
     color: '#a78bfa',
-    fontSize: 13,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  clearAllButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+  },
+  clearAllText: {
+    color: '#f87171',
+    fontSize: 12,
     fontWeight: '600',
   },
   listContent: {
@@ -302,7 +394,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#1e293b',
     borderRadius: 12,
     padding: 14,
-    marginBottom: 10,
   },
   unreadItem: {
     backgroundColor: '#1e3a5f',

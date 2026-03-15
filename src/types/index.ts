@@ -49,7 +49,7 @@ export interface Channel {
     channel_id: string;
     user_id: string;
     content: string;
-    message_type: 'standard' | 'alert' | 'system' | 'poll';
+    message_type: 'standard' | 'alert' | 'system' | 'poll' | 'survey';
     parent_id: string | null;
     poll_id?: string | null; // Link to poll for poll messages
     thread_count: number;
@@ -121,6 +121,12 @@ export interface Channel {
     user_votes?: PollVote[];
   }
   
+  export interface VoterProfile {
+    id: string;
+    full_name: string | null;
+    avatar_url: string | null;
+  }
+
   export interface PollOption {
     id: string;
     poll_id: string;
@@ -128,6 +134,7 @@ export interface Channel {
     sort_order: number;
     added_by: string | null;
     vote_count?: number;
+    voters?: VoterProfile[];
   }
   
   export interface PollVote {
@@ -137,6 +144,7 @@ export interface Channel {
     user_id: string;
     rank: number | null;
     comment?: string | null;
+    profiles?: VoterProfile;
   }
   
   // Calendar Types

@@ -422,19 +422,18 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
               label: 'Evaluations',
               color: '#10b981',
               onPress: () =>
-                navigateToScreen('EvaluationRoster', {
+                navigateToScreen('EvaluationsHub', {
                   teamId,
-                  team_id: teamId,
                   teamName: team?.name || '',
                 }),
             },
             {
-              id: 'training',
-              icon: 'fitness-outline',
-              label: 'Training Studio',
+              id: 'clubhub',
+              icon: 'business-outline',
+              label: 'Club Hub',
               color: '#06b6d4',
               onPress: () =>
-                navigateToScreen('TrainingStudio', {
+                navigateToScreen('ClubHub', {
                   teamId,
                   clubId: (team as any)?.club_id ?? undefined,
                 }),
@@ -459,12 +458,11 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
                 navigateToScreen('TeamResources', { teamId, team_id: teamId }),
             },
             {
-              id: 'certs',
-              icon: 'trophy-outline',
-              label: 'Certificates',
-              color: '#eab308',
-              onPress: () =>
-                navigateToScreen('TeamCertificates', { teamId }),
+              id: 'games',
+              icon: 'game-controller-outline',
+              label: 'Brain Games',
+              color: '#f59e0b',
+              onPress: () => navigateToScreen('GamesHub', { teamId }),
             },
           ]}
         />
@@ -589,7 +587,7 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: 16,
-    paddingBottom: 20,
+    paddingBottom: 12,
     backgroundColor: '#2a2a4e',
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
@@ -665,10 +663,10 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     marginHorizontal: 16,
-    marginTop: 16,
+    marginTop: 8,
     backgroundColor: '#2a2a4e',
     borderRadius: 16,
-    padding: 16,
+    padding: 12,
   },
   statBox: {
     flex: 1,
@@ -691,14 +689,15 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   section: {
-    padding: 16,
-    paddingTop: 8,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    paddingBottom: 10,
   },
   sectionTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: '#a78bfa',
-    marginBottom: 12,
+    marginBottom: 8,
     letterSpacing: 0.5,
   },
   inviteButton: {

@@ -1,4 +1,5 @@
 import React, { lazy, Suspense } from 'react';
+import { useTotalChatUnread } from '../hooks/useTotalChatUnread';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -35,6 +36,7 @@ import ChannelPollsScreen from '../screens/ChannelPollsScreen';
 import ChannelFilesScreen from '../screens/ChannelFilesScreen';
 import ChannelLinksScreen from '../screens/ChannelLinksScreen';
 import StaffMessageScreen from '../screens/StaffMessageScreen';
+import PollDetailScreen from '../screens/PollDetailScreen';
 import CalendarScreen from '../screens/CalendarScreen';
 import EventDetailScreen from '../screens/EventDetailScreen';
 import SurveyResponseScreen from '../screens/SurveyResponseScreen';
@@ -75,6 +77,8 @@ import ResourcesScreen from '../screens/ResourcesScreen';
 import SkillsLibraryScreen from '../screens/SkillsLibraryScreen';
 import TeamResourcesScreen from '../screens/TeamResourcesScreen';
 import TrainingStudioScreen from '../screens/TrainingStudioScreen';
+import ClubHubScreen from '../screens/ClubHubScreen';
+import EvaluationsHubScreen from '../screens/EvaluationsHubScreen';
 import SessionDetailScreen from '../screens/training/SessionDetailScreen';
 import DrillDetailScreen from '../screens/training/DrillDetailScreen';
 import SeasonPlanDetailScreen from '../screens/training/SeasonPlanDetailScreen';
@@ -135,6 +139,7 @@ const TAB_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
 
 function MainTabs() {
   const { currentRole } = useAuth();
+  const totalChatUnread = useTotalChatUnread();
 
   const isStaff =
     currentRole &&
@@ -186,6 +191,7 @@ function MainTabs() {
         component={ChatStack}
         options={{
           tabBarLabel: 'Chat',
+          tabBarBadge: totalChatUnread > 0 ? (totalChatUnread > 99 ? '99+' : totalChatUnread) : undefined,
           tabBarIcon: ({ color, size }) => (
             <Feather name={TAB_ICONS.Chat} size={22} color={color} />
           ),
@@ -378,6 +384,16 @@ function HomeStack() {
       <Stack.Screen
         name="TrainingStudio"
         component={TrainingStudioScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="ClubHub"
+        component={ClubHubScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="EvaluationsHub"
+        component={EvaluationsHubScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen
@@ -623,6 +639,11 @@ function ChatStack() {
       <Stack.Screen
         name="StaffMessage"
         component={StaffMessageScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="PollDetail"
+        component={PollDetailScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

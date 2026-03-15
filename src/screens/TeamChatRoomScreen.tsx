@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,8 @@ import { supabase } from '../lib/supabase';
 import { useMessages } from '../hooks/useMessages';
 import { PollCard } from '../components/chat/PollCard';
 import { CreatePollModal } from '../components/chat/CreatePollModal';
+import SurveyPickerModal from '../components/chat/SurveyPickerModal';
+import SurveyChatCard from '../components/chat/SurveyChatCard';
 import { ChatBubble, type ReactionSummary } from '../components/chat/ChatBubble';
 import { ChatInputBar, type AttachmentData } from '../components/chat/ChatInputBar';
 import { ReactionPicker } from '../components/chat/ReactionPicker';
@@ -30,6 +32,7 @@ import {
   type ReactionDetailItem,
 } from '../components/chat/ReactionDetailsModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { useChannelMembers } from '../hooks/useChannelMembers';
 import type { Message } from '../types';
 
@@ -76,6 +79,7 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   const [sending, setSending] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [pollModalVisible, setPollModalVisible] = useState(false);
+  const [surveyPickerVisible, setSurveyPickerVisible] = useState(false);
   const [replyingTo, setReplyingTo] = useState<{
     messageId: string;
     content: string;
@@ -104,14 +108,24 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   >(new Map());
   const [staffUserIds, setStaffUserIds] = useState<Set<string>>(new Set());
 
+  const markChannelAsRead = useCallback(() => {
+    if (!channelId || !user?.id) return;
+    supabase
+      .from('comm_channel_members')
+      .update({ last_read_at: new Date().toISOString() })
+      .eq('channel_id', channelId)
+      .eq('user_id', user.id)
+      .then(() => {});
+  }, [channelId, user?.id]);
+
   const {
     messages,
     loading,
     sendMessage,
     toggleReaction,
     refetch,
-  } = useMessages(channelId);
-  const { members: channelMembers, updateLastReadMessage } =
+  } = useMessages(channelId, markChannelAsRead);
+  const { members: channelMembers } =
     useChannelMembers(channelId);
 
   const messageIds = messages.map((m) => m.id);
@@ -228,12 +242,18 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     fetchParentPlayerNames();
   }, [channelTeamId, messages]);
 
+  // 1. Mark read on mount
   useEffect(() => {
-    if (channelId && user?.id && messages.length > 0) {
-      const lastId = messages[messages.length - 1].id;
-      updateLastReadMessage(lastId).catch(() => {});
-    }
-  }, [channelId, user?.id, messages.length, updateLastReadMessage]);
+    if (channelId) markChannelAsRead();
+  }, [channelId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 2. Mark read whenever screen regains focus (user navigates back)
+  useFocusEffect(
+    useCallback(() => {
+      markChannelAsRead();
+    }, [markChannelAsRead])
+  );
+  // Note: new-message real-time case is handled via onNewMessage callback in useMessages
 
   useEffect(() => {
     if (messages.length > prevMessagesLengthRef.current) {
@@ -244,10 +264,49 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     }
   }, [messages]);
 
+  const handleShareSurvey = async (surveyId: string, surveyTitle: string) => {
+    setSurveyPickerVisible(false);
+    if (!channelId || !user?.id) return;
+    try {
+      const { data: msgData } = await supabase
+        .from('comm_messages')
+        .insert({
+          channel_id: channelId,
+          user_id: user.id,
+          content: surveyTitle,
+          message_type: 'survey',
+        })
+        .select('id')
+        .single();
+
+      if (msgData?.id) {
+        await supabase.from('sv_chat_shares').insert({
+          survey_id: surveyId,
+          channel_id: channelId,
+          posted_by: user.id,
+          message_id: msgData.id,
+        });
+        refetch();
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Failed to share survey. Please try again.');
+    }
+  };
+
   const handleSendMessage = async (
     content: string,
     attachment?: AttachmentData
   ) => {
+    // Intercept /survey command
+    if (content.trim().toLowerCase() === '/survey' && !attachment) {
+      if (!isStaffInChannel) {
+        Alert.alert('Not Authorized', 'Only team staff can share surveys in chat.');
+        return;
+      }
+      setSurveyPickerVisible(true);
+      return;
+    }
+
     if (sending) return;
     setSending(true);
     try {
@@ -463,6 +522,22 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
       );
     }
 
+    if (item.message_type === 'survey') {
+      return (
+        <>
+          {showDaySeparator && (
+            <View style={styles.daySeparator}>
+              <Text style={styles.daySeparatorText}>
+                {formatDateSeparator(item.created_at)}
+              </Text>
+              <View style={styles.daySeparatorLine} />
+            </View>
+          )}
+          <SurveyChatCard messageId={item.id} navigation={navigation} />
+        </>
+      );
+    }
+
     const isOwnMessage = item.user_id === user?.id;
     const reactionsSummary = getReactionsSummary(item.reactions, user?.id);
     const isStaff = staffUserIds.has(item.user_id);
@@ -631,6 +706,15 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
         onClose={() => setPollModalVisible(false)}
         channelId={channelId}
         onSuccess={refetch}
+      />
+
+      <SurveyPickerModal
+        visible={surveyPickerVisible}
+        channelId={channelId}
+        teamId={channelTeamId}
+        isStaff={isStaffInChannel}
+        onClose={() => setSurveyPickerVisible(false)}
+        onShare={handleShareSurvey}
       />
 
       <ReactionPicker

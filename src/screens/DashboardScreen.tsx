@@ -14,6 +14,7 @@ import { NotificationBell } from '../components/NotificationBell';
 import PlayerDashboard from '../components/dashboards/PlayerDashboard';
 import CoachDashboard from '../components/dashboards/CoachDashboard';
 import ClubAdminDashboard from '../components/dashboards/ClubAdminDashboard';
+import SurveyPopupModal from '../components/SurveyPopupModal';
 
 const SHOW_LINEUP_WIDGET_KEY = 'show_lineup_widget';
 
@@ -90,6 +91,8 @@ export default function DashboardScreen({ navigation }: any) {
       <View style={styles.dashboardContent}>
         {renderDashboard()}
       </View>
+
+      <SurveyPopupModal navigation={navigation} />
     </View>
   );
 }

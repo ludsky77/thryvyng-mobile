@@ -9,25 +9,14 @@ import React, {
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 
-export type NotificationType =
-  | 'message'
-  | 'event'
-  | 'evaluation'
-  | 'poll'
-  | 'rsvp_reminder'
-  | 'lineup_published'
-  | 'push';
-
 export interface Notification {
   id: string;
   user_id: string;
-  notification_type: NotificationType;
+  type: string;
   title: string;
   body: string | null;
-  reference_type: string | null;
-  reference_id: string | null;
+  data: Record<string, any> | null;
   is_read: boolean;
-  read_at: string | null;
   created_at: string;
 }
 
@@ -37,6 +26,8 @@ interface NotificationContextType {
   loading: boolean;
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
+  deleteNotification: (id: string) => Promise<void>;
+  clearAllNotifications: () => Promise<void>;
   refetch: () => Promise<void>;
 }
 
@@ -61,7 +52,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from('notif_history')
+        .from('notifications')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
@@ -83,20 +74,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       if (!user?.id) return;
 
       const { error } = await supabase
-        .from('notif_history')
-        .update({
-          is_read: true,
-          read_at: new Date().toISOString(),
-        })
+        .from('notifications')
+        .update({ is_read: true })
         .eq('id', notificationId)
         .eq('user_id', user.id);
 
       if (!error) {
         setNotifications((prev) =>
           prev.map((n) =>
-            n.id === notificationId
-              ? { ...n, is_read: true, read_at: new Date().toISOString() }
-              : n
+            n.id === notificationId ? { ...n, is_read: true } : n
           )
         );
         setUnreadCount((prev) => Math.max(0, prev - 1));
@@ -109,22 +95,50 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     if (!user?.id) return;
 
     const { error } = await supabase
-      .from('notif_history')
-      .update({
-        is_read: true,
-        read_at: new Date().toISOString(),
-      })
+      .from('notifications')
+      .update({ is_read: true })
       .eq('user_id', user.id)
       .eq('is_read', false);
 
     if (!error) {
       setNotifications((prev) =>
-        prev.map((n) => ({
-          ...n,
-          is_read: true,
-          read_at: new Date().toISOString(),
-        }))
+        prev.map((n) => ({ ...n, is_read: true }))
       );
+      setUnreadCount(0);
+    }
+  }, [user?.id]);
+
+  const deleteNotification = useCallback(
+    async (notificationId: string) => {
+      if (!user?.id) return;
+
+      const target = notifications.find((n) => n.id === notificationId);
+      const { error } = await supabase
+        .from('notifications')
+        .delete()
+        .eq('id', notificationId)
+        .eq('user_id', user.id);
+
+      if (!error) {
+        setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+        if (target && !target.is_read) {
+          setUnreadCount((prev) => Math.max(0, prev - 1));
+        }
+      }
+    },
+    [user?.id, notifications]
+  );
+
+  const clearAllNotifications = useCallback(async () => {
+    if (!user?.id) return;
+
+    const { error } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('user_id', user.id);
+
+    if (!error) {
+      setNotifications([]);
       setUnreadCount(0);
     }
   }, [user?.id]);
@@ -143,7 +157,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         {
           event: 'INSERT',
           schema: 'public',
-          table: 'notif_history',
+          table: 'notifications',
           filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
@@ -167,6 +181,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         loading,
         markAsRead,
         markAllAsRead,
+        deleteNotification,
+        clearAllNotifications,
         refetch: fetchNotifications,
       }}
     >

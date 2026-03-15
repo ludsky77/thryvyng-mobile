@@ -11,6 +11,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
+
+const ADMIN_ROLES = new Set([
+  'club_director',
+  'club_admin',
+  'platform_admin',
+]);
 
 const LANG = 'en';
 
@@ -31,8 +38,14 @@ interface SurveyRow {
 export default function SurveyListScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
+  const { currentRole } = useAuth();
   const params = (route.params || {}) as SurveyListScreenParams;
   const clubId = params.clubId;
+
+  const isAdmin = ADMIN_ROLES.has(currentRole?.role ?? '');
+  const filterOptions = isAdmin
+    ? (['all', 'open', 'draft', 'closed'] as const)
+    : (['all', 'open', 'closed'] as const);
 
   const [surveys, setSurveys] = useState<SurveyRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -112,17 +125,19 @@ export default function SurveyListScreen() {
         <View style={styles.headerRight} />
       </View>
 
-      <ScrollView horizontal style={styles.tabs} contentContainerStyle={styles.tabsContent} showsHorizontalScrollIndicator={false}>
-        {(['all', 'open', 'draft', 'closed'] as const).map((f) => (
-          <TouchableOpacity
-            key={f}
-            style={[styles.tab, filter === f && styles.tabActive]}
-            onPress={() => setFilter(f)}
-          >
-            <Text style={[styles.tabText, filter === f && styles.tabTextActive]}>{f.charAt(0).toUpperCase() + f.slice(1)}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={styles.tabs}>
+        <ScrollView horizontal contentContainerStyle={styles.tabsContent} showsHorizontalScrollIndicator={false}>
+          {filterOptions.map((f) => (
+            <TouchableOpacity
+              key={f}
+              style={[styles.tab, filter === f && styles.tabActive]}
+              onPress={() => setFilter(f)}
+            >
+              <Text style={[styles.tabText, filter === f && styles.tabTextActive]}>{f.charAt(0).toUpperCase() + f.slice(1)}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
       {loading ? (
         <View style={styles.loadingWrap}>
@@ -176,9 +191,9 @@ const styles = StyleSheet.create({
   headerBack: { padding: 8, marginLeft: -8 },
   headerRight: { width: 40 },
   headerTitle: { flex: 1, color: '#fff', fontSize: 20, fontWeight: '700', textAlign: 'center' },
-  tabs: { maxHeight: 48, borderBottomWidth: 1, borderBottomColor: '#1e293b' },
-  tabsContent: { paddingHorizontal: 16, paddingVertical: 12, gap: 12 },
-  tab: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#1e293b', marginRight: 8 },
+  tabs: { height: 52, justifyContent: 'center', borderBottomWidth: 1, borderBottomColor: '#1e293b' },
+  tabsContent: { paddingHorizontal: 16, alignItems: 'center', gap: 8 },
+  tab: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, backgroundColor: '#1e293b' },
   tabActive: { backgroundColor: '#8b5cf6' },
   tabText: { color: '#94a3b8', fontSize: 14, fontWeight: '600' },
   tabTextActive: { color: '#fff' },

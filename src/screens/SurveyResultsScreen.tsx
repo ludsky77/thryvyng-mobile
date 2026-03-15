@@ -128,10 +128,9 @@ export default function SurveyResultsScreen() {
   }, [responses, totalResponses]);
 
   const formatAvgTime = (sec: number): string => {
-    if (sec < 60) return `${sec}s`;
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return s > 0 ? `${m}m ${s}s` : `${m}m`;
+    const mins = Math.floor(sec / 60);
+    const secs = sec % 60;
+    return `${mins}m ${secs}s`;
   };
 
   const daysRemaining = useMemo(() => {
@@ -201,17 +200,29 @@ export default function SurveyResultsScreen() {
       const pPct = n ? Math.round((promoters / n) * 100) : 0;
       const passPct = n ? Math.round((passives / n) * 100) : 0;
       const dPct = n ? Math.round((detractors / n) * 100) : 0;
+      const npsColor = npsScore > 0 ? '#22c55e' : npsScore < 0 ? '#ef4444' : '#64748b';
       return (
         <View style={styles.qCard}>
           <Text style={styles.qText}>{qText}</Text>
           {responseCountText}
-          <Text style={styles.npsScore}>{npsScore}</Text>
+          <Text style={[styles.npsScore, { color: npsColor }]}>{npsScore > 0 ? `+${npsScore}` : npsScore}</Text>
+          <Text style={styles.npsScoreLabel}>NPS Score</Text>
           <View style={styles.npsBarTrack}>
             <View style={[styles.npsBarDetractors, { width: `${dPct}%` }]} />
             <View style={[styles.npsBarPassives, { width: `${passPct}%` }]} />
             <View style={[styles.npsBarPromoters, { width: `${pPct}%` }]} />
           </View>
-          <Text style={styles.qMeta}>{pPct}% promoters · {passPct}% passives · {dPct}% detractors</Text>
+          <View style={styles.npsLegend}>
+            <Text style={[styles.npsLegendItem, { color: '#22c55e' }]}>
+              Promoters: {promoters} ({pPct}%)
+            </Text>
+            <Text style={[styles.npsLegendItem, { color: '#f59e0b' }]}>
+              Passives: {passives} ({passPct}%)
+            </Text>
+            <Text style={[styles.npsLegendItem, { color: '#8b5cf6' }]}>
+              Detractors: {detractors} ({dPct}%)
+            </Text>
+          </View>
         </View>
       );
     }
@@ -247,6 +258,7 @@ export default function SurveyResultsScreen() {
           });
         }
       });
+      const totalAnswered = answers.length;
       const maxCount = Math.max(0, ...Object.values(counts));
       return (
         <View style={styles.qCard}>
@@ -254,15 +266,18 @@ export default function SurveyResultsScreen() {
           {responseCountText}
           {opts.map((o) => {
             const cnt = counts[o.id] ?? 0;
-            const pct = maxCount ? (cnt / maxCount) * 100 : 0;
+            const barPct = maxCount ? (cnt / maxCount) * 100 : 0;
+            const displayPct = totalAnswered ? Math.round((cnt / totalAnswered) * 100) : 0;
             const label = isEs && o.option_label_es ? o.option_label_es : o.option_label ?? '';
             return (
-              <View key={o.id} style={styles.optRow}>
-                <Text style={styles.optLabel} numberOfLines={2}>{label}</Text>
-                <View style={styles.optBarTrack}>
-                  <View style={[styles.optBarFill, { width: `${pct}%` }]} />
+              <View key={o.id} style={styles.optItem}>
+                <View style={styles.optItemHeader}>
+                  <Text style={styles.optLabel}>{label}</Text>
+                  <Text style={styles.optCount}>{cnt} ({displayPct}%)</Text>
                 </View>
-                <Text style={styles.optCount}>{cnt}</Text>
+                <View style={styles.optBarTrack}>
+                  <View style={[styles.optBarFill, { width: `${barPct}%` }]} />
+                </View>
               </View>
             );
           })}
@@ -433,19 +448,23 @@ const styles = StyleSheet.create({
   qMeta: { color: '#94a3b8', fontSize: 13, marginBottom: 8 },
   starRow: { flexDirection: 'row', gap: 4, marginVertical: 8 },
   starIcon: {},
-  npsScore: { color: '#8b5cf6', fontSize: 36, fontWeight: '700', marginVertical: 8 },
-  npsBarTrack: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 8 },
+  npsScore: { fontSize: 40, fontWeight: '700', marginTop: 8 },
+  npsScoreLabel: { color: '#94a3b8', fontSize: 12, marginBottom: 12 },
+  npsBarTrack: { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 12, backgroundColor: '#334155' },
   npsBarDetractors: { backgroundColor: '#8b5cf6', height: '100%' },
-  npsBarPassives: { backgroundColor: '#64748b', height: '100%' },
-  npsBarPromoters: { backgroundColor: '#10b981', height: '100%' },
+  npsBarPassives: { backgroundColor: '#f59e0b', height: '100%' },
+  npsBarPromoters: { backgroundColor: '#22c55e', height: '100%' },
+  npsLegend: { gap: 4 },
+  npsLegendItem: { fontSize: 13, fontWeight: '500' },
   barTrack: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', marginTop: 8 },
   barYes: { backgroundColor: '#8b5cf6', height: '100%' },
   barNo: { backgroundColor: '#64748b', height: '100%' },
-  optRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 },
-  optLabel: { flex: 1, color: '#fff', fontSize: 14 },
-  optBarTrack: { flex: 2, height: 6, backgroundColor: '#334155', borderRadius: 3, overflow: 'hidden' },
+  optItem: { marginBottom: 12 },
+  optItemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6, gap: 8 },
+  optLabel: { flex: 1, color: '#fff', fontSize: 14, lineHeight: 20 },
+  optBarTrack: { height: 6, backgroundColor: '#334155', borderRadius: 3, overflow: 'hidden' },
   optBarFill: { height: '100%', backgroundColor: '#8b5cf6', borderRadius: 3 },
-  optCount: { color: '#94a3b8', fontSize: 12, width: 24, textAlign: 'right' },
+  optCount: { color: '#94a3b8', fontSize: 12, textAlign: 'right', flexShrink: 0 },
   scaleLabels: { color: '#64748b', fontSize: 12 },
   quoteCard: { backgroundColor: '#334155', padding: 12, borderRadius: 8, marginTop: 8 },
   quoteText: { color: '#94a3b8', fontSize: 14, fontStyle: 'italic' },

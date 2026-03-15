@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -24,6 +24,7 @@ import { useUserTeams } from '../hooks/useUserTeams';
 import { supabase } from '../lib/supabase';
 import { formatRoleLabel, getRolePriority, getTimeAgo } from '../lib/chatHelpers';
 import { NotificationBell } from '../components/NotificationBell';
+import { useFocusEffect } from '@react-navigation/native';
 
 interface EnrichedConversation {
   id: string;
@@ -136,7 +137,13 @@ function ConversationItem({
 
       <View style={styles.conversationContent}>
         <View style={styles.conversationHeader}>
-          <Text style={styles.conversationName} numberOfLines={1}>
+          <Text
+            style={[
+              styles.conversationName,
+              conversation.unreadCount > 0 && styles.conversationNameUnread,
+            ]}
+            numberOfLines={1}
+          >
             {conversation.displayName}
           </Text>
           <Text style={styles.conversationTime}>
@@ -154,7 +161,13 @@ function ConversationItem({
         ) : null}
 
         {conversation.lastMessage ? (
-          <Text style={styles.lastMessage} numberOfLines={1}>
+          <Text
+            style={[
+              styles.lastMessage,
+              conversation.unreadCount > 0 && styles.lastMessageUnread,
+            ]}
+            numberOfLines={1}
+          >
             {conversation.lastMessage}
           </Text>
         ) : null}
@@ -358,19 +371,28 @@ export default function ChatScreen({ navigation, route }: any) {
         if (m.last_read_at) lastReadMap.set(m.channel_id, m.last_read_at);
       });
 
+      // Fetch all unread messages across channels (last 30 days, excluding own)
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 30);
+      const { data: unreadMsgs } = await supabase
+        .from('comm_messages')
+        .select('channel_id, created_at')
+        .in('channel_id', channelIds)
+        .eq('is_deleted', false)
+        .neq('user_id', user.id)
+        .gte('created_at', cutoff.toISOString());
+
+      const unreadCountMap = new Map<string, number>();
+      (unreadMsgs || []).forEach((msg: any) => {
+        const lastRead = lastReadMap.get(msg.channel_id);
+        if (!lastRead || new Date(msg.created_at) > new Date(lastRead)) {
+          unreadCountMap.set(msg.channel_id, (unreadCountMap.get(msg.channel_id) ?? 0) + 1);
+        }
+      });
+
       const enriched: EnrichedConversation[] = channels.map((channel: any) => {
         const lastMsg = lastMessageMap.get(channel.id);
-        const lastRead = lastReadMap.get(channel.id);
-        let unreadCount = 0;
-
-        // Only count as unread if:
-        // 1. There's a last message
-        // 2. It's NOT from the current user
-        // 3. It's newer than last_read_at (or never read)
-        if (lastMsg && lastMsg.user_id !== user.id) {
-          if (!lastRead) unreadCount = 1;
-          else if (new Date(lastMsg.created_at) > new Date(lastRead)) unreadCount = 1;
-        }
+        const unreadCount = unreadCountMap.get(channel.id) ?? 0;
 
         if (channel.is_direct_message) {
           const otherUserId =
@@ -444,6 +466,13 @@ export default function ChatScreen({ navigation, route }: any) {
   useEffect(() => {
     fetchConversations();
   }, [fetchConversations]);
+
+  // Refresh unread counts when user returns to the conversation list
+  useFocusEffect(
+    useCallback(() => {
+      fetchConversations();
+    }, [fetchConversations])
+  );
 
   useEffect(() => {
     if (route.params?.openNewModal) {
@@ -1813,11 +1842,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   conversationName: {
-    color: '#fff',
+    color: '#cbd5e1',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '500',
     flex: 1,
     marginRight: 8,
+  },
+  conversationNameUnread: {
+    color: '#fff',
+    fontWeight: '700',
   },
   conversationTime: {
     color: '#6B7280',
@@ -1828,9 +1861,13 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   lastMessage: {
-    color: '#9CA3AF',
+    color: '#6B7280',
     fontSize: 13,
     marginTop: 4,
+  },
+  lastMessageUnread: {
+    color: '#94a3b8',
+    fontWeight: '500',
   },
   conversationRight: {
     alignItems: 'flex-end',

@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { Message } from '../types';
 
-export function useMessages(channelId: string | null) {
+export function useMessages(channelId: string | null, onNewMessage?: () => void) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -122,6 +122,7 @@ export function useMessages(channelId: string | null) {
             // Deduplicate: poll (and other) messages may already be in state from refetch after create
             setMessages(prev => {
               if (prev.some(m => m.id === newMessage.id)) return prev;
+              onNewMessage?.();
               return [...prev, newMessage];
             });
           }
@@ -144,7 +145,7 @@ export function useMessages(channelId: string | null) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [channelId, fetchMessages]);
+  }, [channelId, fetchMessages, onNewMessage]);
 
   const sendMessage = async (
     content: string,

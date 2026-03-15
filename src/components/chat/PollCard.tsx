@@ -7,12 +7,187 @@ import {
   ActivityIndicator,
   Alert,
   TextInput,
+  Image,
+  Modal,
+  FlatList,
+  Pressable,
 } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePoll } from '../../hooks/usePolls';
 import { supabase } from '../../lib/supabase';
 import { BoardVoteContainer } from '../polls/BoardVoteContainer';
+import type { VoterProfile } from '../../types';
+
+function getInitials(name: string | null): string {
+  if (!name) return '?';
+  const parts = name.trim().split(' ');
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function VoterAvatar({ voter, index }: { voter: VoterProfile; index: number }) {
+  return (
+    <View style={[voterStyles.avatar, index > 0 && voterStyles.avatarOverlap]}>
+      {voter.avatar_url ? (
+        <Image source={{ uri: voter.avatar_url }} style={voterStyles.avatarImage} />
+      ) : (
+        <View style={voterStyles.avatarInitials}>
+          <Text style={voterStyles.initialsText}>{getInitials(voter.full_name)}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+function VoterAvatarRow({ voters, onPress }: { voters: VoterProfile[]; onPress: () => void }) {
+  const MAX_SHOWN = 4;
+  const shown = voters.slice(0, MAX_SHOWN);
+  const extra = voters.length - MAX_SHOWN;
+
+  return (
+    <TouchableOpacity onPress={onPress} style={voterStyles.row} activeOpacity={0.7}>
+      {shown.map((voter, index) => (
+        <VoterAvatar key={voter.id} voter={voter} index={index} />
+      ))}
+      {extra > 0 && (
+        <View style={[voterStyles.avatar, voterStyles.avatarOverlap, voterStyles.avatarExtra]}>
+          <Text style={voterStyles.extraText}>+{extra}</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+function VoterListModal({
+  voters,
+  visible,
+  onClose,
+}: {
+  voters: VoterProfile[];
+  visible: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={voterStyles.modalOverlay} onPress={onClose}>
+        <Pressable style={voterStyles.modalSheet} onPress={() => {}}>
+          <View style={voterStyles.modalHeader}>
+            <Text style={voterStyles.modalTitle}>Voters ({voters.length})</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close" size={20} color="#94a3b8" />
+            </TouchableOpacity>
+          </View>
+          <FlatList
+            data={voters}
+            keyExtractor={(v) => v.id}
+            renderItem={({ item }) => (
+              <View style={voterStyles.voterRow}>
+                {item.avatar_url ? (
+                  <Image source={{ uri: item.avatar_url }} style={voterStyles.voterRowAvatar} />
+                ) : (
+                  <View style={[voterStyles.voterRowAvatar, voterStyles.avatarInitials]}>
+                    <Text style={voterStyles.initialsText}>{getInitials(item.full_name)}</Text>
+                  </View>
+                )}
+                <Text style={voterStyles.voterRowName}>{item.full_name ?? 'Unknown'}</Text>
+              </View>
+            )}
+            style={{ maxHeight: 320 }}
+            showsVerticalScrollIndicator={false}
+          />
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const voterStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingBottom: 8,
+    paddingTop: 4,
+  },
+  avatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#2a2a4e',
+    overflow: 'hidden',
+  },
+  avatarOverlap: {
+    marginLeft: -6,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarInitials: {
+    flex: 1,
+    backgroundColor: '#7c3aed33',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  initialsText: {
+    color: '#c4b5fd',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  avatarExtra: {
+    backgroundColor: '#334155',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  extraText: {
+    color: '#94a3b8',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalSheet: {
+    backgroundColor: '#1e293b',
+    borderRadius: 16,
+    padding: 16,
+    width: '80%',
+    maxWidth: 340,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  voterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    gap: 10,
+  },
+  voterRowAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  voterRowName: {
+    color: '#e2e8f0',
+    fontSize: 14,
+  },
+});
 
 interface PollCardProps {
   pollId: string;
@@ -38,6 +213,7 @@ function getTimeRemaining(endsAt: string): string {
 export function PollCard({ pollId, compact = false, isStaffInChannel = false }: PollCardProps) {
   // 1. ALL HOOKS FIRST (before any conditions or returns)
   const { user } = useAuth();
+  const navigation = useNavigation<any>();
   const { poll, loading, vote, removeVote, closePoll } = usePoll(pollId);
   const [voting, setVoting] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -45,6 +221,7 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
   const [reminderSending, setReminderSending] = useState(false);
   const [reminderSent, setReminderSent] = useState(false);
   const [voteComment, setVoteComment] = useState('');
+  const [selectedVoters, setSelectedVoters] = useState<VoterProfile[] | null>(null);
 
   // 2. Derived values (safe when poll is null)
   const totalVotes = poll?.options?.reduce((sum, opt) => sum + (opt.vote_count || 0), 0) ?? 0;
@@ -225,6 +402,12 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
                     {totalVotes} vote{totalVotes !== 1 ? 's' : ''}
                   </Text>
                 </View>
+                {poll.is_anonymous && (
+                  <View style={styles.voteCountRow}>
+                    <Ionicons name="lock-closed-outline" size={11} color="#64748b" />
+                    <Text style={styles.anonymousText}>Anonymous</Text>
+                  </View>
+                )}
               </View>
               {/* Compact vote summary for board_room (only when collapsed) */}
               {isBoardRoom && !isExpanded && (
@@ -263,6 +446,12 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
             </View>
           </View>
         </TouchableOpacity>
+
+        <VoterListModal
+          visible={selectedVoters !== null}
+          voters={selectedVoters ?? []}
+          onClose={() => setSelectedVoters(null)}
+        />
 
         {/* Expandable Options or Board Room */}
         {isExpanded && (
@@ -360,55 +549,63 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
                 : 0;
               const isWinner = percentage > 0 && percentage === maxPercentage;
               const isUserVote = userVotedOptionIds.includes(option.id);
+              const voters = option.voters ?? [];
               
               return (
-                <TouchableOpacity
-                  key={option.id}
-                  style={[
-                    styles.compactOption,
-                    isUserVote && styles.selectedOption,
-                    isClosed && styles.disabledOption
-                  ]}
-                  onPress={() => !isClosed && handleVote(option.id)}
-                  disabled={isClosed || voting}
-                >
-                  {/* Progress Bar */}
-                  {showResults && (
-                    <View 
-                      style={[
-                        styles.progressBar,
-                        isUserVote ? styles.userProgressBar : 
-                        isWinner ? styles.winnerProgressBar : styles.defaultProgressBar,
-                        { width: `${percentage}%` }
-                      ]} 
+                <View key={option.id}>
+                  <TouchableOpacity
+                    style={[
+                      styles.compactOption,
+                      isUserVote && styles.selectedOption,
+                      isClosed && styles.disabledOption
+                    ]}
+                    onPress={() => !isClosed && handleVote(option.id)}
+                    disabled={isClosed || voting}
+                  >
+                    {/* Progress Bar */}
+                    {showResults && (
+                      <View 
+                        style={[
+                          styles.progressBar,
+                          isUserVote ? styles.userProgressBar : 
+                          isWinner ? styles.winnerProgressBar : styles.defaultProgressBar,
+                          { width: `${percentage}%` }
+                        ]} 
+                      />
+                    )}
+                    
+                    <View style={styles.optionContent}>
+                      <View style={styles.optionLeft}>
+                        {isUserVote ? (
+                          <Feather name="check-circle" size={18} color="#10b981" />
+                        ) : (
+                          <Feather name="circle" size={18} color="#94a3b8" />
+                        )}
+                        <Text style={[
+                          styles.optionText,
+                          isUserVote && styles.selectedOptionText,
+                          isWinner && !isUserVote && styles.winnerOptionText
+                        ]}>
+                          {option.option_text}
+                        </Text>
+                      </View>
+                      {showResults && (
+                        <Text style={[
+                          styles.percentageText,
+                          isWinner && styles.winnerPercentage
+                        ]}>
+                          {percentage}%
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                  {(isStaffInChannel || !poll.is_anonymous) && showResults && voters.length > 0 && (
+                    <VoterAvatarRow
+                      voters={voters}
+                      onPress={() => setSelectedVoters(voters)}
                     />
                   )}
-                  
-                  <View style={styles.optionContent}>
-                    <View style={styles.optionLeft}>
-                      {isUserVote ? (
-                        <Feather name="check-circle" size={18} color="#10b981" />
-                      ) : (
-                        <Feather name="circle" size={18} color="#94a3b8" />
-                      )}
-                      <Text style={[
-                        styles.optionText,
-                        isUserVote && styles.selectedOptionText,
-                        isWinner && !isUserVote && styles.winnerOptionText
-                      ]}>
-                        {option.option_text}
-                      </Text>
-                    </View>
-                    {showResults && (
-                      <Text style={[
-                        styles.percentageText,
-                        isWinner && styles.winnerPercentage
-                      ]}>
-                        {percentage}%
-                      </Text>
-                    )}
-                  </View>
-                </TouchableOpacity>
+                </View>
               );
             })}
             
@@ -461,6 +658,12 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
                 )}
               </TouchableOpacity>
             )}
+            <TouchableOpacity
+              style={styles.viewResultsButton}
+              onPress={() => navigation.navigate('PollDetail', { pollId: poll.id })}
+            >
+              <Text style={styles.viewResultsText}>View Full Results →</Text>
+            </TouchableOpacity>
             </>
             )}
           </View>
@@ -618,6 +821,10 @@ const styles = StyleSheet.create({
   },
   voteCount: {
     color: '#94a3b8',
+    fontSize: 11,
+  },
+  anonymousText: {
+    color: '#64748b',
     fontSize: 11,
   },
   boardVotePreview: {
@@ -779,6 +986,17 @@ const styles = StyleSheet.create({
   },
   pollReminderTextDisabled: {
     color: '#64748b',
+  },
+  viewResultsButton: {
+    alignSelf: 'center',
+    marginTop: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  viewResultsText: {
+    color: '#8b5cf6',
+    fontSize: 13,
+    fontWeight: '600',
   },
   fullContainer: {
     backgroundColor: '#2a2a4e',

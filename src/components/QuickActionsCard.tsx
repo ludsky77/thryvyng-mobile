@@ -28,7 +28,7 @@ export default function QuickActionsCard({ actions, title }: QuickActionsCardPro
     >
       <View style={styles.buttonBorder}>
         <View style={[styles.iconBox, { backgroundColor: action.color }]}>
-          <Ionicons name={action.icon as any} size={28} color="#fff" />
+          <Ionicons name={action.icon as any} size={22} color="#fff" />
         </View>
         <Text style={styles.label}>{action.label}</Text>
       </View>
@@ -95,14 +95,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(139, 92, 246, 0.4)',
     borderRadius: 16,
-    height: 104,
+    minHeight: 90,
+    paddingVertical: 14,
     paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconBox: {
-    width: 52,
-    height: 52,
+    width: 44,
+    height: 44,
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',

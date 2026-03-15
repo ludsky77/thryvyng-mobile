@@ -122,7 +122,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const { data: roles, error } = await withTimeout(supabase
       .from('user_roles')
       .select('*')
-      .eq('user_id', userId));
+      .eq('user_id', userId) as unknown as Promise<{ data: any; error: any }>);
 
     if (error) {
       console.error('Error fetching roles:', error);
@@ -159,23 +159,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         if (session?.user) {
           try {
-            const { data: profileData } = await withTimeout(supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', session.user.id)
-              .single());
-            setProfile(profileData ?? null);
-
-            const roles = await fetchUserRoles(session.user.id);
+            // Run profile, roles, and saved role ID fetches in parallel
+            const [profileResult, roles, savedRoleId] = await Promise.all([
+              withTimeout(supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', session.user.id)
+                .single() as unknown as Promise<{ data: any }>),
+              fetchUserRoles(session.user.id),
+              AsyncStorage.getItem('lastRoleId').then((id) => id ?? AsyncStorage.getItem('currentRoleId')),
+            ]);
+            setProfile((profileResult as any).data ?? null);
             setAllRoles(roles);
 
             // Auto-select if user has exactly one role
             if (roles.length === 1 && !currentRole) {
               setCurrentRole(roles[0]);
             } else {
-              const savedRoleId = await AsyncStorage.getItem('lastRoleId') ?? await AsyncStorage.getItem('currentRoleId');
               const role = savedRoleId
-                ? roles.find((r) => r.id === savedRoleId) || roles[0]
+                ? roles.find((r: any) => r.id === savedRoleId) || roles[0]
                 : roles[0];
               setCurrentRole(role);
             }

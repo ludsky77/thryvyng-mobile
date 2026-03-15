@@ -68,26 +68,36 @@ export default function ClubAdminDashboard({
 
       const teamsList = (teamsData || []) as Team[];
 
+      const teamIds = teamsList.map((t) => t.id);
+      const { data: allStaff } = await supabase
+        .from('team_staff')
+        .select('team_id, user_id, staff_role')
+        .in('team_id', teamIds)
+        .or('staff_role.eq.team_manager,staff_role.eq.head_coach');
+
+      const userIds = [
+        ...new Set(
+          (allStaff || []).map((s: any) => s.user_id).filter(Boolean)
+        ),
+      ] as string[];
+
+      const { data: allProfiles } =
+        userIds.length > 0
+          ? await supabase
+              .from('profiles')
+              .select('id, full_name')
+              .in('id', userIds)
+          : { data: [] };
+
+      const profileMap = new Map(
+        (allProfiles || []).map((p: any) => [p.id, p.full_name])
+      );
+
       for (const team of teamsList) {
-        const { data: staffList } = await supabase
-          .from('team_staff')
-          .select('user_id')
-          .eq('team_id', team.id)
-          .or('staff_role.eq.team_manager,staff_role.eq.head_coach')
-          .limit(1);
-
-        const firstStaff = Array.isArray(staffList) ? staffList[0] : staffList;
-
-        let managerName: string | null = null;
-        if (firstStaff?.user_id) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('id', firstStaff.user_id)
-            .single();
-          managerName = (profile as any)?.full_name ?? null;
-        }
-        (team as any).manager_name = managerName;
+        const staff = (allStaff || []).find((s: any) => s.team_id === team.id);
+        (team as any).manager_name = staff
+          ? (profileMap.get(staff.user_id) ?? null)
+          : null;
       }
 
       setTeams(teamsList);
@@ -280,9 +290,7 @@ export default function ClubAdminDashboard({
           </Text>
           {approvedTeams.length > 0 && (
             <TouchableOpacity
-              onPress={() =>
-                navigation.getParent()?.getParent()?.navigate('TeamsTab')
-              }
+              onPress={() => navigation.navigate('ClubTeamsList')}
             >
               <Text style={styles.viewAll}>View All →</Text>
             </TouchableOpacity>
@@ -296,13 +304,9 @@ export default function ClubAdminDashboard({
               key={team.id}
               style={styles.teamCard}
               onPress={() =>
-                navigation.getParent()?.getParent()?.navigate('TeamsTab', {
-                  screen: 'Roster',
-                  params: {
-                    team_id: team.id,
-                    teamId: team.id,
-                    teamName: team.name,
-                  },
+                navigation.navigate('TeamDetail', {
+                  teamId: team.id,
+                  teamName: team.name,
                 })
               }
             >

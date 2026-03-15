@@ -7,7 +7,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -46,15 +48,38 @@ const TEAM_COLOR_PALETTE = [
   { hex: '#8B7B9B', name: 'Plum' },
 ];
 
-export default function TeamDetailScreen({ route }: any) {
+interface Player {
+  id: string;
+  first_name: string;
+  last_name: string;
+  jersey_number: number | null;
+  photo_url: string | null;
+}
+
+interface StaffMember {
+  id: string;
+  role: string;
+  profiles: { full_name: string | null; email: string | null } | null;
+}
+
+const STAFF_ROLE_LABELS: Record<string, string> = {
+  head_coach: 'Head Coach',
+  assistant_coach: 'Assistant Coach',
+  team_manager: 'Team Manager',
+  coach: 'Coach',
+};
+
+function getInitials(first: string, last: string) {
+  return `${first[0] ?? ''}${last[0] ?? ''}`.toUpperCase();
+}
+
+export default function TeamDetailScreen({ route, navigation }: any) {
   const { teamId, teamName } = route.params || {};
   const { user } = useAuth();
 
-  const [team, setTeam] = useState<{
-    id: string;
-    name: string;
-    color: string | null;
-  } | null>(null);
+  const [team, setTeam] = useState<{ id: string; name: string; color: string | null } | null>(null);
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [selectedColor, setSelectedColor] = useState('#5B7BB5');
@@ -62,66 +87,63 @@ export default function TeamDetailScreen({ route }: any) {
   const [isStaffInTeam, setIsStaffInTeam] = useState(false);
 
   useEffect(() => {
-    const checkStaffPermission = async () => {
-      if (!teamId || !user?.id) {
-        setIsStaffInTeam(false);
-        return;
-      }
-      const { data } = await supabase
-        .from('team_staff')
-        .select('id')
-        .eq('team_id', teamId)
-        .eq('user_id', user.id)
-        .maybeSingle();
-      setIsStaffInTeam(!!data);
-    };
-    checkStaffPermission();
+    if (!teamId || !user?.id) { setIsStaffInTeam(false); return; }
+    supabase
+      .from('team_staff')
+      .select('id')
+      .eq('team_id', teamId)
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => setIsStaffInTeam(!!data));
   }, [teamId, user?.id]);
 
-  const canManage = isStaffInTeam;
-
-  const fetchTeam = useCallback(async () => {
-    if (!teamId) {
-      setLoading(false);
-      return;
-    }
+  const fetchData = useCallback(async () => {
+    if (!teamId) { setLoading(false); return; }
+    setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('teams')
-        .select('id, name, color')
-        .eq('id', teamId)
-        .single();
+      const [teamRes, playersRes, staffRes] = await Promise.all([
+        supabase.from('teams').select('id, name, color').eq('id', teamId).single(),
+        supabase
+          .from('players')
+          .select('id, first_name, last_name, jersey_number, photo_url')
+          .eq('team_id', teamId)
+          .order('last_name', { ascending: true }),
+        supabase
+          .from('team_staff')
+          .select('id, role, profiles(full_name, email)')
+          .eq('team_id', teamId),
+      ]);
 
-      if (error) throw error;
-      setTeam(data as any);
-      setSelectedColor((data as any)?.color || '#5B7BB5');
+      if (teamRes.data) {
+        setTeam(teamRes.data as any);
+        setSelectedColor((teamRes.data as any).color || '#5B7BB5');
+      }
+
+      setPlayers((playersRes.data || []) as Player[]);
+
+      const staffRows = (staffRes.data || []).map((s: any) => ({
+        ...s,
+        profiles: Array.isArray(s.profiles) ? s.profiles[0] ?? null : s.profiles,
+      }));
+      setStaff(staffRows as StaffMember[]);
     } catch (err) {
-      console.error('Error fetching team:', err);
-      setTeam(null);
+      console.error('TeamDetailScreen fetch error:', err);
     } finally {
       setLoading(false);
     }
   }, [teamId]);
 
-  useEffect(() => {
-    fetchTeam();
-  }, [fetchTeam]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleColorSelect = async (colorHex: string) => {
     if (!team?.id) return;
     setSelectedColor(colorHex);
     setIsSavingColor(true);
-
     try {
-      const { error } = await supabase
-        .from('teams')
-        .update({ color: colorHex })
-        .eq('id', team.id);
-
+      const { error } = await supabase.from('teams').update({ color: colorHex }).eq('id', team.id);
       if (error) throw error;
       setTeam((prev) => (prev ? { ...prev, color: colorHex } : null));
-    } catch (err) {
-      console.error('Error updating team color:', err);
+    } catch {
       Alert.alert('Error', 'Failed to update team color');
       setSelectedColor(team?.color || '#5B7BB5');
     } finally {
@@ -129,53 +151,122 @@ export default function TeamDetailScreen({ route }: any) {
     }
   };
 
-  if (loading && !team) {
+  if (loading) {
     return (
       <View style={[styles.container, styles.centered]}>
         <ActivityIndicator size="large" color="#8b5cf6" />
-        <Text style={styles.loadingText}>Loading team...</Text>
+        <Text style={styles.loadingText}>Loading team…</Text>
       </View>
     );
   }
 
   const displayName = team?.name ?? teamName ?? 'Team';
-  const displayTeamId = team?.id ?? teamId;
+  const teamColor = team?.color || '#8b5cf6';
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
-      <Text style={styles.title}>{displayName}</Text>
-      {displayTeamId && (
-        <Text style={styles.subtitle}>Team ID: {displayTeamId}</Text>
-      )}
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
 
-      {canManage && (
-        <>
-          {/* Team Color Setting */}
+      {/* Header */}
+      <View style={styles.teamHeader}>
+        <View style={[styles.teamColorBar, { backgroundColor: teamColor }]} />
+        <Text style={styles.title}>{displayName}</Text>
+        <Text style={styles.countsRow}>
+          {players.length} player{players.length !== 1 ? 's' : ''}
+          {staff.length > 0 ? `  ·  ${staff.length} staff` : ''}
+        </Text>
+      </View>
+
+      {/* Roster Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>
+          <Ionicons name="people" size={15} color="#8b5cf6" />{'  '}Roster
+        </Text>
+        {players.length === 0 ? (
+          <Text style={styles.emptyText}>No players added yet</Text>
+        ) : (
+          players.map((p) => (
+            <TouchableOpacity
+              key={p.id}
+              style={styles.row}
+              activeOpacity={0.7}
+              onPress={() =>
+                navigation.navigate('PlayerProfile', {
+                  playerId: p.id,
+                  playerName: `${p.first_name} ${p.last_name}`,
+                })
+              }
+            >
+              {p.photo_url ? (
+                <Image source={{ uri: p.photo_url }} style={styles.avatar} />
+              ) : (
+                <View style={[styles.avatar, styles.avatarFallback]}>
+                  <Text style={styles.avatarInitials}>
+                    {getInitials(p.first_name, p.last_name)}
+                  </Text>
+                </View>
+              )}
+              <View style={styles.rowBody}>
+                <Text style={styles.rowName}>
+                  {p.first_name} {p.last_name}
+                </Text>
+                {p.jersey_number != null && (
+                  <Text style={styles.rowMeta}>#{p.jersey_number}</Text>
+                )}
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#475569" />
+            </TouchableOpacity>
+          ))
+        )}
+      </View>
+
+      {/* Staff Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>
+          <Ionicons name="shield-checkmark" size={15} color="#8b5cf6" />{'  '}Staff
+        </Text>
+        {staff.length === 0 ? (
+          <Text style={styles.emptyText}>No staff assigned yet</Text>
+        ) : (
+          staff.map((s) => (
+            <View key={s.id} style={styles.row}>
+              <View style={[styles.avatar, styles.avatarStaff]}>
+                <Ionicons name="person" size={16} color="#a78bfa" />
+              </View>
+              <View style={styles.rowBody}>
+                <Text style={styles.rowName}>
+                  {s.profiles?.full_name || 'Unknown'}
+                </Text>
+                <Text style={styles.rowMeta}>
+                  {STAFF_ROLE_LABELS[s.role] || s.role}
+                  {s.profiles?.email ? `  ·  ${s.profiles.email}` : ''}
+                </Text>
+              </View>
+            </View>
+          ))
+        )}
+      </View>
+
+      {/* Team Color (staff only) */}
+      {isStaffInTeam && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            <Ionicons name="color-palette" size={15} color="#8b5cf6" />{'  '}Team Color
+          </Text>
           <TouchableOpacity
             style={styles.settingRow}
             onPress={() => setShowColorPicker(!showColorPicker)}
             disabled={isSavingColor}
           >
-            <Text style={styles.settingLabel}>Team Color</Text>
+            <Text style={styles.settingLabel}>Current Color</Text>
             <View style={styles.settingValueContainer}>
               <Text style={styles.colorName}>
-                {TEAM_COLOR_PALETTE.find((c) => c.hex === selectedColor)
-                  ?.name || 'Custom'}
+                {TEAM_COLOR_PALETTE.find((c) => c.hex === selectedColor)?.name || 'Custom'}
               </Text>
-              <View
-                style={[styles.colorPreview, { backgroundColor: selectedColor }]}
-              />
-              <Text style={styles.settingArrow}>
-                {showColorPicker ? '▲' : '▼'}
-              </Text>
+              <View style={[styles.colorPreview, { backgroundColor: selectedColor }]} />
+              <Ionicons name={showColorPicker ? 'chevron-up' : 'chevron-down'} size={14} color="#9CA3AF" />
             </View>
           </TouchableOpacity>
 
-          {/* Color Picker Grid - shown when expanded */}
           {showColorPicker && (
             <View style={styles.colorPickerContainer}>
               <View style={styles.colorGrid}>
@@ -185,8 +276,7 @@ export default function TeamDetailScreen({ route }: any) {
                     style={[
                       styles.colorOption,
                       { backgroundColor: color.hex },
-                      selectedColor === color.hex &&
-                        styles.colorOptionSelected,
+                      selectedColor === color.hex && styles.colorOptionSelected,
                     ]}
                     onPress={() => handleColorSelect(color.hex)}
                     disabled={isSavingColor}
@@ -201,113 +291,105 @@ export default function TeamDetailScreen({ route }: any) {
               </View>
             </View>
           )}
-        </>
-      )}
-
-      {!canManage && (
-        <Text style={styles.placeholder}>
-          Team detail view – add roster, events, and more
-        </Text>
+        </View>
       )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#1a1a2e',
+  container: { flex: 1, backgroundColor: '#0f172a' },
+  content: { paddingBottom: 48 },
+  centered: { justifyContent: 'center', alignItems: 'center' },
+  loadingText: { color: '#9CA3AF', fontSize: 14, marginTop: 12 },
+
+  teamHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
   },
-  content: {
-    padding: 20,
-    paddingBottom: 40,
+  teamColorBar: {
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+    marginBottom: 12,
   },
-  centered: {
-    justifyContent: 'center',
-    alignItems: 'center',
+  title: { color: '#fff', fontSize: 24, fontWeight: '700' },
+  countsRow: { color: '#64748b', fontSize: 13, marginTop: 4 },
+
+  section: {
+    marginTop: 24,
+    paddingHorizontal: 20,
   },
-  loadingText: {
-    color: '#9CA3AF',
-    fontSize: 14,
-    marginTop: 12,
-  },
-  title: {
-    color: '#fff',
-    fontSize: 24,
+  sectionTitle: {
+    color: '#94a3b8',
+    fontSize: 12,
     fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 12,
+  },
+  emptyText: { color: '#475569', fontSize: 14, paddingVertical: 8 },
+
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1e293b',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     marginBottom: 8,
   },
-  subtitle: {
-    color: '#888',
-    fontSize: 14,
-    marginBottom: 24,
+  avatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    marginRight: 12,
   },
-  placeholder: {
-    color: '#666',
-    fontSize: 14,
+  avatarFallback: {
+    backgroundColor: 'rgba(139,92,246,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  avatarStaff: {
+    backgroundColor: 'rgba(139,92,246,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitials: { color: '#a78bfa', fontSize: 13, fontWeight: '700' },
+  rowBody: { flex: 1 },
+  rowName: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  rowMeta: { color: '#64748b', fontSize: 12, marginTop: 2 },
+
   settingRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+    borderBottomColor: 'rgba(255,255,255,0.07)',
   },
-  settingLabel: {
-    color: '#D1D5DB',
-    fontSize: 15,
-  },
-  settingValueContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  colorName: {
-    color: '#9CA3AF',
-    fontSize: 13,
-    marginRight: 8,
-  },
+  settingLabel: { color: '#D1D5DB', fontSize: 15 },
+  settingValueContainer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  colorName: { color: '#9CA3AF', fontSize: 13 },
   colorPreview: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 2,
     borderColor: 'white',
-    marginRight: 8,
-  },
-  settingArrow: {
-    color: '#9CA3AF',
-    fontSize: 12,
   },
   colorPickerContainer: {
-    backgroundColor: 'rgba(55, 65, 81, 0.5)',
+    backgroundColor: 'rgba(55,65,81,0.4)',
     borderRadius: 8,
     padding: 12,
-    marginBottom: 12,
+    marginTop: 8,
   },
-  colorGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  colorOption: {
-    width: '11.5%',
-    aspectRatio: 1,
-    borderRadius: 6,
-    marginBottom: 8,
-  },
-  colorOptionSelected: {
-    borderWidth: 2,
-    borderColor: 'white',
-    transform: [{ scale: 1.1 }],
-  },
-  colorPickerLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 4,
-  },
-  colorPickerLabel: {
-    color: '#6B7280',
-    fontSize: 10,
-  },
+  colorGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  colorOption: { width: '11.5%', aspectRatio: 1, borderRadius: 6, marginBottom: 8 },
+  colorOptionSelected: { borderWidth: 2, borderColor: 'white', transform: [{ scale: 1.1 }] },
+  colorPickerLabels: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 4 },
+  colorPickerLabel: { color: '#6B7280', fontSize: 10 },
 });

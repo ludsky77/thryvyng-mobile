@@ -64,39 +64,56 @@ export default function TeamsScreen({ navigation }: any) {
       );
       const parentRoles = roles.filter((r: any) => r.role === 'parent');
 
-      // Dedupe coaching by team id
+      // Coaching section — parallel count queries, one per unique team
+      const teamIds = staffRoles
+        .map((r: any) => r.entity_id || r.team?.id)
+        .filter(Boolean);
+      const uniqueTeamIds = [...new Set(teamIds)] as string[];
+
+      const countResults = await Promise.all(
+        uniqueTeamIds.map((teamId) =>
+          supabase
+            .from('players')
+            .select('*', { count: 'exact', head: true })
+            .eq('team_id', teamId)
+            .then(({ count }) => ({ teamId, count: count || 0 }))
+        )
+      );
+      const countMap = new Map(countResults.map((c) => [c.teamId, c.count]));
+
       const coachingMap = new Map<string, CoachingItem>();
       for (const role of staffRoles) {
         const teamId = role.entity_id || role.team?.id;
         if (!teamId || coachingMap.has(teamId)) continue;
-
-        const { count } = await supabase
-          .from('players')
-          .select('*', { count: 'exact', head: true })
-          .eq('team_id', teamId);
-
         coachingMap.set(teamId, {
           id: teamId,
           type: 'coaching',
           teamId,
           teamName: role.team?.name || 'Unknown Team',
           staffRole: ROLE_LABELS[role.role] || role.role,
-          playerCount: count || 0,
+          playerCount: countMap.get(teamId) || 0,
         });
       }
 
-      // Parent roles - one per player
+      // Parent section — single batch query for all kids
+      const playerIds = parentRoles
+        .map((r: any) => r.entity_id || r.player?.id)
+        .filter(Boolean) as string[];
+
+      const { data: allPlayers } =
+        playerIds.length > 0
+          ? await supabase
+              .from('players')
+              .select('id, first_name, last_name, jersey_number, photo_url, teams!team_id(id, color)')
+              .in('id', playerIds)
+          : { data: [] };
+
       const kidsList: MyKidsItem[] = [];
       for (const role of parentRoles) {
         const playerId = role.entity_id || role.player?.id;
         if (!playerId) continue;
 
-        const { data: player } = await supabase
-          .from('players')
-          .select('first_name, last_name, jersey_number, photo_url, teams!team_id(id, color)')
-          .eq('id', playerId)
-          .single();
-
+        const player = (allPlayers || []).find((p: any) => p.id === playerId);
         const jersey = player?.jersey_number != null ? `#${player.jersey_number}` : null;
         const playerName =
           player?.first_name && player?.last_name

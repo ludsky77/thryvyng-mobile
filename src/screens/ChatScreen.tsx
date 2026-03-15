@@ -288,55 +288,76 @@ export default function ChatScreen({ navigation, route }: any) {
           c.dm_participant_1 === user.id ? c.dm_participant_2 : c.dm_participant_1
         )
         .filter(Boolean);
+      const groupChannels = channels.filter((c: any) => c.channel_type === 'group_dm');
 
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 30);
+
+      // Run all independent queries in parallel
+      const [
+        profilesResult,
+        userRolesResult,
+        staffRolesResult,
+        lastMessagesResult,
+        memberRowsResult,
+        memberDataResult,
+        unreadMsgsResult,
+      ] = await Promise.all([
+        otherUserIds.length > 0
+          ? supabase.from('profiles').select('id, full_name, avatar_url').in('id', otherUserIds)
+          : Promise.resolve({ data: [] }),
+        otherUserIds.length > 0
+          ? supabase.from('user_roles').select('user_id, role').in('user_id', otherUserIds)
+          : Promise.resolve({ data: [] }),
+        otherUserIds.length > 0
+          ? supabase.from('team_staff').select('user_id, staff_role').in('user_id', otherUserIds)
+          : Promise.resolve({ data: [] }),
+        supabase
+          .from('comm_messages')
+          .select('channel_id, content, created_at, user_id')
+          .in('channel_id', channelIds)
+          .eq('is_deleted', false)
+          .order('created_at', { ascending: false }),
+        groupChannels.length > 0
+          ? supabase
+              .from('comm_channel_members')
+              .select('channel_id')
+              .in('channel_id', groupChannels.map((c: any) => c.id))
+          : Promise.resolve({ data: [] }),
+        supabase
+          .from('comm_channel_members')
+          .select('channel_id, last_read_at')
+          .eq('user_id', user.id)
+          .in('channel_id', channelIds),
+        supabase
+          .from('comm_messages')
+          .select('channel_id, created_at')
+          .in('channel_id', channelIds)
+          .eq('is_deleted', false)
+          .neq('user_id', user.id)
+          .gte('created_at', cutoff.toISOString()),
+      ]);
+
+      // Build lookup maps from parallel results
       const profileMap = new Map<string, { id: string; full_name: string | null; avatar_url: string | null }>();
+      (profilesResult.data || []).forEach((p: any) => profileMap.set(p.id, p));
+
       const roleMap = new Map<string, string>();
-
-      if (otherUserIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, full_name, avatar_url')
-          .in('id', otherUserIds);
-        (profiles || []).forEach((p: any) => profileMap.set(p.id, p));
-
-        const { data: userRoles } = await supabase
-          .from('user_roles')
-          .select('user_id, role')
-          .in('user_id', otherUserIds);
-        (userRoles || []).forEach((r: any) => {
-          const existing = roleMap.get(r.user_id);
-          if (
-            !existing ||
-            getRolePriority(r.role) > getRolePriority(existing)
-          ) {
-            roleMap.set(r.user_id, r.role);
-          }
-        });
-
-        const { data: staffRoles } = await supabase
-          .from('team_staff')
-          .select('user_id, staff_role')
-          .in('user_id', otherUserIds);
-        (staffRoles || []).forEach((r: any) => {
-          const existing = roleMap.get(r.user_id);
-          if (
-            !existing ||
-            getRolePriority(r.staff_role) > getRolePriority(existing)
-          ) {
-            roleMap.set(r.user_id, r.staff_role);
-          }
-        });
-      }
-
-      const { data: lastMessages } = await supabase
-        .from('comm_messages')
-        .select('channel_id, content, created_at, user_id')
-        .in('channel_id', channelIds)
-        .eq('is_deleted', false)
-        .order('created_at', { ascending: false });
+      (userRolesResult.data || []).forEach((r: any) => {
+        const existing = roleMap.get(r.user_id);
+        if (!existing || getRolePriority(r.role) > getRolePriority(existing)) {
+          roleMap.set(r.user_id, r.role);
+        }
+      });
+      (staffRolesResult.data || []).forEach((r: any) => {
+        const existing = roleMap.get(r.user_id);
+        if (!existing || getRolePriority(r.staff_role) > getRolePriority(existing)) {
+          roleMap.set(r.user_id, r.staff_role);
+        }
+      });
 
       const lastMessageMap = new Map<string, { content: string; created_at: string; user_id: string }>();
-      (lastMessages || []).forEach((msg: any) => {
+      (lastMessagesResult.data || []).forEach((msg: any) => {
         if (!lastMessageMap.has(msg.channel_id)) {
           lastMessageMap.set(msg.channel_id, {
             content: msg.content,
@@ -346,44 +367,18 @@ export default function ChatScreen({ navigation, route }: any) {
         }
       });
 
-      const groupChannels = channels.filter((c: any) => c.channel_type === 'group_dm');
       const memberCountMap = new Map<string, number>();
-      if (groupChannels.length > 0) {
-        const { data: memberRows } = await supabase
-          .from('comm_channel_members')
-          .select('channel_id')
-          .in('channel_id', groupChannels.map((c: any) => c.id));
-        (memberRows || []).forEach((m: any) => {
-          memberCountMap.set(
-            m.channel_id,
-            (memberCountMap.get(m.channel_id) || 0) + 1
-          );
-        });
-      }
+      (memberRowsResult.data || []).forEach((m: any) => {
+        memberCountMap.set(m.channel_id, (memberCountMap.get(m.channel_id) || 0) + 1);
+      });
 
       const lastReadMap = new Map<string, string>();
-      const { data: memberData } = await supabase
-        .from('comm_channel_members')
-        .select('channel_id, last_read_at')
-        .eq('user_id', user.id)
-        .in('channel_id', channelIds);
-      (memberData || []).forEach((m: any) => {
+      (memberDataResult.data || []).forEach((m: any) => {
         if (m.last_read_at) lastReadMap.set(m.channel_id, m.last_read_at);
       });
 
-      // Fetch all unread messages across channels (last 30 days, excluding own)
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - 30);
-      const { data: unreadMsgs } = await supabase
-        .from('comm_messages')
-        .select('channel_id, created_at')
-        .in('channel_id', channelIds)
-        .eq('is_deleted', false)
-        .neq('user_id', user.id)
-        .gte('created_at', cutoff.toISOString());
-
       const unreadCountMap = new Map<string, number>();
-      (unreadMsgs || []).forEach((msg: any) => {
+      (unreadMsgsResult.data || []).forEach((msg: any) => {
         const lastRead = lastReadMap.get(msg.channel_id);
         if (!lastRead || new Date(msg.created_at) > new Date(lastRead)) {
           unreadCountMap.set(msg.channel_id, (unreadCountMap.get(msg.channel_id) ?? 0) + 1);

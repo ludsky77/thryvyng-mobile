@@ -78,6 +78,7 @@ import SkillsLibraryScreen from '../screens/SkillsLibraryScreen';
 import TeamResourcesScreen from '../screens/TeamResourcesScreen';
 import TrainingStudioScreen from '../screens/TrainingStudioScreen';
 import ClubHubScreen from '../screens/ClubHubScreen';
+import ClubTeamsListScreen from '../screens/ClubTeamsListScreen';
 import EvaluationsHubScreen from '../screens/EvaluationsHubScreen';
 import SessionDetailScreen from '../screens/training/SessionDetailScreen';
 import DrillDetailScreen from '../screens/training/DrillDetailScreen';
@@ -147,7 +148,6 @@ function MainTabs() {
       'head_coach',
       'assistant_coach',
       'team_manager',
-      'club_admin',
       'platform_admin',
     ].includes(currentRole.role);
 
@@ -294,7 +294,19 @@ function HomeStack() {
         component={CoursePlayerScreen}
         options={{ headerShown: false }}
       />
-      {/* Team-related screens accessible from CoachDashboard */}
+      {/* Team-related screens accessible from CoachDashboard / ClubAdminDashboard */}
+      <Stack.Screen
+        name="ClubTeamsList"
+        component={ClubTeamsListScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="TeamDetail"
+        component={TeamDetailScreen}
+        options={({ route }: any) => ({
+          title: route.params?.teamName || 'Team',
+        })}
+      />
       <Stack.Screen
         name="Roster"
         component={RosterScreen}

@@ -323,12 +323,13 @@ function FieldDiagramInner({ data, width }: { data: any; width: number }) {
               pathD = d;
               break;
             }
-            case 'press':
+            case 'press': {
               stroke = ln.color ?? '#ef4444';
               const cp1x = midX + (y2 - y1) * 0.2;
               const cp1y = midY - (x2 - x1) * 0.2;
               pathD = `M ${x1} ${y1} Q ${cp1x} ${cp1y} ${x2} ${y2}`;
               break;
+            }
             case 'shot':
               stroke = ln.color ?? '#f59e0b';
               strokeWidth = 1.0;

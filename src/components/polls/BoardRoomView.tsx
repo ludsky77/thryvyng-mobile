@@ -82,8 +82,8 @@ export function BoardRoomView({
             style={[
               styles.seatWrapper,
               {
-                left: seatPositions[i]?.x - 24 ?? 0,
-                top: seatPositions[i]?.y - 24 ?? 0,
+                left: (seatPositions[i]?.x ?? 0) - 24,
+                top: (seatPositions[i]?.y ?? 0) - 24,
               },
             ]}
           >

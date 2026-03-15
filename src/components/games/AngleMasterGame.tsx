@@ -484,7 +484,7 @@ export default function AngleMasterGame({
     try {
       const s = soundRef.current[key];
       if (s) await s.replayAsync();
-    } catch (_) {}
+    } catch (_) { /* audio replay failure - non-critical */ }
   }, []);
 
   const startNewTrial = useCallback(() => {

@@ -58,7 +58,7 @@ export default function WellnessContentRenderer({
       case 'causes':
       case 'exercises':
       case 'routine':
-      case 'conversation':
+      case 'conversation': {
         const iconEmojis: Record<string, string> = {
           symptoms: '💭',
           tips: '✨',
@@ -90,7 +90,7 @@ export default function WellnessContentRenderer({
             ))}
           </View>
         );
-
+      }
       case 'training':
         return (
           <View key={index} style={styles.listSection}>

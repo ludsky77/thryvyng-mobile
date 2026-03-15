@@ -30,7 +30,8 @@
     "react-hooks/preserve-manual-memoization": "off",
     "react-hooks/purity": "off",
     "react-hooks/error-boundaries": "off",
-    "react-hooks/static-components": "off"
+    "react-hooks/static-components": "off",
+    "@typescript-eslint/no-require-imports": "off"
   },
   "settings": {
     "react": { "version": "detect" }

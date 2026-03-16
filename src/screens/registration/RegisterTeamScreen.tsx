@@ -139,18 +139,10 @@ export const RegisterTeamScreen: React.FC = () => {
   }, [user]);
 
   const generateInvitationCode = (): string => {
-    const chars =
-      'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    const prefix = teamName
-      .substring(0, 3)
-      .toUpperCase()
-      .replace(/[^A-Z]/g, 'X')
-      .padEnd(3, 'X');
-    let suffix = '';
-    for (let i = 0; i < 6; i++) {
-      suffix += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return `${prefix}-${suffix}`;
+    const part1 = String(Math.floor(100 + Math.random() * 900));
+    const part2 = String(Math.floor(100 + Math.random() * 900));
+    const part3 = String(Math.floor(100 + Math.random() * 900));
+    return `${part1}-${part2}-${part3}`;
   };
 
   const fetchApprovedClubs = async () => {

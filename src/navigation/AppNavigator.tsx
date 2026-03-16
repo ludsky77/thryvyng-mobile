@@ -63,7 +63,6 @@ import NotificationSettingsScreen from '../screens/NotificationSettingsScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import PaymentMethodsScreen from '../screens/PaymentMethodsScreen';
 import PaymentHistoryScreen from '../screens/PaymentHistoryScreen';
-import InvitePlayerScreen from '../screens/InvitePlayerScreen';
 import PlayerEvaluationsScreen from '../screens/PlayerEvaluationsScreen';
 import EvaluationsScreen from '../screens/EvaluationsScreen';
 import TeamCertificatesScreen from '../screens/TeamCertificatesScreen';
@@ -338,11 +337,6 @@ function HomeStack() {
         options={{ title: 'Player Evaluation' }}
       />
       <Stack.Screen
-        name="InvitePlayer"
-        component={InvitePlayerScreen}
-        options={{ title: 'Invite Player' }}
-      />
-      <Stack.Screen
         name="Evaluations"
         component={EvaluationsScreen}
         options={{ headerShown: false }}
@@ -550,11 +544,6 @@ function TeamsStack() {
         name="TeamStaff"
         component={TeamStaffScreen}
         options={{ title: 'Team Staff' }}
-      />
-      <Stack.Screen
-        name="InvitePlayer"
-        component={InvitePlayerScreen}
-        options={{ title: 'Invite Player' }}
       />
       <Stack.Screen
         name="PlayerEvaluations"

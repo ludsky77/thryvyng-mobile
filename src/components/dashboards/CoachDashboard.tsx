@@ -237,14 +237,14 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
     fetchData();
   }, [fetchData]);
 
-  const inviteUrl = team?.id
-    ? `https://thryvyng.com/join-team/${team.id}`
+  const inviteUrl = team?.invitation_code
+    ? `https://thryvyng.com/join-team/${team.invitation_code}`
     : 'https://thryvyng.com/join';
 
   const handleShareInvite = async () => {
     try {
       await Share.share({
-        message: `Join ${team?.name || 'our team'} on Thryvyng: ${inviteUrl}`,
+        message: `Hey! Join ${team?.name || 'our team'} on Thryvyng — the app our club uses for communication, scheduling, and player development.\n\nYour team code is: ${team?.invitation_code || ''}\n\nJoin here: ${inviteUrl}\n\nIf you don't have the app yet, download it from TestFlight: https://testflight.apple.com/join/rUaPfXwh`,
         url: inviteUrl,
         title: 'Join Team',
       });

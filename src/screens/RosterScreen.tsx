@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Modal,
   Alert,
+  Share,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -109,7 +110,7 @@ export default function RosterScreen({ route, navigation }: any) {
     try {
       const { data: teamData, error: teamError } = await supabase
         .from('teams')
-        .select('id, name, club_id, color')
+        .select('id, name, club_id, color, invitation_code')
         .eq('id', team_id)
         .single();
 
@@ -248,14 +249,18 @@ export default function RosterScreen({ route, navigation }: any) {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() =>
-            navigation.navigate('InvitePlayer', {
-              team_id,
-              teamId: team_id,
-            })
-          }
+          onPress={async () => {
+            const code = (team as any)?.invitation_code || team_id;
+            const url = `https://thryvyng.com/join-team/${code}`;
+            try {
+              await Share.share({
+                message: `Hey! Join ${(team as any)?.name || 'our team'} on Thryvyng — the app our club uses for communication, scheduling, and player development.\n\nYour team code is: ${code}\n\nJoin here: ${url}\n\nIf you don't have the app yet, download it from TestFlight: https://testflight.apple.com/join/rUaPfXwh`,
+                title: 'Invite Members',
+              });
+            } catch { /* share dismissed */ }
+          }}
         >
-          <Text style={styles.actionButtonText}>➕ Invite Player</Text>
+          <Text style={styles.actionButtonText}>➕ Invite Members</Text>
         </TouchableOpacity>
       </View>
 

@@ -254,7 +254,7 @@ export default function RosterScreen({ route, navigation }: any) {
             const url = `https://thryvyng.com/join-team/${code}`;
             try {
               await Share.share({
-                message: `Hey! Join ${(team as any)?.name || 'our team'} on Thryvyng — the app our club uses for communication, scheduling, and player development.\n\nYour team code is: ${code}\n\nJoin here: ${url}\n\nIf you don't have the app yet, download it from TestFlight: https://testflight.apple.com/join/rUaPfXwh`,
+                message: `Hey! Join ${(team as any)?.name || 'our team'} on Thryvyng — the app our club uses for communication, scheduling, and player development.\n\nYour team code is: ${code}\n\nJoin here: ${url}\n\nDownload the app: https://thryvyng.com/download`,
                 title: 'Invite Members',
               });
             } catch { /* share dismissed */ }

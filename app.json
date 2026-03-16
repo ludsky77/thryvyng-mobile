@@ -18,8 +18,6 @@
       "bundleIdentifier": "com.weolkn.thryvyng",
       "associatedDomains": [
         "applinks:thryvyng.com",
-        "applinks:www.thryvyng.com",
-        "applinks:thryvyng.com",
         "applinks:www.thryvyng.com"
       ],
       "infoPlist": {

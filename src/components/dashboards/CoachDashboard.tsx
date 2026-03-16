@@ -244,7 +244,7 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
   const handleShareInvite = async () => {
     try {
       await Share.share({
-        message: `Hey! Join ${team?.name || 'our team'} on Thryvyng — the app our club uses for communication, scheduling, and player development.\n\nYour team code is: ${team?.invitation_code || ''}\n\nJoin here: ${inviteUrl}\n\nDownload the app: https://thryvyng.com/download`,
+        message: `Hey! Join ${team?.name || 'our team'} on Thryvyng — the app our club uses for communication, scheduling, and player development.\n\nYour team code is: ${team?.invitation_code || ''}\n\nTap to join: ${inviteUrl}`,
       });
     } catch (err: any) {
       if (err.message !== 'User did not share') {

@@ -757,6 +757,7 @@ export default function AppNavigator() {
   const { user, loading } = useAuth();
   const { pendingProgramId, setPendingProgramId } = useRegistration();
   const navigationRef = React.useRef<any>(null);
+  const pendingNotificationRef = React.useRef<Record<string, any> | null>(null);
 
   // Navigate when auth state changes
   React.useEffect(() => {
@@ -808,44 +809,76 @@ export default function AppNavigator() {
     }
   }, [user, loading, pendingProgramId, setPendingProgramId]);
 
+  const routeNotification = (data: Record<string, any>) => {
+    const nav = navigationRef.current;
+    if (!nav) return;
+    const type = data.type ?? data.reference_type;
+
+    if (type === 'chat_message' || type === 'chat' || type === 'message') {
+      const channelId = data.channel_id ?? data.chat_id ?? data.reference_id;
+      if (channelId) {
+        nav.navigate('Main', {
+          screen: 'ChatTab',
+          params: { screen: 'TeamChatRoom', params: { channelId } },
+        });
+      }
+    } else if (
+      type === 'event_reminder' || type === 'event_created' ||
+      type === 'event_changed' || type === 'event_cancelled' ||
+      type === 'event' || data.reference_type === 'event'
+    ) {
+      const eventId = data.event_id ?? data.reference_id;
+      if (eventId) {
+        nav.navigate('EventDetail', { eventId, onRefetch: () => {} });
+      }
+    } else if (type === 'lineup_published') {
+      if (data.event_id) {
+        nav.navigate('EventDetail', { eventId: data.event_id, onRefetch: () => {} });
+      } else if (data.team_id) {
+        nav.navigate('Main', {
+          screen: 'HomeTab',
+          params: { screen: 'LineupList', params: { teamId: data.team_id } },
+        });
+      }
+    } else if (type === 'survey' || type === 'survey_reminder') {
+      if (data.survey_id) {
+        nav.navigate('Main', {
+          screen: 'HomeTab',
+          params: { screen: 'SurveyResponse', params: { surveyId: data.survey_id } },
+        });
+      }
+    } else if (type === 'evaluation' || type === 'evaluation_published') {
+      const evaluationId = data.evaluation_id ?? data.reference_id;
+      if (evaluationId) {
+        nav.navigate('EvaluationDetail', { evaluationId });
+      }
+    } else {
+      nav.navigate('Notifications');
+    }
+  };
+
   // Handle push notification taps (e.g. lineup_published, event_reminder)
   React.useEffect(() => {
     const unsubscribe = addNotificationListeners(undefined, (response) => {
       const data = response.notification.request.content.data as Record<string, any> | undefined;
-      if (!data || !navigationRef.current) return;
-
-      const type = data.type ?? data.reference_type;
-      if (type === 'lineup_published') {
-        if (data.event_id) {
-          navigationRef.current.navigate('EventDetail', {
-            eventId: data.event_id,
-            onRefetch: () => {},
-          });
-        } else if (data.team_id) {
-          navigationRef.current.navigate('Main', {
-            screen: 'HomeTab',
-            params: { screen: 'LineupList', params: { teamId: data.team_id } },
-          });
-        }
-      } else if ((type === 'event_reminder' || data.reference_type === 'event') && data.reference_id) {
-        navigationRef.current.navigate('EventDetail', {
-          eventId: data.reference_id,
-          onRefetch: () => {},
-        });
-      } else if (type === 'survey' || type === 'survey_reminder') {
-        if (data.survey_id) {
-          navigationRef.current.navigate('Main', {
-            screen: 'HomeTab',
-            params: {
-              screen: 'SurveyResponse',
-              params: { surveyId: data.survey_id },
-            },
-          });
-        }
+      if (!data) return;
+      if (!navigationRef.current) {
+        pendingNotificationRef.current = data;
+        return;
       }
+      routeNotification(data);
     });
     return unsubscribe;
   }, []);
+
+  // Flush any notification that arrived before the navigator was ready
+  React.useEffect(() => {
+    if (!loading && navigationRef.current && pendingNotificationRef.current) {
+      const data = pendingNotificationRef.current;
+      pendingNotificationRef.current = null;
+      setTimeout(() => routeNotification(data), 500);
+    }
+  }, [loading]);
 
   if (loading) {
     return (

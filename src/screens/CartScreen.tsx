@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,23 @@ export default function CartScreen() {
   } = useCart();
 
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [players, setPlayers] = useState<any[]>([]);
+  const [selectedPlayer, setSelectedPlayer] = useState<any>(null);
+
+  useEffect(() => {
+    if (!user?.email) return;
+    supabase
+      .from('players')
+      .select('id, first_name, last_name, referral_code, team_id, teams(id, name)')
+      .or(`parent_email.eq.${user.email},secondary_parent_email.eq.${user.email}`)
+      .not('referral_code', 'is', null)
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          setPlayers(data);
+          if (data.length === 1) setSelectedPlayer(data[0]);
+        }
+      });
+  }, [user?.email]);
 
   // Calculate team earnings preview
   const calculateTeamEarnings = () => {
@@ -79,6 +96,15 @@ export default function CartScreen() {
 
     setIsCheckingOut(true);
 
+    if (players.length > 0 && !selectedPlayer) {
+      Alert.alert(
+        'Select a Player',
+        'Please select which player this purchase is for. This determines which team receives fundraising credit.'
+      );
+      setIsCheckingOut(false);
+      return;
+    }
+
     try {
       // Prepare items for checkout
       const checkoutItems = items.map((item) => ({
@@ -88,20 +114,10 @@ export default function CartScreen() {
         price: item.price,
       }));
 
-      // Get referral code - try from cart context, then from user's player
+      // Get referral code from selected player or cart context
       let finalReferralCode = referralCode;
-
-      if (!finalReferralCode && user?.email) {
-        const { data: playerData } = await supabase
-          .from('players')
-          .select('referral_code')
-          .eq('parent_email', user.email)
-          .limit(1)
-          .maybeSingle();
-
-        if (playerData?.referral_code) {
-          finalReferralCode = playerData.referral_code;
-        }
+      if (!finalReferralCode && selectedPlayer?.referral_code) {
+        finalReferralCode = selectedPlayer.referral_code;
       }
 
       // Call create-checkout-session Edge Function
@@ -245,13 +261,48 @@ export default function CartScreen() {
           </View>
         </View>
 
+        {/* Player selector — only shown when parent has multiple kids */}
+        {players.length > 1 && (
+          <View style={styles.playerPickerSection}>
+            <Text style={styles.playerPickerTitle}>Which player is this purchase for?</Text>
+            <Text style={styles.playerPickerSubtitle}>
+              This determines which team receives fundraising credit.
+            </Text>
+            {players.map((p) => {
+              const isSelected = selectedPlayer?.id === p.id;
+              const teamName = Array.isArray(p.teams) ? p.teams[0]?.name : p.teams?.name;
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  style={[styles.playerCard, isSelected && styles.playerCardSelected]}
+                  onPress={() => setSelectedPlayer(p)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.playerCardInner}>
+                    <Text style={styles.playerCardName}>
+                      {p.first_name} {p.last_name}
+                    </Text>
+                    {teamName ? (
+                      <Text style={styles.playerCardTeam}>{teamName}</Text>
+                    ) : null}
+                  </View>
+                  {isSelected && (
+                    <Ionicons name="checkmark-circle" size={22} color="#8b5cf6" />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
+        {/* Checkout button */}
         <TouchableOpacity
           style={[
             styles.checkoutButton,
-            isCheckingOut && styles.checkoutButtonDisabled,
+            (isCheckingOut || (players.length > 0 && !selectedPlayer)) && styles.checkoutButtonDisabled,
           ]}
           onPress={handleCheckout}
-          disabled={isCheckingOut}
+          disabled={isCheckingOut || (players.length > 0 && !selectedPlayer)}
         >
           {isCheckingOut ? (
             <ActivityIndicator color="#FFFFFF" />
@@ -259,7 +310,9 @@ export default function CartScreen() {
             <>
               <Ionicons name="lock-closed" size={20} color="#FFFFFF" />
               <Text style={styles.checkoutButtonText}>
-                Proceed to Checkout
+                {players.length > 0 && !selectedPlayer
+                  ? 'Select a player first'
+                  : 'Proceed to Checkout'}
               </Text>
             </>
           )}
@@ -524,5 +577,47 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontSize: 12,
     marginLeft: 6,
+  },
+
+  playerPickerSection: {
+    marginBottom: 16,
+  },
+  playerPickerTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  playerPickerSubtitle: {
+    color: '#64748b',
+    fontSize: 13,
+    marginBottom: 12,
+  },
+  playerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1e293b',
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  playerCardSelected: {
+    borderColor: '#8b5cf6',
+    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+  },
+  playerCardInner: {
+    flex: 1,
+  },
+  playerCardName: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  playerCardTeam: {
+    color: '#9ca3af',
+    fontSize: 13,
+    marginTop: 2,
   },
 });

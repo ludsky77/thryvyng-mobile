@@ -22,7 +22,7 @@ import {
   NotFoundScreen,
 } from '../screens/registration';
 
-// Screens
+// ─── Eager screens (visible immediately or needed for deep links) ───────────
 import { WelcomeScreen } from '../screens/WelcomeScreen';
 import LoginScreen from '../screens/LoginScreen';
 import DashboardScreen from '../screens/DashboardScreen';
@@ -30,69 +30,15 @@ import ChatScreen from '../screens/ChatScreen';
 import TeamChatRoomScreen from '../screens/TeamChatRoomScreen';
 import DirectMessagesScreen from '../screens/DirectMessagesScreen';
 import DMChatScreen from '../screens/DMChatScreen';
-import GroupInfoScreen from '../screens/GroupInfoScreen';
-import ChatInfoScreen from '../screens/ChatInfoScreen';
-import ChannelPollsScreen from '../screens/ChannelPollsScreen';
-import ChannelFilesScreen from '../screens/ChannelFilesScreen';
-import ChannelLinksScreen from '../screens/ChannelLinksScreen';
-import StaffMessageScreen from '../screens/StaffMessageScreen';
-import PollDetailScreen from '../screens/PollDetailScreen';
 import CalendarScreen from '../screens/CalendarScreen';
 import EventDetailScreen from '../screens/EventDetailScreen';
-import SurveyResponseScreen from '../screens/SurveyResponseScreen';
-import SurveyListScreen from '../screens/SurveyListScreen';
-import SurveyResultsScreen from '../screens/SurveyResultsScreen';
-import AttendanceScreen from '../screens/AttendanceScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import { NotificationBell } from '../components/NotificationBell';
 import TeamsScreen from '../screens/TeamsScreen';
 import TeamDetailScreen from '../screens/TeamDetailScreen';
-import RosterScreen from '../screens/RosterScreen';
-import CreateEvaluationScreen from '../screens/CreateEvaluationScreen';
-import EvaluationRosterScreen from '../screens/EvaluationRosterScreen';
-import TeamStaffScreen from '../screens/TeamStaffScreen';
-import PlayerProfileScreen from '../screens/PlayerProfileScreen';
-import EvaluationDetailScreen from '../screens/EvaluationDetailScreen';
-import CertificateViewerScreen from '../screens/CertificateViewerScreen';
-import CoursesScreen from '../screens/CoursesScreen';
-import MyCoursesScreen from '../screens/MyCoursesScreen';
-import CourseDetailScreen from '../screens/CourseDetailScreen';
-import CoursePlayerScreen from '../screens/CoursePlayerScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
-import NotificationSettingsScreen from '../screens/NotificationSettingsScreen';
-import EditProfileScreen from '../screens/EditProfileScreen';
-import PaymentMethodsScreen from '../screens/PaymentMethodsScreen';
-import PaymentHistoryScreen from '../screens/PaymentHistoryScreen';
-import PlayerEvaluationsScreen from '../screens/PlayerEvaluationsScreen';
-import EvaluationsScreen from '../screens/EvaluationsScreen';
-import TeamCertificatesScreen from '../screens/TeamCertificatesScreen';
-import GamesHubScreen from '../screens/GamesHubScreen';
-import WellnessHubScreen from '../screens/WellnessHubScreen';
-import WellnessCategoryScreen from '../screens/WellnessCategoryScreen';
-import WellnessTopicScreen from '../screens/WellnessTopicScreen';
-import WellnessParentDashboardScreen from '../screens/WellnessParentDashboardScreen';
-import HealthScreen from '../screens/HealthScreen';
-import ResourcesScreen from '../screens/ResourcesScreen';
-import SkillsLibraryScreen from '../screens/SkillsLibraryScreen';
-import TeamResourcesScreen from '../screens/TeamResourcesScreen';
-import TrainingStudioScreen from '../screens/TrainingStudioScreen';
-import ClubHubScreen from '../screens/ClubHubScreen';
-import ClubTeamsListScreen from '../screens/ClubTeamsListScreen';
-import EvaluationsHubScreen from '../screens/EvaluationsHubScreen';
-import SessionDetailScreen from '../screens/training/SessionDetailScreen';
-import DrillDetailScreen from '../screens/training/DrillDetailScreen';
-import SeasonPlanDetailScreen from '../screens/training/SeasonPlanDetailScreen';
-import CurriculumDetailScreen from '../screens/training/CurriculumDetailScreen';
-import GamePlayScreen from '../screens/GamePlayScreen';
-
-const LineupListScreen = lazy(() => import('../screens/lineup/LineupListScreen'));
-const LineupEditorScreen = lazy(() => import('../screens/lineup/LineupEditorScreen'));
-const LineupViewScreen = lazy(() => import('../screens/lineup/LineupViewScreen'));
-import ProductStoreScreen from '../screens/ProductStoreScreen';
-import ProductDetailScreen from '../screens/ProductDetailScreen';
-import CartScreen from '../screens/CartScreen';
-import CheckoutSuccessScreen from '../screens/CheckoutSuccessScreen';
-import InvitationScreen from '../screens/invitation/InvitationScreen';
+// Invitation screens kept eager for deep-link handling
+import InvitationAuthWrapper from '../screens/invitation/InvitationAuthWrapper';
 import FamilyInvitationsScreen from '../screens/invitation/FamilyInvitationsScreen';
 import InvitationQuestionsScreen from '../screens/invitation/InvitationQuestionsScreen';
 import InvitationPaymentScreen from '../screens/invitation/InvitationPaymentScreen';
@@ -100,13 +46,68 @@ import InvitationVolunteerScreen from '../screens/invitation/InvitationVolunteer
 import InvitationDonateScreen from '../screens/invitation/InvitationDonateScreen';
 import InvitationAidScreen from '../screens/invitation/InvitationAidScreen';
 import InvitationCheckoutScreen from '../screens/invitation/InvitationCheckoutScreen';
-import InvitationAuthWrapper from '../screens/invitation/InvitationAuthWrapper';
 import InvitationSuccessScreen from '../screens/invitation/InvitationSuccessScreen';
 import InvitationCancelScreen from '../screens/invitation/InvitationCancelScreen';
-import PreGameSetupScreen from '../screens/game-stats/PreGameSetupScreen';
-import StatsConsoleScreen from '../screens/game-stats/StatsConsoleScreen';
-import MatchSummaryScreen from '../screens/game-stats/MatchSummaryScreen';
-import LiveSpectatorScreen from '../screens/game-stats/LiveSpectatorScreen';
+
+// ─── Lazy screens (loaded on first navigation) ───────────────────────────────
+const GroupInfoScreen = lazy(() => import('../screens/GroupInfoScreen'));
+const ChatInfoScreen = lazy(() => import('../screens/ChatInfoScreen'));
+const ChannelPollsScreen = lazy(() => import('../screens/ChannelPollsScreen'));
+const ChannelFilesScreen = lazy(() => import('../screens/ChannelFilesScreen'));
+const ChannelLinksScreen = lazy(() => import('../screens/ChannelLinksScreen'));
+const StaffMessageScreen = lazy(() => import('../screens/StaffMessageScreen'));
+const PollDetailScreen = lazy(() => import('../screens/PollDetailScreen'));
+const SurveyResponseScreen = lazy(() => import('../screens/SurveyResponseScreen'));
+const SurveyListScreen = lazy(() => import('../screens/SurveyListScreen'));
+const SurveyResultsScreen = lazy(() => import('../screens/SurveyResultsScreen'));
+const AttendanceScreen = lazy(() => import('../screens/AttendanceScreen'));
+const RosterScreen = lazy(() => import('../screens/RosterScreen'));
+const CreateEvaluationScreen = lazy(() => import('../screens/CreateEvaluationScreen'));
+const EvaluationRosterScreen = lazy(() => import('../screens/EvaluationRosterScreen'));
+const TeamStaffScreen = lazy(() => import('../screens/TeamStaffScreen'));
+const PlayerProfileScreen = lazy(() => import('../screens/PlayerProfileScreen'));
+const EvaluationDetailScreen = lazy(() => import('../screens/EvaluationDetailScreen'));
+const CertificateViewerScreen = lazy(() => import('../screens/CertificateViewerScreen'));
+const CoursesScreen = lazy(() => import('../screens/CoursesScreen'));
+const MyCoursesScreen = lazy(() => import('../screens/MyCoursesScreen'));
+const CourseDetailScreen = lazy(() => import('../screens/CourseDetailScreen'));
+const CoursePlayerScreen = lazy(() => import('../screens/CoursePlayerScreen'));
+const NotificationSettingsScreen = lazy(() => import('../screens/NotificationSettingsScreen'));
+const EditProfileScreen = lazy(() => import('../screens/EditProfileScreen'));
+const PaymentMethodsScreen = lazy(() => import('../screens/PaymentMethodsScreen'));
+const PaymentHistoryScreen = lazy(() => import('../screens/PaymentHistoryScreen'));
+const PlayerEvaluationsScreen = lazy(() => import('../screens/PlayerEvaluationsScreen'));
+const EvaluationsScreen = lazy(() => import('../screens/EvaluationsScreen'));
+const TeamCertificatesScreen = lazy(() => import('../screens/TeamCertificatesScreen'));
+const GamesHubScreen = lazy(() => import('../screens/GamesHubScreen'));
+const WellnessHubScreen = lazy(() => import('../screens/WellnessHubScreen'));
+const WellnessCategoryScreen = lazy(() => import('../screens/WellnessCategoryScreen'));
+const WellnessTopicScreen = lazy(() => import('../screens/WellnessTopicScreen'));
+const WellnessParentDashboardScreen = lazy(() => import('../screens/WellnessParentDashboardScreen'));
+const HealthScreen = lazy(() => import('../screens/HealthScreen'));
+const ResourcesScreen = lazy(() => import('../screens/ResourcesScreen'));
+const SkillsLibraryScreen = lazy(() => import('../screens/SkillsLibraryScreen'));
+const TeamResourcesScreen = lazy(() => import('../screens/TeamResourcesScreen'));
+const TrainingStudioScreen = lazy(() => import('../screens/TrainingStudioScreen'));
+const ClubHubScreen = lazy(() => import('../screens/ClubHubScreen'));
+const ClubTeamsListScreen = lazy(() => import('../screens/ClubTeamsListScreen'));
+const EvaluationsHubScreen = lazy(() => import('../screens/EvaluationsHubScreen'));
+const SessionDetailScreen = lazy(() => import('../screens/training/SessionDetailScreen'));
+const DrillDetailScreen = lazy(() => import('../screens/training/DrillDetailScreen'));
+const SeasonPlanDetailScreen = lazy(() => import('../screens/training/SeasonPlanDetailScreen'));
+const CurriculumDetailScreen = lazy(() => import('../screens/training/CurriculumDetailScreen'));
+const GamePlayScreen = lazy(() => import('../screens/GamePlayScreen'));
+const LineupListScreen = lazy(() => import('../screens/lineup/LineupListScreen'));
+const LineupEditorScreen = lazy(() => import('../screens/lineup/LineupEditorScreen'));
+const LineupViewScreen = lazy(() => import('../screens/lineup/LineupViewScreen'));
+const ProductStoreScreen = lazy(() => import('../screens/ProductStoreScreen'));
+const ProductDetailScreen = lazy(() => import('../screens/ProductDetailScreen'));
+const CartScreen = lazy(() => import('../screens/CartScreen'));
+const CheckoutSuccessScreen = lazy(() => import('../screens/CheckoutSuccessScreen'));
+const PreGameSetupScreen = lazy(() => import('../screens/game-stats/PreGameSetupScreen'));
+const StatsConsoleScreen = lazy(() => import('../screens/game-stats/StatsConsoleScreen'));
+const MatchSummaryScreen = lazy(() => import('../screens/game-stats/MatchSummaryScreen'));
+const LiveSpectatorScreen = lazy(() => import('../screens/game-stats/LiveSpectatorScreen'));
 
 const Stack = createNativeStackNavigator();
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -118,6 +119,20 @@ function LoadingScreen() {
       <ActivityIndicator size="large" color="#8b5cf6" />
       <Text style={styles.loadingText}>Loading...</Text>
     </View>
+  );
+}
+
+const LAZY_FALLBACK = (
+  <View style={{ flex: 1, backgroundColor: '#0f172a', justifyContent: 'center', alignItems: 'center' }}>
+    <ActivityIndicator size="large" color="#8b5cf6" />
+  </View>
+);
+
+function LazyScreen({ component: Component, ...rest }: { component: React.LazyExoticComponent<any>; [key: string]: any }) {
+  return (
+    <Suspense fallback={LAZY_FALLBACK}>
+      <Component {...rest} />
+    </Suspense>
   );
 }
 
@@ -236,21 +251,15 @@ function HomeStack() {
         component={DashboardScreen}
         options={{ headerShown: false }}
       />
-      <Stack.Screen
-        name="SurveyResponse"
-        component={SurveyResponseScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="SurveyList"
-        component={SurveyListScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="SurveyResults"
-        component={SurveyResultsScreen}
-        options={{ headerShown: false }}
-      />
+      <Stack.Screen name="SurveyResponse" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={SurveyResponseScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="SurveyList" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={SurveyListScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="SurveyResults" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={SurveyResultsScreen} {...props} />}
+      </Stack.Screen>
       <Stack.Screen
         name="Notifications"
         component={NotificationsScreen}
@@ -258,240 +267,136 @@ function HomeStack() {
       />
       <Stack.Screen
         name="PlayerProfile"
-        component={PlayerProfileScreen}
-        options={({ route }: any) => ({
-          title: route.params?.playerName || 'Player Profile',
-        })}
-      />
-      <Stack.Screen
-        name="EvaluationDetail"
-        component={EvaluationDetailScreen}
-        options={{ title: 'Evaluation Details' }}
-      />
-      <Stack.Screen
-        name="CertificateViewer"
-        component={CertificateViewerScreen}
-        options={{ title: 'Certificate' }}
-      />
-      <Stack.Screen
-        name="MyCourses"
-        component={MyCoursesScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="Courses"
-        component={CoursesScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="CourseDetail"
-        component={CourseDetailScreen}
-        options={{ title: 'Course' }}
-      />
-      <Stack.Screen
-        name="CoursePlayer"
-        component={CoursePlayerScreen}
-        options={{ headerShown: false }}
-      />
+        options={({ route }: any) => ({ title: route.params?.playerName || 'Player Profile' })}
+      >
+        {(props) => <LazyScreen component={PlayerProfileScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="EvaluationDetail" options={{ title: 'Evaluation Details' }}>
+        {(props) => <LazyScreen component={EvaluationDetailScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="CertificateViewer" options={{ title: 'Certificate' }}>
+        {(props) => <LazyScreen component={CertificateViewerScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="MyCourses" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={MyCoursesScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="Courses" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={CoursesScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="CourseDetail" options={{ title: 'Course' }}>
+        {(props) => <LazyScreen component={CourseDetailScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="CoursePlayer" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={CoursePlayerScreen} {...props} />}
+      </Stack.Screen>
       {/* Team-related screens accessible from CoachDashboard / ClubAdminDashboard */}
-      <Stack.Screen
-        name="ClubTeamsList"
-        component={ClubTeamsListScreen}
-        options={{ headerShown: false }}
-      />
+      <Stack.Screen name="ClubTeamsList" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={ClubTeamsListScreen} {...props} />}
+      </Stack.Screen>
       <Stack.Screen
         name="TeamDetail"
         component={TeamDetailScreen}
-        options={({ route }: any) => ({
-          title: route.params?.teamName || 'Team',
-        })}
+        options={({ route }: any) => ({ title: route.params?.teamName || 'Team' })}
       />
-      <Stack.Screen
-        name="Roster"
-        component={RosterScreen}
-        options={{ title: 'Team Roster' }}
-      />
-      <Stack.Screen
-        name="TeamStaff"
-        component={TeamStaffScreen}
-        options={{ title: 'Team Staff' }}
-      />
-      <Stack.Screen
-        name="PlayerEvaluations"
-        component={PlayerEvaluationsScreen}
-        options={{ title: 'Player Evaluations' }}
-      />
-      <Stack.Screen
-        name="TeamCertificates"
-        component={TeamCertificatesScreen}
-        options={{ title: 'Team Certificates' }}
-      />
-      <Stack.Screen
-        name="EvaluationRoster"
-        component={EvaluationRosterScreen}
-        options={{ title: 'Evaluate Players' }}
-      />
-      <Stack.Screen
-        name="CreateEvaluation"
-        component={CreateEvaluationScreen}
-        options={{ title: 'Player Evaluation' }}
-      />
-      <Stack.Screen
-        name="Evaluations"
-        component={EvaluationsScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="GamesHub"
-        component={GamesHubScreen as any}
-        options={{ headerShown: false }}
-      />
+      <Stack.Screen name="Roster" options={{ title: 'Team Roster' }}>
+        {(props) => <LazyScreen component={RosterScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="TeamStaff" options={{ title: 'Team Staff' }}>
+        {(props) => <LazyScreen component={TeamStaffScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="PlayerEvaluations" options={{ title: 'Player Evaluations' }}>
+        {(props) => <LazyScreen component={PlayerEvaluationsScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="TeamCertificates" options={{ title: 'Team Certificates' }}>
+        {(props) => <LazyScreen component={TeamCertificatesScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="EvaluationRoster" options={{ title: 'Evaluate Players' }}>
+        {(props) => <LazyScreen component={EvaluationRosterScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="CreateEvaluation" options={{ title: 'Player Evaluation' }}>
+        {(props) => <LazyScreen component={CreateEvaluationScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="Evaluations" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={EvaluationsScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="GamesHub" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={GamesHubScreen} {...props} />}
+      </Stack.Screen>
       {/* Health & Wellness Routes */}
-      <Stack.Screen
-        name="Health"
-        component={HealthScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="Resources"
-        component={ResourcesScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="WellnessHub"
-        component={WellnessHubScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="WellnessCategory"
-        component={WellnessCategoryScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="WellnessTopic"
-        component={WellnessTopicScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="WellnessParentDashboard"
-        component={WellnessParentDashboardScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="SkillsLibrary"
-        component={SkillsLibraryScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="TeamResources"
-        component={TeamResourcesScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="TrainingStudio"
-        component={TrainingStudioScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="ClubHub"
-        component={ClubHubScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="EvaluationsHub"
-        component={EvaluationsHubScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="SessionDetail"
-        options={{ headerShown: false }}
-      >
-        {() => (
-          <Suspense fallback={<LoadingScreen />}>
-            <SessionDetailScreen />
-          </Suspense>
-        )}
+      <Stack.Screen name="Health" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={HealthScreen} {...props} />}
       </Stack.Screen>
-      <Stack.Screen
-        name="DrillDetail"
-        options={{ headerShown: false }}
-      >
-        {() => (
-          <Suspense fallback={<LoadingScreen />}>
-            <DrillDetailScreen />
-          </Suspense>
-        )}
+      <Stack.Screen name="Resources" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={ResourcesScreen} {...props} />}
       </Stack.Screen>
-      <Stack.Screen
-        name="SeasonPlanDetail"
-        component={SeasonPlanDetailScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="CurriculumDetail"
-        component={CurriculumDetailScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="LineupList"
-        options={{ headerShown: false }}
-      >
-        {() => (
-          <Suspense fallback={<LoadingScreen />}>
-            <LineupListScreen />
-          </Suspense>
-        )}
+      <Stack.Screen name="WellnessHub" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={WellnessHubScreen} {...props} />}
       </Stack.Screen>
-      <Stack.Screen
-        name="LineupEditor"
-        options={{ headerShown: false }}
-      >
-        {() => (
-          <Suspense fallback={<LoadingScreen />}>
-            <LineupEditorScreen />
-          </Suspense>
-        )}
+      <Stack.Screen name="WellnessCategory" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={WellnessCategoryScreen} {...props} />}
       </Stack.Screen>
-      <Stack.Screen
-        name="GamePlay"
-        component={GamePlayScreen as any}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="ProductStore"
-        component={ProductStoreScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="ProductDetail"
-        component={ProductDetailScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="Cart"
-        component={CartScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="CheckoutSuccess"
-        component={CheckoutSuccessScreen}
-        options={{ headerShown: false }}
-      />
+      <Stack.Screen name="WellnessTopic" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={WellnessTopicScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="WellnessParentDashboard" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={WellnessParentDashboardScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="SkillsLibrary" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={SkillsLibraryScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="TeamResources" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={TeamResourcesScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="TrainingStudio" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={TrainingStudioScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="ClubHub" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={ClubHubScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="EvaluationsHub" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={EvaluationsHubScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="SessionDetail" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={SessionDetailScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="DrillDetail" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={DrillDetailScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="SeasonPlanDetail" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={SeasonPlanDetailScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="CurriculumDetail" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={CurriculumDetailScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="LineupList" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={LineupListScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="LineupEditor" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={LineupEditorScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="GamePlay" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={GamePlayScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="ProductStore" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={ProductStoreScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="ProductDetail" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={ProductDetailScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="Cart" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={CartScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="CheckoutSuccess" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={CheckoutSuccessScreen} {...props} />}
+      </Stack.Screen>
       {/* Event & Lineup screens reachable from Dashboard without hiding the tab bar */}
       <Stack.Screen
         name="EventDetail"
         component={EventDetailScreen}
         options={{ headerShown: false }}
       />
-      <Stack.Screen
-        name="LineupView"
-        options={{ headerShown: false }}
-      >
-        {() => (
-          <Suspense fallback={<LoadingScreen />}>
-            <LineupViewScreen />
-          </Suspense>
-        )}
+      <Stack.Screen name="LineupView" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={LineupViewScreen} {...props} />}
       </Stack.Screen>
     </Stack.Navigator>
   );
@@ -518,83 +423,54 @@ function TeamsStack() {
           title: route.params?.teamName || 'Team',
         })}
       />
-      <Stack.Screen
-        name="Roster"
-        component={RosterScreen}
-        options={{ title: 'Roster' }}
-      />
+      <Stack.Screen name="Roster" options={{ title: 'Roster' }}>
+        {(props) => <LazyScreen component={RosterScreen} {...props} />}
+      </Stack.Screen>
       <Stack.Screen
         name="PlayerProfile"
-        component={PlayerProfileScreen}
-        options={({ route }: any) => ({
-          title: route.params?.playerName || 'Player Profile',
-        })}
-      />
-      <Stack.Screen
-        name="EvaluationRoster"
-        component={EvaluationRosterScreen}
-        options={{ title: 'Evaluate Players' }}
-      />
-      <Stack.Screen
-        name="CreateEvaluation"
-        component={CreateEvaluationScreen}
-        options={{ title: 'Player Evaluation' }}
-      />
-      <Stack.Screen
-        name="TeamStaff"
-        component={TeamStaffScreen}
-        options={{ title: 'Team Staff' }}
-      />
-      <Stack.Screen
-        name="PlayerEvaluations"
-        component={PlayerEvaluationsScreen}
-        options={{ title: 'Player Evaluations' }}
-      />
-      <Stack.Screen
-        name="TeamCertificates"
-        component={TeamCertificatesScreen}
-        options={{ title: 'Team Certificates' }}
-      />
-      <Stack.Screen
-        name="Resources"
-        component={ResourcesScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="Health"
-        component={HealthScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="WellnessHub"
-        component={WellnessHubScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="WellnessCategory"
-        component={WellnessCategoryScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="WellnessTopic"
-        component={WellnessTopicScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="WellnessParentDashboard"
-        component={WellnessParentDashboardScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="SkillsLibrary"
-        component={SkillsLibraryScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="TeamResources"
-        component={TeamResourcesScreen}
-        options={{ headerShown: false }}
-      />
+        options={({ route }: any) => ({ title: route.params?.playerName || 'Player Profile' })}
+      >
+        {(props) => <LazyScreen component={PlayerProfileScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="EvaluationRoster" options={{ title: 'Evaluate Players' }}>
+        {(props) => <LazyScreen component={EvaluationRosterScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="CreateEvaluation" options={{ title: 'Player Evaluation' }}>
+        {(props) => <LazyScreen component={CreateEvaluationScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="TeamStaff" options={{ title: 'Team Staff' }}>
+        {(props) => <LazyScreen component={TeamStaffScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="PlayerEvaluations" options={{ title: 'Player Evaluations' }}>
+        {(props) => <LazyScreen component={PlayerEvaluationsScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="TeamCertificates" options={{ title: 'Team Certificates' }}>
+        {(props) => <LazyScreen component={TeamCertificatesScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="Resources" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={ResourcesScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="Health" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={HealthScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="WellnessHub" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={WellnessHubScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="WellnessCategory" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={WellnessCategoryScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="WellnessTopic" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={WellnessTopicScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="WellnessParentDashboard" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={WellnessParentDashboardScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="SkillsLibrary" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={SkillsLibraryScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="TeamResources" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={TeamResourcesScreen} {...props} />}
+      </Stack.Screen>
     </Stack.Navigator>
   );
 }
@@ -628,41 +504,27 @@ function ChatStack() {
         component={TeamChatRoomScreen}
         options={{ headerShown: false }}
       />
-      <Stack.Screen
-        name="GroupInfo"
-        component={GroupInfoScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="ChatInfo"
-        component={ChatInfoScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="ChannelPolls"
-        component={ChannelPollsScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="ChannelFiles"
-        component={ChannelFilesScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="ChannelLinks"
-        component={ChannelLinksScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="StaffMessage"
-        component={StaffMessageScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="PollDetail"
-        component={PollDetailScreen}
-        options={{ headerShown: false }}
-      />
+      <Stack.Screen name="GroupInfo" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={GroupInfoScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="ChatInfo" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={ChatInfoScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="ChannelPolls" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={ChannelPollsScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="ChannelFiles" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={ChannelFilesScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="ChannelLinks" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={ChannelLinksScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="StaffMessage" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={StaffMessageScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="PollDetail" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={PollDetailScreen} {...props} />}
+      </Stack.Screen>
     </Stack.Navigator>
   );
 }
@@ -686,41 +548,24 @@ function CalendarStack() {
         component={EventDetailScreen}
         options={{ headerShown: false }}
       />
-      <Stack.Screen
-        name="LineupView"
-        options={{ headerShown: false }}
-      >
-        {() => (
-          <Suspense fallback={<LoadingScreen />}>
-            <LineupViewScreen />
-          </Suspense>
-        )}
+      <Stack.Screen name="LineupView" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={LineupViewScreen} {...props} />}
       </Stack.Screen>
-      <Stack.Screen
-        name="PreGameSetup"
-        component={PreGameSetupScreen}
-        options={{ headerShown: false, presentation: 'modal' }}
-      />
-      <Stack.Screen
-        name="StatsConsole"
-        component={StatsConsoleScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="LiveSpectator"
-        component={LiveSpectatorScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="MatchSummary"
-        component={MatchSummaryScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="Attendance"
-        component={AttendanceScreen}
-        options={{ title: 'Take Attendance' }}
-      />
+      <Stack.Screen name="PreGameSetup" options={{ headerShown: false, presentation: 'modal' }}>
+        {(props) => <LazyScreen component={PreGameSetupScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="StatsConsole" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={StatsConsoleScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="LiveSpectator" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={LiveSpectatorScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="MatchSummary" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={MatchSummaryScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="Attendance" options={{ title: 'Take Attendance' }}>
+        {(props) => <LazyScreen component={AttendanceScreen} {...props} />}
+      </Stack.Screen>
     </Stack.Navigator>
   );
 }
@@ -742,21 +587,15 @@ function ProfileStack() {
           headerRight: () => <NotificationBell />,
         }}
       />
-      <Stack.Screen
-        name="EditProfile"
-        component={EditProfileScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="PaymentMethods"
-        component={PaymentMethodsScreen}
-        options={{ title: 'Payment Methods' }}
-      />
-      <Stack.Screen
-        name="PaymentHistory"
-        component={PaymentHistoryScreen}
-        options={{ title: 'Payment History' }}
-      />
+      <Stack.Screen name="EditProfile" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={EditProfileScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="PaymentMethods" options={{ title: 'Payment Methods' }}>
+        {(props) => <LazyScreen component={PaymentMethodsScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="PaymentHistory" options={{ title: 'Payment History' }}>
+        {(props) => <LazyScreen component={PaymentHistoryScreen} {...props} />}
+      </Stack.Screen>
       <Stack.Screen
         name="Notifications"
         component={NotificationsScreen}
@@ -889,31 +728,21 @@ function RootStackNavigator() {
         component={EventDetailScreen}
         options={{ headerShown: false }}
       />
-      <RootStack.Screen
-        name="PreGameSetup"
-        component={PreGameSetupScreen}
-        options={{ headerShown: false, presentation: 'modal' }}
-      />
-      <RootStack.Screen
-        name="StatsConsole"
-        component={StatsConsoleScreen}
-        options={{ headerShown: false }}
-      />
-      <RootStack.Screen
-        name="LiveSpectator"
-        component={LiveSpectatorScreen}
-        options={{ headerShown: false }}
-      />
-      <RootStack.Screen
-        name="MatchSummary"
-        component={MatchSummaryScreen}
-        options={{ headerShown: false }}
-      />
-      <RootStack.Screen
-        name="NotificationSettings"
-        component={NotificationSettingsScreen}
-        options={{ headerShown: false }}
-      />
+      <RootStack.Screen name="PreGameSetup" options={{ headerShown: false, presentation: 'modal' }}>
+        {(props) => <LazyScreen component={PreGameSetupScreen} {...props} />}
+      </RootStack.Screen>
+      <RootStack.Screen name="StatsConsole" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={StatsConsoleScreen} {...props} />}
+      </RootStack.Screen>
+      <RootStack.Screen name="LiveSpectator" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={LiveSpectatorScreen} {...props} />}
+      </RootStack.Screen>
+      <RootStack.Screen name="MatchSummary" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={MatchSummaryScreen} {...props} />}
+      </RootStack.Screen>
+      <RootStack.Screen name="NotificationSettings" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={NotificationSettingsScreen} {...props} />}
+      </RootStack.Screen>
       <RootStack.Screen
         name="NotFound"
         component={NotFoundScreen}

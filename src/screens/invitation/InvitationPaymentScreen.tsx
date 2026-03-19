@@ -209,11 +209,19 @@ export default function InvitationPaymentScreen() {
     });
   };
 
+  const handleGoBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      (navigation as any).reset({ index: 0, routes: [{ name: 'Main' }] });
+    }
+  };
+
   if (loading || invLoading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4ade80" />
+          <ActivityIndicator size="large" color="#8b5cf6" />
           <Text style={styles.loadingText}>Loading payment options...</Text>
         </View>
       </SafeAreaView>
@@ -224,7 +232,7 @@ export default function InvitationPaymentScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={handleGoBack}
           style={styles.backBtn}
         >
           <Ionicons name="arrow-back" size={24} color="#fff" />
@@ -351,7 +359,11 @@ export default function InvitationPaymentScreen() {
               </Text>
             )}
           </View>
-          <Text style={styles.totalAmount}>
+          <Text
+            style={styles.totalAmount}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
             ${totalDueToday.toFixed(2)}
           </Text>
         </View>
@@ -398,7 +410,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   playerName: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  teamName: { color: '#4ade80', fontSize: 13, marginTop: 2 },
+  teamName: { color: '#8b5cf6', fontSize: 13, marginTop: 2 },
   priceCol: { alignItems: 'flex-end' },
   priceLabel: { color: '#888', fontSize: 11 },
   priceValue: { color: '#fff', fontSize: 18, fontWeight: '700' },
@@ -410,7 +422,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#333',
   },
-  planCardSelected: { borderColor: '#4ade80' },
+  planCardSelected: { borderColor: '#8b5cf6' },
   planRow: { flexDirection: 'row', alignItems: 'center' },
   radio: {
     width: 22,
@@ -422,12 +434,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 12,
   },
-  radioSelected: { borderColor: '#4ade80' },
+  radioSelected: { borderColor: '#8b5cf6' },
   radioDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
   },
   planInfo: { flex: 1 },
   planNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -436,23 +448,23 @@ const styles = StyleSheet.create({
   bestValueBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 4,
     gap: 4,
   },
-  bestValueText: { color: '#000', fontSize: 10, fontWeight: '600' },
+  bestValueText: { color: '#fff', fontSize: 10, fontWeight: '600' },
   todayCol: { alignItems: 'flex-end' },
   todayLabel: { color: '#888', fontSize: 11 },
   todayAmount: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  todayAmountSelected: { color: '#4ade80' },
+  todayAmountSelected: { color: '#8b5cf6' },
   noPlanCard: {
     backgroundColor: '#1a1a1a',
     borderRadius: 10,
     padding: 14,
     borderWidth: 2,
-    borderColor: '#4ade80',
+    borderColor: '#8b5cf6',
   },
   noPlanText: { color: '#fff', fontSize: 15 },
   totalCard: {
@@ -463,11 +475,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#4ade80',
+    borderColor: '#8b5cf6',
   },
   totalLabel: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  discountNote: { color: '#4ade80', fontSize: 11, marginTop: 2 },
-  totalAmount: { color: '#4ade80', fontSize: 28, fontWeight: '700' },
+  discountNote: { color: '#8b5cf6', fontSize: 11, marginTop: 2 },
+  totalAmount: { color: '#8b5cf6', fontSize: 22, fontWeight: '700', flexShrink: 1 },
   bottom: {
     padding: 16,
     paddingBottom: 24,
@@ -478,10 +490,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
     paddingVertical: 16,
     borderRadius: 12,
     gap: 8,
   },
-  continueBtnText: { color: '#000', fontSize: 16, fontWeight: '700' },
+  continueBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });

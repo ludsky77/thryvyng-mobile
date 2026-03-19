@@ -174,11 +174,19 @@ export default function InvitationVolunteerScreen() {
     });
   };
 
+  const handleGoBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      (navigation as any).reset({ index: 0, routes: [{ name: 'Main' }] });
+    }
+  };
+
   if (invLoading || positionsLoading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4ade80" />
+          <ActivityIndicator size="large" color="#8b5cf6" />
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
       </SafeAreaView>
@@ -190,8 +198,8 @@ export default function InvitationVolunteerScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Unable to load invitation</Text>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={{ color: '#4ade80', marginTop: 12 }}>Go Back</Text>
+          <TouchableOpacity onPress={handleGoBack}>
+            <Text style={{ color: '#8b5cf6', marginTop: 12 }}>Go Back</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -202,7 +210,7 @@ export default function InvitationVolunteerScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={handleGoBack} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
@@ -219,7 +227,7 @@ export default function InvitationVolunteerScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {/* Info */}
         <View style={styles.infoBox}>
-          <Ionicons name="hand-left" size={24} color="#4ade80" />
+          <Ionicons name="hand-left" size={24} color="#8b5cf6" />
           <Text style={styles.infoTitle}>We Need Your Help!</Text>
           <Text style={styles.infoText}>
             Volunteer positions help our team run smoothly. Some positions include registration discounts.
@@ -276,7 +284,7 @@ export default function InvitationVolunteerScreen() {
         {/* Discount Summary */}
         {totalDiscount > 0 && (
           <View style={styles.discountSummary}>
-            <Ionicons name="pricetag" size={18} color="#4ade80" />
+            <Ionicons name="pricetag" size={18} color="#8b5cf6" />
             <Text style={styles.discountSummaryText}>
               You'll save ${totalDiscount.toFixed(2)} by volunteering!
             </Text>
@@ -342,7 +350,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   skipText: {
-    color: '#4ade80',
+    color: '#8b5cf6',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -382,7 +390,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   teamLabel: {
-    color: '#4ade80',
+    color: '#8b5cf6',
     fontSize: 14,
     fontWeight: '600',
     textTransform: 'uppercase',
@@ -402,7 +410,7 @@ const styles = StyleSheet.create({
     borderColor: '#333',
   },
   positionCardSelected: {
-    borderColor: '#4ade80',
+    borderColor: '#8b5cf6',
     backgroundColor: 'rgba(74, 222, 128, 0.05)',
   },
   positionCheckbox: {
@@ -411,7 +419,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 2,
     borderColor: '#444',
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -435,13 +443,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   discountBadge: {
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
   },
   discountText: {
-    color: '#000',
+    color: '#fff',
     fontSize: 12,
     fontWeight: '700',
   },
@@ -461,7 +469,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   discountSummaryText: {
-    color: '#4ade80',
+    color: '#8b5cf6',
     fontSize: 14,
     fontWeight: '500',
   },
@@ -481,13 +489,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
     paddingVertical: 14,
     borderRadius: 10,
     gap: 8,
   },
   continueBtnText: {
-    color: '#000',
+    color: '#fff',
     fontSize: 16,
     fontWeight: '700',
   },

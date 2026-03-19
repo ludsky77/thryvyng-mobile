@@ -39,7 +39,7 @@ export default function FamilyInvitationsScreen() {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4ade80" />
+          <ActivityIndicator size="large" color="#8b5cf6" />
           <Text style={styles.loadingText}>Loading invitations...</Text>
         </View>
       </SafeAreaView>
@@ -138,7 +138,7 @@ export default function FamilyInvitationsScreen() {
                     {inv.player.first_name} {inv.player.last_name}
                   </Text>
                   <View style={styles.teamRow}>
-                    <Ionicons name="arrow-forward" size={14} color="#4ade80" />
+                    <Ionicons name="arrow-forward" size={14} color="#8b5cf6" />
                     <Text style={styles.teamName}>{inv.team.name}</Text>
                   </View>
                 </TouchableOpacity>
@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
     borderColor: '#333',
   },
   playerCardSelected: {
-    borderColor: '#4ade80',
+    borderColor: '#8b5cf6',
   },
   playerCardHeader: {
     flexDirection: 'row',
@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   teamName: {
-    color: '#4ade80',
+    color: '#8b5cf6',
     fontSize: 14,
   },
   packageInfo: {
@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
     padding: 14,
     marginTop: 10,
     borderWidth: 1,
-    borderColor: '#4ade80',
+    borderColor: '#8b5cf6',
   },
   totalsTitle: {
     color: '#fff',
@@ -344,11 +344,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   discountLabel: {
-    color: '#4ade80',
+    color: '#8b5cf6',
     fontSize: 13,
   },
   discountValue: {
-    color: '#4ade80',
+    color: '#8b5cf6',
     fontSize: 13,
     fontWeight: '600',
   },
@@ -393,7 +393,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   checkboxBoxSelected: {
-    backgroundColor: '#4ade80',
-    borderColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
+    borderColor: '#8b5cf6',
   },
 });

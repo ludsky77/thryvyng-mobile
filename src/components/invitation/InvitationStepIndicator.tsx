@@ -91,12 +91,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   stepCompleted: {
-    backgroundColor: '#4ade80',
-    borderColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
+    borderColor: '#8b5cf6',
   },
   stepCurrent: {
-    backgroundColor: '#4ade80',
-    borderColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
+    borderColor: '#8b5cf6',
   },
   stepNumber: {
     color: '#666',
@@ -113,7 +113,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   stepLabelCurrent: {
-    color: '#4ade80',
+    color: '#8b5cf6',
     fontWeight: '600',
   },
   stepLabelCompleted: {
@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   connectorCompleted: {
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
   },
 });
 

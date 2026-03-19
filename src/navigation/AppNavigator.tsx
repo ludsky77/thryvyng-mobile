@@ -104,6 +104,7 @@ const ProductStoreScreen = lazy(() => import('../screens/ProductStoreScreen'));
 const ProductDetailScreen = lazy(() => import('../screens/ProductDetailScreen'));
 const CartScreen = lazy(() => import('../screens/CartScreen'));
 const CheckoutSuccessScreen = lazy(() => import('../screens/CheckoutSuccessScreen'));
+const ParentPaymentsScreen = lazy(() => import('../screens/parent/ParentPaymentsScreen'));
 const PreGameSetupScreen = lazy(() => import('../screens/game-stats/PreGameSetupScreen'));
 const StatsConsoleScreen = lazy(() => import('../screens/game-stats/StatsConsoleScreen'));
 const MatchSummaryScreen = lazy(() => import('../screens/game-stats/MatchSummaryScreen'));
@@ -389,6 +390,9 @@ function HomeStack() {
       <Stack.Screen name="CheckoutSuccess" options={{ headerShown: false }}>
         {(props) => <LazyScreen component={CheckoutSuccessScreen} {...props} />}
       </Stack.Screen>
+      <Stack.Screen name="ParentPayments" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={ParentPaymentsScreen} {...props} />}
+      </Stack.Screen>
       {/* Event & Lineup screens reachable from Dashboard without hiding the tab bar */}
       <Stack.Screen
         name="EventDetail"
@@ -595,6 +599,9 @@ function ProfileStack() {
       </Stack.Screen>
       <Stack.Screen name="PaymentHistory" options={{ title: 'Payment History' }}>
         {(props) => <LazyScreen component={PaymentHistoryScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="ParentPayments" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={ParentPaymentsScreen} {...props} />}
       </Stack.Screen>
       <Stack.Screen
         name="Notifications"

@@ -93,8 +93,8 @@ export function useInvitation(token: string): UseInvitationResult {
       }
       // #endregion
 
-      // Parallel fetch: program, team package links, questions, volunteers
-      const [programRes, teamPkgRes, questionsRes, volunteersRes] = await Promise.all([
+      // Parallel fetch: program, team package links, questions, volunteers, program settings
+      const [programRes, teamPkgRes, questionsRes, volunteersRes, settingsRes] = await Promise.all([
         supabase
           .from('programs')
           .select('id, name, description')
@@ -113,6 +113,11 @@ export function useInvitation(token: string): UseInvitationResult {
           .from('volunteer_positions')
           .select('*')
           .eq('program_id', assignment.destination_program_id),
+        supabase
+          .from('program_additional_settings')
+          .select('donations_enabled, financial_aid_enabled, min_donation_amount, donation_presets')
+          .eq('program_id', assignment.destination_program_id)
+          .maybeSingle(),
       ]);
 
       const program = programRes.data;
@@ -162,11 +167,12 @@ export function useInvitation(token: string): UseInvitationResult {
         return v.assigned_team_ids.includes(placement.assigned_team_id);
       });
 
+      const rawSettings = settingsRes.data;
       const programSettings = {
-        donations_enabled: true,
-        financial_aid_enabled: true,
-        min_donation_amount: 5,
-        donation_presets: [25, 50, 100],
+        donations_enabled: rawSettings?.donations_enabled ?? false,
+        financial_aid_enabled: rawSettings?.financial_aid_enabled ?? false,
+        min_donation_amount: rawSettings?.min_donation_amount ?? 5,
+        donation_presets: rawSettings?.donation_presets ?? [25, 50, 100],
       };
 
       setInvitation({

@@ -122,100 +122,118 @@ export function useFamilyInvitations(
         return;
       }
 
-      const fullInvitations: InvitationData[] = [];
+      const fullInvitations: InvitationData[] = await Promise.all(
+        placements.map(async (placement) => {
+          const assignment = placement.assignment as {
+            id: string;
+            name: string;
+            destination_program_id: string;
+            invitation_deadline: string | null;
+          };
+          const team = placement.team as {
+            id: string;
+            name: string;
+            age_group: string | null;
+            gender: string | null;
+            club: { id: string; name: string; logo_url: string | null };
+          };
 
-      for (const placement of placements) {
-        const assignment = placement.assignment as {
-          id: string;
-          name: string;
-          destination_program_id: string;
-          invitation_deadline: string | null;
-        };
-        const team = placement.team as {
-          id: string;
-          name: string;
-          age_group: string | null;
-          gender: string | null;
-          club: { id: string; name: string; logo_url: string | null };
-        };
-
-        const { data: program } = await supabase
-          .from('programs')
-          .select('id, name, description')
-          .eq('id', assignment.destination_program_id)
-          .single();
-
-        const { data: teamPackageLinks } = await supabase
-          .from('package_team_assignments')
-          .select('package_id')
-          .eq('team_id', placement.assigned_team_id);
-
-        const packageIds =
-          teamPackageLinks?.map((tp: { package_id: string }) => tp.package_id) || [];
-
-        const packages: InvitationPackage[] = [];
-        if (packageIds.length > 0) {
-          const { data: packagesData } = await supabase
-            .from('packages')
-            .select('*')
-            .eq('program_id', assignment.destination_program_id)
-            .eq('is_active', true)
-            .in('id', packageIds)
-            .order('sort_order');
-
-          for (const pkg of packagesData || []) {
-            const { data: plans } = await supabase
-              .from('payment_plan_options')
+          // Run all independent queries for this placement in parallel
+          const [
+            programRes,
+            teamPackageLinksRes,
+            questionsRes,
+            volunteersRes,
+            settingsRes,
+          ] = await Promise.all([
+            supabase
+              .from('programs')
+              .select('id, name, description')
+              .eq('id', assignment.destination_program_id)
+              .single(),
+            supabase
+              .from('package_team_assignments')
+              .select('package_id')
+              .eq('team_id', placement.assigned_team_id),
+            supabase
+              .from('program_questions')
               .select('*')
-              .eq('package_id', pkg.id)
-              .eq('is_active', true)
-              .order('sort_order');
+              .eq('program_id', assignment.destination_program_id)
+              .order('sort_order'),
+            supabase
+              .from('volunteer_positions')
+              .select('*')
+              .eq('program_id', assignment.destination_program_id),
+            supabase
+              .from('program_additional_settings')
+              .select('donations_enabled, financial_aid_enabled, min_donation_amount, donation_presets')
+              .eq('program_id', assignment.destination_program_id)
+              .maybeSingle(),
+          ]);
 
-            packages.push({ ...pkg, payment_plans: plans || [] });
+          const packageIds =
+            teamPackageLinksRes.data?.map((tp: { package_id: string }) => tp.package_id) || [];
+
+          // Fetch packages + all plans in parallel (plans need packageIds first)
+          let packages: InvitationPackage[] = [];
+          if (packageIds.length > 0) {
+            const [packagesRes, plansRes] = await Promise.all([
+              supabase
+                .from('packages')
+                .select('*')
+                .eq('program_id', assignment.destination_program_id)
+                .eq('is_active', true)
+                .in('id', packageIds)
+                .order('sort_order'),
+              supabase
+                .from('payment_plan_options')
+                .select('*')
+                .in('package_id', packageIds)
+                .eq('is_active', true)
+                .order('sort_order'),
+            ]);
+
+            const allPlans = plansRes.data || [];
+            packages = (packagesRes.data || []).map((pkg: any) => ({
+              ...pkg,
+              payment_plans: allPlans.filter((plan: any) => plan.package_id === pkg.id),
+            }));
           }
-        }
 
-        const { data: questions } = await supabase
-          .from('program_questions')
-          .select('*')
-          .eq('program_id', assignment.destination_program_id)
-          .order('sort_order');
+          const rawQuestions = (questionsRes.data || []) as (ProgramQuestion & { applies_to_teams?: string[] })[];
+          const filteredQuestions = rawQuestions.filter((q) => {
+            if (!q.applies_to_teams || q.applies_to_teams.length === 0) return true;
+            return q.applies_to_teams.includes(placement.assigned_team_id);
+          });
 
-        const rawQuestions = (questions || []) as (ProgramQuestion & { applies_to_teams?: string[] })[];
-        const filteredQuestions = rawQuestions.filter((q) => {
-          if (!q.applies_to_teams || q.applies_to_teams.length === 0) return true;
-          return q.applies_to_teams.includes(placement.assigned_team_id);
-        });
+          const rawVolunteers = (volunteersRes.data || []) as (VolunteerPosition & { assigned_team_ids?: string[] })[];
+          const filteredVolunteers = rawVolunteers.filter((v) => {
+            if (!v.assigned_team_ids || v.assigned_team_ids.length === 0) return true;
+            return v.assigned_team_ids.includes(placement.assigned_team_id);
+          });
 
-        const { data: volunteerPositions } = await supabase
-          .from('volunteer_positions')
-          .select('*')
-          .eq('program_id', assignment.destination_program_id);
+          const rawSettings = settingsRes.data;
+          const programSettings = {
+            donations_enabled: rawSettings?.donations_enabled ?? false,
+            financial_aid_enabled: rawSettings?.financial_aid_enabled ?? false,
+            min_donation_amount: rawSettings?.min_donation_amount ?? 5,
+            donation_presets: rawSettings?.donation_presets ?? [25, 50, 100],
+          };
 
-        const rawVolunteers = (volunteerPositions || []) as (VolunteerPosition & { assigned_team_ids?: string[] })[];
-        const filteredVolunteers = rawVolunteers.filter((v) => {
-          if (!v.assigned_team_ids || v.assigned_team_ids.length === 0) return true;
-          return v.assigned_team_ids.includes(placement.assigned_team_id);
-        });
-
-        fullInvitations.push({
-          placement,
-          player: placement.player,
-          team: { id: team.id, name: team.name, age_group: team.age_group, gender: team.gender },
-          club: team.club,
-          assignment,
-          program: program || { id: '', name: '', description: null },
-          packages,
-          questions: filteredQuestions,
-          volunteer_positions: filteredVolunteers,
-          program_settings: {
-            donations_enabled: true,
-            financial_aid_enabled: true,
-            min_donation_amount: 5,
-            donation_presets: [25, 50, 100],
-          },
-        });
-      }
+          return {
+            placement,
+            player: placement.player,
+            team: { id: team.id, name: team.name, age_group: team.age_group, gender: team.gender },
+            club: team.club,
+            assignment,
+            program: programRes.data || { id: '', name: '', description: null },
+            packages,
+            questions: filteredQuestions,
+            volunteer_positions: filteredVolunteers,
+            program_settings: programSettings,
+          };
+        })
+      );
 
       setInvitations(fullInvitations);
 

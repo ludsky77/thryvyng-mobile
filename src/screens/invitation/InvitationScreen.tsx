@@ -158,6 +158,14 @@ export default function InvitationScreen() {
     });
   };
 
+  const handleGoBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      (navigation as any).reset({ index: 0, routes: [{ name: 'Main' }] });
+    }
+  };
+
   // Calculate totals
   const primaryPrice = selectedPackage?.price || 0;
   const otherPlayersTotal = otherFamilyMembers
@@ -171,7 +179,7 @@ export default function InvitationScreen() {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4ade80" />
+          <ActivityIndicator size="large" color="#8b5cf6" />
           <Text style={styles.loadingText}>Loading invitation...</Text>
         </View>
       </SafeAreaView>
@@ -185,7 +193,7 @@ export default function InvitationScreen() {
           <Ionicons name="alert-circle" size={48} color="#ef4444" />
           <Text style={styles.errorText}>{error || 'Invitation not found'}</Text>
           <TouchableOpacity
-            onPress={() => navigation.goBack()}
+            onPress={handleGoBack}
             style={styles.backLink}
           >
             <Text style={styles.backLinkText}>Go Back</Text>
@@ -200,7 +208,7 @@ export default function InvitationScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={handleGoBack}
           style={styles.backBtn}
         >
           <Ionicons name="arrow-back" size={24} color="#fff" />
@@ -233,7 +241,7 @@ export default function InvitationScreen() {
                 {invitation.player?.last_name}
               </Text>
               <View style={styles.teamBadge}>
-                <Ionicons name="shield" size={14} color="#4ade80" />
+                <Ionicons name="shield" size={14} color="#8b5cf6" />
                 <Text style={styles.teamName}>{invitation.team?.name}</Text>
               </View>
             </View>
@@ -370,7 +378,11 @@ export default function InvitationScreen() {
                   : 'Based on selected plan'}
               </Text>
             </View>
-            <Text style={styles.dueTodayAmount}>
+            <Text
+              style={styles.dueTodayAmount}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
               ${total.toFixed(2)}
             </Text>
           </View>
@@ -398,7 +410,7 @@ const styles = StyleSheet.create({
   loadingText: { color: '#888', marginTop: 12 },
   errorText: { color: '#fff', fontSize: 16, marginTop: 12 },
   backLink: { marginTop: 20 },
-  backLinkText: { color: '#4ade80', fontSize: 14 },
+  backLinkText: { color: '#8b5cf6', fontSize: 14 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -416,7 +428,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     borderWidth: 2,
-    borderColor: '#4ade80',
+    borderColor: '#8b5cf6',
   },
   playerRow: { flexDirection: 'row', alignItems: 'center' },
   avatar: {
@@ -432,12 +444,12 @@ const styles = StyleSheet.create({
   playerInfo: { flex: 1 },
   playerName: { color: '#fff', fontSize: 16, fontWeight: '600' },
   teamBadge: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 4 },
-  teamName: { color: '#4ade80', fontSize: 14 },
+  teamName: { color: '#8b5cf6', fontSize: 14 },
   priceCol: { alignItems: 'flex-end' },
   priceLabel: { color: '#888', fontSize: 11 },
   priceValue: { color: '#fff', fontSize: 20, fontWeight: '700' },
   paymentTeaser: {
-    color: '#4ade80',
+    color: '#8b5cf6',
     fontSize: 12,
     marginTop: 2,
   },
@@ -463,7 +475,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#333',
   },
-  otherPlayerCardSelected: { borderColor: '#4ade80' },
+  otherPlayerCardSelected: { borderColor: '#8b5cf6' },
   checkbox: {
     width: 24,
     height: 24,
@@ -475,12 +487,12 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   checkboxSelected: {
-    backgroundColor: '#4ade80',
-    borderColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
+    borderColor: '#8b5cf6',
   },
   otherPlayerInfo: { flex: 1 },
   otherPlayerName: { color: '#fff', fontSize: 15, fontWeight: '500' },
-  otherTeamName: { color: '#4ade80', fontSize: 13 },
+  otherTeamName: { color: '#8b5cf6', fontSize: 13 },
   otherPrice: { color: '#fff', fontSize: 16, fontWeight: '600' },
   summaryCard: {
     backgroundColor: '#1a1a1a',
@@ -502,8 +514,8 @@ const styles = StyleSheet.create({
   summaryLabel: { color: '#888', fontSize: 14 },
   summaryValue: { color: '#fff', fontSize: 14 },
   divider: { height: 1, backgroundColor: '#333', marginVertical: 10 },
-  discountLabel: { color: '#4ade80', fontSize: 14 },
-  discountValue: { color: '#4ade80', fontSize: 14, fontWeight: '600' },
+  discountLabel: { color: '#8b5cf6', fontSize: 14 },
+  discountValue: { color: '#8b5cf6', fontSize: 14, fontWeight: '600' },
   totalLabel: { color: '#fff', fontSize: 16, fontWeight: '600' },
   totalValue: { color: '#fff', fontSize: 20, fontWeight: '700' },
   dueTodayCard: {
@@ -515,11 +527,11 @@ const styles = StyleSheet.create({
     padding: 14,
     marginTop: 12,
     borderWidth: 1,
-    borderColor: '#4ade80',
+    borderColor: '#8b5cf6',
   },
   dueTodayLabel: { color: '#fff', fontSize: 14, fontWeight: '600' },
   dueTodayNote: { color: '#888', fontSize: 11 },
-  dueTodayAmount: { color: '#4ade80', fontSize: 24, fontWeight: '700' },
+  dueTodayAmount: { color: '#8b5cf6', fontSize: 22, fontWeight: '700', flexShrink: 1 },
   bottom: {
     padding: 16,
     paddingBottom: 24,
@@ -530,10 +542,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
     paddingVertical: 16,
     borderRadius: 12,
     gap: 8,
   },
-  continueBtnText: { color: '#000', fontSize: 16, fontWeight: '700' },
+  continueBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });

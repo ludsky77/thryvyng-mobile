@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -60,6 +60,25 @@ export default function InvitationCheckoutScreen() {
 
   const { invitation, loading } = useInvitation(token);
   const [processing, setProcessing] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [chargeAuthorized, setChargeAuthorized] = useState(false);
+  const [termsExpanded, setTermsExpanded] = useState(false);
+  const [clubTerms, setClubTerms] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (invitation?.club?.id) {
+      supabase
+        .from('clubs')
+        .select('payment_terms_text')
+        .eq('id', invitation.club.id)
+        .single()
+        .then(({ data }) => {
+          if (data?.payment_terms_text) {
+            setClubTerms(data.payment_terms_text);
+          }
+        });
+    }
+  }, [invitation?.club?.id]);
 
   // Build players list from params or single player from invitation
   const players = useMemo((): SelectedPlayer[] => {
@@ -187,6 +206,10 @@ export default function InvitationCheckoutScreen() {
         financialAidReason,
         successUrl: 'thryvyng://invitation-success',
         cancelUrl: 'thryvyng://invitation-cancel',
+        termsAccepted: 'true',
+        termsAcceptedAt: new Date().toISOString(),
+        termsVersion: '2026-03-19',
+        chargeAuthorized: 'true',
       };
 
       console.log('Checkout data:', JSON.stringify(checkoutData, null, 2));
@@ -224,11 +247,19 @@ export default function InvitationCheckoutScreen() {
     }
   };
 
+  const handleGoBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      (navigation as any).reset({ index: 0, routes: [{ name: 'Main' }] });
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4ade80" />
+          <ActivityIndicator size="large" color="#8b5cf6" />
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
       </SafeAreaView>
@@ -243,7 +274,7 @@ export default function InvitationCheckoutScreen() {
           <Text style={styles.errorText}>Unable to load checkout</Text>
           <TouchableOpacity
             style={styles.goBackBtn}
-            onPress={() => navigation.goBack()}
+            onPress={handleGoBack}
           >
             <Text style={styles.goBackText}>Go Back</Text>
           </TouchableOpacity>
@@ -256,7 +287,7 @@ export default function InvitationCheckoutScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={handleGoBack}
           style={styles.backBtn}
         >
           <Ionicons name="arrow-back" size={24} color="#fff" />
@@ -326,7 +357,7 @@ export default function InvitationCheckoutScreen() {
             <View style={styles.card}>
               {selectedVolunteers.map((vol) => (
                 <View key={vol.id} style={styles.volunteerRow}>
-                  <Ionicons name="hand-left" size={16} color="#4ade80" />
+                  <Ionicons name="hand-left" size={16} color="#8b5cf6" />
                   <Text style={styles.volunteerName}>{vol.name}</Text>
                   {vol.discount_amount && vol.discount_amount > 0 ? (
                     <Text style={styles.volunteerDiscount}>
@@ -380,7 +411,7 @@ export default function InvitationCheckoutScreen() {
             {calculations.siblingDiscount > 0 && (
               <View style={styles.summaryRow}>
                 <View style={styles.discountLabel}>
-                  <Ionicons name="people" size={14} color="#4ade80" />
+                  <Ionicons name="people" size={14} color="#8b5cf6" />
                   <Text style={styles.discountText}>2+ Players Discount</Text>
                 </View>
                 <Text style={styles.discountValue}>
@@ -392,7 +423,7 @@ export default function InvitationCheckoutScreen() {
             {calculations.volunteerDiscount > 0 && (
               <View style={styles.summaryRow}>
                 <View style={styles.discountLabel}>
-                  <Ionicons name="hand-left" size={14} color="#4ade80" />
+                  <Ionicons name="hand-left" size={14} color="#8b5cf6" />
                   <Text style={styles.discountText}>Volunteer Discount</Text>
                 </View>
                 <Text style={styles.discountValue}>
@@ -434,30 +465,96 @@ export default function InvitationCheckoutScreen() {
                 : 'Based on selected plan'}
             </Text>
           </View>
-          <Text style={styles.dueTodayAmount}>
+          <Text
+            style={styles.dueTodayAmount}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
             ${calculations.dueToday.toFixed(2)}
           </Text>
         </View>
 
-        <Text style={styles.terms}>
-          By completing this registration, you agree to the club's terms and
-          conditions.
-        </Text>
+        {/* Payment Terms & Consent */}
+        <View style={styles.termsSection}>
+          <TouchableOpacity
+            style={styles.termsHeader}
+            onPress={() => setTermsExpanded((v) => !v)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.termsHeaderText}>Payment Terms & Conditions</Text>
+            <Ionicons
+              name={termsExpanded ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color="#888"
+            />
+          </TouchableOpacity>
+
+          {termsExpanded && (
+            <ScrollView style={styles.termsContent} nestedScrollEnabled>
+              <Text style={styles.termsText}>
+                {clubTerms ||
+                  'Standard payment terms apply. Contact your club for details.'}
+              </Text>
+            </ScrollView>
+          )}
+
+          <TouchableOpacity
+            style={styles.checkboxRow}
+            onPress={() => setTermsAccepted((v) => !v)}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={termsAccepted ? 'checkbox' : 'square-outline'}
+              size={22}
+              color={termsAccepted ? '#8b5cf6' : '#555'}
+            />
+            <Text style={styles.checkboxLabel}>
+              I have read and agree to the Payment Terms & Conditions
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.checkboxRow}
+            onPress={() => setChargeAuthorized((v) => !v)}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={chargeAuthorized ? 'checkbox' : 'square-outline'}
+              size={22}
+              color={chargeAuthorized ? '#8b5cf6' : '#555'}
+            />
+            <Text style={styles.checkboxLabel}>
+              I authorize {invitation.club?.name || 'the club'} to charge my
+              saved payment method for scheduled installments and applicable late
+              fees as described above
+            </Text>
+          </TouchableOpacity>
+
+          {(!termsAccepted || !chargeAuthorized) && (
+            <Text style={styles.consentHelper}>
+              Please accept the terms and authorize payments to continue
+            </Text>
+          )}
+        </View>
       </ScrollView>
 
       {/* Bottom Button */}
       <View style={styles.bottom}>
         <TouchableOpacity
-          style={[styles.payBtn, processing && styles.payBtnDisabled]}
+          style={[styles.payBtn, (processing || !termsAccepted || !chargeAuthorized) && styles.payBtnDisabled]}
           onPress={handleCheckout}
-          disabled={processing}
+          disabled={processing || !termsAccepted || !chargeAuthorized}
         >
           {processing ? (
             <ActivityIndicator size="small" color="#000" />
           ) : (
             <>
-              <Ionicons name="lock-closed" size={18} color="#000" />
-              <Text style={styles.payBtnText}>
+              <Ionicons
+                name="lock-closed"
+                size={18}
+                color={!termsAccepted || !chargeAuthorized ? '#666' : '#fff'}
+              />
+              <Text style={[styles.payBtnText, { color: !termsAccepted || !chargeAuthorized ? '#666' : '#fff' }]}>
                 Pay ${calculations.dueToday.toFixed(2)}
               </Text>
             </>
@@ -523,7 +620,7 @@ const styles = StyleSheet.create({
   avatarText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   playerInfo: { flex: 1 },
   playerName: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  teamName: { color: '#4ade80', fontSize: 13 },
+  teamName: { color: '#8b5cf6', fontSize: 13 },
   divider: { height: 1, backgroundColor: '#333', marginVertical: 12 },
   detailRow: {
     flexDirection: 'row',
@@ -532,7 +629,7 @@ const styles = StyleSheet.create({
   },
   detailLabel: { color: '#888', fontSize: 13 },
   detailValue: { color: '#fff', fontSize: 13 },
-  detailValueGreen: { color: '#4ade80', fontSize: 13, fontWeight: '600' },
+  detailValueGreen: { color: '#8b5cf6', fontSize: 13, fontWeight: '600' },
   volunteerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -540,7 +637,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   volunteerName: { color: '#fff', fontSize: 14, flex: 1 },
-  volunteerDiscount: { color: '#4ade80', fontSize: 14, fontWeight: '600' },
+  volunteerDiscount: { color: '#8b5cf6', fontSize: 14, fontWeight: '600' },
   aidBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -560,8 +657,8 @@ const styles = StyleSheet.create({
   summaryLabel: { color: '#888', fontSize: 14 },
   summaryValue: { color: '#fff', fontSize: 14 },
   discountLabel: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  discountText: { color: '#4ade80', fontSize: 14 },
-  discountValue: { color: '#4ade80', fontSize: 14, fontWeight: '600' },
+  discountText: { color: '#8b5cf6', fontSize: 14 },
+  discountValue: { color: '#8b5cf6', fontSize: 14, fontWeight: '600' },
   donationText: { color: '#ec4899', fontSize: 14 },
   totalDivider: { height: 1, backgroundColor: '#333', marginVertical: 10 },
   totalLabel: { color: '#fff', fontSize: 16, fontWeight: '600' },
@@ -574,13 +671,42 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#4ade80',
+    borderColor: '#8b5cf6',
     marginBottom: 16,
   },
   dueTodayLabel: { color: '#fff', fontSize: 15, fontWeight: '600' },
   dueTodayNote: { color: '#888', fontSize: 12 },
-  dueTodayAmount: { color: '#4ade80', fontSize: 28, fontWeight: '700' },
+  dueTodayAmount: { color: '#8b5cf6', fontSize: 22, fontWeight: '700', flexShrink: 1 },
   terms: { color: '#666', fontSize: 11, textAlign: 'center' },
+  termsSection: { marginBottom: 20 },
+  termsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    borderRadius: 10,
+    padding: 14,
+  },
+  termsHeaderText: { color: '#fff', fontSize: 14, fontWeight: '600', flex: 1 },
+  termsContent: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 10,
+    padding: 14,
+    marginTop: 8,
+    maxHeight: 200,
+  },
+  termsText: { color: '#aaa', fontSize: 12, lineHeight: 18 },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 10,
+    padding: 14,
+    marginTop: 10,
+  },
+  checkboxLabel: { color: '#fff', fontSize: 13, flex: 1, lineHeight: 20 },
+  consentHelper: { color: '#666', fontSize: 11, textAlign: 'center', marginTop: 8 },
   bottom: {
     padding: 16,
     paddingBottom: 24,
@@ -591,13 +717,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
     paddingVertical: 16,
     borderRadius: 10,
     gap: 8,
   },
-  payBtnDisabled: { opacity: 0.7 },
-  payBtnText: { color: '#000', fontSize: 18, fontWeight: '700' },
+  payBtnDisabled: { backgroundColor: '#333', opacity: 0.7 },
+  payBtnText: { color: '#fff', fontSize: 18, fontWeight: '700' },
   secureRow: {
     flexDirection: 'row',
     justifyContent: 'center',

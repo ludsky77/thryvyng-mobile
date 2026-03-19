@@ -106,11 +106,19 @@ export default function InvitationAidScreen() {
     });
   };
 
+  const handleGoBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      (navigation as any).reset({ index: 0, routes: [{ name: 'Main' }] });
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4ade80" />
+          <ActivityIndicator size="large" color="#8b5cf6" />
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
       </SafeAreaView>
@@ -122,8 +130,8 @@ export default function InvitationAidScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Unable to load invitation</Text>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={{ color: '#4ade80', marginTop: 12 }}>Go Back</Text>
+          <TouchableOpacity onPress={handleGoBack}>
+            <Text style={{ color: '#8b5cf6', marginTop: 12 }}>Go Back</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -135,7 +143,7 @@ export default function InvitationAidScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={handleGoBack}
           style={styles.backBtn}
         >
           <Ionicons name="arrow-back" size={24} color="#fff" />
@@ -158,7 +166,7 @@ export default function InvitationAidScreen() {
         {/* Info */}
         <View style={styles.infoBox}>
           <View style={styles.iconCircle}>
-            <Ionicons name="help-buoy" size={28} color="#4ade80" />
+            <Ionicons name="help-buoy" size={28} color="#8b5cf6" />
           </View>
           <Text style={styles.infoTitle}>Need Assistance?</Text>
           <Text style={styles.infoText}>
@@ -277,7 +285,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   skipText: {
-    color: '#4ade80',
+    color: '#8b5cf6',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -326,7 +334,7 @@ const styles = StyleSheet.create({
     borderColor: '#333',
   },
   optionCardSelected: {
-    borderColor: '#4ade80',
+    borderColor: '#8b5cf6',
     backgroundColor: 'rgba(74, 222, 128, 0.05)',
   },
   radio: {
@@ -341,13 +349,13 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   radioSelected: {
-    borderColor: '#4ade80',
+    borderColor: '#8b5cf6',
   },
   radioInner: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
   },
   optionContent: {
     flex: 1,
@@ -398,13 +406,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
     paddingVertical: 14,
     borderRadius: 10,
     gap: 8,
   },
   continueBtnText: {
-    color: '#000',
+    color: '#fff',
     fontSize: 16,
     fontWeight: '700',
   },

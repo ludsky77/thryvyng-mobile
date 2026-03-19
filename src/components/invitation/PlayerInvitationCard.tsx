@@ -74,7 +74,7 @@ export default function PlayerInvitationCard({
           firstName={player.first_name}
           lastName={player.last_name}
           size={48}
-          teamColor="#4ade80"
+          teamColor="#8b5cf6"
         />
 
         <View style={styles.playerInfo}>
@@ -82,7 +82,7 @@ export default function PlayerInvitationCard({
             {player.first_name} {player.last_name}
           </Text>
           <View style={styles.teamBadge}>
-            <Ionicons name="shield" size={14} color="#4ade80" />
+            <Ionicons name="shield" size={14} color="#8b5cf6" />
             <Text style={styles.teamName}>{team.name}</Text>
           </View>
         </View>
@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
     borderColor: '#333',
   },
   cardSelected: {
-    borderColor: '#4ade80',
+    borderColor: '#8b5cf6',
   },
   checkbox: {
     position: 'absolute',
@@ -165,8 +165,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   checkboxChecked: {
-    backgroundColor: '#4ade80',
-    borderColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
+    borderColor: '#8b5cf6',
   },
   playerSection: {
     flexDirection: 'row',
@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   teamName: {
-    color: '#4ade80',
+    color: '#8b5cf6',
     fontSize: 14,
     marginLeft: 6,
   },
@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
     borderColor: '#333',
   },
   packageOptionSelected: {
-    borderColor: '#4ade80',
+    borderColor: '#8b5cf6',
     backgroundColor: 'rgba(74, 222, 128, 0.1)',
   },
   packageOptionRadio: {
@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
   },
   packageOptionInfo: {
     flex: 1,
@@ -285,7 +285,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   packageOptionPrice: {
-    color: '#4ade80',
+    color: '#8b5cf6',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   payInFullBadge: {
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 4,
@@ -325,7 +325,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   payInFullText: {
-    color: '#000',
+    color: '#fff',
     fontSize: 10,
     fontWeight: '600',
   },

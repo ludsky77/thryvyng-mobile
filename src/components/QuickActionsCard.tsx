@@ -18,6 +18,7 @@ interface QuickActionsCardProps {
 export default function QuickActionsCard({ actions, title }: QuickActionsCardProps) {
   const row1 = actions.slice(0, 3);
   const row2 = actions.slice(3, 6);
+  const row3 = actions.slice(6, 9);
 
   const renderButton = (action: QuickAction) => (
     <TouchableOpacity
@@ -50,6 +51,11 @@ export default function QuickActionsCard({ actions, title }: QuickActionsCardPro
         {row2.length > 0 && (
           <View style={styles.row}>
             {row2.map(renderButton)}
+          </View>
+        )}
+        {row3.length > 0 && (
+          <View style={styles.row}>
+            {row3.map(renderButton)}
           </View>
         )}
       </View>

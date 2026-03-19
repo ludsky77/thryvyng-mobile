@@ -12,13 +12,13 @@ export default function OtherInvitationsBanner({ otherCount, onViewAll }: Props)
 
   return (
     <TouchableOpacity style={styles.banner} onPress={onViewAll}>
-      <Ionicons name="information-circle" size={20} color="#4ade80" />
+      <Ionicons name="information-circle" size={20} color="#8b5cf6" />
       <Text style={styles.bannerText}>
         {otherCount} Other Invitation{otherCount > 1 ? 's' : ''} Pending
       </Text>
       <View style={styles.viewAllButton}>
         <Text style={styles.viewAllText}>View All</Text>
-        <Ionicons name="chevron-forward" size={16} color="#4ade80" />
+        <Ionicons name="chevron-forward" size={16} color="#8b5cf6" />
       </View>
     </TouchableOpacity>
   );
@@ -46,7 +46,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   viewAllText: {
-    color: '#4ade80',
+    color: '#8b5cf6',
     fontSize: 14,
     fontWeight: '600',
   },

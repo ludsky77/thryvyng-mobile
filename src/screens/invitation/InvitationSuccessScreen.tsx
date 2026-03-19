@@ -60,21 +60,21 @@ export default function InvitationSuccessScreen() {
           </Text>
 
           <View style={styles.infoCard}>
-            <Ionicons name="mail" size={20} color="#4ade80" />
+            <Ionicons name="mail" size={20} color="#8b5cf6" />
             <Text style={styles.infoText}>
               Check your email for registration details and next steps
             </Text>
           </View>
 
           <View style={styles.infoCard}>
-            <Ionicons name="calendar" size={20} color="#4ade80" />
+            <Ionicons name="calendar" size={20} color="#8b5cf6" />
             <Text style={styles.infoText}>
               Team schedule and events will appear in your calendar
             </Text>
           </View>
 
           <View style={styles.infoCard}>
-            <Ionicons name="chatbubbles" size={20} color="#4ade80" />
+            <Ionicons name="chatbubbles" size={20} color="#8b5cf6" />
             <Text style={styles.infoText}>
               Join team chat to connect with coaches and other families
             </Text>
@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
@@ -155,13 +155,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   primaryBtn: {
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
     paddingVertical: 16,
     borderRadius: 10,
     alignItems: 'center',
   },
   primaryBtnText: {
-    color: '#000',
+    color: '#fff',
     fontSize: 16,
     fontWeight: '700',
   },

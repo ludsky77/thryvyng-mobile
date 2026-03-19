@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
     borderColor: '#333',
   },
   radioOptionSelected: {
-    borderColor: '#4ade80',
+    borderColor: '#8b5cf6',
     backgroundColor: 'rgba(74, 222, 128, 0.1)',
   },
   radioCircle: {
@@ -285,13 +285,13 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   radioCircleSelected: {
-    borderColor: '#4ade80',
+    borderColor: '#8b5cf6',
   },
   radioInner: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
   },
   checkboxOption: {
     flexDirection: 'row',
@@ -303,7 +303,7 @@ const styles = StyleSheet.create({
     borderColor: '#333',
   },
   checkboxOptionSelected: {
-    borderColor: '#4ade80',
+    borderColor: '#8b5cf6',
     backgroundColor: 'rgba(74, 222, 128, 0.1)',
   },
   checkbox: {
@@ -317,8 +317,8 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   checkboxChecked: {
-    backgroundColor: '#4ade80',
-    borderColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
+    borderColor: '#8b5cf6',
   },
   optionText: {
     color: '#fff',

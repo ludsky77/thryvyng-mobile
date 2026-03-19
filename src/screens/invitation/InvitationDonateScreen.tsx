@@ -133,20 +133,28 @@ export default function InvitationDonateScreen() {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4ade80" />
+          <ActivityIndicator size="large" color="#8b5cf6" />
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
+  const handleGoBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      (navigation as any).reset({ index: 0, routes: [{ name: 'Main' }] });
+    }
+  };
+
   if (!invitation) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Unable to load invitation</Text>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={{ color: '#4ade80', marginTop: 12 }}>Go Back</Text>
+          <TouchableOpacity onPress={handleGoBack}>
+            <Text style={{ color: '#8b5cf6', marginTop: 12 }}>Go Back</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -158,7 +166,7 @@ export default function InvitationDonateScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={handleGoBack}
           style={styles.backBtn}
         >
           <Ionicons name="arrow-back" size={24} color="#fff" />
@@ -296,7 +304,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   skipText: {
-    color: '#4ade80',
+    color: '#8b5cf6',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -422,13 +430,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
     paddingVertical: 14,
     borderRadius: 10,
     gap: 8,
   },
   continueBtnText: {
-    color: '#000',
+    color: '#fff',
     fontSize: 16,
     fontWeight: '700',
   },

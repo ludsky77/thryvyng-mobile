@@ -60,7 +60,7 @@ export default function PaymentPlanCard({
               <Text style={styles.todayLabel}>due today</Text>
               {hasDiscount && (
                 <View style={styles.discountRow}>
-                  <Ionicons name="pricetag" size={14} color="#4ade80" />
+                  <Ionicons name="pricetag" size={14} color="#8b5cf6" />
                   <Text style={styles.discountText}>
                     Save ${discountAmount.toFixed(2)} with Pay-in-Full
                   </Text>
@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
     borderColor: '#333',
   },
   cardSelected: {
-    borderColor: '#4ade80',
+    borderColor: '#8b5cf6',
     backgroundColor: 'rgba(74, 222, 128, 0.05)',
   },
   radio: {
@@ -141,13 +141,13 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   radioSelected: {
-    borderColor: '#4ade80',
+    borderColor: '#8b5cf6',
   },
   radioInner: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
   },
   content: {
     flex: 1,
@@ -166,14 +166,14 @@ const styles = StyleSheet.create({
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
     gap: 4,
   },
   badgeText: {
-    color: '#000',
+    color: '#fff',
     fontSize: 10,
     fontWeight: '700',
   },
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   discountText: {
-    color: '#4ade80',
+    color: '#8b5cf6',
     fontSize: 13,
     fontWeight: '500',
   },
@@ -223,7 +223,7 @@ const styles = StyleSheet.create({
     borderTopColor: '#333',
   },
   todayAmount: {
-    color: '#4ade80',
+    color: '#8b5cf6',
     fontSize: 18,
     fontWeight: '700',
   },

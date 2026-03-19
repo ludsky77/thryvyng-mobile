@@ -34,7 +34,7 @@ export default function InvitationAuthWrapper() {
   if (authLoading || checkingAuth) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#4ade80" />
+        <ActivityIndicator size="large" color="#8b5cf6" />
         <Text style={styles.loadingText}>Checking authentication...</Text>
       </View>
     );

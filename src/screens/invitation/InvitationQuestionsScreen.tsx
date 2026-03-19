@@ -216,11 +216,19 @@ export default function InvitationQuestionsScreen() {
     });
   };
 
+  const handleGoBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      (navigation as any).reset({ index: 0, routes: [{ name: 'Main' }] });
+    }
+  };
+
   if (loading || shouldSkip) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4ade80" />
+          <ActivityIndicator size="large" color="#8b5cf6" />
           <Text style={styles.loadingText}>
             {shouldSkip ? '' : 'Loading...'}
           </Text>
@@ -234,7 +242,7 @@ export default function InvitationQuestionsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={handleGoBack}
           style={styles.backBtn}
         >
           <Ionicons name="arrow-back" size={24} color="#fff" />
@@ -256,7 +264,7 @@ export default function InvitationQuestionsScreen() {
         {familyQuestions.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="people" size={20} color="#4ade80" />
+              <Ionicons name="people" size={20} color="#8b5cf6" />
               <Text style={styles.sectionTitle}>General Questions</Text>
             </View>
             <Text style={styles.sectionSubtitle}>
@@ -280,7 +288,7 @@ export default function InvitationQuestionsScreen() {
           selectedPlayers.map((player) => (
             <View key={player.playerId} style={styles.section}>
               <View style={styles.sectionHeader}>
-                <Ionicons name="person" size={20} color="#4ade80" />
+                <Ionicons name="person" size={20} color="#8b5cf6" />
                 <Text style={styles.sectionTitle}>
                   Questions for {player.playerName}
                 </Text>
@@ -394,7 +402,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   playerBadgeText: {
-    color: '#4ade80',
+    color: '#8b5cf6',
     fontSize: 12,
     fontWeight: '500',
   },
@@ -419,13 +427,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#4ade80',
+    backgroundColor: '#8b5cf6',
     paddingVertical: 16,
     borderRadius: 12,
     gap: 8,
   },
   continueBtnText: {
-    color: '#000',
+    color: '#fff',
     fontSize: 16,
     fontWeight: '700',
   },

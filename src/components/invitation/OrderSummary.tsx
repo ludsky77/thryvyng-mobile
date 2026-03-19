@@ -37,7 +37,7 @@ export default function OrderSummary({
       {siblingDiscount > 0 && (
         <View style={styles.row}>
           <View style={styles.discountLabel}>
-            <Ionicons name="people" size={14} color="#4ade80" />
+            <Ionicons name="people" size={14} color="#8b5cf6" />
             <Text style={styles.discountText}>2+ Players Discount</Text>
           </View>
           <Text style={styles.discountValue}>-${siblingDiscount.toFixed(2)}</Text>
@@ -47,7 +47,7 @@ export default function OrderSummary({
       {payInFullDiscount > 0 && (
         <View style={styles.row}>
           <View style={styles.discountLabel}>
-            <Ionicons name="checkmark-circle" size={14} color="#4ade80" />
+            <Ionicons name="checkmark-circle" size={14} color="#8b5cf6" />
             <Text style={styles.discountText}>Pay-in-Full Savings</Text>
           </View>
           <Text style={styles.discountValue}>-${payInFullDiscount.toFixed(2)}</Text>
@@ -57,7 +57,7 @@ export default function OrderSummary({
       {volunteerDiscount > 0 && (
         <View style={styles.row}>
           <View style={styles.discountLabel}>
-            <Ionicons name="hand-left" size={14} color="#4ade80" />
+            <Ionicons name="hand-left" size={14} color="#8b5cf6" />
             <Text style={styles.discountText}>Volunteer Discount</Text>
           </View>
           <Text style={styles.discountValue}>-${volunteerDiscount.toFixed(2)}</Text>
@@ -130,12 +130,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   discountText: {
-    color: '#4ade80',
+    color: '#8b5cf6',
     fontSize: 14,
     marginLeft: 6,
   },
   discountValue: {
-    color: '#4ade80',
+    color: '#8b5cf6',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
     padding: 12,
     marginTop: 12,
     borderWidth: 1,
-    borderColor: '#4ade80',
+    borderColor: '#8b5cf6',
   },
   dueTodayLabel: {
     color: '#fff',
@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   dueTodayValue: {
-    color: '#4ade80',
+    color: '#8b5cf6',
     fontSize: 24,
     fontWeight: '700',
   },

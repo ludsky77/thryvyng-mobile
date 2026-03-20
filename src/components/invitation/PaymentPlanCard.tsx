@@ -139,6 +139,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 12,
     marginTop: 2,
+    flexShrink: 0,
   },
   radioSelected: {
     borderColor: '#8b5cf6',
@@ -151,17 +152,23 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    minWidth: 0,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 4,
+    flexWrap: 'wrap',
+    gap: 6,
   },
   planName: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
   badge: {
     flexDirection: 'row',
@@ -171,6 +178,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 12,
     gap: 4,
+    flexShrink: 0,
   },
   badgeText: {
     color: '#fff',
@@ -199,6 +207,9 @@ const styles = StyleSheet.create({
     color: '#8b5cf6',
     fontSize: 13,
     fontWeight: '500',
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
   installmentInfo: {
     marginBottom: 2,
@@ -212,6 +223,7 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 14,
     marginTop: 2,
+    flexShrink: 1,
   },
   todayRow: {
     flexDirection: 'row',
@@ -236,5 +248,8 @@ const styles = StyleSheet.create({
   scheduleText: {
     color: '#888',
     fontSize: 12,
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
 });

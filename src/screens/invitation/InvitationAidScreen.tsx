@@ -271,15 +271,21 @@ const styles = StyleSheet.create({
   headerCenter: {
     flex: 1,
     alignItems: 'center',
+    minWidth: 0,
+    flexShrink: 1,
   },
   headerTitle: {
     color: '#fff',
     fontSize: 17,
     fontWeight: '600',
+    flexShrink: 1,
+    textAlign: 'center',
   },
   headerSub: {
     color: '#888',
     fontSize: 12,
+    flexShrink: 1,
+    textAlign: 'center',
   },
   skipBtn: {
     padding: 4,
@@ -347,6 +353,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 12,
     marginTop: 2,
+    flexShrink: 0,
   },
   radioSelected: {
     borderColor: '#8b5cf6',
@@ -359,16 +366,19 @@ const styles = StyleSheet.create({
   },
   optionContent: {
     flex: 1,
+    minWidth: 0,
   },
   optionTitle: {
     color: '#fff',
     fontSize: 15,
     fontWeight: '600',
+    flexShrink: 1,
   },
   optionDesc: {
     color: '#888',
     fontSize: 12,
     marginTop: 2,
+    flexShrink: 1,
   },
   reasonContainer: {
     backgroundColor: '#1a1a1a',

@@ -144,6 +144,7 @@ export default function FamilyInvitationsScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
+                  style={styles.playerCardChevron}
                   onPress={() =>
                     handleSelectInvitation(inv.placement.invitation_token || '')
                   }
@@ -244,6 +245,8 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
     color: '#fff',
     fontSize: 17,
     fontWeight: '600',
@@ -256,6 +259,7 @@ const styles = StyleSheet.create({
   subtitleText: {
     color: '#888',
     fontSize: 14,
+    flexShrink: 1,
   },
   scroll: {
     flex: 1,
@@ -279,14 +283,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
+  },
+  playerCardChevron: {
+    flexShrink: 0,
   },
   playerInfo: {
     flex: 1,
+    minWidth: 0,
   },
   playerName: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+    flexShrink: 1,
   },
   teamRow: {
     flexDirection: 'row',
@@ -297,6 +307,7 @@ const styles = StyleSheet.create({
   teamName: {
     color: '#8b5cf6',
     fontSize: 14,
+    flexShrink: 1,
   },
   packageInfo: {
     flexDirection: 'row',
@@ -306,15 +317,21 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: '#333',
+    gap: 8,
   },
   packageName: {
     color: '#888',
     fontSize: 13,
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+    marginRight: 8,
   },
   packagePrice: {
     color: '#fff',
     fontSize: 15,
     fontWeight: '600',
+    flexShrink: 0,
   },
   totalsCard: {
     backgroundColor: '#1a1a1a',
@@ -334,23 +351,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 6,
+    gap: 8,
+    alignItems: 'center',
   },
   totalsLabel: {
     color: '#888',
     fontSize: 13,
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
   totalsValue: {
     color: '#fff',
     fontSize: 13,
+    flexShrink: 0,
   },
   discountLabel: {
     color: '#8b5cf6',
     fontSize: 13,
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
   discountValue: {
     color: '#8b5cf6',
     fontSize: 13,
     fontWeight: '600',
+    flexShrink: 0,
   },
   totalsDivider: {
     height: 1,
@@ -361,11 +388,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '600',
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
   totalsFinalValue: {
     color: '#fff',
     fontSize: 18,
     fontWeight: '700',
+    flexShrink: 0,
   },
   infoNote: {
     flexDirection: 'row',
@@ -377,10 +408,13 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 12,
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
   checkboxArea: {
     marginRight: 12,
     padding: 4,
+    flexShrink: 0,
   },
   checkboxBox: {
     width: 24,

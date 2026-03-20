@@ -7,6 +7,9 @@ import Svg, {
   Path,
   Text as SvgText,
   G,
+  Defs,
+  ClipPath,
+  Image as SvgImage,
 } from 'react-native-svg';
 
 const FIELD_ASPECT: Record<string, number> = {
@@ -41,6 +44,7 @@ export interface PositionData {
     full_name?: string | null;
     jersey_number?: number | null;
     is_captain?: boolean;
+    photo_url?: string | null;
   };
 }
 
@@ -61,6 +65,7 @@ interface LineupFieldViewProps {
   readOnly?: boolean;
   highlightPlayerId?: string | null;
   isParentView?: boolean;
+  displayMode?: 'jersey' | 'photo';
 }
 
 export const LineupFieldView = memo(function LineupFieldView({
@@ -73,6 +78,7 @@ export const LineupFieldView = memo(function LineupFieldView({
   readOnly = false,
   highlightPlayerId = null,
   isParentView = false,
+  displayMode = 'jersey',
 }: LineupFieldViewProps) {
   const aspect = FIELD_ASPECT[fieldType] || 0.65;
   const height = width * aspect;
@@ -89,6 +95,24 @@ export const LineupFieldView = memo(function LineupFieldView({
   return (
     <View style={{ width, height }}>
     <Svg width={width} height={height} viewBox={viewBox}>
+      {displayMode === 'photo' && (
+        <Defs>
+          {positions.map((pos, i) => {
+            if (!pos.assignedPlayer?.photo_url) return null;
+            const x = pos.x;
+            const y = sy(pos.y);
+            const isHighlighted = !!highlightPlayerId && pos.assignedPlayer?.id === highlightPlayerId;
+            const baseJerseySize = width * 0.08;
+            const jerseySize = isHighlighted ? baseJerseySize * 1.15 : baseJerseySize;
+            const jw = (jerseySize / width) * 100;
+            return (
+              <ClipPath id={`clip-player-${i}`} key={`clip-player-${i}`}>
+                <Circle cx={x} cy={y} r={jw / 2} />
+              </ClipPath>
+            );
+          })}
+        </Defs>
+      )}
       {/* Layer 1: Field background */}
       <Rect x={0} y={0} width={100} height={vbH} fill="#2d5a27" />
       <Rect
@@ -159,43 +183,88 @@ export const LineupFieldView = memo(function LineupFieldView({
             )}
             {pos.assignedPlayer ? (
               <G>
-                <Path
-                  d={jerseyPath(jw, jh)}
-                  fill={isGK ? gkColor : teamColor}
-                  stroke={isHighlighted ? '#06b6d4' : '#fff'}
-                  strokeWidth={isHighlighted ? 0.6 : 0.3}
-                  transform={`translate(${x - jw / 2}, ${y - jh / 2})`}
-                />
-                <SvgText
-                  x={x}
-                  y={y + 0.5}
-                  fill="#fff"
-                  fontSize={2.2}
-                  textAnchor="middle"
-                  fontWeight="bold"
-                >
-                  {pos.assignedPlayer.jersey_number ?? '?'}
-                </SvgText>
-                {pos.assignedPlayer.is_captain && (
-                  <SvgText
-                    x={x + jw / 2 - 0.5}
-                    y={y - jh / 2 + 1}
-                    fill="#fff"
-                    fontSize={1.2}
-                    fontWeight="bold"
-                  >
-                    C
-                  </SvgText>
+                {displayMode === 'photo' && pos.assignedPlayer.photo_url ? (
+                  <>
+                    <G clipPath={`url(#clip-player-${i})`}>
+                      <SvgImage
+                        href={{ uri: pos.assignedPlayer.photo_url }}
+                        x={x - jw / 2}
+                        y={y - jw / 2}
+                        width={jw}
+                        height={jw}
+                        preserveAspectRatio="xMidYMid slice"
+                      />
+                    </G>
+                    <Circle
+                      cx={x}
+                      cy={y}
+                      r={jw / 2}
+                      fill="none"
+                      stroke="#fff"
+                      strokeWidth={isHighlighted ? 0.5 : 0.35}
+                    />
+                    {pos.assignedPlayer.is_captain && (
+                      <SvgText
+                        x={x + jw / 2 - 0.5}
+                        y={y - jw / 2 + 1}
+                        fill="#fff"
+                        fontSize={1.2}
+                        fontWeight="bold"
+                      >
+                        C
+                      </SvgText>
+                    )}
+                    <SvgText
+                      x={x}
+                      y={y + jw / 2 + 1.5}
+                      fill="#fff"
+                      fontSize={1.2}
+                      textAnchor="middle"
+                    >
+                      {(pos.assignedPlayer.full_name || '').split(' ').pop() || ''}
+                    </SvgText>
+                  </>
+                ) : (
+                  <>
+                    <Path
+                      d={jerseyPath(jw, jh)}
+                      fill={isGK ? gkColor : teamColor}
+                      stroke={isHighlighted ? '#06b6d4' : '#fff'}
+                      strokeWidth={isHighlighted ? 0.6 : 0.3}
+                      transform={`translate(${x - jw / 2}, ${y - jh / 2})`}
+                    />
+                    <SvgText
+                      x={x}
+                      y={y + 0.5}
+                      fill="#fff"
+                      fontSize={2.2}
+                      textAnchor="middle"
+                      fontWeight="bold"
+                    >
+                      {pos.assignedPlayer.jersey_number ?? '?'}
+                    </SvgText>
+                    {pos.assignedPlayer.is_captain && (
+                      <SvgText
+                        x={x + jw / 2 - 0.5}
+                        y={y - jh / 2 + 1}
+                        fill="#fff"
+                        fontSize={1.2}
+                        fontWeight="bold"
+                      >
+                        C
+                      </SvgText>
+                    )}
+                    <SvgText
+                      x={x}
+                      y={y + jh / 2 + 1.5}
+                      fill="#fff"
+                      fontSize={1.2}
+                      textAnchor="middle"
+                    >
+                      {(pos.assignedPlayer.full_name || '').split(' ').pop() || ''}
+                    </SvgText>
+                  </>
                 )}
-                <SvgText
-                  x={x}
-                  y={y + jh / 2 + 1.5}
-                  fill="#fff"
-                  fontSize={1.2}
-                  textAnchor="middle"
-                >
-                  {(pos.assignedPlayer.full_name || '').split(' ').pop() || ''}
-                </SvgText>
               </G>
             ) : (
               <G>

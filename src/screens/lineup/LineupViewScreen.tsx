@@ -28,6 +28,7 @@ export default function LineupViewScreen() {
   const [lineup, setLineup] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [displayMode, setDisplayMode] = useState<'jersey' | 'photo'>('jersey');
 
   const highlightPlayerId =
     currentRole && (currentRole?.role === 'player' || currentRole?.role === 'parent')
@@ -45,7 +46,7 @@ export default function LineupViewScreen() {
         const { data, error: err } = await supabase
           .from('lineup_formations')
           .select(
-            '*, players:lineup_players(*, player_profile:players(id, first_name, last_name, jersey_number)), event:cal_events(id, title, event_date)'
+            '*, players:lineup_players(*, player_profile:players(id, first_name, last_name, jersey_number, photo_url)), event:cal_events(id, title, event_date)'
           )
           .eq('id', lineupId)
           .single();
@@ -132,6 +133,7 @@ export default function LineupViewScreen() {
           lastName,
           jerseyNumber: match.jersey_number ?? profile?.jersey_number ?? null,
           isCaptain: match.is_captain,
+          photo_url: profile?.photo_url || null,
         },
       };
     }
@@ -175,12 +177,34 @@ export default function LineupViewScreen() {
         </View>
       </View>
 
+      <View style={styles.displayModeRow}>
+        <TouchableOpacity
+          style={[styles.modePill, displayMode === 'jersey' && styles.modePillActive]}
+          onPress={() => setDisplayMode('jersey')}
+          activeOpacity={0.85}
+        >
+          <Text style={[styles.modePillText, displayMode === 'jersey' && styles.modePillTextActive]}>
+            Jersey
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.modePill, displayMode === 'photo' && styles.modePillActive]}
+          onPress={() => setDisplayMode('photo')}
+          activeOpacity={0.85}
+        >
+          <Text style={[styles.modePillText, displayMode === 'photo' && styles.modePillTextActive]}>
+            Photo
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.fieldWrapper}>
           <LineupFieldEditor
             fieldType={fieldType}
             positions={positions}
             jerseyConfig={jerseyConfig}
+            displayMode={displayMode}
             onPositionTap={() => {}}
             selectedPositionIndex={null}
             visualConfig={
@@ -243,6 +267,30 @@ const styles = StyleSheet.create({
   pillsRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
   pill: { backgroundColor: '#334155', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   pillText: { fontSize: 12, color: '#94a3b8' },
+  displayModeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    alignItems: 'center',
+  },
+  modePill: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#2a2a4e',
+  },
+  modePillActive: {
+    backgroundColor: '#8B5CF6',
+  },
+  modePillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#94a3b8',
+  },
+  modePillTextActive: {
+    color: '#fff',
+  },
   loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   errorState: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   errorText: { color: '#94a3b8' },

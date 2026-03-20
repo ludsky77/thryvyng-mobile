@@ -258,7 +258,7 @@ export default function InvitationPaymentScreen() {
             <View key={player.playerId} style={styles.playerSection}>
               {/* Player Header */}
               <View style={styles.playerHeader}>
-                <View>
+                <View style={styles.playerHeaderLeft}>
                   <Text style={styles.playerName}>{player.playerName}</Text>
                   <Text style={styles.teamName}>{player.teamName}</Text>
                 </View>
@@ -351,7 +351,7 @@ export default function InvitationPaymentScreen() {
 
         {/* Total Due Today */}
         <View style={styles.totalCard}>
-          <View>
+          <View style={styles.totalCardLeft}>
             <Text style={styles.totalLabel}>Due Today</Text>
             {players.length >= 2 && (
               <Text style={styles.discountNote}>
@@ -394,9 +394,20 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   backBtn: { padding: 4 },
-  headerCenter: { flex: 1, alignItems: 'center' },
-  headerTitle: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  headerSub: { color: '#888', fontSize: 12 },
+  headerCenter: { flex: 1, alignItems: 'center', minWidth: 0, flexShrink: 1 },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
+    flexShrink: 1,
+    textAlign: 'center',
+  },
+  headerSub: {
+    color: '#888',
+    fontSize: 12,
+    flexShrink: 1,
+    textAlign: 'center',
+  },
   scroll: { flex: 1 },
   scrollContent: { padding: 16, paddingBottom: 100 },
   playerSection: { marginBottom: 24 },
@@ -408,10 +419,17 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 14,
     marginBottom: 10,
+    gap: 8,
   },
-  playerName: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  teamName: { color: '#8b5cf6', fontSize: 13, marginTop: 2 },
-  priceCol: { alignItems: 'flex-end' },
+  playerHeaderLeft: { flex: 1, minWidth: 0 },
+  playerName: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  teamName: { color: '#8b5cf6', fontSize: 13, marginTop: 2, flexShrink: 1 },
+  priceCol: { alignItems: 'flex-end', flexShrink: 0 },
   priceLabel: { color: '#888', fontSize: 11 },
   priceValue: { color: '#fff', fontSize: 18, fontWeight: '700' },
   planCard: {
@@ -433,6 +451,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+    flexShrink: 0,
   },
   radioSelected: { borderColor: '#8b5cf6' },
   radioDot: {
@@ -441,10 +460,27 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: '#8b5cf6',
   },
-  planInfo: { flex: 1 },
-  planNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  planName: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  planDetails: { color: '#888', fontSize: 13, marginTop: 2 },
+  planInfo: { flex: 1, minWidth: 0 },
+  planNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  planName: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  planDetails: {
+    color: '#888',
+    fontSize: 13,
+    marginTop: 2,
+    flexShrink: 1,
+  },
   bestValueBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -453,9 +489,10 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 4,
     gap: 4,
+    flexShrink: 0,
   },
   bestValueText: { color: '#fff', fontSize: 10, fontWeight: '600' },
-  todayCol: { alignItems: 'flex-end' },
+  todayCol: { alignItems: 'flex-end', flexShrink: 0 },
   todayLabel: { color: '#888', fontSize: 11 },
   todayAmount: { color: '#fff', fontSize: 16, fontWeight: '600' },
   todayAmountSelected: { color: '#8b5cf6' },
@@ -476,10 +513,17 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: '#8b5cf6',
+    gap: 8,
   },
+  totalCardLeft: { flex: 1, minWidth: 0 },
   totalLabel: { color: '#fff', fontSize: 16, fontWeight: '600' },
   discountNote: { color: '#8b5cf6', fontSize: 11, marginTop: 2 },
-  totalAmount: { color: '#8b5cf6', fontSize: 22, fontWeight: '700', flexShrink: 1 },
+  totalAmount: {
+    color: '#8b5cf6',
+    fontSize: 22,
+    fontWeight: '700',
+    flexShrink: 0,
+  },
   bottom: {
     padding: 16,
     paddingBottom: 24,

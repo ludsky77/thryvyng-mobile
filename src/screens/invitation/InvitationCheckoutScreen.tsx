@@ -457,7 +457,7 @@ export default function InvitationCheckoutScreen() {
 
         {/* Due Today Card */}
         <View style={styles.dueTodayCard}>
-          <View>
+          <View style={styles.dueTodayLeft}>
             <Text style={styles.dueTodayLabel}>Due Today</Text>
             <Text style={styles.dueTodayNote}>
               {players.length > 1
@@ -482,11 +482,13 @@ export default function InvitationCheckoutScreen() {
             activeOpacity={0.8}
           >
             <Text style={styles.termsHeaderText}>Payment Terms & Conditions</Text>
-            <Ionicons
-              name={termsExpanded ? 'chevron-up' : 'chevron-down'}
-              size={18}
-              color="#888"
-            />
+            <View style={styles.termsHeaderChevron}>
+              <Ionicons
+                name={termsExpanded ? 'chevron-up' : 'chevron-down'}
+                size={18}
+                color="#888"
+              />
+            </View>
           </TouchableOpacity>
 
           {termsExpanded && (
@@ -503,14 +505,18 @@ export default function InvitationCheckoutScreen() {
             onPress={() => setTermsAccepted((v) => !v)}
             activeOpacity={0.8}
           >
-            <Ionicons
-              name={termsAccepted ? 'checkbox' : 'square-outline'}
-              size={22}
-              color={termsAccepted ? '#8b5cf6' : '#555'}
-            />
-            <Text style={styles.checkboxLabel}>
-              I have read and agree to the Payment Terms & Conditions
-            </Text>
+            <View style={styles.checkboxIcon}>
+              <Ionicons
+                name={termsAccepted ? 'checkbox' : 'square-outline'}
+                size={22}
+                color={termsAccepted ? '#8b5cf6' : '#555'}
+              />
+            </View>
+            <View style={styles.checkboxLabelWrap}>
+              <Text style={styles.checkboxLabel}>
+                I have read and agree to the Payment Terms & Conditions
+              </Text>
+            </View>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -518,16 +524,20 @@ export default function InvitationCheckoutScreen() {
             onPress={() => setChargeAuthorized((v) => !v)}
             activeOpacity={0.8}
           >
-            <Ionicons
-              name={chargeAuthorized ? 'checkbox' : 'square-outline'}
-              size={22}
-              color={chargeAuthorized ? '#8b5cf6' : '#555'}
-            />
-            <Text style={styles.checkboxLabel}>
-              I authorize {invitation.club?.name || 'the club'} to charge my
-              saved payment method for scheduled installments and applicable late
-              fees as described above
-            </Text>
+            <View style={styles.checkboxIcon}>
+              <Ionicons
+                name={chargeAuthorized ? 'checkbox' : 'square-outline'}
+                size={22}
+                color={chargeAuthorized ? '#8b5cf6' : '#555'}
+              />
+            </View>
+            <View style={styles.checkboxLabelWrap}>
+              <Text style={styles.checkboxLabel}>
+                I authorize {invitation.club?.name || 'the club'} to charge my
+                saved payment method for scheduled installments and applicable late
+                fees as described above
+              </Text>
+            </View>
           </TouchableOpacity>
 
           {(!termsAccepted || !chargeAuthorized) && (
@@ -554,7 +564,14 @@ export default function InvitationCheckoutScreen() {
                 size={18}
                 color={!termsAccepted || !chargeAuthorized ? '#666' : '#fff'}
               />
-              <Text style={[styles.payBtnText, { color: !termsAccepted || !chargeAuthorized ? '#666' : '#fff' }]}>
+              <Text
+                style={[
+                  styles.payBtnText,
+                  { color: !termsAccepted || !chargeAuthorized ? '#666' : '#fff' },
+                ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
                 Pay ${calculations.dueToday.toFixed(2)}
               </Text>
             </>
@@ -593,9 +610,20 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   backBtn: { padding: 4 },
-  headerCenter: { flex: 1, alignItems: 'center' },
-  headerTitle: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  headerSub: { color: '#888', fontSize: 12 },
+  headerCenter: { flex: 1, alignItems: 'center', minWidth: 0, flexShrink: 1 },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
+    flexShrink: 1,
+    textAlign: 'center',
+  },
+  headerSub: {
+    color: '#888',
+    fontSize: 12,
+    flexShrink: 1,
+    textAlign: 'center',
+  },
   scroll: { flex: 1 },
   scrollContent: { padding: 16, paddingBottom: 120 },
   section: { marginBottom: 20 },
@@ -618,26 +646,53 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   avatarText: { color: '#fff', fontSize: 14, fontWeight: '600' },
-  playerInfo: { flex: 1 },
-  playerName: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  teamName: { color: '#8b5cf6', fontSize: 13 },
+  playerInfo: { flex: 1, minWidth: 0 },
+  playerName: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  teamName: { color: '#8b5cf6', fontSize: 13, flexShrink: 1 },
   divider: { height: 1, backgroundColor: '#333', marginVertical: 12 },
   detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 6,
+    alignItems: 'flex-start',
+    gap: 8,
   },
-  detailLabel: { color: '#888', fontSize: 13 },
-  detailValue: { color: '#fff', fontSize: 13 },
-  detailValueGreen: { color: '#8b5cf6', fontSize: 13, fontWeight: '600' },
+  detailLabel: { color: '#888', fontSize: 13, flexShrink: 0 },
+  detailValue: {
+    color: '#fff',
+    fontSize: 13,
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+    textAlign: 'right',
+  },
+  detailValueGreen: {
+    color: '#8b5cf6',
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+    textAlign: 'right',
+  },
   volunteerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginBottom: 6,
   },
-  volunteerName: { color: '#fff', fontSize: 14, flex: 1 },
-  volunteerDiscount: { color: '#8b5cf6', fontSize: 14, fontWeight: '600' },
+  volunteerName: { color: '#fff', fontSize: 14, flex: 1, minWidth: 0, flexShrink: 1 },
+  volunteerDiscount: {
+    color: '#8b5cf6',
+    fontSize: 14,
+    fontWeight: '600',
+    flexShrink: 0,
+  },
   aidBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -646,23 +701,49 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 8,
   },
-  aidText: { color: '#f59e0b', fontSize: 13, flex: 1 },
+  aidText: { color: '#f59e0b', fontSize: 13, flex: 1, minWidth: 0, flexShrink: 1 },
   summaryCard: { backgroundColor: '#1a1a1a', borderRadius: 10, padding: 14 },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
+    gap: 8,
   },
-  summaryLabel: { color: '#888', fontSize: 14 },
-  summaryValue: { color: '#fff', fontSize: 14 },
-  discountLabel: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  discountText: { color: '#8b5cf6', fontSize: 14 },
-  discountValue: { color: '#8b5cf6', fontSize: 14, fontWeight: '600' },
-  donationText: { color: '#ec4899', fontSize: 14 },
+  summaryLabel: {
+    color: '#888',
+    fontSize: 14,
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  summaryValue: { color: '#fff', fontSize: 14, flexShrink: 0 },
+  discountLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  discountText: { color: '#8b5cf6', fontSize: 14, flexShrink: 1 },
+  discountValue: {
+    color: '#8b5cf6',
+    fontSize: 14,
+    fontWeight: '600',
+    flexShrink: 0,
+  },
+  donationText: { color: '#ec4899', fontSize: 14, flexShrink: 1 },
   totalDivider: { height: 1, backgroundColor: '#333', marginVertical: 10 },
-  totalLabel: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  totalValue: { color: '#fff', fontSize: 20, fontWeight: '700' },
+  totalLabel: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  totalValue: { color: '#fff', fontSize: 20, fontWeight: '700', flexShrink: 0 },
   dueTodayCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -673,10 +754,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#8b5cf6',
     marginBottom: 16,
+    gap: 8,
   },
+  dueTodayLeft: { flex: 1, minWidth: 0 },
   dueTodayLabel: { color: '#fff', fontSize: 15, fontWeight: '600' },
   dueTodayNote: { color: '#888', fontSize: 12 },
-  dueTodayAmount: { color: '#8b5cf6', fontSize: 22, fontWeight: '700', flexShrink: 1 },
+  dueTodayAmount: {
+    color: '#8b5cf6',
+    fontSize: 22,
+    fontWeight: '700',
+    flexShrink: 0,
+  },
   terms: { color: '#666', fontSize: 11, textAlign: 'center' },
   termsSection: { marginBottom: 20 },
   termsHeader: {
@@ -687,7 +775,15 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 14,
   },
-  termsHeaderText: { color: '#fff', fontSize: 14, fontWeight: '600', flex: 1 },
+  termsHeaderText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  termsHeaderChevron: { flexShrink: 0 },
   termsContent: {
     backgroundColor: '#1a1a1a',
     borderRadius: 10,
@@ -705,7 +801,13 @@ const styles = StyleSheet.create({
     padding: 14,
     marginTop: 10,
   },
-  checkboxLabel: { color: '#fff', fontSize: 13, flex: 1, lineHeight: 20 },
+  checkboxIcon: {
+    width: 22,
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  checkboxLabelWrap: { flex: 1, minWidth: 0 },
+  checkboxLabel: { color: '#fff', fontSize: 13, lineHeight: 20, flexShrink: 1 },
   consentHelper: { color: '#666', fontSize: 11, textAlign: 'center', marginTop: 8 },
   bottom: {
     padding: 16,
@@ -723,7 +825,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   payBtnDisabled: { backgroundColor: '#333', opacity: 0.7 },
-  payBtnText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  payBtnText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    flexShrink: 1,
+    minWidth: 0,
+  },
   secureRow: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -731,5 +839,12 @@ const styles = StyleSheet.create({
     marginTop: 10,
     gap: 6,
   },
-  secureText: { color: '#888', fontSize: 12 },
+  secureText: {
+    color: '#888',
+    fontSize: 12,
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+    textAlign: 'center',
+  },
 });

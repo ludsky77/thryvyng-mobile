@@ -354,15 +354,21 @@ const styles = StyleSheet.create({
   headerCenter: {
     flex: 1,
     alignItems: 'center',
+    minWidth: 0,
+    flexShrink: 1,
   },
   headerTitle: {
     color: '#fff',
     fontSize: 17,
     fontWeight: '600',
+    flexShrink: 1,
+    textAlign: 'center',
   },
   headerSub: {
     color: '#888',
     fontSize: 12,
+    flexShrink: 1,
+    textAlign: 'center',
   },
   scroll: {
     flex: 1,
@@ -387,6 +393,9 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
   sectionSubtitle: {
     color: '#888',

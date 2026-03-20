@@ -148,6 +148,8 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 13,
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
   bottom: {
     padding: 16,

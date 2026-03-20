@@ -1,6 +1,17 @@
 import React, { memo, useRef, useState, useMemo } from 'react';
 import { View, TouchableOpacity, StyleSheet, Dimensions, PanResponder } from 'react-native';
-import Svg, { Rect, Circle, Line, Path, Text as SvgText, G, Defs, Pattern } from 'react-native-svg';
+import Svg, {
+  Rect,
+  Circle,
+  Line,
+  Path,
+  Text as SvgText,
+  G,
+  Defs,
+  Pattern,
+  Image as SvgImage,
+  ClipPath,
+} from 'react-native-svg';
 
 const TAP_THRESHOLD_MS = 200;
 const TAP_THRESHOLD_PX = 5;
@@ -102,6 +113,7 @@ export interface PositionSlot {
     lastName?: string;
     jerseyNumber: number | null;
     isCaptain: boolean;
+    photo_url?: string | null;
   };
 }
 
@@ -122,6 +134,7 @@ interface LineupFieldEditorProps {
   positions: PositionSlot[];
   jerseyConfig?: JerseyConfig;
   visualConfig?: VisualConfig;
+  displayMode?: 'jersey' | 'photo';
   onPositionTap: (index: number) => void;
   onPositionDragEnd?: (index: number, x: number, y: number) => void;
   selectedPositionIndex: number | null;
@@ -132,6 +145,7 @@ export const LineupFieldEditor = memo(function LineupFieldEditor({
   positions,
   jerseyConfig = {},
   visualConfig = {},
+  displayMode = 'jersey',
   onPositionTap,
   onPositionDragEnd,
   selectedPositionIndex,
@@ -210,30 +224,92 @@ export const LineupFieldEditor = memo(function LineupFieldEditor({
                 <>
                   {isSelected && !isDragging && <Circle cx={x} cy={y} r={7} fill="none" stroke="rgba(6,182,212,0.8)" strokeWidth={0.8} />}
                   {isDragging && <Circle cx={scaleX(pos.x)} cy={scaleY(pos.y)} r={6} fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth={0.5} strokeDasharray="2,2" />}
-                  <Path
-                    d={JERSEY_PATH}
-                    fill={isGK ? gkColor : teamColor}
-                    stroke="#fff"
-                    strokeWidth={Math.max(0.1, jerseyStroke)}
-                    transform={`translate(${x}, ${y}) scale(${JERSEY_SCALE * jerseyScale * scaleMult}) translate(-20, -18)`}
-                  />
-                  <SvgText x={x} y={y + 2} fill="#fff" fontSize={5} textAnchor="middle" fontWeight="bold">
-                    {pos.assignedPlayer.jerseyNumber ?? '?'}
-                  </SvgText>
-                  {pos.assignedPlayer.isCaptain && (
-                    <G transform={`translate(${x - 5}, ${y - 4})`}>
-                      <Circle cx={0} cy={0} r={2.5} fill="#fbbf24" />
-                      <SvgText x={0} y={1} fill="#1f2937" fontSize={2} textAnchor="middle" fontWeight="bold">C</SvgText>
-                    </G>
+                  {displayMode === 'photo' && pos.assignedPlayer.photo_url ? (
+                    <>
+                      <Defs>
+                        <ClipPath id={`clip-player-${i}`}>
+                          <Circle cx={x} cy={y} r={6 * jerseyScale * scaleMult} />
+                        </ClipPath>
+                      </Defs>
+                      <G clipPath={`url(#clip-player-${i})`}>
+                        <SvgImage
+                          href={{ uri: pos.assignedPlayer.photo_url }}
+                          x={x - 6 * jerseyScale * scaleMult}
+                          y={y - 6 * jerseyScale * scaleMult}
+                          width={12 * jerseyScale * scaleMult}
+                          height={12 * jerseyScale * scaleMult}
+                          preserveAspectRatio="xMidYMid slice"
+                        />
+                      </G>
+                      <Circle
+                        cx={x}
+                        cy={y}
+                        r={6 * jerseyScale * scaleMult}
+                        fill="none"
+                        stroke="#fff"
+                        strokeWidth={Math.max(0.15, jerseyStroke * 0.45)}
+                      />
+                      {pos.assignedPlayer.isCaptain && (
+                        <G transform={`translate(${x - 5}, ${y - 4})`}>
+                          <Circle cx={0} cy={0} r={2.5} fill="#fbbf24" />
+                          <SvgText x={0} y={1} fill="#1f2937" fontSize={2} textAnchor="middle" fontWeight="bold">
+                            C
+                          </SvgText>
+                        </G>
+                      )}
+                      {showNames && (pos.assignedPlayer.lastName || pos.assignedPlayer.fullName) && (
+                        <SvgText
+                          x={x}
+                          y={y + 6 * jerseyScale * scaleMult + 2}
+                          fill="#fff"
+                          fontSize={Math.max(0.5, 3.5 * nameSizeMult)}
+                          textAnchor="middle"
+                          fontWeight="bold"
+                        >
+                          {pos.assignedPlayer.lastName || pos.assignedPlayer.fullName.split(' ').pop() || ''}
+                        </SvgText>
+                      )}
+                      <SvgText x={x} y={y + 6 * jerseyScale * scaleMult + 5.5} fill="#64748b" fontSize={2.5} textAnchor="middle">
+                        {pos.code}
+                      </SvgText>
+                    </>
+                  ) : (
+                    <>
+                      <Path
+                        d={JERSEY_PATH}
+                        fill={isGK ? gkColor : teamColor}
+                        stroke="#fff"
+                        strokeWidth={Math.max(0.1, jerseyStroke)}
+                        transform={`translate(${x}, ${y}) scale(${JERSEY_SCALE * jerseyScale * scaleMult}) translate(-20, -18)`}
+                      />
+                      <SvgText x={x} y={y + 2} fill="#fff" fontSize={5} textAnchor="middle" fontWeight="bold">
+                        {pos.assignedPlayer.jerseyNumber ?? '?'}
+                      </SvgText>
+                      {pos.assignedPlayer.isCaptain && (
+                        <G transform={`translate(${x - 5}, ${y - 4})`}>
+                          <Circle cx={0} cy={0} r={2.5} fill="#fbbf24" />
+                          <SvgText x={0} y={1} fill="#1f2937" fontSize={2} textAnchor="middle" fontWeight="bold">
+                            C
+                          </SvgText>
+                        </G>
+                      )}
+                      {showNames && (pos.assignedPlayer.lastName || pos.assignedPlayer.fullName) && (
+                        <SvgText
+                          x={x}
+                          y={y + (JERSEY_HEIGHT * jerseyScale) / 2 + 2}
+                          fill="#fff"
+                          fontSize={Math.max(0.5, 3.5 * nameSizeMult)}
+                          textAnchor="middle"
+                          fontWeight="bold"
+                        >
+                          {pos.assignedPlayer.lastName || pos.assignedPlayer.fullName.split(' ').pop() || ''}
+                        </SvgText>
+                      )}
+                      <SvgText x={x} y={y + (JERSEY_HEIGHT * jerseyScale) / 2 + 5.5} fill="#64748b" fontSize={2.5} textAnchor="middle">
+                        {pos.code}
+                      </SvgText>
+                    </>
                   )}
-                  {showNames && (pos.assignedPlayer.lastName || pos.assignedPlayer.fullName) && (
-                    <SvgText x={x} y={y + (JERSEY_HEIGHT * jerseyScale) / 2 + 2} fill="#fff" fontSize={Math.max(0.5, 3.5 * nameSizeMult)} textAnchor="middle" fontWeight="bold">
-                      {pos.assignedPlayer.lastName || pos.assignedPlayer.fullName.split(' ').pop() || ''}
-                    </SvgText>
-                  )}
-                  <SvgText x={x} y={y + (JERSEY_HEIGHT * jerseyScale) / 2 + 5.5} fill="#64748b" fontSize={2.5} textAnchor="middle">
-                    {pos.code}
-                  </SvgText>
                 </>
               ) : (
                 <>

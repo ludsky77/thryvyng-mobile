@@ -194,12 +194,14 @@ const styles = StyleSheet.create({
   },
   playerInfo: {
     flex: 1,
+    minWidth: 0,
   },
   playerName: {
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 4,
+    flexShrink: 1,
   },
   teamBadge: {
     flexDirection: 'row',
@@ -209,9 +211,11 @@ const styles = StyleSheet.create({
     color: '#8b5cf6',
     fontSize: 14,
     marginLeft: 6,
+    flexShrink: 1,
   },
   priceSection: {
     alignItems: 'flex-end',
+    flexShrink: 0,
   },
   priceLabel: {
     color: '#888',
@@ -237,6 +241,9 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 14,
     marginLeft: 8,
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
   packageSelector: {
     gap: 8,
@@ -277,17 +284,24 @@ const styles = StyleSheet.create({
   },
   packageOptionInfo: {
     flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
   },
   packageOptionName: {
     color: '#fff',
     fontSize: 14,
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
   packageOptionPrice: {
     color: '#8b5cf6',
     fontSize: 14,
     fontWeight: '600',
+    flexShrink: 0,
   },
   // Compact styles
   compactCard: {
@@ -300,16 +314,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
   },
   compactPlayerName: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
   compactPrice: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+    flexShrink: 0,
   },
   compactTeam: {
     color: '#888',

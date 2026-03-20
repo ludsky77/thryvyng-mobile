@@ -31,6 +31,7 @@ interface Player {
   last_name?: string;
   full_name?: string;
   jersey_number: number | null;
+  photo_url?: string | null;
 }
 
 function getPlayerDisplayName(p: Player): string {
@@ -48,7 +49,12 @@ interface LineupPlayer {
   is_starter: boolean;
   is_captain: boolean;
   sort_order: number;
-  player_profile?: { first_name: string; last_name: string; jersey_number?: number | null } | null;
+  player_profile?: {
+    first_name: string;
+    last_name: string;
+    jersey_number?: number | null;
+    photo_url?: string | null;
+  } | null;
 }
 
 interface LineupFormation {
@@ -139,7 +145,7 @@ export default function LineupEditorScreen() {
       const lineupRes = await supabase
         .from('lineup_formations')
         .select(
-          `*, players:lineup_players(*, player_profile:players(id, first_name, last_name, jersey_number)),
+          `*, players:lineup_players(*, player_profile:players(id, first_name, last_name, jersey_number, photo_url)),
           event:cal_events(id, title, event_date)`
         )
         .eq('id', lineupId)
@@ -160,7 +166,7 @@ export default function LineupEditorScreen() {
       const [rosterRes, eventsRes] = await Promise.all([
         supabase
           .from('players')
-          .select('id, first_name, last_name, jersey_number, status')
+          .select('id, first_name, last_name, jersey_number, photo_url, status')
           .eq('team_id', teamIdFromLineup)
           .order('jersey_number', { ascending: true }),
         supabase

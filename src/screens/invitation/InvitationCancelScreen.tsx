@@ -109,6 +109,8 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 13,
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
     lineHeight: 18,
   },
   bottom: {
@@ -129,6 +131,9 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+    flexShrink: 1,
+    minWidth: 0,
+    textAlign: 'center',
   },
   secondaryBtn: {
     backgroundColor: '#1a1a1a',

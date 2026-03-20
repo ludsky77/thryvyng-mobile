@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 interface Step {
@@ -17,7 +17,12 @@ export default function InvitationStepIndicator({ currentStep, steps }: Props) {
   const enabledSteps = steps.filter(s => s.enabled);
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.scroll}
+      contentContainerStyle={styles.scrollContent}
+    >
       {enabledSteps.map((step, index) => {
         const isCompleted = step.number < currentStep;
         const isCurrent = step.number === currentStep;
@@ -62,23 +67,29 @@ export default function InvitationStepIndicator({ currentStep, steps }: Props) {
           </React.Fragment>
         );
       })}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  scroll: {
+    backgroundColor: '#0a0a0a',
+    maxHeight: 50,
+  },
+  scrollContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 8,
     paddingVertical: 6,
-    backgroundColor: '#0a0a0a',
-    height: 50, // FIXED HEIGHT - critical fix
+    flexGrow: 1,
+    minHeight: 50,
   },
   stepItem: {
     alignItems: 'center',
-    width: 42,
+    minWidth: 36,
+    paddingHorizontal: 4,
+    flexShrink: 0,
   },
   stepCircle: {
     width: 16,
@@ -124,6 +135,7 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#333',
     marginBottom: 10,
+    flexShrink: 0,
   },
   connectorCompleted: {
     backgroundColor: '#8b5cf6',

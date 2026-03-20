@@ -85,7 +85,7 @@ export default function OrderSummary({
 
       {/* Due Today (highlighted) */}
       <View style={styles.dueTodayBox}>
-        <View>
+        <View style={styles.dueTodayLeft}>
           <Text style={styles.dueTodayLabel}>Today's Payment</Text>
           <Text style={styles.dueTodaySubLabel}>
             {playerCount > 1 ? 'Full payment' : 'Based on selected plan'}
@@ -116,28 +116,38 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
+    gap: 8,
   },
   label: {
     color: '#888',
     fontSize: 14,
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
   value: {
     color: '#fff',
     fontSize: 14,
+    flexShrink: 0,
   },
   discountLabel: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
   discountText: {
     color: '#8b5cf6',
     fontSize: 14,
     marginLeft: 6,
+    flexShrink: 1,
   },
   discountValue: {
     color: '#8b5cf6',
     fontSize: 14,
     fontWeight: '600',
+    flexShrink: 0,
   },
   divider: {
     height: 1,
@@ -148,11 +158,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
   totalValue: {
     color: '#fff',
     fontSize: 20,
     fontWeight: '700',
+    flexShrink: 0,
   },
   dueTodayBox: {
     flexDirection: 'row',
@@ -164,7 +178,9 @@ const styles = StyleSheet.create({
     marginTop: 12,
     borderWidth: 1,
     borderColor: '#8b5cf6',
+    gap: 8,
   },
+  dueTodayLeft: { flex: 1, minWidth: 0 },
   dueTodayLabel: {
     color: '#fff',
     fontSize: 14,
@@ -178,5 +194,6 @@ const styles = StyleSheet.create({
     color: '#8b5cf6',
     fontSize: 24,
     fontWeight: '700',
+    flexShrink: 0,
   },
 });

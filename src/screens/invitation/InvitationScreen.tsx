@@ -370,7 +370,7 @@ export default function InvitationScreen() {
           </View>
 
           <View style={styles.dueTodayCard}>
-            <View>
+            <View style={styles.dueTodayLeft}>
               <Text style={styles.dueTodayLabel}>Today's Payment</Text>
               <Text style={styles.dueTodayNote}>
                 {lowestPaymentInfo
@@ -418,9 +418,20 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   backBtn: { padding: 4 },
-  headerCenter: { flex: 1, alignItems: 'center' },
-  headerTitle: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  headerSub: { color: '#888', fontSize: 12 },
+  headerCenter: { flex: 1, alignItems: 'center', minWidth: 0, flexShrink: 1 },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
+    flexShrink: 1,
+    textAlign: 'center',
+  },
+  headerSub: {
+    color: '#888',
+    fontSize: 12,
+    flexShrink: 1,
+    textAlign: 'center',
+  },
   scroll: { flex: 1 },
   scrollContent: { padding: 16, paddingBottom: 100 },
   playerCard: {
@@ -441,11 +452,16 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   avatarText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  playerInfo: { flex: 1 },
-  playerName: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  playerInfo: { flex: 1, minWidth: 0 },
+  playerName: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
   teamBadge: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 4 },
-  teamName: { color: '#8b5cf6', fontSize: 14 },
-  priceCol: { alignItems: 'flex-end' },
+  teamName: { color: '#8b5cf6', fontSize: 14, flexShrink: 1 },
+  priceCol: { alignItems: 'flex-end', flexShrink: 0 },
   priceLabel: { color: '#888', fontSize: 11 },
   priceValue: { color: '#fff', fontSize: 20, fontWeight: '700' },
   paymentTeaser: {
@@ -462,7 +478,13 @@ const styles = StyleSheet.create({
     borderTopColor: '#333',
     gap: 6,
   },
-  packageName: { color: '#888', fontSize: 13 },
+  packageName: {
+    color: '#888',
+    fontSize: 13,
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+  },
   otherSection: { marginTop: 20 },
   sectionTitle: { color: '#888', fontSize: 13, marginBottom: 10 },
   otherPlayerCard: {
@@ -490,10 +512,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#8b5cf6',
     borderColor: '#8b5cf6',
   },
-  otherPlayerInfo: { flex: 1 },
-  otherPlayerName: { color: '#fff', fontSize: 15, fontWeight: '500' },
-  otherTeamName: { color: '#8b5cf6', fontSize: 13 },
-  otherPrice: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  otherPlayerInfo: { flex: 1, minWidth: 0 },
+  otherPlayerName: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '500',
+    flexShrink: 1,
+  },
+  otherTeamName: { color: '#8b5cf6', fontSize: 13, flexShrink: 1 },
+  otherPrice: { color: '#fff', fontSize: 16, fontWeight: '600', flexShrink: 0 },
   summaryCard: {
     backgroundColor: '#1a1a1a',
     borderRadius: 12,
@@ -510,14 +537,40 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 8,
+    alignItems: 'center',
+    gap: 8,
   },
-  summaryLabel: { color: '#888', fontSize: 14 },
-  summaryValue: { color: '#fff', fontSize: 14 },
+  summaryLabel: {
+    color: '#888',
+    fontSize: 14,
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  summaryValue: { color: '#fff', fontSize: 14, flexShrink: 0 },
   divider: { height: 1, backgroundColor: '#333', marginVertical: 10 },
-  discountLabel: { color: '#8b5cf6', fontSize: 14 },
-  discountValue: { color: '#8b5cf6', fontSize: 14, fontWeight: '600' },
-  totalLabel: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  totalValue: { color: '#fff', fontSize: 20, fontWeight: '700' },
+  discountLabel: {
+    color: '#8b5cf6',
+    fontSize: 14,
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  discountValue: {
+    color: '#8b5cf6',
+    fontSize: 14,
+    fontWeight: '600',
+    flexShrink: 0,
+  },
+  totalLabel: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  totalValue: { color: '#fff', fontSize: 20, fontWeight: '700', flexShrink: 0 },
   dueTodayCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -528,10 +581,17 @@ const styles = StyleSheet.create({
     marginTop: 12,
     borderWidth: 1,
     borderColor: '#8b5cf6',
+    gap: 8,
   },
+  dueTodayLeft: { flex: 1, minWidth: 0 },
   dueTodayLabel: { color: '#fff', fontSize: 14, fontWeight: '600' },
   dueTodayNote: { color: '#888', fontSize: 11 },
-  dueTodayAmount: { color: '#8b5cf6', fontSize: 22, fontWeight: '700', flexShrink: 1 },
+  dueTodayAmount: {
+    color: '#8b5cf6',
+    fontSize: 22,
+    fontWeight: '700',
+    flexShrink: 0,
+  },
   bottom: {
     padding: 16,
     paddingBottom: 24,

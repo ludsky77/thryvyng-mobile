@@ -25,6 +25,7 @@ import {
 // ─── Eager screens (visible immediately or needed for deep links) ───────────
 import { WelcomeScreen } from '../screens/WelcomeScreen';
 import LoginScreen from '../screens/LoginScreen';
+import SupportScreen from '../screens/SupportScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import ChatScreen from '../screens/ChatScreen';
 import TeamChatRoomScreen from '../screens/TeamChatRoomScreen';
@@ -644,6 +645,11 @@ function RootStackNavigator() {
         options={{ title: 'Join Team', headerShown: true }}
       />
       <RootStack.Screen
+        name="Support"
+        component={SupportScreen}
+        options={{ title: 'Support', headerShown: false }}
+      />
+      <RootStack.Screen
         name="JoinStaff"
         component={JoinStaffScreen}
         options={{ title: 'Join Staff', headerShown: true }}
@@ -796,6 +802,7 @@ export default function AppNavigator() {
         currentRoute !== 'Login' &&
         ![
           'JoinTeam',
+          'Support',
           'JoinStaff',
           'RegisterClub',
           'RegisterTeam',

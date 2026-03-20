@@ -29,7 +29,8 @@ export type RootStackParamList = {
   LiveSpectator: { sessionId: string };
   MatchSummary: { sessionId: string };
   // Registration screens
-  JoinTeam: { code: string; role?: string };
+  JoinTeam: { code: string; slug?: string; role?: string };
+  Support: { slug?: string; code: string };
   JoinStaff: { code: string };
   RegisterClub: undefined;
   RegisterTeam: undefined;
@@ -83,9 +84,17 @@ export const linking: LinkingOptions<RootStackParamList> = {
   config: {
     screens: {
       JoinTeam: {
-        path: 'join-team/:code',
+        path: 'join-team/:slug/:code?',
         parse: {
-          code: (code: string) => code,
+          slug: (slug: string) => slug,
+          code: (code: string | undefined) => code || '',
+        },
+      },
+      Support: {
+        path: 'support/:slug/:code?',
+        parse: {
+          slug: (slug: string) => slug,
+          code: (code: string | undefined) => code || '',
         },
       },
       JoinStaff: 'join-staff/:code',

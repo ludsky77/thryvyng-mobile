@@ -65,6 +65,9 @@ export const JoinTeamScreen: React.FC = () => {
   const { setRegistrationData, clearRegistrationData } = useRegistration();
 
   const code = route.params?.code ?? '';
+  const slug = route.params?.slug;
+  // Backward compat: if code is empty, the slug IS the code (old URL format)
+  const invitationCode = code || slug || '';
   const role = route.params?.role;
 
   const [screenState, setScreenState] = useState<ScreenState>('loading');
@@ -154,17 +157,17 @@ export const JoinTeamScreen: React.FC = () => {
   const [showStaffVerificationModal, setShowStaffVerificationModal] = useState(false);
 
   useEffect(() => {
-    if (code) {
-      validateInvitationCode(code);
+    if (invitationCode) {
+      validateInvitationCode(invitationCode);
       setRegistrationData({
-        teamInviteCode: code,
+        teamInviteCode: invitationCode,
         activeFlow: 'join-team',
       });
     } else {
       setScreenState('invalid');
       setErrorMessage('No invitation code provided');
     }
-  }, [code]);
+  }, [invitationCode]);
 
   // Check email availability when email changes (for new users)
   useEffect(() => {

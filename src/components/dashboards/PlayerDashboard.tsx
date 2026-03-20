@@ -17,6 +17,8 @@ import { LiveGamesWidget } from '../game-stats/LiveGamesWidget';
 import QuickActionsCard from '../QuickActionsCard';
 import WellnessParentAlert from '../WellnessParentAlert';
 import PendingSurveyBanner from '../surveys/PendingSurveyBanner';
+import { slugify } from '../../utils/slugify';
+import * as Clipboard from 'expo-clipboard';
 
 interface PlayerDashboardProps {
   playerId: string | null;
@@ -159,16 +161,14 @@ export default function PlayerDashboard({ playerId, navigation, showLineupWidget
   const progressPct = Math.min(100, (xpInCurrentLevel / 1000) * 100);
 
   const referralUrl = player?.referral_code
-    ? `https://thryvyng.com/support/${player.referral_code}`
+    ? `https://thryvyng.com/support/${slugify(`${player.first_name}-${player.last_name}`)}/${player.referral_code}`
     : '';
 
   const handleShareReferral = async () => {
-    if (!referralUrl) return;
+    if (!referralUrl || !player) return;
     try {
       await Share.share({
-        message: `Support our team! ${referralUrl}`,
-        url: referralUrl,
-        title: 'Share Thryvyng',
+        message: `Hey! Support ${player.first_name} and ${player.teams?.name || 'the team'} by shopping through Thryvyng. Every purchase helps fund our season. Thank you!\n\nTap here: ${referralUrl}`,
       });
     } catch (err: any) {
       if (err.message !== 'User did not share') {
@@ -180,12 +180,16 @@ export default function PlayerDashboard({ playerId, navigation, showLineupWidget
   const handleCopyLink = async () => {
     if (!referralUrl) return;
     try {
-      await Share.share({
-        message: referralUrl,
-        title: 'Copy Link',
-      });
-    } catch (err: any) {
-      Alert.alert('Link', referralUrl);
+      await Clipboard.setStringAsync(referralUrl);
+      Alert.alert('Copied!', 'Referral link copied to clipboard.');
+    } catch {
+      try {
+        await Share.share({
+          message: referralUrl,
+        });
+      } catch (err: any) {
+        Alert.alert('Link', referralUrl);
+      }
     }
   };
 

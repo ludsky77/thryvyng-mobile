@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,12 +9,12 @@ import {
   Image,
   Alert,
   RefreshControl,
-  ToastAndroid,
-  Platform,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { WebView, type WebViewNavigation } from 'react-native-webview';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -94,14 +94,6 @@ function getInitials(name: string) {
     .join('')
     .toUpperCase()
     .slice(0, 2);
-}
-
-function showToast(msg: string) {
-  if (Platform.OS === 'android') {
-    ToastAndroid.show(msg, ToastAndroid.SHORT);
-  } else {
-    Alert.alert('', msg);
-  }
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -279,9 +271,11 @@ function SavedCardRow({
           <Text style={styles.cardActionText}>Set Default</Text>
         </TouchableOpacity>
       )}
-      <TouchableOpacity onPress={() => onRemove(card.id)}>
-        <Ionicons name="trash-outline" size={18} color="#ef4444" />
-      </TouchableOpacity>
+      {!card.is_default && (
+        <TouchableOpacity onPress={() => onRemove(card.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Ionicons name="trash-outline" size={18} color="#ef4444" />
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -298,6 +292,12 @@ export default function ParentPaymentsScreen() {
   const [installments, setInstallments] = useState<PaymentInstallment[]>([]);
   const [cards, setCards] = useState<PaymentMethod[]>([]);
   const [selectedProgram, setSelectedProgram] = useState<string>('all');
+
+  const [cardSetupWebViewVisible, setCardSetupWebViewVisible] = useState(false);
+  const [cardSetupUrl, setCardSetupUrl] = useState<string | null>(null);
+  const [cardSetupConfirming, setCardSetupConfirming] = useState(false);
+  const cardSetupHandledRef = useRef(false);
+  const cardSetupSessionIdRef = useRef<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
@@ -416,11 +416,13 @@ export default function ParentPaymentsScreen() {
     if (error) {
       setCards(prev);
       Alert.alert('Error', 'Could not update default card.');
+    } else {
+      await fetchData();
     }
   };
 
   const handleRemoveCard = (cardId: string) => {
-    Alert.alert('Remove Card', 'Remove this payment method?', [
+    Alert.alert('Remove this card?', '', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
@@ -431,13 +433,109 @@ export default function ParentPaymentsScreen() {
             .update({ is_active: false })
             .eq('id', cardId);
           if (!error) {
-            setCards((c) => c.filter((m) => m.id !== cardId));
+            await fetchData();
           } else {
             Alert.alert('Error', 'Could not remove card.');
           }
         },
       },
     ]);
+  };
+
+  const closeCardSetupWebView = useCallback(() => {
+    setCardSetupWebViewVisible(false);
+    setCardSetupUrl(null);
+    cardSetupSessionIdRef.current = null;
+  }, []);
+
+  const dismissCardSetupWebView = useCallback(() => {
+    closeCardSetupWebView();
+    cardSetupHandledRef.current = false;
+  }, [closeCardSetupWebView]);
+
+  const handleConfirmCardSetup = useCallback(
+    async (sessionId: string) => {
+      if (!sessionId) return;
+      setCardSetupConfirming(true);
+      closeCardSetupWebView();
+      try {
+        const { data: confirmData, error } = await supabase.functions.invoke('confirm-card-setup', {
+          body: { session_id: sessionId, set_as_default: true },
+        });
+        if (error || !confirmData?.success) {
+          Alert.alert('Error', 'Failed to save card. Please try again.');
+          cardSetupHandledRef.current = false;
+          return;
+        }
+        const brand = confirmData.card?.brand ?? 'Card';
+        const last4 = confirmData.card?.last4 ?? '****';
+        Alert.alert(
+          'Card Added',
+          `${brand} ending in ${last4} has been saved as your default payment method.`,
+        );
+        await fetchData();
+      } catch {
+        Alert.alert('Error', 'Failed to save card. Please try again.');
+        cardSetupHandledRef.current = false;
+      } finally {
+        setCardSetupConfirming(false);
+      }
+    },
+    [closeCardSetupWebView, fetchData],
+  );
+
+  const handleWebViewNavigationStateChange = useCallback(
+    (navState: WebViewNavigation) => {
+      const url = navState.url || '';
+      if (url.includes('card-setup-cancel')) {
+        dismissCardSetupWebView();
+        return;
+      }
+      if (!url.includes('card-setup-success')) return;
+      if (cardSetupHandledRef.current) return;
+
+      let sessionIdFromUrl = '';
+      try {
+        const u = new URL(url);
+        sessionIdFromUrl = u.searchParams.get('session_id') || '';
+      } catch {
+        /* ignore */
+      }
+      const sessionId = sessionIdFromUrl || cardSetupSessionIdRef.current || '';
+      if (!sessionId) return;
+
+      cardSetupHandledRef.current = true;
+      void handleConfirmCardSetup(sessionId);
+    },
+    [dismissCardSetupWebView, handleConfirmCardSetup],
+  );
+
+  const handleAddCard = async () => {
+    if (!user?.id) return;
+    try {
+      const { data, error } = await supabase.functions.invoke('create-card-setup-session', {
+        body: {
+          success_url: 'https://thryvyng.com/card-setup-success',
+          cancel_url: 'https://thryvyng.com/card-setup-cancel',
+        },
+      });
+      if (error) {
+        Alert.alert('Error', error.message || 'Could not start card setup.');
+        return;
+      }
+      const url = (data as { url?: string })?.url;
+      const sessionId = (data as { session_id?: string })?.session_id;
+      if (!url || !sessionId) {
+        Alert.alert('Error', 'Could not start card setup.');
+        return;
+      }
+      cardSetupHandledRef.current = false;
+      cardSetupSessionIdRef.current = sessionId;
+      setCardSetupUrl(url);
+      setCardSetupWebViewVisible(true);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Could not start card setup.');
+    }
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -592,10 +690,11 @@ export default function ParentPaymentsScreen() {
           )}
           <TouchableOpacity
             style={styles.addCardBtn}
-            onPress={() => showToast('Coming soon — add a card on web')}
+            onPress={handleAddCard}
+            activeOpacity={0.85}
           >
-            <Ionicons name="add-circle-outline" size={18} color="#8b5cf6" />
-            <Text style={styles.addCardText}>Add New Card</Text>
+            <Ionicons name="add-circle-outline" size={20} color="#8b5cf6" />
+            <Text style={styles.addCardText}>Add Card</Text>
           </TouchableOpacity>
         </View>
 
@@ -637,6 +736,42 @@ export default function ParentPaymentsScreen() {
           )}
         </View>
       </ScrollView>
+
+      {cardSetupConfirming && (
+        <View style={styles.cardSetupConfirmingOverlay} pointerEvents="auto">
+          <ActivityIndicator size="large" color="#8b5cf6" />
+        </View>
+      )}
+
+      <Modal
+        visible={cardSetupWebViewVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={dismissCardSetupWebView}
+      >
+        <SafeAreaView style={styles.cardSetupModalSafe} edges={['top']}>
+          <View style={styles.cardSetupModalHeader}>
+            <TouchableOpacity onPress={dismissCardSetupWebView} style={styles.cardSetupModalClose} hitSlop={12}>
+              <Ionicons name="close" size={26} color="#fff" />
+            </TouchableOpacity>
+            <Text style={styles.cardSetupModalTitle}>Add payment method</Text>
+            <View style={{ width: 40 }} />
+          </View>
+          {cardSetupUrl ? (
+            <WebView
+              source={{ uri: cardSetupUrl }}
+              style={styles.cardSetupWebView}
+              onNavigationStateChange={handleWebViewNavigationStateChange}
+              startInLoadingState
+              renderLoading={() => (
+                <View style={styles.cardSetupWebViewLoading}>
+                  <ActivityIndicator size="large" color="#8b5cf6" />
+                </View>
+              )}
+            />
+          ) : null}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -843,6 +978,37 @@ const styles = StyleSheet.create({
     borderColor: '#8b5cf655',
   },
   addCardText: { color: '#8b5cf6', fontSize: 14, fontWeight: '600' },
+
+  cardSetupConfirmingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 50,
+  },
+  cardSetupModalSafe: { flex: 1, backgroundColor: '#0a0a0a' },
+  cardSetupModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#222',
+  },
+  cardSetupModalClose: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  cardSetupModalTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 16, fontWeight: '600' },
+  cardSetupWebView: { flex: 1, backgroundColor: '#0a0a0a' },
+  cardSetupWebViewLoading: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#0a0a0a',
+  },
 
   // Payment history row
   historyRow: {

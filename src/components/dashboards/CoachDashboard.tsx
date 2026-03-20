@@ -17,6 +17,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { LiveGamesWidget } from '../game-stats/LiveGamesWidget';
 import QuickActionsCard from '../QuickActionsCard';
 import PendingSurveyBanner from '../surveys/PendingSurveyBanner';
+import { slugify } from '../../utils/slugify';
 
 interface CoachDashboardProps {
   teamId: string | null;
@@ -238,7 +239,7 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
   }, [fetchData]);
 
   const inviteUrl = team?.invitation_code
-    ? `https://thryvyng.com/join-team/${team.invitation_code}`
+    ? `https://thryvyng.com/join-team/${slugify(team.name || '')}/${team.invitation_code}`
     : 'https://thryvyng.com/join';
 
   const handleShareInvite = async () => {

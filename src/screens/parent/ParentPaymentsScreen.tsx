@@ -10,13 +10,27 @@ import {
   Alert,
   RefreshControl,
   Modal,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { WebView, type WebViewNavigation } from 'react-native-webview';
+import Constants from 'expo-constants';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+
+// Avoid loading native WebView in Expo Go (module unavailable — crashes on render).
+let WebView: React.ComponentType<Record<string, unknown>> | null = null;
+if (Constants.executionEnvironment !== 'storeClient') {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    WebView = require('react-native-webview').WebView;
+  } catch {
+    // WebView not available (e.g. missing native build)
+  }
+}
+
+type CardWebViewNavigation = { url?: string };
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -50,10 +64,10 @@ interface Registration {
 interface PaymentMethod {
   id: string;
   parent_id: string;
-  card_brand: string;
-  last4: string;
-  exp_month: number;
-  exp_year: number;
+  card_brand: string | null;
+  card_last4: string | null;
+  card_exp_month: number | null;
+  card_exp_year: number | null;
   is_default: boolean;
   is_active: boolean;
 }
@@ -94,6 +108,11 @@ function getInitials(name: string) {
     .join('')
     .toUpperCase()
     .slice(0, 2);
+}
+
+function formatCardBrand(brand: string | null | undefined): string {
+  if (!brand) return '';
+  return brand.charAt(0).toUpperCase() + brand.slice(1);
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -245,17 +264,18 @@ function SavedCardRow({
 }: {
   card: PaymentMethod;
   onSetDefault: (id: string) => void;
-  onRemove: (id: string) => void;
+  onRemove: (card: PaymentMethod) => void;
 }) {
   return (
     <View style={styles.cardRow}>
       <Ionicons name="card-outline" size={22} color="#8b5cf6" />
       <View style={styles.cardInfo}>
         <Text style={styles.cardLast4}>
-          {card.card_brand ? `${card.card_brand} ` : ''}•••• {card.last4}
+          {formatCardBrand(card.card_brand)}
+          {card.card_brand ? ' ' : ''}•••• {card.card_last4 ?? '—'}
         </Text>
         <Text style={styles.cardExpiry}>
-          Exp {card.exp_month}/{card.exp_year}
+          Exp {card.card_exp_month ?? '—'}/{card.card_exp_year ?? '—'}
         </Text>
       </View>
       {card.is_default && (
@@ -272,7 +292,7 @@ function SavedCardRow({
         </TouchableOpacity>
       )}
       {!card.is_default && (
-        <TouchableOpacity onPress={() => onRemove(card.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <TouchableOpacity onPress={() => onRemove(card)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Ionicons name="trash-outline" size={18} color="#ef4444" />
         </TouchableOpacity>
       )}
@@ -320,7 +340,9 @@ export default function ParentPaymentsScreen() {
 
         supabase
           .from('parent_payment_methods')
-          .select('*')
+          .select(
+            'id, parent_id, card_brand, card_last4, card_exp_month, card_exp_year, is_default, is_active',
+          )
           .eq('parent_id', user.id)
           .eq('is_active', true),
       ]);
@@ -403,6 +425,7 @@ export default function ParentPaymentsScreen() {
   // ── Card actions ──────────────────────────────────────────────────────────
 
   const handleSetDefault = async (cardId: string) => {
+    const cardMeta = cards.find((c) => c.id === cardId);
     const prev = [...cards];
     setCards((c) => c.map((m) => ({ ...m, is_default: m.id === cardId })));
     await supabase
@@ -418,28 +441,40 @@ export default function ParentPaymentsScreen() {
       Alert.alert('Error', 'Could not update default card.');
     } else {
       await fetchData();
+      if (cardMeta) {
+        Alert.alert(
+          'Default Updated',
+          `${formatCardBrand(cardMeta.card_brand)} •••• ${cardMeta.card_last4 ?? '—'} is now your default payment method.`,
+        );
+      }
     }
   };
 
-  const handleRemoveCard = (cardId: string) => {
-    Alert.alert('Remove this card?', '', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: async () => {
-          const { error } = await supabase
-            .from('parent_payment_methods')
-            .update({ is_active: false })
-            .eq('id', cardId);
-          if (!error) {
-            await fetchData();
-          } else {
-            Alert.alert('Error', 'Could not remove card.');
-          }
-        },
-      },
-    ]);
+  const removeCard = async (card: PaymentMethod) => {
+    const { error } = await supabase
+      .from('parent_payment_methods')
+      .update({ is_active: false })
+      .eq('id', card.id);
+    if (!error) {
+      await fetchData();
+      Alert.alert(
+        'Card Removed',
+        `${formatCardBrand(card.card_brand)} •••• ${card.card_last4 ?? '—'} has been removed.`,
+      );
+    } else {
+      Alert.alert('Error', 'Could not remove card.');
+    }
+  };
+
+  const handleRemoveCard = (card: PaymentMethod) => {
+    Alert.alert(
+      'Remove Card',
+      `Remove ${formatCardBrand(card.card_brand)} •••• ${card.card_last4 ?? '—'}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => void removeCard(card) },
+      ],
+    );
   };
 
   const closeCardSetupWebView = useCallback(() => {
@@ -485,7 +520,7 @@ export default function ParentPaymentsScreen() {
   );
 
   const handleWebViewNavigationStateChange = useCallback(
-    (navState: WebViewNavigation) => {
+    (navState: CardWebViewNavigation) => {
       const url = navState.url || '';
       if (url.includes('card-setup-cancel')) {
         dismissCardSetupWebView();
@@ -529,6 +564,20 @@ export default function ParentPaymentsScreen() {
         Alert.alert('Error', 'Could not start card setup.');
         return;
       }
+      if (!WebView) {
+        try {
+          const supported = await Linking.canOpenURL(url);
+          if (supported) {
+            await Linking.openURL(url);
+          } else {
+            Alert.alert('Error', 'Unable to open the card setup page.');
+          }
+        } catch (openErr: any) {
+          Alert.alert('Error', openErr?.message || 'Unable to open card setup.');
+        }
+        return;
+      }
+
       cardSetupHandledRef.current = false;
       cardSetupSessionIdRef.current = sessionId;
       setCardSetupUrl(url);
@@ -744,7 +793,7 @@ export default function ParentPaymentsScreen() {
       )}
 
       <Modal
-        visible={cardSetupWebViewVisible}
+        visible={cardSetupWebViewVisible && !!WebView}
         animationType="slide"
         presentationStyle="pageSheet"
         onRequestClose={dismissCardSetupWebView}
@@ -757,7 +806,7 @@ export default function ParentPaymentsScreen() {
             <Text style={styles.cardSetupModalTitle}>Add payment method</Text>
             <View style={{ width: 40 }} />
           </View>
-          {cardSetupUrl ? (
+          {WebView && cardSetupUrl ? (
             <WebView
               source={{ uri: cardSetupUrl }}
               style={styles.cardSetupWebView}

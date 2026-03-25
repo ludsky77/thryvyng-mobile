@@ -78,7 +78,6 @@ export default function LoginScreen() {
     setLoading(true);
     // #region agent log
     const _log1 = { location: 'LoginScreen.tsx:handleLogin:beforeSignIn', message: 'Before signInWithPassword', data: { emailLen: trimmedEmail.length, passwordLen: password.length }, hypothesisId: 'H1' };
-    console.log('[DEBUG]', JSON.stringify(_log1));
     fetch('http://127.0.0.1:7242/ingest/d8dadf68-0309-483d-b3ac-248851d8ac12',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({..._log1,timestamp:Date.now()})}).catch(()=>{});
     // #endregion
 
@@ -89,7 +88,6 @@ export default function LoginScreen() {
 
     // #region agent log
     const _log2 = { location: 'LoginScreen.tsx:handleLogin:afterSignIn', message: 'After signInWithPassword', data: { hasError: !!signInError, errorMessage: signInError?.message, hasSession: !!signInData?.session, hasUser: !!signInData?.user?.id }, hypothesisId: 'H1' };
-    console.log('[DEBUG]', JSON.stringify(_log2));
     fetch('http://127.0.0.1:7242/ingest/d8dadf68-0309-483d-b3ac-248851d8ac12',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({..._log2,timestamp:Date.now()})}).catch(()=>{});
     // #endregion
 
@@ -102,7 +100,6 @@ export default function LoginScreen() {
 
     // #region agent log
     const _log3 = { location: 'LoginScreen.tsx:handleLogin:successPath', message: 'Login success path, no error', data: { userId: signInData?.user?.id }, hypothesisId: 'H4' };
-    console.log('[DEBUG]', JSON.stringify(_log3));
     fetch('http://127.0.0.1:7242/ingest/d8dadf68-0309-483d-b3ac-248851d8ac12',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({..._log3,timestamp:Date.now()})}).catch(()=>{});
     // #endregion
 

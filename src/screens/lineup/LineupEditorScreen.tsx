@@ -546,17 +546,8 @@ export default function LineupEditorScreen() {
         });
       });
 
-      console.log('SAVE DEBUG - lineupId:', lineupId);
-      console.log('SAVE DEBUG - formation_template:', lineup?.formation_template);
-      console.log('SAVE DEBUG - assignments count:', assignments.size);
-      console.log('SAVE DEBUG - inserts count:', inserts.length);
-      console.log('SAVE DEBUG - first insert:', JSON.stringify(inserts[0]));
-      console.log('SAVE DEBUG - update result:', updateResult.error);
-      console.log('SAVE DEBUG - delete result:', deleteResult.error);
-
       if (inserts.length > 0) {
-        const insertResult = await supabase.from('lineup_players').insert(inserts);
-        console.log('SAVE DEBUG - insert result:', insertResult.error, 'inserted:', insertResult.data?.length);
+        await supabase.from('lineup_players').insert(inserts);
       }
 
       setLineup((p) => (p ? { ...p, status, name: name.trim(), notes, jersey_config: { ...jerseyConfig, visual: visualConfig } } : null));

@@ -7,6 +7,10 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
+  Share,
 } from 'react-native';
 import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -27,6 +31,8 @@ import {
 import { useEmailAvailability } from '../../hooks/useEmailAvailability';
 import { IdentityVerificationModal } from '../../components/modals';
 import type { RootStackParamList } from '../../navigation/linking';
+import * as Clipboard from 'expo-clipboard';
+import { slugify } from '../../utils/slugify';
 
 type JoinTeamRouteProp = RouteProp<RootStackParamList, 'JoinTeam'>;
 type JoinTeamNavigationProp = NativeStackNavigationProp<RootStackParamList, 'JoinTeam'>;
@@ -369,6 +375,26 @@ export const JoinTeamScreen: React.FC = () => {
         }
       }
 
+      // For existing users, get their name from profile
+      let existingParentFirstName = parentFirstName;
+      let existingParentLastName = parentLastName;
+      if (registrationMode === 'existing' && userId) {
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', userId)
+            .single();
+          if (profile?.full_name) {
+            const nameParts = profile.full_name.split(' ');
+            existingParentFirstName = nameParts[0] || '';
+            existingParentLastName = nameParts.slice(1).join(' ') || '';
+          }
+        } catch (err) {
+          if (__DEV__) console.log('[JoinTeam] Profile fetch for parent name failed:', err);
+        }
+      }
+
       if (__DEV__) console.log('[JoinTeam] Creating player for user:', userId);
 
       let playerData: any;
@@ -379,9 +405,13 @@ export const JoinTeamScreen: React.FC = () => {
           .update({
             parent_email: userEmail,
             parent_first_name:
-              registrationMode === 'new' ? parentFirstName.trim() : undefined,
+              registrationMode === 'new'
+                ? parentFirstName.trim()
+                : existingParentFirstName,
             parent_last_name:
-              registrationMode === 'new' ? parentLastName.trim() : undefined,
+              registrationMode === 'new'
+                ? parentLastName.trim()
+                : existingParentLastName,
             parent_phone:
               registrationMode === 'new'
                 ? parentPhone.replace(/\D/g, '')
@@ -413,9 +443,13 @@ export const JoinTeamScreen: React.FC = () => {
             jersey_number: playerJersey || null,
             parent_email: userEmail,
             parent_first_name:
-              registrationMode === 'new' ? parentFirstName.trim() : null,
+              registrationMode === 'new'
+                ? parentFirstName.trim()
+                : existingParentFirstName,
             parent_last_name:
-              registrationMode === 'new' ? parentLastName.trim() : null,
+              registrationMode === 'new'
+                ? parentLastName.trim()
+                : existingParentLastName,
             parent_phone:
               registrationMode === 'new'
                 ? parentPhone.replace(/\D/g, '')
@@ -445,7 +479,6 @@ export const JoinTeamScreen: React.FC = () => {
         user_id: userId,
         role: 'parent',
         entity_id: playerData.id,
-        entity_type: 'player',
       });
 
       if (roleError) {
@@ -485,10 +518,14 @@ export const JoinTeamScreen: React.FC = () => {
       clearRegistrationData();
 
       if (__DEV__) console.log('[JoinTeam] Registration complete!');
-    } catch (err) {
-      if (__DEV__) console.error('[JoinTeam] Unexpected error:', err);
+    } catch (error: any) {
+      console.error('[JoinTeam] Registration error:', error);
+      Alert.alert(
+        'Registration Failed',
+        error?.message || 'An unexpected error occurred. Please try again.'
+      );
       setFormErrors({
-        submit: 'An unexpected error occurred. Please try again.',
+        submit: error?.message || 'An unexpected error occurred.',
       });
     } finally {
       setIsSubmitting(false);
@@ -1109,6 +1146,18 @@ export const JoinTeamScreen: React.FC = () => {
 
   // SUCCESS SCREEN
   if (registrationComplete && createdPlayer) {
+    const referralCode = createdPlayer.referral_code;
+    const nameSlug = referralCode
+      ? slugify(`${createdPlayer.first_name}-${createdPlayer.last_name}`)
+      : '';
+    const supportLink = referralCode
+      ? nameSlug
+        ? `https://thryvyng.com/support/${nameSlug}/${referralCode}`
+        : `https://thryvyng.com/support/${referralCode}`
+      : '';
+    const teamName = teamInfo?.name || 'the team';
+    const shareMessage = `Support ${createdPlayer.first_name} and ${teamName} by shopping through Thryvyng! ${supportLink}`;
+
     return (
       <ScrollView
         style={styles.container}
@@ -1144,17 +1193,48 @@ export const JoinTeamScreen: React.FC = () => {
             </View>
           </View>
 
-          {createdPlayer.referral_code && (
+          {supportLink ? (
             <View style={styles.referralCard}>
-              <Text style={styles.referralLabel}>Your Fundraising Code</Text>
-              <Text style={styles.referralCode}>
-                {createdPlayer.referral_code}
+              <Text style={styles.referralLabel}>Share & earn</Text>
+              <Text style={styles.referralLinkText} selectable>
+                {supportLink}
               </Text>
               <Text style={styles.referralHint}>
-                Share this code when purchasing courses to support your team!
+                Friends who shop through your link help fund {teamName}.
               </Text>
+              <View style={styles.referralActionsRow}>
+                <TouchableOpacity
+                  style={styles.referralCopyButton}
+                  onPress={async () => {
+                    try {
+                      await Clipboard.setStringAsync(supportLink);
+                      Alert.alert('Copied!', 'Link copied to clipboard.');
+                    } catch {
+                      Alert.alert('Copy', supportLink);
+                    }
+                  }}
+                >
+                  <Ionicons name="copy-outline" size={18} color="#93C5FD" />
+                  <Text style={styles.referralCopyButtonText}>Copy Link</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.referralShareButton}
+                  onPress={async () => {
+                    try {
+                      await Share.share({ message: shareMessage });
+                    } catch (err: any) {
+                      if (err?.message !== 'User did not share') {
+                        Alert.alert('Share', shareMessage);
+                      }
+                    }
+                  }}
+                >
+                  <Ionicons name="share-outline" size={18} color="#FFFFFF" />
+                  <Text style={styles.referralShareButtonText}>Share</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          )}
+          ) : null}
 
           <View style={styles.nextStepsCard}>
             <Text style={styles.nextStepsTitle}>What's Next?</Text>
@@ -1215,7 +1295,12 @@ export const JoinTeamScreen: React.FC = () => {
 
   // Valid team - show multi-step flow
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={90}
+    >
+      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       {step !== 'team-info' && (
         <TouchableOpacity style={styles.backNav} onPress={handleBack}>
           <Ionicons name="arrow-back" size={24} color="#9CA3AF" />
@@ -2007,6 +2092,7 @@ export const JoinTeamScreen: React.FC = () => {
                 onChangeText={setPlayerFirstName}
                 placeholder="First name"
                 autoCapitalize="words"
+                error={formErrors.playerFirstName}
               />
               <FormInput
                 label="Player Last Name"
@@ -2014,6 +2100,7 @@ export const JoinTeamScreen: React.FC = () => {
                 onChangeText={setPlayerLastName}
                 placeholder="Last name"
                 autoCapitalize="words"
+                error={formErrors.playerLastName}
               />
               <FormInput
                 label="Date of Birth"
@@ -2021,6 +2108,7 @@ export const JoinTeamScreen: React.FC = () => {
                 onChangeText={setPlayerDOB}
                 placeholder="YYYY-MM-DD"
                 keyboardType="numbers-and-punctuation"
+                error={formErrors.playerDOB}
               />
               <FormInput
                 label="Jersey Number (Optional)"
@@ -2138,6 +2226,13 @@ export const JoinTeamScreen: React.FC = () => {
         </>
       )}
 
+      {step === 'player-select' && formErrors.submit && (
+        <View style={styles.submitErrorContainer}>
+          <Ionicons name="alert-circle" size={20} color="#EF4444" />
+          <Text style={styles.submitErrorText}>{formErrors.submit}</Text>
+        </View>
+      )}
+
       {step !== 'role-select' && (
         <TouchableOpacity
           style={[
@@ -2199,7 +2294,8 @@ export const JoinTeamScreen: React.FC = () => {
         onVerified={handleStaffVerified}
         teamName={teamInfo?.name}
       />
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -2734,17 +2830,58 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom: 8,
   },
-  referralCode: {
-    fontSize: 28,
-    fontWeight: 'bold',
+  referralLinkText: {
+    fontSize: 14,
+    fontWeight: '500',
     color: '#FFFFFF',
-    letterSpacing: 2,
-    marginBottom: 8,
+    textAlign: 'center',
+    marginBottom: 10,
+    lineHeight: 20,
   },
   referralHint: {
     fontSize: 13,
     color: '#93C5FD',
     textAlign: 'center',
+    marginBottom: 16,
+  },
+  referralActionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  referralCopyButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#3B82F6',
+    backgroundColor: 'transparent',
+  },
+  referralCopyButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#93C5FD',
+  },
+  referralShareButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: '#3B82F6',
+  },
+  referralShareButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   nextStepsCard: {
     backgroundColor: '#1F2937',

@@ -134,19 +134,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const refreshRoles = async () => {
-    if (!user) return;
-    const roles = await fetchUserRoles(user.id);
-    setAllRoles(roles);
-
-    // Auto-select if user has exactly one role
-    if (roles.length === 1 && !currentRole) {
-      setCurrentRole(roles[0]);
-    } else {
-      const savedRoleId = await AsyncStorage.getItem('lastRoleId') ?? await AsyncStorage.getItem('currentRoleId');
-      const role = savedRoleId
-        ? roles.find((r) => r.id === savedRoleId) || roles[0]
-        : roles[0];
-      setCurrentRole(role);
+    if (session?.user) {
+      const roles = await fetchUserRoles(session.user.id);
+      setAllRoles(roles);
+      if (roles.length === 1) {
+        setCurrentRole(roles[0]);
+      } else if (roles.length > 1 && !currentRole) {
+        setCurrentRole(roles[0]);
+      }
     }
   };
 

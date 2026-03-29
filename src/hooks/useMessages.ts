@@ -219,14 +219,14 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
       const att = options.attachment;
       try {
         const response = await fetch(att.uri);
-        const blob = await response.blob();
+        const arrayBuffer = await response.arrayBuffer();
         const safeName = att.name.replace(/[^a-zA-Z0-9.-]/g, '_');
         const filePath = `${channelId}/${user.id}/${Date.now()}_${safeName}`;
 
         const { error: uploadError } = await supabase.storage
           .from('chat-attachments')
-          .upload(filePath, blob, {
-            contentType: att.mimeType || undefined,
+          .upload(filePath, arrayBuffer, {
+            contentType: att.mimeType || 'image/jpeg',
             upsert: false,
           });
 

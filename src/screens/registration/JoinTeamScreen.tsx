@@ -67,7 +67,7 @@ const generateReferralCode = (): string => {
 export const JoinTeamScreen: React.FC = () => {
   const route = useRoute<JoinTeamRouteProp>();
   const navigation = useNavigation<JoinTeamNavigationProp>();
-  const { user } = useAuth();
+  const { user, refreshRoles } = useAuth();
   const { setRegistrationData, clearRegistrationData } = useRegistration();
 
   const code = route.params?.code ?? '';
@@ -514,6 +514,7 @@ export const JoinTeamScreen: React.FC = () => {
       }
 
       setCreatedPlayer(playerData);
+      await refreshRoles();
       setRegistrationComplete(true);
       clearRegistrationData();
 

@@ -373,18 +373,18 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
 
   const handleDeleteMessage = async (messageId: string) => {
     try {
-      const { error } = await supabase
-        .from('comm_messages')
-        .update({ is_deleted: true })
-        .eq('id', messageId);
+      const { data, error } = await supabase.rpc('soft_delete_message', {
+        p_message_id: messageId,
+      });
 
-      if (error) {
+      if (error || data === false) {
         Alert.alert('Error', 'Failed to delete message');
         return;
       }
+
       await refetch();
     } catch (err) {
-      console.error('Error deleting message:', err);
+      console.error('[DELETE] Exception:', err);
       Alert.alert('Error', 'Failed to delete message');
     }
   };

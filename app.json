@@ -21,7 +21,9 @@
         "applinks:www.thryvyng.com"
       ],
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Thryvyng needs access to your camera to take player profile photos and team photos for your roster.",
+        "NSPhotoLibraryUsageDescription": "Thryvyng needs access to your photo library to upload player profile photos, team logos, and share images in team chat."
       }
     },
     "android": {

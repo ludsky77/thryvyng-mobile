@@ -9,10 +9,12 @@ import {
   Linking,
   Alert,
   Switch,
+  ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 const SHOW_LINEUP_WIDGET_KEY = 'show_lineup_widget';
 
@@ -24,6 +26,7 @@ const SUPPORT_URL = 'mailto:support@thryvyng.com';
 export default function ProfileScreen({ navigation }: any) {
   const { user, profile, currentRole, signOut } = useAuth();
   const [showLineupWidget, setShowLineupWidget] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     AsyncStorage.getItem(SHOW_LINEUP_WIDGET_KEY).then((val) => {
@@ -44,6 +47,49 @@ export default function ProfileScreen({ navigation }: any) {
       console.error('Sign out error:', error);
       Alert.alert('Error', 'Failed to sign out');
     }
+  };
+
+  const handleDeleteAccountConfirmed = async () => {
+    try {
+      setIsDeleting(true);
+
+      const { data, error } = await supabase.functions.invoke('delete-account');
+
+      if (error) {
+        Alert.alert('Error', 'Failed to delete account. Please try again or contact support.');
+        return;
+      }
+
+      await supabase.auth.signOut();
+      const rootNav = navigation.getParent?.()?.getParent?.();
+      if (rootNav?.reset) {
+        rootNav.reset({ index: 0, routes: [{ name: 'Welcome' }] });
+      }
+    } catch (err) {
+      Alert.alert(
+        'Error',
+        'An unexpected error occurred. Please contact support at support@thryvyng.com'
+      );
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteAccountPress = () => {
+    Alert.alert(
+      'Delete account?',
+      'This will permanently delete your account. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void handleDeleteAccountConfirmed();
+          },
+        },
+      ]
+    );
   };
 
   const openUrl = (url: string) => {
@@ -197,6 +243,21 @@ export default function ProfileScreen({ navigation }: any) {
       {/* ── Bottom ── */}
       <Text style={styles.versionText}>Version 1.0.0</Text>
 
+      <TouchableOpacity
+        style={[styles.deleteAccountButton, isDeleting && styles.deleteAccountButtonDisabled]}
+        onPress={handleDeleteAccountPress}
+        disabled={isDeleting}
+      >
+        {isDeleting ? (
+          <ActivityIndicator size="small" color="#fecaca" />
+        ) : (
+          <Ionicons name="trash-outline" size={18} color="#fecaca" />
+        )}
+        <Text style={styles.deleteAccountText}>
+          {isDeleting ? 'Deleting…' : 'Delete Account'}
+        </Text>
+      </TouchableOpacity>
+
       <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
         <Ionicons name="log-out-outline" size={18} color="#fff" />
         <Text style={styles.signOutText}>Sign Out</Text>
@@ -337,6 +398,29 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 24,
     marginBottom: 8,
+  },
+
+  // Delete account
+  deleteAccountButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#7f1d1d',
+    marginHorizontal: 16,
+    marginTop: 8,
+    padding: 15,
+    borderRadius: 12,
+  },
+  deleteAccountButtonDisabled: {
+    opacity: 0.7,
+  },
+  deleteAccountText: {
+    color: '#fecaca',
+    fontSize: 16,
+    fontWeight: '600',
   },
 
   // Sign out

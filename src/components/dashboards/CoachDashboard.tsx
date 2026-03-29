@@ -26,6 +26,7 @@ interface CoachDashboardProps {
 interface Team {
   id: string;
   name: string;
+  age_group?: string | null;
   status: string | null;
   club_id: string | null;
   clubs?: { id: string; name: string; logo_url?: string | null } | null;
@@ -348,8 +349,15 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
             <Image source={{ uri: teamPhotoUrl }} style={styles.teamPhoto} />
           ) : (
             <View style={styles.teamPhotoPlaceholder}>
-              <Text style={styles.teamPhotoText}>
-                {team.name?.substring(0, 2).toUpperCase() ?? '??'}
+              <Text
+                style={styles.teamPhotoText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.45}
+              >
+                {(team.age_group && team.age_group.trim()) ||
+                  team.name?.charAt(0).toUpperCase() ||
+                  '?'}
               </Text>
             </View>
           )}
@@ -645,8 +653,11 @@ const styles = StyleSheet.create({
   },
   teamPhotoText: {
     color: '#fff',
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: '700',
+    textAlign: 'center',
+    width: '100%',
+    paddingHorizontal: 6,
   },
   approvedText: {
     color: '#fff',

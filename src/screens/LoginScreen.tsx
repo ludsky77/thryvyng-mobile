@@ -281,18 +281,30 @@ export default function LoginScreen() {
 
             {authMode === 'signin' ? (
               <>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Email"
-                  placeholderTextColor="#666"
-                  value={email}
-                  onChangeText={handleEmailChange}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="email-address"
-                  textContentType="emailAddress"
-                  autoComplete="email"
-                />
+                <View style={styles.emailFieldWrapper}>
+                  <TextInput
+                    style={[styles.input, styles.emailInputWithClear]}
+                    placeholder="Email"
+                    placeholderTextColor="#666"
+                    value={email}
+                    onChangeText={handleEmailChange}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="email-address"
+                    textContentType="emailAddress"
+                    autoComplete="email"
+                  />
+                  {email.length > 0 ? (
+                    <TouchableOpacity
+                      style={styles.emailClearButton}
+                      onPress={() => handleEmailChange('')}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      accessibilityLabel="Clear email"
+                    >
+                      <Ionicons name="close-circle" size={24} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
 
                 <View style={styles.passwordContainer}>
                   <TextInput
@@ -376,17 +388,30 @@ export default function LoginScreen() {
                 />
 
                 <Text style={styles.inputLabel}>Email</Text>
-                <TextInput
-                  style={styles.input}
-                  value={email}
-                  onChangeText={handleEmailChange}
-                  placeholder="you@example.com"
-                  placeholderTextColor="#6B7280"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  textContentType="emailAddress"
-                  autoComplete="email"
-                />
+                <View style={styles.emailFieldWrapper}>
+                  <TextInput
+                    style={[styles.input, styles.emailInputWithClear]}
+                    value={email}
+                    onChangeText={handleEmailChange}
+                    placeholder="you@example.com"
+                    placeholderTextColor="#6B7280"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    textContentType="emailAddress"
+                    autoComplete="email"
+                  />
+                  {email.length > 0 ? (
+                    <TouchableOpacity
+                      style={styles.emailClearButton}
+                      onPress={() => handleEmailChange('')}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      accessibilityLabel="Clear email"
+                    >
+                      <Ionicons name="close-circle" size={24} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
 
                 <Text style={styles.inputLabel}>Password</Text>
                 <TextInput
@@ -489,6 +514,24 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: '#3a3a5e',
+  },
+  emailFieldWrapper: {
+    position: 'relative',
+    marginBottom: 12,
+  },
+  emailInputWithClear: {
+    marginBottom: 0,
+    paddingRight: 44,
+  },
+  emailClearButton: {
+    position: 'absolute',
+    right: 12,
+    top: '50%',
+    marginTop: -12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   passwordContainer: {
     flexDirection: 'row',

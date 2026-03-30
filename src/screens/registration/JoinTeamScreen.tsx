@@ -11,7 +11,11 @@ import {
   Platform,
   Alert,
   Share,
+  TextInput,
 } from 'react-native';
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
 import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -64,6 +68,53 @@ const generateReferralCode = (): string => {
   return code;
 };
 
+const MIN_PLAYER_DOB = new Date(2005, 0, 1);
+
+function formatYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function parseYmdLocal(s: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s.trim());
+  if (!match) return null;
+  const y = Number(match[1]);
+  const mo = Number(match[2]) - 1;
+  const d = Number(match[3]);
+  const dt = new Date(y, mo, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo || dt.getDate() !== d) return null;
+  return dt;
+}
+
+function clampDate(d: Date, min: Date, max: Date): Date {
+  const t = d.getTime();
+  if (t < min.getTime()) return new Date(min);
+  if (t > max.getTime()) return new Date(max);
+  return d;
+}
+
+/** Team invite: digits-only, dashed XXX-XXX-XXX, and raw trimmed for DB lookup */
+function normalizeTeamInviteCandidates(inviteCode: string): string[] {
+  const trimmed = inviteCode.trim();
+  const digits = trimmed.replace(/\D/g, '').slice(0, 9);
+  let formatted = '';
+  if (digits.length <= 3) formatted = digits;
+  else if (digits.length <= 6)
+    formatted = `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  else formatted = `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 9)}`;
+  return [...new Set([trimmed, digits, formatted].filter((c) => c.length > 0))];
+}
+
+/** Auto-format team code as user types (max 9 digits + 2 dashes) */
+function formatTeamInviteInput(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 9);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 9)}`;
+}
+
 export const JoinTeamScreen: React.FC = () => {
   const route = useRoute<JoinTeamRouteProp>();
   const navigation = useNavigation<JoinTeamNavigationProp>();
@@ -79,6 +130,16 @@ export const JoinTeamScreen: React.FC = () => {
   const [screenState, setScreenState] = useState<ScreenState>('loading');
   const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [manualInviteCode, setManualInviteCode] = useState('');
+
+  const [playerDobPickerVisible, setPlayerDobPickerVisible] = useState(false);
+  const [playerDobPickerDate, setPlayerDobPickerDate] = useState(
+    () => new Date(2012, 5, 15)
+  );
+  const [claimDobPickerVisible, setClaimDobPickerVisible] = useState(false);
+  const [claimDobPickerDate, setClaimDobPickerDate] = useState(
+    () => new Date(2012, 5, 15)
+  );
 
   // Registration flow state
   const [step, setStep] = useState<
@@ -195,11 +256,22 @@ export const JoinTeamScreen: React.FC = () => {
 
   const validateInvitationCode = async (inviteCode: string) => {
     try {
+      setScreenState('loading');
+
       if (__DEV__) {
         console.log('[JoinTeam] Validating invitation code:', inviteCode);
       }
 
-      const { data: team, error } = await supabase
+      const candidates = normalizeTeamInviteCandidates(inviteCode);
+      if (candidates.length === 0) {
+        setScreenState('invalid');
+        setErrorMessage(
+          'This invitation link is not valid. Please check with your team manager.'
+        );
+        return;
+      }
+
+      const { data: teams, error } = await supabase
         .from('teams')
         .select(
           `
@@ -216,8 +288,10 @@ export const JoinTeamScreen: React.FC = () => {
           )
         `
         )
-        .eq('invitation_code', inviteCode)
-        .single();
+        .in('invitation_code', candidates)
+        .limit(1);
+
+      const team = teams?.[0];
 
       if (error || !team) {
         if (__DEV__) {
@@ -250,6 +324,10 @@ export const JoinTeamScreen: React.FC = () => {
         club: Array.isArray(team.club) ? team.club[0] : team.club,
       };
       setTeamInfo(teamInfo as TeamInfo);
+      setRegistrationData({
+        teamInviteCode: team.invitation_code,
+        activeFlow: 'join-team',
+      });
       setScreenState('valid');
 
       // Auto-select role if provided via deep link
@@ -1115,6 +1193,70 @@ export const JoinTeamScreen: React.FC = () => {
     }
   };
 
+  const openPlayerDobPicker = () => {
+    const maxDob = new Date();
+    const parsed = parseYmdLocal(playerDOB);
+    const initial = parsed
+      ? clampDate(parsed, MIN_PLAYER_DOB, maxDob)
+      : clampDate(new Date(2012, 5, 15), MIN_PLAYER_DOB, maxDob);
+    setPlayerDobPickerDate(initial);
+    setPlayerDobPickerVisible(true);
+  };
+
+  const onPlayerDobPickerChange = (event: DateTimePickerEvent, date?: Date) => {
+    if (Platform.OS === 'android') {
+      setPlayerDobPickerVisible(false);
+    }
+    if (event.type === 'dismissed') {
+      if (Platform.OS === 'ios') {
+        setPlayerDobPickerVisible(false);
+      }
+      return;
+    }
+    if (date) {
+      const maxDob = new Date();
+      const clamped = clampDate(date, MIN_PLAYER_DOB, maxDob);
+      const ymd = formatYmd(clamped);
+      setPlayerDOB(ymd);
+      setDobVerifyError('');
+      setFormErrors((prev) => ({ ...prev, playerDOB: '' }));
+      if (Platform.OS === 'ios') {
+        setPlayerDobPickerVisible(false);
+      }
+    }
+  };
+
+  const openClaimDobPicker = () => {
+    const maxDob = new Date();
+    const parsed = parseYmdLocal(playerClaimDob);
+    const initial = parsed
+      ? clampDate(parsed, MIN_PLAYER_DOB, maxDob)
+      : clampDate(new Date(2012, 5, 15), MIN_PLAYER_DOB, maxDob);
+    setClaimDobPickerDate(initial);
+    setClaimDobPickerVisible(true);
+  };
+
+  const onClaimDobPickerChange = (event: DateTimePickerEvent, date?: Date) => {
+    if (Platform.OS === 'android') {
+      setClaimDobPickerVisible(false);
+    }
+    if (event.type === 'dismissed') {
+      if (Platform.OS === 'ios') {
+        setClaimDobPickerVisible(false);
+      }
+      return;
+    }
+    if (date) {
+      const maxDob = new Date();
+      const clamped = clampDate(date, MIN_PLAYER_DOB, maxDob);
+      setPlayerClaimDob(formatYmd(clamped));
+      setPlayerClaimAgeError('');
+      if (Platform.OS === 'ios') {
+        setClaimDobPickerVisible(false);
+      }
+    }
+  };
+
   if (screenState === 'loading') {
     return (
       <View style={styles.centerContainer}>
@@ -1137,6 +1279,24 @@ export const JoinTeamScreen: React.FC = () => {
             {screenState === 'expired' ? 'Team Pending Approval' : 'Invalid Invitation'}
           </Text>
           <Text style={styles.errorMessage}>{errorMessage}</Text>
+          <Text style={styles.retryCodeLabel}>Team invitation code</Text>
+          <TextInput
+            style={styles.retryCodeInput}
+            value={manualInviteCode}
+            onChangeText={(t) => setManualInviteCode(formatTeamInviteInput(t))}
+            placeholder="e.g. 691-911-933"
+            placeholderTextColor="#6B7280"
+            keyboardType="number-pad"
+            maxLength={11}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <TouchableOpacity
+            style={styles.retryCodeButton}
+            onPress={() => validateInvitationCode(manualInviteCode)}
+          >
+            <Text style={styles.retryCodeButtonText}>Try this code</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
             <Text style={styles.backButtonText}>Go Back</Text>
           </TouchableOpacity>
@@ -1452,17 +1612,40 @@ export const JoinTeamScreen: React.FC = () => {
                   <Text style={styles.placeholderText}>Enter your date of birth to get started</Text>
 
                   <View style={{ width: '100%', marginTop: 8 }}>
-                    <FormInput
-                      label="Date of Birth"
-                      value={playerClaimDob}
-                      onChangeText={(text) => {
-                        setPlayerClaimDob(text);
-                        setPlayerClaimAgeError('');
-                      }}
-                      placeholder="YYYY-MM-DD"
-                      keyboardType="numbers-and-punctuation"
-                      error={playerClaimAgeError}
-                    />
+                    <View style={styles.dobPickerBlock}>
+                      <Text style={styles.dobPickerLabel}>Date of Birth</Text>
+                      <TouchableOpacity
+                        style={[
+                          styles.dobPickerField,
+                          playerClaimAgeError ? styles.dobPickerFieldError : null,
+                        ]}
+                        onPress={openClaimDobPicker}
+                        activeOpacity={0.8}
+                      >
+                        <Text
+                          style={
+                            playerClaimDob
+                              ? styles.dobPickerFieldText
+                              : styles.dobPickerPlaceholder
+                          }
+                        >
+                          {playerClaimDob || 'Select date of birth'}
+                        </Text>
+                      </TouchableOpacity>
+                      {playerClaimAgeError ? (
+                        <Text style={styles.dobPickerErrorText}>{playerClaimAgeError}</Text>
+                      ) : null}
+                    </View>
+                    {claimDobPickerVisible ? (
+                      <DateTimePicker
+                        value={claimDobPickerDate}
+                        mode="date"
+                        display="default"
+                        maximumDate={new Date()}
+                        minimumDate={MIN_PLAYER_DOB}
+                        onChange={onClaimDobPickerChange}
+                      />
+                    ) : null}
                   </View>
 
                   <TouchableOpacity
@@ -2072,14 +2255,38 @@ export const JoinTeamScreen: React.FC = () => {
                   <Text style={styles.dobVerifyLabel}>
                     Verify by entering your child's date of birth:
                   </Text>
-                  <FormInput
-                    label="Date of Birth"
-                    value={playerDOB}
-                    onChangeText={setPlayerDOB}
-                    placeholder="YYYY-MM-DD"
-                    keyboardType="numbers-and-punctuation"
-                    error={dobVerifyError}
-                  />
+                  <View style={styles.dobPickerBlock}>
+                    <Text style={styles.dobPickerLabel}>Date of Birth</Text>
+                    <TouchableOpacity
+                      style={[
+                        styles.dobPickerField,
+                        dobVerifyError ? styles.dobPickerFieldError : null,
+                      ]}
+                      onPress={openPlayerDobPicker}
+                      activeOpacity={0.8}
+                    >
+                      <Text
+                        style={
+                          playerDOB ? styles.dobPickerFieldText : styles.dobPickerPlaceholder
+                        }
+                      >
+                        {playerDOB || 'Select date of birth'}
+                      </Text>
+                    </TouchableOpacity>
+                    {dobVerifyError ? (
+                      <Text style={styles.dobPickerErrorText}>{dobVerifyError}</Text>
+                    ) : null}
+                  </View>
+                  {playerDobPickerVisible ? (
+                    <DateTimePicker
+                      value={playerDobPickerDate}
+                      mode="date"
+                      display="default"
+                      maximumDate={new Date()}
+                      minimumDate={MIN_PLAYER_DOB}
+                      onChange={onPlayerDobPickerChange}
+                    />
+                  ) : null}
                 </View>
               )}
             </View>
@@ -2103,14 +2310,38 @@ export const JoinTeamScreen: React.FC = () => {
                 autoCapitalize="words"
                 error={formErrors.playerLastName}
               />
-              <FormInput
-                label="Date of Birth"
-                value={playerDOB}
-                onChangeText={setPlayerDOB}
-                placeholder="YYYY-MM-DD"
-                keyboardType="numbers-and-punctuation"
-                error={formErrors.playerDOB}
-              />
+              <View style={styles.dobPickerBlock}>
+                <Text style={styles.dobPickerLabel}>Date of Birth</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.dobPickerField,
+                    formErrors.playerDOB ? styles.dobPickerFieldError : null,
+                  ]}
+                  onPress={openPlayerDobPicker}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={
+                      playerDOB ? styles.dobPickerFieldText : styles.dobPickerPlaceholder
+                    }
+                  >
+                    {playerDOB || 'Select date of birth'}
+                  </Text>
+                </TouchableOpacity>
+                {formErrors.playerDOB ? (
+                  <Text style={styles.dobPickerErrorText}>{formErrors.playerDOB}</Text>
+                ) : null}
+              </View>
+              {playerDobPickerVisible ? (
+                <DateTimePicker
+                  value={playerDobPickerDate}
+                  mode="date"
+                  display="default"
+                  maximumDate={new Date()}
+                  minimumDate={MIN_PLAYER_DOB}
+                  onChange={onPlayerDobPickerChange}
+                />
+              ) : null}
               <FormInput
                 label="Jersey Number (Optional)"
                 value={playerJersey}
@@ -2342,6 +2573,73 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 24,
     lineHeight: 22,
+  },
+  retryCodeLabel: {
+    alignSelf: 'stretch',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#E5E7EB',
+    marginBottom: 8,
+  },
+  retryCodeInput: {
+    alignSelf: 'stretch',
+    backgroundColor: '#1F2937',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#374151',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: '#FFFFFF',
+    marginBottom: 12,
+  },
+  retryCodeButton: {
+    alignSelf: 'stretch',
+    backgroundColor: '#8B5CF6',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  retryCodeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  dobPickerBlock: {
+    marginBottom: 16,
+  },
+  dobPickerLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#E5E7EB',
+    marginBottom: 8,
+  },
+  dobPickerField: {
+    backgroundColor: '#1F2937',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#374151',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    minHeight: 52,
+    justifyContent: 'center',
+  },
+  dobPickerFieldError: {
+    borderColor: '#EF4444',
+  },
+  dobPickerFieldText: {
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+  dobPickerPlaceholder: {
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  dobPickerErrorText: {
+    color: '#EF4444',
+    fontSize: 12,
+    marginTop: 4,
   },
   backButton: {
     backgroundColor: '#374151',

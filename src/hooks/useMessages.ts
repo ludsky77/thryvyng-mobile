@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { Message } from '../types';
@@ -218,8 +219,21 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
     if (options?.attachment && messageData) {
       const att = options.attachment;
       try {
-        const response = await fetch(att.uri);
-        const arrayBuffer = await response.arrayBuffer();
+        const base64 = await FileSystem.readAsStringAsync(att.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const byteString = globalThis.atob(base64);
+        const arrayBuffer = new ArrayBuffer(byteString.length);
+        const uint8Array = new Uint8Array(arrayBuffer);
+        for (let i = 0; i < byteString.length; i++) {
+          uint8Array[i] = byteString.charCodeAt(i);
+        }
+
+        if (arrayBuffer.byteLength === 0) {
+          console.warn('Attachment file is empty, skipping upload');
+          return true;
+        }
+
         const safeName = att.name.replace(/[^a-zA-Z0-9.-]/g, '_');
         const filePath = `${channelId}/${user.id}/${Date.now()}_${safeName}`;
 

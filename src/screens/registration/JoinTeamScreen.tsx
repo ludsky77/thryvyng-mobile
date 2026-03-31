@@ -118,7 +118,7 @@ function formatTeamInviteInput(raw: string): string {
 export const JoinTeamScreen: React.FC = () => {
   const route = useRoute<JoinTeamRouteProp>();
   const navigation = useNavigation<JoinTeamNavigationProp>();
-  const { user, refreshRoles } = useAuth();
+  const { user, session, refreshRoles } = useAuth();
   const { setRegistrationData, clearRegistrationData } = useRegistration();
 
   const code = route.params?.code ?? '';
@@ -592,7 +592,7 @@ export const JoinTeamScreen: React.FC = () => {
       }
 
       setCreatedPlayer(playerData);
-      await refreshRoles();
+      await refreshRoles(session?.user?.id || user?.id || userId);
       setRegistrationComplete(true);
       clearRegistrationData();
 

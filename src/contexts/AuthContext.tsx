@@ -25,7 +25,7 @@ export interface AuthContextType {
   loading: boolean;
   switchRole: (role: any) => Promise<void>;
   signOut: () => Promise<void>;
-  refreshRoles: () => Promise<void>;
+  refreshRoles: (overrideUserId?: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -133,15 +133,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return enrichedRoles;
   };
 
-  const refreshRoles = async () => {
-    if (session?.user) {
-      const roles = await fetchUserRoles(session.user.id);
-      setAllRoles(roles);
-      if (roles.length === 1) {
-        setCurrentRole(roles[0]);
-      } else if (roles.length > 1 && !currentRole) {
-        setCurrentRole(roles[0]);
-      }
+  const refreshRoles = async (overrideUserId?: string) => {
+    const userId = overrideUserId || session?.user?.id;
+    if (!userId) return;
+    const roles = await fetchUserRoles(userId);
+    setAllRoles(roles);
+    if (roles.length === 1) {
+      setCurrentRole(roles[0]);
+    } else if (roles.length > 0 && !currentRole) {
+      setCurrentRole(roles[0]);
     }
   };
 

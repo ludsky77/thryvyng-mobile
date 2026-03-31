@@ -70,7 +70,7 @@ const ROLES = [
 
 export const RegisterTeamScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
-  const { user, refreshRoles } = useAuth();
+  const { user, session, refreshRoles } = useAuth();
   const { setRegistrationData } = useRegistration();
 
   const [step, setStep] = useState<'team-info' | 'user-info'>('team-info');
@@ -399,7 +399,7 @@ export const RegisterTeamScreen: React.FC = () => {
       }
 
       setCreatedTeamName(teamName.trim());
-      await refreshRoles();
+      await refreshRoles(session?.user?.id || user?.id || userId);
       setRegistrationComplete(true);
 
       if (__DEV__) console.log('[RegisterTeam] Registration complete!');

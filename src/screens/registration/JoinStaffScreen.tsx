@@ -77,7 +77,7 @@ const ROLE_DISPLAY: Record<
 export const JoinStaffScreen: React.FC = () => {
   const route = useRoute<JoinStaffRouteProp>();
   const navigation = useNavigation<NavigationProp>();
-  const { user, refreshRoles } = useAuth();
+  const { user, session, refreshRoles } = useAuth();
   const { setRegistrationData, clearRegistrationData } = useRegistration();
 
   const { code } = route.params;
@@ -463,7 +463,7 @@ export const JoinStaffScreen: React.FC = () => {
       }
 
       // SUCCESS!
-      await refreshRoles();
+      await refreshRoles(session?.user?.id || user?.id || userId);
       setRegistrationComplete(true);
       clearRegistrationData();
 

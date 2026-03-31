@@ -19,7 +19,7 @@ interface CalendarSyncModalProps {
   onClose: () => void;
 }
 
-const EDGE_FUNCTION_URL = 'https://jgivhzemwidvyykruldq.supabase.co/functions/v1/calendar-feed';
+const EDGE_FUNCTION_URL = 'https://xkabjcxlohseuxlrwdkw.supabase.co/functions/v1/calendar-feed';
 
 const CalendarSyncModal: React.FC<CalendarSyncModalProps> = ({ visible, onClose }) => {
   const { user } = useAuth();

@@ -22,7 +22,8 @@ const AVATAR_BUCKET = 'avatars';
 export default function EditProfileScreen({ navigation }: any) {
   const { user, profile } = useAuth();
 
-  const [fullName, setFullName] = useState(profile?.full_name ?? '');
+  const [firstName, setFirstName] = useState(profile?.first_name ?? '');
+  const [lastName, setLastName] = useState(profile?.last_name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
   const [phone, setPhone] = useState(profile?.phone ?? '');
   const [avatarUri, setAvatarUri] = useState<string | null>(profile?.avatar_url ?? null);
@@ -30,16 +31,18 @@ export default function EditProfileScreen({ navigation }: any) {
   const [avatarRemoved, setAvatarRemoved] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [nameFocused, setNameFocused] = useState(false);
+  const [firstNameFocused, setFirstNameFocused] = useState(false);
+  const [lastNameFocused, setLastNameFocused] = useState(false);
   const [emailFocused, setEmailFocused] = useState(false);
   const [phoneFocused, setPhoneFocused] = useState(false);
 
   useEffect(() => {
-    setFullName(profile?.full_name ?? '');
+    setFirstName(profile?.first_name ?? '');
+    setLastName(profile?.last_name ?? '');
     setEmail(user?.email ?? '');
     setPhone(profile?.phone ?? '');
     setAvatarUri(profile?.avatar_url ?? null);
-  }, [profile?.full_name, profile?.phone, profile?.avatar_url, user?.email]);
+  }, [profile?.first_name, profile?.last_name, profile?.phone, profile?.avatar_url, user?.email]);
 
   const showChangePhotoOptions = () => {
     Alert.alert('Change Photo', 'Choose an option', [
@@ -146,11 +149,17 @@ export default function EditProfileScreen({ navigation }: any) {
   };
 
   const handleSave = async () => {
-    const trimmedName = fullName.trim();
-    if (!trimmedName) {
-      Alert.alert('Validation', 'Full name is required.');
+    const trimmedFirst = firstName.trim();
+    const trimmedLast = lastName.trim();
+    if (!trimmedFirst) {
+      Alert.alert('Validation', 'First name is required.');
       return;
     }
+    if (!trimmedLast) {
+      Alert.alert('Validation', 'Last name is required.');
+      return;
+    }
+    const trimmedName = `${trimmedFirst} ${trimmedLast}`;
 
     if (!user?.id) {
       Alert.alert('Error', 'You must be signed in to update your profile.');
@@ -171,6 +180,8 @@ export default function EditProfileScreen({ navigation }: any) {
         .from('profiles')
         .update({
           full_name: trimmedName,
+          first_name: trimmedFirst,
+          last_name: trimmedLast,
           phone: phone.trim() || null,
           avatar_url: newAvatarUrl,
         })
@@ -237,7 +248,7 @@ export default function EditProfileScreen({ navigation }: any) {
             ) : (
               <View style={styles.avatarPlaceholder}>
                 <Text style={styles.avatarText}>
-                  {(fullName || profile?.full_name || '?').charAt(0).toUpperCase()}
+                  {(firstName || profile?.first_name || profile?.full_name || '?').charAt(0).toUpperCase()}
                 </Text>
               </View>
             )}
@@ -252,17 +263,29 @@ export default function EditProfileScreen({ navigation }: any) {
         </View>
 
         <View style={styles.formCard}>
-          <Text style={[styles.label, styles.labelFirst]}>Full Name</Text>
-          <TextInput
-            style={[styles.input, nameFocused && styles.inputFocused]}
-            value={fullName}
-            onChangeText={setFullName}
-            onFocus={() => setNameFocused(true)}
-            onBlur={() => setNameFocused(false)}
-            placeholder="Enter your full name"
-            placeholderTextColor="#64748b"
-            autoCapitalize="words"
-          />
+          <Text style={[styles.label, styles.labelFirst]}>Name</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TextInput
+              style={[styles.input, { flex: 1 }, firstNameFocused && styles.inputFocused]}
+              value={firstName}
+              onChangeText={setFirstName}
+              onFocus={() => setFirstNameFocused(true)}
+              onBlur={() => setFirstNameFocused(false)}
+              placeholder="First name"
+              placeholderTextColor="#64748b"
+              autoCapitalize="words"
+            />
+            <TextInput
+              style={[styles.input, { flex: 1 }, lastNameFocused && styles.inputFocused]}
+              value={lastName}
+              onChangeText={setLastName}
+              onFocus={() => setLastNameFocused(true)}
+              onBlur={() => setLastNameFocused(false)}
+              placeholder="Last name"
+              placeholderTextColor="#64748b"
+              autoCapitalize="words"
+            />
+          </View>
 
           <Text style={styles.label}>Email</Text>
           <TextInput

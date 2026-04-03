@@ -39,7 +39,8 @@ export default function LoginScreen() {
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -145,8 +146,12 @@ export default function LoginScreen() {
   };
 
   const handleSignup = async () => {
-    if (!fullName.trim()) {
-      setError('Please enter your full name');
+    if (!firstName.trim()) {
+      setError('Please enter your first name');
+      return;
+    }
+    if (!lastName.trim()) {
+      setError('Please enter your last name');
       return;
     }
     if (!email.trim()) {
@@ -175,7 +180,9 @@ export default function LoginScreen() {
         password,
         options: {
           data: {
-            full_name: fullName.trim(),
+            full_name: `${firstName.trim()} ${lastName.trim()}`,
+            first_name: firstName.trim(),
+            last_name: lastName.trim(),
           },
         },
       });
@@ -375,17 +382,29 @@ export default function LoginScreen() {
               </>
             ) : (
               <>
-                <Text style={styles.inputLabel}>Full Name</Text>
-                <TextInput
-                  style={styles.input}
-                  value={fullName}
-                  onChangeText={setFullName}
-                  placeholder="Your full name"
-                  placeholderTextColor="#6B7280"
-                  autoCapitalize="words"
-                  textContentType="name"
-                  autoComplete="name"
-                />
+                <Text style={styles.inputLabel}>Name</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TextInput
+                    style={[styles.input, { flex: 1 }]}
+                    value={firstName}
+                    onChangeText={setFirstName}
+                    placeholder="First name"
+                    placeholderTextColor="#6B7280"
+                    autoCapitalize="words"
+                    textContentType="givenName"
+                    autoComplete="name-given"
+                  />
+                  <TextInput
+                    style={[styles.input, { flex: 1 }]}
+                    value={lastName}
+                    onChangeText={setLastName}
+                    placeholder="Last name"
+                    placeholderTextColor="#6B7280"
+                    autoCapitalize="words"
+                    textContentType="familyName"
+                    autoComplete="name-family"
+                  />
+                </View>
 
                 <Text style={styles.inputLabel}>Email</Text>
                 <View style={styles.emailFieldWrapper}>

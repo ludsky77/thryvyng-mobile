@@ -213,6 +213,8 @@ export const JoinTeamScreen: React.FC = () => {
     'head_coach' | 'assistant_coach' | 'team_manager' | null
   >(null);
   const [staffFullName, setStaffFullName] = useState('');
+  const [staffFirstName, setStaffFirstName] = useState('');
+  const [staffLastName, setStaffLastName] = useState('');
   const [staffEmail, setStaffEmail] = useState('');
   const [staffPhone, setStaffPhone] = useState('');
   const [staffPassword, setStaffPassword] = useState('');
@@ -414,6 +416,8 @@ export const JoinTeamScreen: React.FC = () => {
           options: {
             data: {
               full_name: `${parentFirstName.trim()} ${parentLastName.trim()}`,
+              first_name: parentFirstName.trim(),
+              last_name: parentLastName.trim(),
             },
           },
         });
@@ -437,6 +441,8 @@ export const JoinTeamScreen: React.FC = () => {
           .update({
             phone: parentPhone.replace(/\D/g, ''),
             full_name: `${parentFirstName.trim()} ${parentLastName.trim()}`,
+            first_name: parentFirstName.trim(),
+            last_name: parentLastName.trim(),
           })
           .eq('id', userId);
 
@@ -798,6 +804,8 @@ export const JoinTeamScreen: React.FC = () => {
           options: {
             data: {
               full_name: `${claimablePlayer.first_name} ${claimablePlayer.last_name}`,
+              first_name: claimablePlayer.first_name,
+              last_name: claimablePlayer.last_name,
               role: 'player',
             },
           },
@@ -929,8 +937,12 @@ export const JoinTeamScreen: React.FC = () => {
   const handleStaffSubmitNew = async () => {
     if (!selectedStaffRole || !teamInfo) return;
 
-    if (!staffFullName.trim()) {
-      setStaffPasswordError('Please enter your full name');
+    if (!staffFirstName.trim()) {
+      setStaffPasswordError('Please enter your first name');
+      return;
+    }
+    if (!staffLastName.trim()) {
+      setStaffPasswordError('Please enter your last name');
       return;
     }
     if (!staffEmail.trim() || !isEmailValid(staffEmail)) {
@@ -962,12 +974,15 @@ export const JoinTeamScreen: React.FC = () => {
         return;
       }
 
+      const staffComputedFullName = `${staffFirstName.trim()} ${staffLastName.trim()}`;
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: staffEmail.trim(),
         password: staffPassword,
         options: {
           data: {
-            full_name: staffFullName.trim(),
+            full_name: staffComputedFullName,
+            first_name: staffFirstName.trim(),
+            last_name: staffLastName.trim(),
             role: selectedStaffRole,
           },
         },
@@ -980,7 +995,7 @@ export const JoinTeamScreen: React.FC = () => {
         p_team_id: teamInfo.id,
         p_user_id: authData.user.id,
         p_staff_role: selectedStaffRole,
-        p_full_name: staffFullName.trim(),
+        p_full_name: staffComputedFullName,
         p_email: staffEmail.trim(),
         p_phone: staffPhone.trim() || null,
         p_auto_approve: true,
@@ -994,7 +1009,7 @@ export const JoinTeamScreen: React.FC = () => {
             to: staffEmail.trim(),
             template: 'staff-welcome',
             data: {
-              staffName: staffFullName.trim(),
+              staffName: staffComputedFullName,
               teamName: teamInfo.name,
               role: getStaffRoleDisplay(selectedStaffRole),
             },
@@ -2004,16 +2019,32 @@ export const JoinTeamScreen: React.FC = () => {
 
                   {staffMode === 'new' && (
                     <View style={styles.newPlayerForm}>
-                      <FormInput
-                        label="Full Name"
-                        value={staffFullName}
-                        onChangeText={(text) => {
-                          setStaffFullName(text);
-                          setStaffPasswordError('');
-                        }}
-                        placeholder="Jane Doe"
-                        autoCapitalize="words"
-                      />
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <View style={{ flex: 1 }}>
+                          <FormInput
+                            label="First Name"
+                            value={staffFirstName}
+                            onChangeText={(text) => {
+                              setStaffFirstName(text);
+                              setStaffPasswordError('');
+                            }}
+                            placeholder="Jane"
+                            autoCapitalize="words"
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <FormInput
+                            label="Last Name"
+                            value={staffLastName}
+                            onChangeText={(text) => {
+                              setStaffLastName(text);
+                              setStaffPasswordError('');
+                            }}
+                            placeholder="Doe"
+                            autoCapitalize="words"
+                          />
+                        </View>
+                      </View>
                       <EmailInput
                         label="Email (this will be your login)"
                         value={staffEmail}

@@ -97,7 +97,8 @@ export const JoinStaffScreen: React.FC = () => {
   );
 
   // Staff form state (for new users)
-  const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -245,7 +246,8 @@ export const JoinStaffScreen: React.FC = () => {
     const errors: Record<string, string> = {};
 
     if (registrationMode === 'new') {
-      if (!fullName.trim()) errors.fullName = 'Full name is required';
+      if (!firstName.trim()) errors.firstName = 'First name is required';
+      if (!lastName.trim()) errors.lastName = 'Last name is required';
       if (!email.trim()) errors.email = 'Email is required';
       else if (!isEmailValid(email)) errors.email = 'Please enter a valid email';
       else if (isEmailAvailable === false)
@@ -279,12 +281,15 @@ export const JoinStaffScreen: React.FC = () => {
         // NEW USER: Create auth account first
         if (__DEV__) console.log('[JoinStaff] Creating new user account...');
 
+        const fullName = `${firstName.trim()} ${lastName.trim()}`;
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: email.trim(),
           password: password,
           options: {
             data: {
-              full_name: fullName.trim(),
+              full_name: fullName,
+              first_name: firstName.trim(),
+              last_name: lastName.trim(),
             },
           },
         });
@@ -318,15 +323,16 @@ export const JoinStaffScreen: React.FC = () => {
 
         userId = authData.user.id;
         userEmail = email.trim();
-        userName = fullName.trim();
+        userName = fullName;
         userPhone = phone.replace(/\D/g, '');
 
-        // Update profile with phone
         const { error: profileError } = await supabase
           .from('profiles')
           .update({
             phone: userPhone,
             full_name: userName,
+            first_name: firstName.trim(),
+            last_name: lastName.trim(),
           })
           .eq('id', userId);
 
@@ -847,17 +853,34 @@ export const JoinStaffScreen: React.FC = () => {
               </Text>
 
               <View style={styles.formSection}>
-                <FormInput
-                  label="Full Name"
-                  value={fullName}
-                  onChangeText={(text) => {
-                    setFullName(text);
-                    setFormErrors((prev) => ({ ...prev, fullName: '' }));
-                  }}
-                  placeholder="John Smith"
-                  autoCapitalize="words"
-                  error={formErrors.fullName}
-                />
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <FormInput
+                      label="First Name"
+                      value={firstName}
+                      onChangeText={(text) => {
+                        setFirstName(text);
+                        setFormErrors((prev) => ({ ...prev, firstName: '' }));
+                      }}
+                      placeholder="John"
+                      autoCapitalize="words"
+                      error={formErrors.firstName}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <FormInput
+                      label="Last Name"
+                      value={lastName}
+                      onChangeText={(text) => {
+                        setLastName(text);
+                        setFormErrors((prev) => ({ ...prev, lastName: '' }));
+                      }}
+                      placeholder="Smith"
+                      autoCapitalize="words"
+                      error={formErrors.lastName}
+                    />
+                  </View>
+                </View>
 
                 <EmailInput
                   label="Email Address"

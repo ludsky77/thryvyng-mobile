@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "397360334445",
+    "project_id": "thryvyng-256c7",
+    "storage_bucket": "thryvyng-256c7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:397360334445:android:4e4da2283a809ccd15a164",
+        "android_client_info": {
+          "package_name": "com.weolkn.thryvyng"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD50UTPbd3myO7QUcwcRINkl2YcU8v0N7c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

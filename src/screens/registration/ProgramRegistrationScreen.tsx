@@ -681,7 +681,7 @@ export const ProgramRegistrationScreen: React.FC = () => {
                 reg.emergencyContact.relationship || null,
               allergies: reg.medicalInfo.allergies || null,
               medical_notes: reg.medicalInfo.medicalNotes || null,
-              status: 'active',
+              status: 'draft',
               is_solo_player: true,
               referral_code: generateReferralCode(),
             })

@@ -433,6 +433,14 @@ export const JoinTeamScreen: React.FC = () => {
           return;
         }
 
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: parentEmail.trim().toLowerCase(),
+          password,
+        });
+        if (signInError) {
+          console.warn('Auto sign-in after signup failed:', signInError.message);
+        }
+
         userId = authData.user.id;
         userEmail = parentEmail.trim();
 
@@ -517,32 +525,36 @@ export const JoinTeamScreen: React.FC = () => {
 
         playerData = linkedPlayer;
       } else {
-        const { data: newPlayer, error: playerError } = await supabase
-          .from('players')
-          .insert({
-            team_id: teamInfo?.id,
-            first_name: playerFirstName.trim(),
-            last_name: playerLastName.trim(),
-            date_of_birth: playerDOB,
-            jersey_number: playerJersey || null,
-            parent_email: userEmail,
-            parent_first_name:
+        const { data: registeredPlayerId, error: playerError } =
+          await supabase.rpc('register_player', {
+            p_first_name: playerFirstName.trim(),
+            p_last_name: playerLastName.trim(),
+            p_date_of_birth: playerDOB,
+            p_gender: null,
+            p_parent_email: userEmail?.toLowerCase() || user?.email || '',
+            p_parent_first_name:
               registrationMode === 'new'
                 ? parentFirstName.trim()
                 : existingParentFirstName,
-            parent_last_name:
+            p_parent_last_name:
               registrationMode === 'new'
                 ? parentLastName.trim()
                 : existingParentLastName,
-            parent_phone:
+            p_parent_phone:
               registrationMode === 'new'
-                ? parentPhone.replace(/\D/g, '')
+                ? parentPhone.replace(/\D/g, '') || null
                 : null,
-            status: 'active',
-            referral_code: generateReferralCode(),
-          })
-          .select()
-          .single();
+            p_player_email: null,
+            p_jersey_number: playerJersey || null,
+            p_team_id: teamInfo?.id || null,
+            p_allergies: null,
+            p_medical_notes: null,
+            p_emergency_contact_name: null,
+            p_emergency_contact_phone: null,
+            p_emergency_contact_relationship: null,
+            p_city: null,
+            p_status: 'active',
+          });
 
         if (playerError) {
           if (__DEV__)
@@ -554,7 +566,11 @@ export const JoinTeamScreen: React.FC = () => {
           return;
         }
 
-        playerData = newPlayer;
+        playerData = {
+          id: registeredPlayerId as string,
+          first_name: playerFirstName.trim(),
+          last_name: playerLastName.trim(),
+        };
       }
 
       if (__DEV__) console.log('[JoinTeam] Player created/linked:', playerData?.id);
@@ -814,6 +830,14 @@ export const JoinTeamScreen: React.FC = () => {
         if (authError) throw authError;
         if (!authData.user) throw new Error('Failed to create account');
 
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: playerClaimEmail.trim().toLowerCase(),
+          password: playerClaimPassword,
+        });
+        if (signInError) {
+          console.warn('Auto sign-in after signup failed:', signInError.message);
+        }
+
         const { error: updateError } = await supabase
           .from('players')
           .update({
@@ -990,6 +1014,14 @@ export const JoinTeamScreen: React.FC = () => {
 
       if (authError) throw authError;
       if (!authData.user) throw new Error('Failed to create account');
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: staffEmail.trim().toLowerCase(),
+        password: staffPassword,
+      });
+      if (signInError) {
+        console.warn('Auto sign-in after signup failed:', signInError.message);
+      }
 
       const { error: joinError } = await supabase.rpc('process_staff_join', {
         p_team_id: teamInfo.id,

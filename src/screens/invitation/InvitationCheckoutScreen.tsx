@@ -180,6 +180,14 @@ export default function InvitationCheckoutScreen() {
   ];
 
   const handleCheckout = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      Alert.alert('Session expired', 'Please sign in again to complete checkout.');
+      return;
+    }
+
     if (!invitation || players.length === 0) {
       Alert.alert('Error', 'Missing required information');
       return;

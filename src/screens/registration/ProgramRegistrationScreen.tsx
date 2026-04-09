@@ -658,35 +658,33 @@ export const ProgramRegistrationScreen: React.FC = () => {
         let playerId = reg.player.id;
 
         if (reg.isNew || reg.player.id.startsWith('new_')) {
-          const { data: newPlayer, error: playerError } = await supabase
-            .from('players')
-            .insert({
-              first_name: reg.player.first_name,
-              last_name: reg.player.last_name,
-              date_of_birth: reg.player.date_of_birth,
-              gender: reg.player.gender,
-              email: reg.player.email || null,
-              jersey_number: reg.player.jersey_number
-                ? parseInt(reg.player.jersey_number, 10)
-                : null,
-              parent_email: user.email,
-              parent_first_name:
-                user.user_metadata?.full_name?.split(' ')[0] || '',
-              parent_last_name:
+          const { data: registeredPlayerId, error: playerError } =
+            await supabase.rpc('register_player', {
+              p_first_name: reg.player.first_name,
+              p_last_name: reg.player.last_name,
+              p_date_of_birth: reg.player.date_of_birth,
+              p_gender: reg.player.gender || null,
+              p_parent_email: user.email,
+              p_parent_first_name:
+                user.user_metadata?.first_name ||
+                user.user_metadata?.full_name?.split(' ')[0] ||
+                '',
+              p_parent_last_name:
+                user.user_metadata?.last_name ||
                 user.user_metadata?.full_name?.split(' ').slice(1).join(' ') ||
                 '',
-              emergency_contact_name: reg.emergencyContact.name || null,
-              emergency_contact_phone: reg.emergencyContact.phone || null,
-              emergency_contact_relation:
-                reg.emergencyContact.relationship || null,
-              allergies: reg.medicalInfo.allergies || null,
-              medical_notes: reg.medicalInfo.medicalNotes || null,
-              status: 'draft',
-              is_solo_player: true,
-              referral_code: generateReferralCode(),
-            })
-            .select()
-            .single();
+              p_parent_phone: null,
+              p_player_email: reg.player.email || null,
+              p_jersey_number: reg.player.jersey_number || null,
+              p_team_id: null,
+              p_allergies: reg.medicalInfo?.allergies || null,
+              p_medical_notes: reg.medicalInfo?.medicalNotes || null,
+              p_emergency_contact_name: reg.emergencyContact?.name || null,
+              p_emergency_contact_phone: reg.emergencyContact?.phone || null,
+              p_emergency_contact_relationship:
+                reg.emergencyContact?.relationship || null,
+              p_city: null,
+            });
 
           if (playerError) {
             if (__DEV__)
@@ -696,7 +694,7 @@ export const ProgramRegistrationScreen: React.FC = () => {
             );
           }
 
-          playerId = newPlayer.id;
+          playerId = registeredPlayerId as string;
           if (__DEV__) console.log('[ProgramReg] Created player:', playerId);
         }
 

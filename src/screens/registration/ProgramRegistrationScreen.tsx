@@ -21,6 +21,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRegistration } from '../../contexts/RegistrationContext';
 import type { RootStackParamList } from '../../navigation/linking';
+import { PhoneInput } from '../../components/forms';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type RouteProps = RouteProp<RootStackParamList, 'ProgramRegistration'>;
@@ -1631,14 +1632,12 @@ export const ProgramRegistrationScreen: React.FC = () => {
                 />
               </View>
               <View style={styles.formFieldThird}>
-                <Text style={styles.fieldLabel}>Contact Phone</Text>
-                <TextInput
-                  style={styles.textInput}
+                <PhoneInput
+                  label="Emergency Contact Phone"
                   value={emergencyPhone}
                   onChangeText={setEmergencyPhone}
-                  placeholder="Phone"
-                  placeholderTextColor="#6B7280"
-                  keyboardType="phone-pad"
+                  placeholder="(555) 123-4567"
+                  error={playerFormErrors.emergencyPhone}
                 />
               </View>
               <View style={styles.formFieldThird}>

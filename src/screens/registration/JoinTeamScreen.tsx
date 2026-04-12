@@ -27,6 +27,7 @@ import {
   FormInput,
   PasswordInput,
   PhoneInput,
+  formatPhone,
   EmailInput,
   isPasswordValid,
   isPhoneValid,
@@ -250,6 +251,21 @@ export const JoinTeamScreen: React.FC = () => {
     if (user && registrationMode === 'existing') {
       setVerifiedUserId(user.id);
       setVerifiedEmail(user.email || null);
+      if (user.email) {
+        setParentEmail(user.email.trim().toLowerCase());
+      }
+      const metaFirst = user.user_metadata?.first_name;
+      const metaLast = user.user_metadata?.last_name;
+      if (typeof metaFirst === 'string' && metaFirst.trim()) {
+        setParentFirstName(metaFirst.trim());
+      }
+      if (typeof metaLast === 'string' && metaLast.trim()) {
+        setParentLastName(metaLast.trim());
+      }
+      const metaPhone = user.user_metadata?.phone;
+      if (typeof metaPhone === 'string' && metaPhone.trim()) {
+        setParentPhone(formatPhone(metaPhone));
+      }
       if (__DEV__) {
         console.log('[JoinTeam] User already logged in, skipping verification');
       }
@@ -637,6 +653,22 @@ export const JoinTeamScreen: React.FC = () => {
     setVerifiedUserId(userId);
     setVerifiedEmail(email);
     setShowVerificationModal(false);
+
+    if (registrationMode === 'existing') {
+      setParentEmail((email || user?.email || '').trim().toLowerCase());
+      const metaFirst = user?.user_metadata?.first_name;
+      const metaLast = user?.user_metadata?.last_name;
+      if (typeof metaFirst === 'string' && metaFirst.trim()) {
+        setParentFirstName(metaFirst.trim());
+      }
+      if (typeof metaLast === 'string' && metaLast.trim()) {
+        setParentLastName(metaLast.trim());
+      }
+      const metaPhone = user?.user_metadata?.phone;
+      if (typeof metaPhone === 'string' && metaPhone.trim()) {
+        setParentPhone(formatPhone(metaPhone));
+      }
+    }
 
     if (__DEV__) {
       console.log('[JoinTeam] Identity verified:', { userId, email });

@@ -24,7 +24,8 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "Thryvyng needs access to your camera to take player profile photos and team photos for your roster.",
         "NSPhotoLibraryUsageDescription": "Thryvyng needs access to your photo library to upload player profile photos, team logos, and share images in team chat."
-      }
+      },
+      "appleTeamId": "G2PU7U9R48"
     },
     "android": {
       "package": "com.weolkn.thryvyng",
@@ -96,7 +97,6 @@
           "sounds": []
         }
       ]
-      
     ],
     "extra": {
       "eas": {

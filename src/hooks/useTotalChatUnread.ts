@@ -1,65 +1,90 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 const LOOKBACK_DAYS = 30;
+const DEBOUNCE_MS = 3000; // Wait 3 seconds after last message before re-fetching
 
 export function useTotalChatUnread(): number {
   const { user } = useAuth();
   const [totalUnread, setTotalUnread] = useState(0);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef(true);
 
   const fetchUnread = useCallback(async () => {
-    if (!user?.id) {
+    if (!user?.id || !isMountedRef.current) {
       setTotalUnread(0);
       return;
     }
 
-    const { data: memberships } = await supabase
-      .from('comm_channel_members')
-      .select('channel_id, last_read_at')
-      .eq('user_id', user.id);
+    try {
+      const { data: memberships } = await supabase
+        .from('comm_channel_members')
+        .select('channel_id, last_read_at')
+        .eq('user_id', user.id);
 
-    if (!memberships?.length) {
-      setTotalUnread(0);
-      return;
-    }
-
-    const channelIds = memberships.map((m: any) => m.channel_id);
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - LOOKBACK_DAYS);
-
-    const { data: messages } = await supabase
-      .from('comm_messages')
-      .select('channel_id, created_at, user_id')
-      .in('channel_id', channelIds)
-      .eq('is_deleted', false)
-      .neq('user_id', user.id)
-      .gte('created_at', cutoff.toISOString());
-
-    if (!messages?.length) {
-      setTotalUnread(0);
-      return;
-    }
-
-    const readMap = new Map<string, string | null>(
-      memberships.map((m: any) => [m.channel_id, m.last_read_at ?? null])
-    );
-
-    let total = 0;
-    for (const msg of messages as any[]) {
-      const lastRead = readMap.get(msg.channel_id);
-      if (!lastRead || new Date(msg.created_at) > new Date(lastRead)) {
-        total++;
+      if (!memberships?.length || !isMountedRef.current) {
+        setTotalUnread(0);
+        return;
       }
+
+      // Count unread per channel using individual count queries (faster than fetching all messages)
+      let total = 0;
+      const countPromises = memberships.map(async (m: any) => {
+        const lastRead = m.last_read_at;
+        let query = supabase
+          .from('comm_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('channel_id', m.channel_id)
+          .eq('is_deleted', false)
+          .neq('user_id', user.id);
+
+        if (lastRead) {
+          query = query.gt('created_at', lastRead);
+        } else {
+          const cutoff = new Date();
+          cutoff.setDate(cutoff.getDate() - LOOKBACK_DAYS);
+          query = query.gte('created_at', cutoff.toISOString());
+        }
+
+        const { count } = await query;
+        return count || 0;
+      });
+
+      const counts = await Promise.all(countPromises);
+      total = counts.reduce((sum, c) => sum + c, 0);
+
+      if (isMountedRef.current) {
+        setTotalUnread(total);
+      }
+    } catch (err) {
+      console.error('useTotalChatUnread error:', err);
     }
-    setTotalUnread(total);
   }, [user?.id]);
 
-  useEffect(() => {
-    fetchUnread();
+  // Debounced version — waits for activity to settle before querying
+  const debouncedFetch = useCallback(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    debounceRef.current = setTimeout(() => {
+      fetchUnread();
+    }, DEBOUNCE_MS);
   }, [fetchUnread]);
 
-  // Re-fetch on new messages or when last_read_at is updated
+  // Initial fetch on mount
+  useEffect(() => {
+    isMountedRef.current = true;
+    fetchUnread();
+    return () => {
+      isMountedRef.current = false;
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, [fetchUnread]);
+
+  // Subscribe to changes — debounced so rapid messages don't cause query storm
   useEffect(() => {
     if (!user?.id) return;
 
@@ -68,7 +93,7 @@ export function useTotalChatUnread(): number {
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'comm_messages' },
-        () => fetchUnread()
+        () => debouncedFetch()
       )
       .on(
         'postgres_changes',
@@ -78,14 +103,14 @@ export function useTotalChatUnread(): number {
           table: 'comm_channel_members',
           filter: `user_id=eq.${user.id}`,
         },
-        () => fetchUnread()
+        () => debouncedFetch()
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id, fetchUnread]);
+  }, [user?.id, debouncedFetch]);
 
   return totalUnread;
 }

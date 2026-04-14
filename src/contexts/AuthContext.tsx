@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -38,99 +39,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [allRoles, setAllRoles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const enrichRolesWithEntityNames = async (roles: UserRole[]): Promise<any[]> => {
-    if (!roles.length) return [];
-
-    // Collect all entity IDs by type
-    const teamRoles = roles.filter(r => ['team_manager', 'head_coach', 'assistant_coach'].includes(r.role) && r.entity_id);
-    const clubRoles = roles.filter(r => r.role === 'club_admin' && r.entity_id);
-    const parentRoles = roles.filter(r => r.role === 'parent' && r.entity_id);
-
-    const teamIds = teamRoles.map(r => r.entity_id!);
-    const clubIds = clubRoles.map(r => r.entity_id!);
-    const playerIds = parentRoles.map(r => r.entity_id!);
-
-    // Batch fetch all data in parallel (3 queries max instead of N)
-    const [teamsResult, clubsResult, playersResult] = (await Promise.all([
-      teamIds.length > 0
-        ? withTimeout(supabase.from('teams').select('id, name, club_id').in('id', teamIds) as unknown as Promise<{ data: any }>)
-        : Promise.resolve({ data: [] }),
-      clubIds.length > 0
-        ? withTimeout(supabase.from('clubs').select('id, name').in('id', clubIds) as unknown as Promise<{ data: any }>)
-        : Promise.resolve({ data: [] }),
-      playerIds.length > 0
-        ? withTimeout(supabase.from('players').select('id, first_name, last_name, team_id, teams(id, name, club_id)').in('id', playerIds) as unknown as Promise<{ data: any }>)
-        : Promise.resolve({ data: [] }),
-    ])) as [{ data: any[] }, { data: any[] }, { data: any[] }];
-
-    // Build lookup maps
-    const teamsMap = new Map((teamsResult.data || []).map((t: any) => [t.id, t]));
-    const clubsMap = new Map((clubsResult.data || []).map((c: any) => [c.id, c]));
-    const playersMap = new Map((playersResult.data || []).map((p: any) => [p.id, p]));
-
-    // Enrich each role using the maps (no additional queries)
-    return roles.map(role => {
-      let entityName = '';
-      let team: { id: string; name: string; club_id?: string } | null = null;
-      let club: { id: string; name: string } | null = null;
-      let player: { id: string; first_name: string; last_name: string } | null = null;
-
-      if (!role.entity_id) {
-        return { ...role, entityName, team, club, player };
-      }
-
-      // Team-related roles
-      if (['team_manager', 'head_coach', 'assistant_coach'].includes(role.role)) {
-        const teamData = teamsMap.get(role.entity_id);
-        if (teamData) {
-          team = teamData;
-          entityName = teamData.name || '';
-        }
-      }
-      // Club admin
-      else if (role.role === 'club_admin') {
-        const clubData = clubsMap.get(role.entity_id);
-        if (clubData) {
-          club = clubData;
-          entityName = clubData.name || '';
-        }
-      }
-      // Parent role
-      else if (role.role === 'parent') {
-        const playerData = playersMap.get(role.entity_id);
-        if (playerData) {
-          player = {
-            id: playerData.id,
-            first_name: playerData.first_name,
-            last_name: playerData.last_name,
-          };
-          const teamData = (playerData as any).teams;
-          if (teamData) {
-            team = { id: teamData.id, name: teamData.name, club_id: teamData.club_id };
-            entityName = `${playerData.first_name} ${playerData.last_name} (${teamData.name})`;
-          } else {
-            entityName = `${playerData.first_name} ${playerData.last_name}`;
-          }
-        }
-      }
-
-      return { ...role, entityName, team, club, player };
-    });
-  };
+  const lastProcessedSessionRef = React.useRef<string | null>(null);
 
   const fetchUserRoles = async (userId: string) => {
-    const { data: roles, error } = await withTimeout(supabase
-      .from('user_roles')
-      .select('*')
-      .eq('user_id', userId) as unknown as Promise<{ data: any; error: any }>);
-
-    if (error) {
-      console.error('Error fetching roles:', error);
+    try {
+      const { data, error } = await withTimeout(
+        supabase.rpc('get_enriched_roles_v2', { p_user_id: userId }) as unknown as Promise<{ data: any; error: any }>,
+        10000
+      );
+      if (error) {
+        console.error('Error fetching roles:', error);
+        return [];
+      }
+      // Map RPC response to match the shape the app expects
+      return (data || []).map((r: any) => ({
+        id: r.id,
+        user_id: r.user_id,
+        role: r.role,
+        entity_id: r.entity_id,
+        entityName: r.entity_name || '',
+        role_metadata: r.role_metadata,
+        created_at: r.created_at,
+        team: r.team_id ? { id: r.team_id, name: r.team_name, club_id: r.team_club_id } : null,
+        club: r.club_id ? { id: r.club_id, name: r.club_name } : null,
+        player: r.player_first_name ? { id: r.entity_id, first_name: r.player_first_name, last_name: r.player_last_name } : null,
+      }));
+    } catch (err) {
+      console.error('fetchUserRoles timeout:', err);
       return [];
     }
-
-    const enrichedRoles = await enrichRolesWithEntityNames(roles || []);
-    return enrichedRoles;
   };
 
   const refreshRoles = async (overrideUserId?: string) => {
@@ -151,6 +88,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       async (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
+
+        // Skip if we already processed this exact session token
+        const sessionToken = session?.access_token;
+        if (sessionToken && sessionToken === lastProcessedSessionRef.current) {
+          return;
+        }
+        if (sessionToken) {
+          lastProcessedSessionRef.current = sessionToken;
+        }
 
         if (session?.user) {
           try {
@@ -197,6 +143,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     supabase.auth.getSession();
 
     return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        // Remove all realtime subscriptions when app goes to background
+        supabase.removeAllChannels();
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => subscription.remove();
   }, []);
 
   const switchRole = async (role: any) => {

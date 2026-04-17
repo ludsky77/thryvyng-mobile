@@ -23,6 +23,13 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useRegistration } from '../../contexts/RegistrationContext';
 import type { RootStackParamList } from '../../navigation/linking';
 import { PhoneInput } from '../../components/forms';
+import {
+  calculateAgeGroup,
+  getSeasonStartYear,
+  getSeasonLabel,
+  getAgeGroupBirthRange,
+  AGE_GROUP_GRADES,
+} from '../../utils/ageGroupCalculator';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type RouteProps = RouteProp<RootStackParamList, 'ProgramRegistration'>;
@@ -35,6 +42,7 @@ interface Program {
   status: string;
   registration_start: string | null;
   registration_end: string | null;
+  tryout_schedule: any[] | null;
   club: {
     id: string;
     name: string;
@@ -43,6 +51,8 @@ interface Program {
   season: {
     id: string;
     name: string;
+    start_date?: string | null;
+    end_date?: string | null;
   } | null;
 }
 
@@ -88,14 +98,24 @@ interface PlayerRegistration {
   isNew: boolean;
 }
 
-type RegistrationStep = 'auth' | 'package' | 'players' | 'review' | 'complete';
+type RegistrationStep = 'auth' | 'package' | 'players' | 'agegroup' | 'review' | 'complete';
 
-const STEPS: { key: RegistrationStep; label: string; description: string }[] = [
-  { key: 'auth', label: 'Sign In', description: 'Create or sign into your account' },
-  { key: 'package', label: 'Select Package', description: 'Choose your registration option' },
-  { key: 'players', label: 'Select Players', description: 'Choose which players to register' },
-  { key: 'review', label: 'Review & Pay', description: 'Complete registration' },
-];
+function buildSteps(hasTryoutSchedule: boolean) {
+  const steps: { key: RegistrationStep; label: string; description: string }[] = [
+    { key: 'auth', label: 'Sign In', description: 'Create or sign into your account' },
+    { key: 'package', label: 'Select Package', description: 'Choose your registration option' },
+    { key: 'players', label: 'Select Players', description: 'Choose which players to register' },
+  ];
+  if (hasTryoutSchedule) {
+    steps.push({
+      key: 'agegroup',
+      label: 'Age Group',
+      description: 'Check your tryout schedule',
+    });
+  }
+  steps.push({ key: 'review', label: 'Review & Pay', description: 'Complete registration' });
+  return steps;
+}
 
 export const ProgramRegistrationScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -109,6 +129,9 @@ export const ProgramRegistrationScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [program, setProgram] = useState<Program | null>(null);
   const [packages, setPackages] = useState<Package[]>([]);
+  const hasTryoutSchedule =
+    Array.isArray(program?.tryout_schedule) && program.tryout_schedule.length > 0;
+  const STEPS = buildSteps(hasTryoutSchedule);
 
   // Registration state
   const [currentStep, setCurrentStep] = useState<RegistrationStep>('auth');
@@ -186,9 +209,9 @@ export const ProgramRegistrationScreen: React.FC = () => {
         .from('programs')
         .select(
           `
-          id, name, description, type, status, registration_start, registration_end,
+          id, name, description, type, status, registration_start, registration_end, tryout_schedule,
           club:clubs (id, name, logo_url),
-          season:seasons (id, name)
+          season:seasons (id, name, start_date, end_date)
         `
         )
         .eq('id', programId)
@@ -205,7 +228,8 @@ export const ProgramRegistrationScreen: React.FC = () => {
         return;
       }
 
-      setProgram(programData);
+      programData.tryout_schedule = programData.tryout_schedule ?? null;
+      setProgram(programData as Program);
 
       // Fetch packages for this program
       const { data: packagesData, error: packagesError } = await supabase
@@ -849,8 +873,10 @@ export const ProgramRegistrationScreen: React.FC = () => {
       }
     } else if (currentStep === 'players') {
       setCurrentStep('package');
-    } else if (currentStep === 'review') {
+    } else if (currentStep === 'agegroup') {
       setCurrentStep('players');
+    } else if (currentStep === 'review') {
+      setCurrentStep(hasTryoutSchedule ? 'agegroup' : 'players');
     }
   };
 
@@ -908,6 +934,356 @@ export const ProgramRegistrationScreen: React.FC = () => {
       })}
     </View>
   );
+
+  const AgeGroupStepContent = () => {
+    const [activeTab, setActiveTab] = useState<'players' | 'all'>('players');
+
+    const seasonStartYear = getSeasonStartYear(
+      program?.season?.start_date ?? null,
+      program?.season?.end_date ?? null
+    );
+    const seasonLabel = getSeasonLabel(seasonStartYear);
+
+    const playerAgeGroups = registrations.map((reg) => ({
+      name: `${reg.player.first_name} ${reg.player.last_name}`,
+      dob: reg.player.date_of_birth,
+      ageGroup: calculateAgeGroup(reg.player.date_of_birth, seasonStartYear),
+    }));
+
+    const findSchedule = (ageGroup: string | null) => {
+      if (!ageGroup || !program?.tryout_schedule) return null;
+      return program.tryout_schedule.find((s: any) => s.age_group === ageGroup);
+    };
+
+    const allAgeGroups: {
+      u: number;
+      range: { from: string; to: string } | null;
+      schedule: any;
+      isHighlighted: boolean;
+      grade: string;
+    }[] = [];
+    for (let u = 7; u <= 18; u++) {
+      const range = getAgeGroupBirthRange(`U${u}`, seasonStartYear);
+      const schedule = findSchedule(`U${u}`);
+      const isHighlighted = playerAgeGroups.some((p) => p.ageGroup === `U${u}`);
+      allAgeGroups.push({
+        u,
+        range,
+        schedule,
+        isHighlighted,
+        grade: AGE_GROUP_GRADES[u] || '',
+      });
+    }
+
+    return (
+      <View style={{ padding: 16 }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            marginBottom: 16,
+            borderBottomWidth: 1,
+            borderBottomColor: '#334155',
+          }}
+        >
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              paddingBottom: 12,
+              borderBottomWidth: 2,
+              borderBottomColor: activeTab === 'players' ? '#8b5cf6' : 'transparent',
+            }}
+            onPress={() => setActiveTab('players')}
+          >
+            <Text
+              style={{
+                textAlign: 'center',
+                color: activeTab === 'players' ? '#8b5cf6' : '#94a3b8',
+                fontWeight: activeTab === 'players' ? '600' : '400',
+                fontSize: 15,
+              }}
+            >
+              Your players
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              paddingBottom: 12,
+              borderBottomWidth: 2,
+              borderBottomColor: activeTab === 'all' ? '#8b5cf6' : 'transparent',
+            }}
+            onPress={() => setActiveTab('all')}
+          >
+            <Text
+              style={{
+                textAlign: 'center',
+                color: activeTab === 'all' ? '#8b5cf6' : '#94a3b8',
+                fontWeight: activeTab === 'all' ? '600' : '400',
+                fontSize: 15,
+              }}
+            >
+              All age groups
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {activeTab === 'players' &&
+          playerAgeGroups.map((player, idx) => {
+            const schedule = findSchedule(player.ageGroup);
+            const formattedDOB = new Date(player.dob).toLocaleDateString('en-US', {
+              month: 'long',
+              day: 'numeric',
+              year: 'numeric',
+            });
+            return (
+              <View
+                key={idx}
+                style={{
+                  backgroundColor: '#1e293b',
+                  borderRadius: 12,
+                  padding: 16,
+                  marginBottom: 12,
+                  borderWidth: 1,
+                  borderColor: '#334155',
+                }}
+              >
+                <Text style={{ color: '#e2e8f0', fontSize: 14, marginBottom: 10 }}>
+                  <Text style={{ fontWeight: '600' }}>{player.name}</Text>
+                  <Text style={{ color: '#94a3b8' }}> · Born {formattedDOB}</Text>
+                </Text>
+
+                <View
+                  style={{
+                    borderWidth: 2,
+                    borderColor: '#8b5cf6',
+                    borderRadius: 12,
+                    padding: 16,
+                    alignItems: 'center',
+                    marginBottom: 12,
+                    backgroundColor: '#0f172a',
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: '#a78bfa',
+                      fontSize: 11,
+                      fontWeight: '600',
+                      letterSpacing: 2,
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    YOU ARE IN
+                  </Text>
+                  <Text
+                    style={{
+                      color: '#8b5cf6',
+                      fontSize: 38,
+                      fontWeight: '500',
+                      lineHeight: 44,
+                    }}
+                  >
+                    {player.ageGroup || 'N/A'}
+                  </Text>
+                  <Text style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>
+                    {seasonLabel} season · Cutoff: August 1
+                  </Text>
+                </View>
+
+                {schedule && schedule.dates && schedule.dates.length > 0 && (
+                  <View
+                    style={{
+                      borderTopWidth: 1,
+                      borderTopColor: '#334155',
+                      paddingTop: 10,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: '#e2e8f0',
+                        fontSize: 13,
+                        fontWeight: '600',
+                        marginBottom: 6,
+                      }}
+                    >
+                      Your tryout dates:
+                    </Text>
+                    {schedule.dates.map((d: any, dIdx: number) => {
+                      const dateStr = new Date(d.date).toLocaleDateString('en-US', {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      });
+                      return (
+                        <View
+                          key={dIdx}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            paddingVertical: 3,
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: 3,
+                              backgroundColor: '#8b5cf6',
+                              marginRight: 8,
+                            }}
+                          />
+                          <Text style={{ color: '#94a3b8', fontSize: 13 }}>
+                            {dateStr} · {d.time} · {d.location}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+                {(!schedule || !schedule.dates || schedule.dates.length === 0) && (
+                  <Text
+                    style={{
+                      color: '#64748b',
+                      fontSize: 12,
+                      textAlign: 'center',
+                      marginTop: 4,
+                    }}
+                  >
+                    No specific tryout dates configured for this age group.
+                  </Text>
+                )}
+
+                <Text
+                  style={{
+                    color: '#64748b',
+                    fontSize: 12,
+                    fontStyle: 'italic',
+                    textAlign: 'center',
+                    marginTop: 10,
+                  }}
+                >
+                  Players may try out for an older age group — just attend that session.
+                </Text>
+              </View>
+            );
+          })}
+
+        {activeTab === 'all' && (
+          <View
+            style={{
+              backgroundColor: '#1e293b',
+              borderRadius: 12,
+              padding: 16,
+              borderWidth: 1,
+              borderColor: '#334155',
+            }}
+          >
+            <Text style={{ color: '#e2e8f0', fontSize: 14, fontWeight: '600', marginBottom: 4 }}>
+              Reference: age groups & birth dates
+            </Text>
+            <Text style={{ color: '#94a3b8', fontSize: 12, marginBottom: 12 }}>
+              {seasonLabel} season · Cutoff: August 1
+            </Text>
+
+            <View
+              style={{
+                flexDirection: 'row',
+                paddingBottom: 8,
+                borderBottomWidth: 1,
+                borderBottomColor: '#475569',
+                marginBottom: 4,
+              }}
+            >
+              <Text
+                style={{
+                  flex: 1,
+                  color: '#94a3b8',
+                  fontSize: 11,
+                  fontWeight: '600',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                }}
+              >
+                Group
+              </Text>
+              <Text
+                style={{
+                  flex: 2.5,
+                  color: '#94a3b8',
+                  fontSize: 11,
+                  fontWeight: '600',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                }}
+              >
+                Born between
+              </Text>
+              <Text
+                style={{
+                  flex: 1,
+                  color: '#94a3b8',
+                  fontSize: 11,
+                  fontWeight: '600',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                }}
+              >
+                Grade
+              </Text>
+            </View>
+
+            {allAgeGroups.map((row) => (
+              <View
+                key={row.u}
+                style={{
+                  flexDirection: 'row',
+                  paddingVertical: 6,
+                  borderBottomWidth: 0.5,
+                  borderBottomColor: '#334155',
+                  backgroundColor: row.isHighlighted ? 'rgba(139, 92, 246, 0.1)' : 'transparent',
+                }}
+              >
+                <Text
+                  style={{
+                    flex: 1,
+                    color: row.isHighlighted ? '#8b5cf6' : '#e2e8f0',
+                    fontSize: 13,
+                    fontWeight: row.isHighlighted ? '600' : '400',
+                  }}
+                >
+                  U{row.u}
+                </Text>
+                <Text style={{ flex: 2.5, color: '#e2e8f0', fontSize: 13 }}>
+                  {row.range?.from} – {row.range?.to}
+                </Text>
+                <Text style={{ flex: 1, color: '#94a3b8', fontSize: 12 }}>{row.grade}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#7c3aed',
+            borderRadius: 10,
+            paddingVertical: 14,
+            marginTop: 16,
+            alignItems: 'center',
+          }}
+          onPress={() => setCurrentStep('review')}
+        >
+          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Continue</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={{ paddingVertical: 12, marginTop: 8, alignItems: 'center' }}
+          onPress={() => setCurrentStep('players')}
+        >
+          <Text style={{ color: '#94a3b8', fontSize: 14 }}>Back to Player Selection</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   // SUCCESS SCREEN
   if (registrationComplete) {
@@ -1452,7 +1828,7 @@ export const ProgramRegistrationScreen: React.FC = () => {
             ]}
             onPress={() => {
               if (registrations.length > 0) {
-                setCurrentStep('review');
+                setCurrentStep(hasTryoutSchedule ? 'agegroup' : 'review');
               }
             }}
             disabled={registrations.length === 0}
@@ -1773,6 +2149,8 @@ export const ProgramRegistrationScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {currentStep === 'agegroup' && program && <AgeGroupStepContent />}
 
       {/* STEP: REVIEW */}
       {currentStep === 'review' && (

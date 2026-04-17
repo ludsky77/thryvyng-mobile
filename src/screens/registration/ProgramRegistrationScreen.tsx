@@ -769,13 +769,25 @@ export const ProgramRegistrationScreen: React.FC = () => {
           if (__DEV__) console.log('[ProgramReg] Created player:', playerId);
         }
 
-        // Clean up any abandoned pending registration before creating new one
-        await supabase
+        const { data: existingReg } = await supabase
           .from('program_registrations')
-          .delete()
+          .select('id, status')
           .eq('program_id', program.id)
           .eq('player_id', playerId)
-          .eq('status', 'pending');
+          .maybeSingle();
+
+        if (existingReg) {
+          if (existingReg.status === 'completed') {
+            const friendlyReg =
+              'This player has already completed registration for this program. If you need to make changes, please contact the club.';
+            Alert.alert('Registration', friendlyReg);
+            throw new Error(friendlyReg);
+          }
+          registrationIds.push(existingReg.id);
+          if (__DEV__)
+            console.log('[ProgramReg] Reusing registration:', existingReg.id);
+          continue;
+        }
 
         const { data: registration, error: regError } = await supabase
           .from('program_registrations')
@@ -811,9 +823,11 @@ export const ProgramRegistrationScreen: React.FC = () => {
             Alert.alert('Registration', friendlyReg);
             throw new Error(friendlyReg);
           }
-          throw new Error(
-            `Failed to create registration: ${regError.message}`
-          );
+          throw new Error('Failed to create registration. Please try again.');
+        }
+
+        if (!registration) {
+          throw new Error('Failed to create registration. Please try again.');
         }
 
         registrationIds.push(registration.id);

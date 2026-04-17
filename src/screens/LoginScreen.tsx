@@ -182,7 +182,7 @@ export default function LoginScreen() {
     setError('');
 
     try {
-      const { error: signupError } = await supabase.auth.signUp({
+      const { data: signupData, error: signupError } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
         options: {
@@ -209,6 +209,15 @@ export default function LoginScreen() {
             ? 'This email already has an account. Please sign in instead.'
             : signupError.message
         );
+        return;
+      }
+
+      // Supabase anti-enumeration: signUp "succeeds" for existing emails
+      // but returns empty identities array
+      if (signupData?.user?.identities?.length === 0) {
+        setError('This email already has an account. Please sign in instead.');
+        setAuthMode('signin');
+        setLoading(false);
         return;
       }
 

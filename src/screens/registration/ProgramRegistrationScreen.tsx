@@ -98,9 +98,16 @@ interface PlayerRegistration {
   isNew: boolean;
 }
 
-type RegistrationStep = 'auth' | 'package' | 'players' | 'agegroup' | 'review' | 'complete';
+type RegistrationStep =
+  | 'auth'
+  | 'package'
+  | 'players'
+  | 'agegroup'
+  | 'donations'
+  | 'review'
+  | 'complete';
 
-function buildSteps(hasTryoutSchedule: boolean) {
+function buildSteps(hasTryoutSchedule: boolean, hasDonations: boolean) {
   const steps: { key: RegistrationStep; label: string; description: string }[] = [
     { key: 'auth', label: 'Sign In', description: 'Create or sign into your account' },
     { key: 'package', label: 'Select Package', description: 'Choose your registration option' },
@@ -111,6 +118,13 @@ function buildSteps(hasTryoutSchedule: boolean) {
       key: 'agegroup',
       label: 'Age Group',
       description: 'Check your tryout schedule',
+    });
+  }
+  if (hasDonations) {
+    steps.push({
+      key: 'donations',
+      label: 'Donations',
+      description: 'Support the club',
     });
   }
   steps.push({ key: 'review', label: 'Review & Pay', description: 'Complete registration' });
@@ -129,9 +143,17 @@ export const ProgramRegistrationScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [program, setProgram] = useState<Program | null>(null);
   const [packages, setPackages] = useState<Package[]>([]);
+  const [donationSettings, setDonationSettings] = useState<{
+    donations_enabled: boolean;
+    min_donation_amount: number;
+    donation_presets: number[];
+  } | null>(null);
+  const [donationAmount, setDonationAmount] = useState<number>(0);
+
   const hasTryoutSchedule =
     Array.isArray(program?.tryout_schedule) && program.tryout_schedule.length > 0;
-  const STEPS = buildSteps(hasTryoutSchedule);
+  const hasDonations = donationSettings?.donations_enabled === true;
+  const STEPS = buildSteps(hasTryoutSchedule, hasDonations);
 
   // Registration state
   const [currentStep, setCurrentStep] = useState<RegistrationStep>('auth');
@@ -192,6 +214,25 @@ export const ProgramRegistrationScreen: React.FC = () => {
   useEffect(() => {
     fetchProgramData();
   }, [programId]);
+
+  useEffect(() => {
+    if (!program?.id) return;
+    const fetchDonationSettings = async () => {
+      const { data } = await supabase
+        .from('program_additional_settings')
+        .select('donations_enabled, min_donation_amount, donation_presets')
+        .eq('program_id', program.id)
+        .maybeSingle();
+      if (data) {
+        setDonationSettings({
+          donations_enabled: data.donations_enabled ?? false,
+          min_donation_amount: data.min_donation_amount ?? 5,
+          donation_presets: (data.donation_presets as number[]) ?? [25, 50, 100],
+        });
+      }
+    };
+    fetchDonationSettings();
+  }, [program?.id]);
 
   useEffect(() => {
     // Auto-advance past auth step if already logged in
@@ -824,6 +865,7 @@ export const ProgramRegistrationScreen: React.FC = () => {
             success_url: 'thryvyng://registration-success',
             cancel_url: 'thryvyng://registration-cancel',
             save_payment_method: savePaymentMethod,
+            donationAmount: donationAmount || 0,
           },
         });
 
@@ -875,8 +917,10 @@ export const ProgramRegistrationScreen: React.FC = () => {
       setCurrentStep('package');
     } else if (currentStep === 'agegroup') {
       setCurrentStep('players');
-    } else if (currentStep === 'review') {
+    } else if (currentStep === 'donations') {
       setCurrentStep(hasTryoutSchedule ? 'agegroup' : 'players');
+    } else if (currentStep === 'review') {
+      setCurrentStep(hasDonations ? 'donations' : hasTryoutSchedule ? 'agegroup' : 'players');
     }
   };
 
@@ -1270,7 +1314,7 @@ export const ProgramRegistrationScreen: React.FC = () => {
             marginTop: 16,
             alignItems: 'center',
           }}
-          onPress={() => setCurrentStep('review')}
+          onPress={() => setCurrentStep(hasDonations ? 'donations' : 'review')}
         >
           <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Continue</Text>
         </TouchableOpacity>
@@ -1280,6 +1324,168 @@ export const ProgramRegistrationScreen: React.FC = () => {
           onPress={() => setCurrentStep('players')}
         >
           <Text style={{ color: '#94a3b8', fontSize: 14 }}>Back to Player Selection</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const DonationsStepContent = () => {
+    const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
+    const [customAmount, setCustomAmount] = useState('');
+    const [useCustom, setUseCustom] = useState(false);
+
+    const presets = donationSettings?.donation_presets || [25, 50, 100];
+    const minAmount = donationSettings?.min_donation_amount || 5;
+
+    const handleSelectPreset = (amount: number) => {
+      setSelectedPreset(amount);
+      setUseCustom(false);
+      setCustomAmount('');
+      setDonationAmount(amount);
+    };
+
+    const handleCustomChange = (text: string) => {
+      setCustomAmount(text);
+      const parsed = parseFloat(text);
+      if (!Number.isNaN(parsed) && parsed >= minAmount) {
+        setDonationAmount(parsed);
+        setSelectedPreset(null);
+        setUseCustom(true);
+      }
+    };
+
+    const handleSkip = () => {
+      setDonationAmount(0);
+      setCurrentStep('review');
+    };
+
+    const handleContinue = () => {
+      setCurrentStep('review');
+    };
+
+    return (
+      <View style={{ padding: 16 }}>
+        <View
+          style={{
+            backgroundColor: '#1e293b',
+            borderRadius: 12,
+            padding: 20,
+            borderWidth: 1,
+            borderColor: '#334155',
+          }}
+        >
+          <Text style={{ fontSize: 18, fontWeight: '600', color: '#e2e8f0', marginBottom: 4 }}>
+            Support the Program
+          </Text>
+          <Text style={{ fontSize: 13, color: '#94a3b8', marginBottom: 20 }}>
+            {`Your donation helps ensure every child can play regardless of their family's financial situation.`}
+          </Text>
+
+          <View style={{ flexDirection: 'row', marginBottom: 16, gap: 10 }}>
+            {presets.map((amount) => (
+              <TouchableOpacity
+                key={amount}
+                style={{
+                  flex: 1,
+                  paddingVertical: 16,
+                  borderRadius: 10,
+                  borderWidth: 2,
+                  borderColor: selectedPreset === amount ? '#10b981' : '#334155',
+                  backgroundColor:
+                    selectedPreset === amount ? 'rgba(16, 185, 129, 0.1)' : '#0f172a',
+                  alignItems: 'center',
+                }}
+                onPress={() => handleSelectPreset(amount)}
+              >
+                <Text
+                  style={{
+                    color: selectedPreset === amount ? '#10b981' : '#e2e8f0',
+                    fontSize: 18,
+                    fontWeight: '600',
+                  }}
+                >
+                  ${amount}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <TextInput
+            style={{
+              backgroundColor: '#0f172a',
+              borderWidth: 1,
+              borderColor: useCustom ? '#8b5cf6' : '#334155',
+              borderRadius: 10,
+              padding: 14,
+              color: '#e2e8f0',
+              fontSize: 16,
+              marginBottom: 12,
+            }}
+            placeholder={`Custom amount (min $${minAmount})`}
+            placeholderTextColor="#64748b"
+            keyboardType="numeric"
+            value={customAmount}
+            onChangeText={handleCustomChange}
+            onFocus={() => {
+              setSelectedPreset(null);
+              setUseCustom(true);
+            }}
+          />
+
+          {donationAmount > 0 && (
+            <View
+              style={{
+                backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                borderRadius: 10,
+                padding: 14,
+                alignItems: 'center',
+                marginBottom: 12,
+              }}
+            >
+              <Text style={{ color: '#94a3b8', fontSize: 12 }}>Your donation</Text>
+              <Text style={{ color: '#10b981', fontSize: 24, fontWeight: '600' }}>
+                ${donationAmount.toFixed(2)}
+              </Text>
+              <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                Thank you for your generous support!
+              </Text>
+            </View>
+          )}
+
+          <Text style={{ color: '#64748b', fontSize: 12, textAlign: 'center' }}>
+            Donations are optional and greatly appreciated.
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#7c3aed',
+            borderRadius: 10,
+            paddingVertical: 14,
+            marginTop: 16,
+            alignItems: 'center',
+          }}
+          onPress={donationAmount > 0 ? handleContinue : handleSkip}
+        >
+          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>
+            {donationAmount > 0 ? 'Continue' : 'Skip'}
+          </Text>
+        </TouchableOpacity>
+
+        {donationAmount > 0 && (
+          <TouchableOpacity
+            style={{ paddingVertical: 12, marginTop: 4, alignItems: 'center' }}
+            onPress={handleSkip}
+          >
+            <Text style={{ color: '#94a3b8', fontSize: 14 }}>No thanks, skip donation</Text>
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity
+          style={{ paddingVertical: 12, marginTop: 4, alignItems: 'center' }}
+          onPress={() => setCurrentStep(hasTryoutSchedule ? 'agegroup' : 'players')}
+        >
+          <Text style={{ color: '#94a3b8', fontSize: 14 }}>Back</Text>
         </TouchableOpacity>
       </View>
     );
@@ -1828,7 +2034,9 @@ export const ProgramRegistrationScreen: React.FC = () => {
             ]}
             onPress={() => {
               if (registrations.length > 0) {
-                setCurrentStep(hasTryoutSchedule ? 'agegroup' : 'review');
+                setCurrentStep(
+                  hasTryoutSchedule ? 'agegroup' : hasDonations ? 'donations' : 'review'
+                );
               }
             }}
             disabled={registrations.length === 0}
@@ -2151,6 +2359,8 @@ export const ProgramRegistrationScreen: React.FC = () => {
       </Modal>
 
       {currentStep === 'agegroup' && program && <AgeGroupStepContent />}
+
+      {currentStep === 'donations' && <DonationsStepContent />}
 
       {/* STEP: REVIEW */}
       {currentStep === 'review' && (

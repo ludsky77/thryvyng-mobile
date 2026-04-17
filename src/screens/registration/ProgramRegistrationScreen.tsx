@@ -147,6 +147,7 @@ export const ProgramRegistrationScreen: React.FC = () => {
     donations_enabled: boolean;
     min_donation_amount: number;
     donation_presets: number[];
+    allow_custom_amount: boolean;
   } | null>(null);
   const [donationAmount, setDonationAmount] = useState<number>(0);
 
@@ -220,14 +221,17 @@ export const ProgramRegistrationScreen: React.FC = () => {
     const fetchDonationSettings = async () => {
       const { data } = await supabase
         .from('program_additional_settings')
-        .select('donations_enabled, min_donation_amount, donation_presets')
+        .select(
+          'donations_enabled, donations_min_amount, donations_suggested_amounts, donations_allow_custom_amount'
+        )
         .eq('program_id', program.id)
         .maybeSingle();
       if (data) {
         setDonationSettings({
           donations_enabled: data.donations_enabled ?? false,
-          min_donation_amount: data.min_donation_amount ?? 5,
-          donation_presets: (data.donation_presets as number[]) ?? [25, 50, 100],
+          min_donation_amount: data.donations_min_amount ?? 5,
+          donation_presets: (data.donations_suggested_amounts as number[]) ?? [25, 50, 100],
+          allow_custom_amount: data.donations_allow_custom_amount ?? true,
         });
       }
     };
@@ -1410,27 +1414,29 @@ export const ProgramRegistrationScreen: React.FC = () => {
             ))}
           </View>
 
-          <TextInput
-            style={{
-              backgroundColor: '#0f172a',
-              borderWidth: 1,
-              borderColor: useCustom ? '#8b5cf6' : '#334155',
-              borderRadius: 10,
-              padding: 14,
-              color: '#e2e8f0',
-              fontSize: 16,
-              marginBottom: 12,
-            }}
-            placeholder={`Custom amount (min $${minAmount})`}
-            placeholderTextColor="#64748b"
-            keyboardType="numeric"
-            value={customAmount}
-            onChangeText={handleCustomChange}
-            onFocus={() => {
-              setSelectedPreset(null);
-              setUseCustom(true);
-            }}
-          />
+          {donationSettings?.allow_custom_amount === true && (
+            <TextInput
+              style={{
+                backgroundColor: '#0f172a',
+                borderWidth: 1,
+                borderColor: useCustom ? '#8b5cf6' : '#334155',
+                borderRadius: 10,
+                padding: 14,
+                color: '#e2e8f0',
+                fontSize: 16,
+                marginBottom: 12,
+              }}
+              placeholder={`Custom amount (min $${minAmount})`}
+              placeholderTextColor="#64748b"
+              keyboardType="numeric"
+              value={customAmount}
+              onChangeText={handleCustomChange}
+              onFocus={() => {
+                setSelectedPreset(null);
+                setUseCustom(true);
+              }}
+            />
+          )}
 
           {donationAmount > 0 && (
             <View

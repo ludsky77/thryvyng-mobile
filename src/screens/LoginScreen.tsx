@@ -95,7 +95,14 @@ export default function LoginScreen() {
     setLoading(false);
 
     if (signInError) {
-      setError(signInError.message);
+      const signInMsg = (signInError.message || '').toLowerCase();
+      if (signInMsg.includes('invalid login credentials')) {
+        setError(
+          'Incorrect email or password. Please try again or use Forgot Password to reset.'
+        );
+      } else {
+        setError(signInError.message);
+      }
       return;
     }
 
@@ -188,7 +195,20 @@ export default function LoginScreen() {
       });
 
       if (signupError) {
-        setError(signupError.message);
+        const signupMsg = (signupError.message || '').toLowerCase();
+        const signupDuplicate =
+          signupMsg.includes('already registered') ||
+          signupMsg.includes('already been registered') ||
+          signupMsg.includes('user already') ||
+          signupMsg.includes('email address is already') ||
+          signupMsg.includes('email is already') ||
+          signupMsg.includes('invalid login credentials') ||
+          signupMsg.includes('invalid credentials');
+        setError(
+          signupDuplicate
+            ? 'This email already has an account. Please sign in instead.'
+            : signupError.message
+        );
         return;
       }
 

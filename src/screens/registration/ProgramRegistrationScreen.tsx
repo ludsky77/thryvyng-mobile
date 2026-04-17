@@ -12,6 +12,7 @@ import {
   FlatList,
   Linking,
   AppState,
+  Alert,
   type AppStateStatus,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -721,6 +722,18 @@ export const ProgramRegistrationScreen: React.FC = () => {
         if (regError) {
           if (__DEV__)
             console.error('[ProgramReg] Error creating registration:', regError);
+          const regMsg = (regError.message || '').toLowerCase();
+          const duplicateRegistration =
+            regError.code === '23505' ||
+            regMsg.includes('duplicate') ||
+            regMsg.includes('already') ||
+            regMsg.includes('unique constraint');
+          if (duplicateRegistration) {
+            const friendlyReg =
+              'This player is already registered for this program. If you need to make changes, please contact the club.';
+            Alert.alert('Registration', friendlyReg);
+            throw new Error(friendlyReg);
+          }
           throw new Error(
             `Failed to create registration: ${regError.message}`
           );

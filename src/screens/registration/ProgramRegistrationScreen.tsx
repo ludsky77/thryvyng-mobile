@@ -769,6 +769,14 @@ export const ProgramRegistrationScreen: React.FC = () => {
           if (__DEV__) console.log('[ProgramReg] Created player:', playerId);
         }
 
+        // Clean up any abandoned pending registration before creating new one
+        await supabase
+          .from('program_registrations')
+          .delete()
+          .eq('program_id', program.id)
+          .eq('player_id', playerId)
+          .eq('status', 'pending');
+
         const { data: registration, error: regError } = await supabase
           .from('program_registrations')
           .insert({
@@ -799,7 +807,7 @@ export const ProgramRegistrationScreen: React.FC = () => {
             regMsg.includes('unique constraint');
           if (duplicateRegistration) {
             const friendlyReg =
-              'This player is already registered for this program. If you need to make changes, please contact the club.';
+              'This player has already completed registration for this program. If you need to make changes, please contact the club.';
             Alert.alert('Registration', friendlyReg);
             throw new Error(friendlyReg);
           }
@@ -934,7 +942,18 @@ export const ProgramRegistrationScreen: React.FC = () => {
 
   // Step Indicator Component
   const StepIndicator = () => (
-    <View style={styles.stepIndicator}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{
+        paddingHorizontal: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexGrow: 1,
+        justifyContent: 'center',
+      }}
+      style={{ marginBottom: 32 }}
+    >
       {STEPS.map((step, index) => {
         const currentIndex = getStepIndex(currentStep);
         const isComplete = index < currentIndex;
@@ -980,7 +999,7 @@ export const ProgramRegistrationScreen: React.FC = () => {
           </React.Fragment>
         );
       })}
-    </View>
+    </ScrollView>
   );
 
   const AgeGroupStepContent = () => {
@@ -2455,10 +2474,27 @@ export const ProgramRegistrationScreen: React.FC = () => {
                 </View>
               )}
 
+              {donationAmount > 0 && (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    paddingVertical: 8,
+                    borderBottomWidth: 0.5,
+                    borderBottomColor: '#334155',
+                  }}
+                >
+                  <Text style={{ color: '#94a3b8', fontSize: 14 }}>Donation</Text>
+                  <Text style={{ color: '#e2e8f0', fontSize: 14, fontWeight: '500' }}>
+                    ${donationAmount.toFixed(2)}
+                  </Text>
+                </View>
+              )}
+
               <View style={styles.orderTotalRow}>
                 <Text style={styles.orderTotalLabel}>Total</Text>
                 <Text style={styles.orderTotalAmount}>
-                  ${calculateTotal().toFixed(2)}
+                  ${(calculateTotal() + donationAmount).toFixed(2)}
                 </Text>
               </View>
             </View>
@@ -2559,7 +2595,7 @@ export const ProgramRegistrationScreen: React.FC = () => {
               <>
                 <Ionicons name="card-outline" size={20} color="#FFFFFF" />
                 <Text style={styles.payButtonText}>
-                  Pay ${calculateTotal().toFixed(2)}
+                  Pay ${(calculateTotal() + donationAmount).toFixed(2)}
                 </Text>
               </>
             )}
@@ -2712,13 +2748,6 @@ const styles = StyleSheet.create({
   clubName: {
     fontSize: 14,
     color: '#9CA3AF',
-  },
-  stepIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 32,
-    paddingHorizontal: 8,
   },
   stepItem: {
     alignItems: 'center',

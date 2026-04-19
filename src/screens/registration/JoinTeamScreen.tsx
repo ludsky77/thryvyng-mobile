@@ -18,7 +18,8 @@ import DateTimePicker, {
 } from '@react-native-community/datetimepicker';
 import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Feather } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRegistration } from '../../contexts/RegistrationContext';
@@ -119,6 +120,14 @@ function formatTeamInviteInput(raw: string): string {
 export const JoinTeamScreen: React.FC = () => {
   const route = useRoute<JoinTeamRouteProp>();
   const navigation = useNavigation<JoinTeamNavigationProp>();
+
+  const exitToMain = () => {
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Main' }],
+    });
+  };
+
   const { user, session, refreshRoles } = useAuth();
   const { setRegistrationData, clearRegistrationData } = useRegistration();
 
@@ -1260,7 +1269,7 @@ export const JoinTeamScreen: React.FC = () => {
       setJoinRole(null);
       setStep('team-info');
     } else {
-      handleGoBack();
+      exitToMain();
     }
   };
 
@@ -1268,7 +1277,7 @@ export const JoinTeamScreen: React.FC = () => {
     if (navigation.canGoBack()) {
       navigation.goBack();
     } else {
-      navigation.navigate('Welcome');
+      exitToMain();
     }
   };
 
@@ -1338,16 +1347,41 @@ export const JoinTeamScreen: React.FC = () => {
 
   if (screenState === 'loading') {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#8B5CF6" />
-        <Text style={styles.loadingText}>Validating invitation...</Text>
-      </View>
+      <SafeAreaView style={styles.safeAreaRoot} edges={['top', 'left', 'right']}>
+        <View style={styles.regHeaderBar}>
+          <View style={styles.regHeaderSideSpacer} />
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            style={styles.regHeaderHit}
+            onPress={exitToMain}
+            accessibilityLabel="Close and return home"
+          >
+            <Feather name="x" size={24} color="#9CA3AF" />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color="#8B5CF6" />
+          <Text style={styles.loadingText}>Validating invitation...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (screenState === 'invalid' || screenState === 'expired' || screenState === 'error') {
     return (
-      <View style={styles.centerContainer}>
+      <SafeAreaView style={styles.safeAreaRoot} edges={['top', 'left', 'right']}>
+        <View style={styles.regHeaderBar}>
+          <View style={styles.regHeaderSideSpacer} />
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            style={styles.regHeaderHit}
+            onPress={exitToMain}
+            accessibilityLabel="Close and return home"
+          >
+            <Feather name="x" size={24} color="#9CA3AF" />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.centerContainer}>
         <View style={styles.errorCard}>
           <Ionicons
             name={screenState === 'expired' ? 'time-outline' : 'alert-circle-outline'}
@@ -1380,7 +1414,8 @@ export const JoinTeamScreen: React.FC = () => {
             <Text style={styles.backButtonText}>Go Back</Text>
           </TouchableOpacity>
         </View>
-      </View>
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -1399,10 +1434,22 @@ export const JoinTeamScreen: React.FC = () => {
     const shareMessage = `Support ${createdPlayer.first_name} and ${teamName} by shopping through Thryvyng! ${supportLink}`;
 
     return (
+      <SafeAreaView style={styles.safeAreaRoot} edges={['top', 'left', 'right']}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.successContainer}
       >
+        <View style={styles.regHeaderBar}>
+          <View style={styles.regHeaderSideSpacer} />
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            style={styles.regHeaderHit}
+            onPress={exitToMain}
+            accessibilityLabel="Close and return home"
+          >
+            <Feather name="x" size={24} color="#9CA3AF" />
+          </TouchableOpacity>
+        </View>
         <View style={styles.successCard}>
           <View style={styles.successIconContainer}>
             <Ionicons name="checkmark-circle" size={80} color="#22C55E" />
@@ -1530,23 +1577,38 @@ export const JoinTeamScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
       </ScrollView>
+      </SafeAreaView>
     );
   }
 
   // Valid team - show multi-step flow
   return (
+    <SafeAreaView style={styles.safeAreaRoot} edges={['top', 'left', 'right']}>
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={90}
     >
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      {step !== 'team-info' && (
-        <TouchableOpacity style={styles.backNav} onPress={handleBack}>
+      <View style={styles.regHeaderBar}>
+        <TouchableOpacity
+          style={styles.regHeaderHit}
+          onPress={handleBack}
+          accessibilityLabel={
+            step === 'team-info' ? 'Close and return home' : 'Back'
+          }
+        >
           <Ionicons name="arrow-back" size={24} color="#9CA3AF" />
-          <Text style={styles.backNavText}>Back</Text>
         </TouchableOpacity>
-      )}
+        <View style={{ flex: 1 }} />
+        <TouchableOpacity
+          style={styles.regHeaderHit}
+          onPress={exitToMain}
+          accessibilityLabel="Close and return home"
+        >
+          <Feather name="x" size={24} color="#9CA3AF" />
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.stepIndicator}>
         <View style={[styles.stepDot, step === 'team-info' && styles.stepDotActive]} />
@@ -2623,10 +2685,31 @@ export const JoinTeamScreen: React.FC = () => {
       />
       </ScrollView>
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeAreaRoot: {
+    flex: 1,
+    backgroundColor: '#121212',
+  },
+  regHeaderBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  regHeaderHit: {
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  regHeaderSideSpacer: {
+    minWidth: 44,
+    minHeight: 44,
+  },
   container: {
     flex: 1,
     backgroundColor: '#121212',

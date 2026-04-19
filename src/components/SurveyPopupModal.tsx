@@ -49,7 +49,7 @@ function isClosingSoon(closesAt: string | null): boolean {
 }
 
 export default function SurveyPopupModal({ navigation }: SurveyPopupModalProps) {
-  const { user } = useAuth();
+  const { user, roles } = useAuth();
   const [survey, setSurvey] = useState<PendingSurvey | null>(null);
   const [visible, setVisible] = useState(false);
   const [checked, setChecked] = useState(false);
@@ -105,10 +105,11 @@ export default function SurveyPopupModal({ navigation }: SurveyPopupModalProps) 
   }, [user?.id]);
 
   useEffect(() => {
+    if (!user || !roles || roles.length === 0) return;
     if (user?.id && !checked) {
       checkAndShow();
     }
-  }, [user?.id, checked, checkAndShow]);
+  }, [user?.id, roles, checked, checkAndShow]);
 
   const handleAnswerNow = () => {
     setVisible(false);

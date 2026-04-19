@@ -17,7 +17,8 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Feather } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRegistration } from '../../contexts/RegistrationContext';
@@ -926,14 +927,21 @@ export const ProgramRegistrationScreen: React.FC = () => {
     }
   };
 
+  const exitToMain = () => {
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Main' }],
+    });
+  };
+
   const handleBack = () => {
-    if (currentStep === 'auth') {
-      if (navigation.canGoBack()) {
-        navigation.goBack();
-      } else {
-        navigation.navigate('Welcome');
-      }
-    } else if (currentStep === 'package') {
+    const stepIndex = STEPS.findIndex((s) => s.key === currentStep);
+    if (stepIndex <= 0) {
+      exitToMain();
+      return;
+    }
+
+    if (currentStep === 'package') {
       if (!user) {
         setCurrentStep('auth');
       } else {
@@ -1533,10 +1541,22 @@ export const ProgramRegistrationScreen: React.FC = () => {
   // SUCCESS SCREEN
   if (registrationComplete) {
     return (
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.successContainer}
-      >
+      <SafeAreaView style={styles.safeAreaRoot} edges={['top', 'left', 'right']}>
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.successContainer}
+        >
+          <View style={styles.regHeaderBar}>
+            <View style={styles.regHeaderSideSpacer} />
+            <View style={{ flex: 1 }} />
+            <TouchableOpacity
+              style={styles.regHeaderHit}
+              onPress={exitToMain}
+              accessibilityLabel="Close and return home"
+            >
+              <Feather name="x" size={24} color="#9CA3AF" />
+            </TouchableOpacity>
+          </View>
         <View style={styles.successCard}>
           <View style={styles.successIconContainer}>
             <Ionicons name="checkmark-circle" size={80} color="#22C55E" />
@@ -1657,13 +1677,26 @@ export const ProgramRegistrationScreen: React.FC = () => {
             </Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+        </ScrollView>
+      </SafeAreaView>
     );
   }
 
   // AWAITING PAYMENT SCREEN
   if (awaitingPayment) {
     return (
+      <SafeAreaView style={styles.safeAreaRoot} edges={['top', 'left', 'right']}>
+        <View style={styles.regHeaderBar}>
+          <View style={styles.regHeaderSideSpacer} />
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            style={styles.regHeaderHit}
+            onPress={exitToMain}
+            accessibilityLabel="Close and return home"
+          >
+            <Feather name="x" size={24} color="#9CA3AF" />
+          </TouchableOpacity>
+        </View>
       <View style={styles.awaitingContainer}>
         <View style={styles.awaitingCard}>
           <ActivityIndicator size="large" color="#8B5CF6" />
@@ -1717,46 +1750,86 @@ export const ProgramRegistrationScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
       </View>
+      </SafeAreaView>
     );
   }
 
   // Loading state
   if (isLoading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#8B5CF6" />
-        <Text style={styles.loadingText}>Loading program...</Text>
-      </View>
+      <SafeAreaView style={styles.safeAreaRoot} edges={['top', 'left', 'right']}>
+        <View style={styles.regHeaderBar}>
+          <View style={styles.regHeaderSideSpacer} />
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            style={styles.regHeaderHit}
+            onPress={exitToMain}
+            accessibilityLabel="Close and return home"
+          >
+            <Feather name="x" size={24} color="#9CA3AF" />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color="#8B5CF6" />
+          <Text style={styles.loadingText}>Loading program...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   // Error state
   if (error || !program) {
     return (
-      <View style={styles.centerContainer}>
-        <Ionicons name="alert-circle" size={64} color="#EF4444" />
-        <Text style={styles.errorTitle}>Unable to Load Program</Text>
-        <Text style={styles.errorText}>{error || 'Program not found'}</Text>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.navigate('Welcome')}
-        >
-          <Text style={styles.backButtonText}>Go Back</Text>
-        </TouchableOpacity>
-      </View>
+      <SafeAreaView style={styles.safeAreaRoot} edges={['top', 'left', 'right']}>
+        <View style={styles.regHeaderBar}>
+          <View style={styles.regHeaderSideSpacer} />
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            style={styles.regHeaderHit}
+            onPress={exitToMain}
+            accessibilityLabel="Close and return home"
+          >
+            <Feather name="x" size={24} color="#9CA3AF" />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.centerContainer}>
+          <Ionicons name="alert-circle" size={64} color="#EF4444" />
+          <Text style={styles.errorTitle}>Unable to Load Program</Text>
+          <Text style={styles.errorText}>{error || 'Program not found'}</Text>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.navigate('Welcome')}
+          >
+            <Text style={styles.backButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
+    <SafeAreaView style={styles.safeAreaRoot} edges={['top', 'left', 'right']}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.contentContainer}
     >
-      {/* Back button */}
-      <TouchableOpacity style={styles.backNav} onPress={handleBack}>
-        <Ionicons name="arrow-back" size={24} color="#9CA3AF" />
-        <Text style={styles.backNavText}>Back</Text>
-      </TouchableOpacity>
+      <View style={styles.regHeaderBar}>
+        <TouchableOpacity
+          style={styles.regHeaderHit}
+          onPress={handleBack}
+          accessibilityLabel="Back"
+        >
+          <Ionicons name="arrow-back" size={24} color="#9CA3AF" />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }} />
+        <TouchableOpacity
+          style={styles.regHeaderHit}
+          onPress={exitToMain}
+          accessibilityLabel="Close and return home"
+        >
+          <Feather name="x" size={24} color="#9CA3AF" />
+        </TouchableOpacity>
+      </View>
 
       {/* Program Header */}
       <View style={styles.programHeader}>
@@ -2646,10 +2719,31 @@ export const ProgramRegistrationScreen: React.FC = () => {
         </View>
       )}
     </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeAreaRoot: {
+    flex: 1,
+    backgroundColor: '#121212',
+  },
+  regHeaderBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  regHeaderHit: {
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  regHeaderSideSpacer: {
+    width: 44,
+    height: 44,
+  },
   container: {
     flex: 1,
     backgroundColor: '#121212',

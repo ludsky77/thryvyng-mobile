@@ -12,7 +12,8 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Feather } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRegistration } from '../../contexts/RegistrationContext';
@@ -70,6 +71,14 @@ const ROLES = [
 
 export const RegisterTeamScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
+
+  const exitToMain = () => {
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Main' }],
+    });
+  };
+
   const { user, session, refreshRoles } = useAuth();
   const { setRegistrationData } = useRegistration();
 
@@ -444,11 +453,7 @@ export const RegisterTeamScreen: React.FC = () => {
     if (step === 'user-info') {
       setStep('team-info');
     } else {
-      if (navigation.canGoBack()) {
-        navigation.goBack();
-      } else {
-        navigation.navigate('Welcome');
-      }
+      exitToMain();
     }
   };
 
@@ -527,19 +532,44 @@ export const RegisterTeamScreen: React.FC = () => {
 
   if (isLoading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#8B5CF6" />
-        <Text style={styles.loadingText}>Loading clubs...</Text>
-      </View>
+      <SafeAreaView style={styles.safeAreaRoot} edges={['top', 'left', 'right']}>
+        <View style={styles.regHeaderBar}>
+          <View style={styles.regHeaderSideSpacer} />
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            style={styles.regHeaderHit}
+            onPress={exitToMain}
+            accessibilityLabel="Close and return home"
+          >
+            <Feather name="x" size={24} color="#9CA3AF" />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color="#8B5CF6" />
+          <Text style={styles.loadingText}>Loading clubs...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (registrationComplete) {
     return (
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.successContainer}
-      >
+      <SafeAreaView style={styles.safeAreaRoot} edges={['top', 'left', 'right']}>
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.successContainer}
+        >
+          <View style={styles.regHeaderBar}>
+            <View style={styles.regHeaderSideSpacer} />
+            <View style={{ flex: 1 }} />
+            <TouchableOpacity
+              style={styles.regHeaderHit}
+              onPress={exitToMain}
+              accessibilityLabel="Close and return home"
+            >
+              <Feather name="x" size={24} color="#9CA3AF" />
+            </TouchableOpacity>
+          </View>
         <View style={styles.successCard}>
           <View style={styles.successIconContainer}>
             <Ionicons name="checkmark-circle" size={80} color="#22C55E" />
@@ -644,19 +674,36 @@ export const RegisterTeamScreen: React.FC = () => {
             </Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+        </ScrollView>
+      </SafeAreaView>
     );
   }
 
   return (
+    <SafeAreaView style={styles.safeAreaRoot} edges={['top', 'left', 'right']}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.contentContainer}
     >
-      <TouchableOpacity style={styles.backNav} onPress={handleBack}>
-        <Ionicons name="arrow-back" size={24} color="#9CA3AF" />
-        <Text style={styles.backNavText}>Back</Text>
-      </TouchableOpacity>
+      <View style={styles.regHeaderBar}>
+        <TouchableOpacity
+          style={styles.regHeaderHit}
+          onPress={handleBack}
+          accessibilityLabel={
+            step === 'team-info' ? 'Close and return home' : 'Back'
+          }
+        >
+          <Ionicons name="arrow-back" size={24} color="#9CA3AF" />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }} />
+        <TouchableOpacity
+          style={styles.regHeaderHit}
+          onPress={exitToMain}
+          accessibilityLabel="Close and return home"
+        >
+          <Feather name="x" size={24} color="#9CA3AF" />
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.stepIndicator}>
         <View
@@ -1064,10 +1111,31 @@ export const RegisterTeamScreen: React.FC = () => {
         teamName={teamName}
       />
     </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeAreaRoot: {
+    flex: 1,
+    backgroundColor: '#121212',
+  },
+  regHeaderBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  regHeaderHit: {
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  regHeaderSideSpacer: {
+    minWidth: 44,
+    minHeight: 44,
+  },
   container: {
     flex: 1,
     backgroundColor: '#121212',

@@ -9,7 +9,8 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Feather } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import type { RootStackParamList } from '../../navigation/linking';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'RegisterClub'>;
@@ -52,6 +53,13 @@ const BENEFITS = [
 export const RegisterClubScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
 
+  const exitToMain = () => {
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Main' }],
+    });
+  };
+
   const handleContactUs = () => {
     Linking.openURL(
       'mailto:clubs@thryvyng.com?subject=Club Partnership Inquiry&body=Hi Thryvyng Team,%0D%0A%0D%0AI am interested in bringing Thryvyng to my club.%0D%0A%0D%0AClub Name:%0D%0AContact Name:%0D%0APhone:%0D%0ANumber of Teams:%0D%0A%0D%0AThank you!'
@@ -66,19 +74,33 @@ export const RegisterClubScreen: React.FC = () => {
     if (navigation.canGoBack()) {
       navigation.goBack();
     } else {
-      navigation.navigate('Welcome');
+      exitToMain();
     }
   };
 
   return (
+    <SafeAreaView style={styles.safeAreaRoot} edges={['top', 'left', 'right']}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.contentContainer}
     >
-      <TouchableOpacity style={styles.backNav} onPress={handleGoBack}>
-        <Ionicons name="arrow-back" size={24} color="#9CA3AF" />
-        <Text style={styles.backNavText}>Back</Text>
-      </TouchableOpacity>
+      <View style={styles.regHeaderBar}>
+        <TouchableOpacity
+          style={styles.regHeaderHit}
+          onPress={handleGoBack}
+          accessibilityLabel="Back"
+        >
+          <Ionicons name="arrow-back" size={24} color="#9CA3AF" />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }} />
+        <TouchableOpacity
+          style={styles.regHeaderHit}
+          onPress={exitToMain}
+          accessibilityLabel="Close and return home"
+        >
+          <Feather name="x" size={24} color="#9CA3AF" />
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.heroSection}>
         <View style={styles.iconContainer}>
@@ -204,10 +226,27 @@ export const RegisterClubScreen: React.FC = () => {
         </TouchableOpacity>
       </View>
     </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeAreaRoot: {
+    flex: 1,
+    backgroundColor: '#121212',
+  },
+  regHeaderBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  regHeaderHit: {
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   container: {
     flex: 1,
     backgroundColor: '#121212',

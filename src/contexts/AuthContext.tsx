@@ -94,11 +94,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (sessionToken && sessionToken === lastProcessedSessionRef.current) {
           return;
         }
-        if (sessionToken) {
-          lastProcessedSessionRef.current = sessionToken;
-        }
 
         if (session?.user) {
+          setLoading(true);
           try {
             // Run profile, roles, and saved role ID fetches in parallel
             const [profileResult, roles, savedRoleId] = await Promise.all([
@@ -112,6 +110,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             ]);
             setProfile((profileResult as any).data ?? null);
             setAllRoles(roles);
+
+            // Mark session as processed only after successful role loading
+            if (sessionToken) {
+              lastProcessedSessionRef.current = sessionToken;
+            }
 
             // Auto-select if user has exactly one role
             if (roles.length === 1 && !currentRole) {
@@ -128,6 +131,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               registerForPushNotifications(session.user.id);
             }
           } catch (err) {
+            console.error('[AUTH] CRITICAL — Promise.all FAILED:', err);
             setLoading(false);
           }
         } else {

@@ -75,6 +75,11 @@ const CourseDetailScreen = lazy(() => import('../screens/CourseDetailScreen'));
 const CoursePlayerScreen = lazy(() => import('../screens/CoursePlayerScreen'));
 const NotificationSettingsScreen = lazy(() => import('../screens/NotificationSettingsScreen'));
 const EditProfileScreen = lazy(() => import('../screens/EditProfileScreen'));
+const ChangePasswordScreen = lazy(() => import('../screens/ChangePasswordScreen'));
+const EditChildScreen = lazy(() => import('../screens/EditChildScreen'));
+const MyRegistrationsScreen = lazy(() => import('../screens/MyRegistrationsScreen'));
+const MyFamilyScreen = lazy(() => import('../screens/MyFamilyScreen'));
+const RegistrationDetailScreen = lazy(() => import('../screens/RegistrationDetailScreen'));
 const PaymentMethodsScreen = lazy(() => import('../screens/PaymentMethodsScreen'));
 const PaymentHistoryScreen = lazy(() => import('../screens/PaymentHistoryScreen'));
 const PlayerEvaluationsScreen = lazy(() => import('../screens/PlayerEvaluationsScreen'));
@@ -594,6 +599,21 @@ function ProfileStack() {
       />
       <Stack.Screen name="EditProfile" options={{ headerShown: false }}>
         {(props) => <LazyScreen component={EditProfileScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="ChangePassword" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={ChangePasswordScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="EditChild" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={EditChildScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="MyRegistrations" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={MyRegistrationsScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="MyFamily" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={MyFamilyScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="RegistrationDetail" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={RegistrationDetailScreen} {...props} />}
       </Stack.Screen>
       <Stack.Screen name="PaymentMethods" options={{ title: 'Payment Methods' }}>
         {(props) => <LazyScreen component={PaymentMethodsScreen} {...props} />}

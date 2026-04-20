@@ -8,41 +8,72 @@ import {
   Image,
   Linking,
   Alert,
-  Switch,
   ActivityIndicator,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-
-const SHOW_LINEUP_WIDGET_KEY = 'show_lineup_widget';
 
 const HELP_URL = 'https://thryvyng.com/help';
 const TERMS_URL = 'https://thryvyng.com/terms';
 const PRIVACY_URL = 'https://thryvyng.com/privacy';
-const SUPPORT_URL = 'mailto:support@thryvyng.com';
+
+type HubRowProps = {
+  icon: keyof typeof Feather.glyphMap;
+  label: string;
+  onPress: () => void;
+  showChevron?: boolean;
+  isLast?: boolean;
+};
+
+function HubRow({ icon, label, onPress, showChevron = true, isLast = false }: HubRowProps) {
+  return (
+    <TouchableOpacity
+      style={[styles.hubRow, !isLast && styles.hubRowDivider]}
+      onPress={onPress}
+      activeOpacity={0.65}
+    >
+      <Feather name={icon} size={20} color="#8b5cf6" style={styles.hubRowIcon} />
+      <Text style={styles.hubRowLabel}>{label}</Text>
+      {showChevron ? (
+        <Feather name="chevron-right" size={18} color="#6B7280" />
+      ) : (
+        <View style={styles.hubRowChevronSpacer} />
+      )}
+    </TouchableOpacity>
+  );
+}
 
 export default function ProfileScreen({ navigation }: any) {
   const { user, profile, currentRole, signOut } = useAuth();
-  const [showLineupWidget, setShowLineupWidget] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [hasRegistrations, setHasRegistrations] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(SHOW_LINEUP_WIDGET_KEY).then((val) => {
-      setShowLineupWidget(val !== 'false');
-    });
-  }, []);
+    if (!user?.id) {
+      setHasRegistrations(false);
+      return;
+    }
+    (async () => {
+      const { count, error } = await supabase
+        .from('program_registrations')
+        .select('id', { count: 'exact', head: true })
+        .eq('parent_id', user.id);
+      if (!error && count != null) {
+        setHasRegistrations(count > 0);
+      } else {
+        setHasRegistrations(false);
+      }
+    })();
+  }, [user?.id]);
 
-  const handleLineupWidgetToggle = async (value: boolean) => {
-    setShowLineupWidget(value);
-    await AsyncStorage.setItem(SHOW_LINEUP_WIDGET_KEY, String(value));
-  };
+  const showMyFamilyRow = currentRole?.role === 'parent' || hasRegistrations;
+  const showPaymentsRow = currentRole?.role === 'parent';
 
   const handleSignOut = async () => {
     try {
       await signOut();
-      // Auth state change (user=null) causes AppNavigator to show AuthStack/Login
     } catch (error) {
       console.error('Sign out error:', error);
       Alert.alert('Error', 'Failed to sign out');
@@ -53,7 +84,7 @@ export default function ProfileScreen({ navigation }: any) {
     try {
       setIsDeleting(true);
 
-      const { data, error } = await supabase.functions.invoke('delete-account');
+      const { error } = await supabase.functions.invoke('delete-account');
 
       if (error) {
         Alert.alert('Error', 'Failed to delete account. Please try again or contact support.');
@@ -65,7 +96,7 @@ export default function ProfileScreen({ navigation }: any) {
       if (rootNav?.reset) {
         rootNav.reset({ index: 0, routes: [{ name: 'Welcome' }] });
       }
-    } catch (err) {
+    } catch {
       Alert.alert(
         'Error',
         'An unexpected error occurred. Please contact support at support@thryvyng.com'
@@ -93,351 +124,318 @@ export default function ProfileScreen({ navigation }: any) {
   };
 
   const openUrl = (url: string) => {
-    Linking.openURL(url).catch(() =>
-      Alert.alert('Error', 'Could not open link')
-    );
+    Linking.openURL(url).catch(() => Alert.alert('Error', 'Could not open link'));
   };
 
+  const openLegal = () => {
+    Alert.alert('Terms & Privacy', undefined, [
+      { text: 'Terms of Service', onPress: () => openUrl(TERMS_URL) },
+      { text: 'Privacy Policy', onPress: () => openUrl(PRIVACY_URL) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const phoneDisplay = profile?.phone?.trim();
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-
-      {/* ── Profile Header ── */}
-      <View style={styles.profileHeader}>
-        <View style={styles.avatarContainer}>
-          {profile?.avatar_url ? (
-            <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarText}>
-                {profile?.full_name?.charAt(0)?.toUpperCase() || '?'}
-              </Text>
-            </View>
-          )}
-        </View>
-        <Text style={styles.userName}>{profile?.full_name || 'User'}</Text>
-        <Text style={styles.userEmail}>{user?.email}</Text>
-        {currentRole && (
-          <View style={styles.currentRoleBadge}>
-            <Text style={styles.currentRoleText}>
-              {currentRole.role?.replace(/_/g, ' ')}
-              {currentRole.entityName ? ` • ${currentRole.entityName}` : ''}
-            </Text>
+    <View style={styles.root}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.headerCard}>
+          <View style={styles.avatarWrap}>
+            {profile?.avatar_url ? (
+              <Image source={{ uri: profile.avatar_url }} style={styles.avatarLarge} />
+            ) : (
+              <View style={styles.avatarPlaceholderLarge}>
+                <Text style={styles.avatarLetterLarge}>
+                  {profile?.full_name?.charAt(0)?.toUpperCase() || '?'}
+                </Text>
+              </View>
+            )}
           </View>
-        )}
-      </View>
-
-      {/* ── ACCOUNT ── */}
-      <Text style={styles.sectionHeader}>Account</Text>
-      <View style={styles.sectionGroup}>
-        {currentRole?.role === 'parent' && (
+          <Text style={styles.headerName}>{profile?.full_name || 'User'}</Text>
+          <Text style={styles.headerEmail}>{user?.email}</Text>
+          {phoneDisplay ? <Text style={styles.headerPhone}>{phoneDisplay}</Text> : null}
           <TouchableOpacity
-            style={styles.row}
-            onPress={() => navigation.navigate('ParentPayments')}
-            activeOpacity={0.7}
+            style={styles.editPill}
+            onPress={() => navigation.navigate('EditProfile')}
+            activeOpacity={0.8}
           >
-            <View style={[styles.iconCircle, { backgroundColor: '#8b5cf622' }]}>
-              <Ionicons name="card-outline" size={20} color="#8b5cf6" />
-            </View>
-            <View style={styles.rowLabelWrap}>
-              <Text style={styles.rowLabel}>My Payments</Text>
-              <Text style={styles.rowSubtitle}>Registration plans, balances & cards</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color="#4b5563" />
+            <Feather name="edit-2" size={18} color="#8b5cf6" />
+            <Text style={styles.editPillText}>Edit Profile</Text>
           </TouchableOpacity>
-        )}
-        <TouchableOpacity
-          style={styles.row}
-          onPress={() => navigation.navigate('PaymentHistory')}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.iconCircle, { backgroundColor: '#f59e0b22' }]}>
-            <Ionicons name="receipt-outline" size={20} color="#f59e0b" />
-          </View>
-          <View style={styles.rowLabelWrap}>
-            <Text style={styles.rowLabel}>Purchase History</Text>
-            <Text style={styles.rowSubtitle}>Courses, store & evaluation orders</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color="#4b5563" />
-        </TouchableOpacity>
-      </View>
+        </View>
 
-      {/* ── PREFERENCES ── */}
-      <Text style={styles.sectionHeader}>Preferences</Text>
-      <View style={styles.sectionGroup}>
-        <View style={[styles.row, styles.rowToggle]}>
-          <View style={[styles.iconCircle, { backgroundColor: '#06b6d422' }]}>
-            <Ionicons name="calendar-outline" size={20} color="#06b6d4" />
-          </View>
-          <View style={styles.rowLabelWrap}>
-            <Text style={styles.rowLabel}>Show Lineup on Dashboard</Text>
-            <Text style={styles.rowSubtitle}>
-              Display your upcoming lineup position on the home screen
-            </Text>
-          </View>
-          <Switch
-            value={showLineupWidget}
-            onValueChange={handleLineupWidgetToggle}
-            trackColor={{ false: '#334155', true: '#8b5cf6' }}
-            thumbColor="#fff"
+        <View style={styles.hubCard}>
+          {(() => {
+            const actions: {
+              key: string;
+              icon: keyof typeof Feather.glyphMap;
+              label: string;
+              onPress: () => void;
+            }[] = [];
+            if (showMyFamilyRow) {
+              actions.push({
+                key: 'family',
+                icon: 'users',
+                label: 'My Family',
+                onPress: () => navigation.navigate('MyFamily'),
+              });
+            }
+            actions.push({
+              key: 'regs',
+              icon: 'clipboard',
+              label: 'My Registrations',
+              onPress: () => navigation.navigate('MyRegistrations'),
+            });
+            if (showPaymentsRow) {
+              actions.push({
+                key: 'payments',
+                icon: 'credit-card',
+                label: 'Payments',
+                onPress: () => navigation.navigate('ParentPayments'),
+              });
+            }
+            actions.push({
+              key: 'purchaseHistory',
+              icon: 'shopping-bag',
+              label: 'Purchase History',
+              onPress: () => navigation.navigate('PaymentHistory'),
+            });
+            return actions.map((a, idx) => (
+              <HubRow
+                key={a.key}
+                icon={a.icon}
+                label={a.label}
+                onPress={a.onPress}
+                isLast={idx === actions.length - 1}
+              />
+            ));
+          })()}
+        </View>
+
+        <Text style={styles.sectionTitle}>Account</Text>
+        <View style={styles.hubCard}>
+          <HubRow
+            icon="bell"
+            label="Notification Settings"
+            onPress={() => navigation.navigate('NotificationSettings')}
+          />
+          <HubRow
+            icon="lock"
+            label="Change Password"
+            onPress={() => navigation.navigate('ChangePassword')}
+            isLast
           />
         </View>
-        <TouchableOpacity
-          style={styles.row}
-          onPress={() => navigation.navigate('NotificationSettings')}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.iconCircle, { backgroundColor: '#8b5cf622' }]}>
-            <Ionicons name="notifications-outline" size={20} color="#8b5cf6" />
-          </View>
-          <Text style={styles.rowLabel}>Notification Settings</Text>
-          <Ionicons name="chevron-forward" size={18} color="#4b5563" />
-        </TouchableOpacity>
-      </View>
 
-      {/* ── SUPPORT ── */}
-      <Text style={styles.sectionHeader}>Support</Text>
-      <View style={styles.sectionGroup}>
-        <TouchableOpacity
-          style={styles.row}
-          onPress={() => openUrl(HELP_URL)}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.iconCircle, { backgroundColor: '#10b98122' }]}>
-            <Ionicons name="help-circle-outline" size={20} color="#10b981" />
-          </View>
-          <View style={styles.rowLabelWrap}>
-            <Text style={styles.rowLabel}>Help & Support</Text>
-            <Text style={styles.rowSubtitle}>support@thryvyng.com</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color="#4b5563" />
-        </TouchableOpacity>
-      </View>
+        <Text style={styles.sectionTitle}>Support</Text>
+        <View style={styles.hubCard}>
+          <HubRow
+            icon="help-circle"
+            label="Help & Support"
+            onPress={() => openUrl(HELP_URL)}
+          />
+          <HubRow
+            icon="file-text"
+            label="Terms & Privacy"
+            onPress={openLegal}
+            showChevron={false}
+            isLast
+          />
+        </View>
 
-      {/* ── LEGAL ── */}
-      <Text style={styles.sectionHeader}>Legal</Text>
-      <View style={styles.sectionGroup}>
-        <TouchableOpacity
-          style={styles.row}
-          onPress={() => openUrl(TERMS_URL)}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.iconCircle, { backgroundColor: '#64748b33' }]}>
-            <Ionicons name="document-text-outline" size={20} color="#94a3b8" />
-          </View>
-          <Text style={styles.rowLabel}>Terms of Service</Text>
-          <Ionicons name="chevron-forward" size={18} color="#4b5563" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.row, styles.rowLast]}
-          onPress={() => openUrl(PRIVACY_URL)}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.iconCircle, { backgroundColor: '#64748b33' }]}>
-            <Ionicons name="document-text-outline" size={20} color="#94a3b8" />
-          </View>
-          <Text style={styles.rowLabel}>Privacy Policy</Text>
-          <Ionicons name="chevron-forward" size={18} color="#4b5563" />
-        </TouchableOpacity>
-      </View>
-
-      {/* ── Bottom ── */}
-      <Text style={styles.versionText}>Version 1.0.0</Text>
-
-      <TouchableOpacity
-        style={[styles.deleteAccountButton, isDeleting && styles.deleteAccountButtonDisabled]}
-        onPress={handleDeleteAccountPress}
-        disabled={isDeleting}
-      >
-        {isDeleting ? (
-          <ActivityIndicator size="small" color="#fecaca" />
-        ) : (
-          <Ionicons name="trash-outline" size={18} color="#fecaca" />
-        )}
-        <Text style={styles.deleteAccountText}>
-          {isDeleting ? 'Deleting…' : 'Delete Account'}
+        <Text style={styles.versionText}>
+          {`Version ${Constants.expoConfig?.version ?? '1.0.0'}`}
         </Text>
-      </TouchableOpacity>
 
-      <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-        <Ionicons name="log-out-outline" size={18} color="#fff" />
-        <Text style={styles.signOutText}>Sign Out</Text>
-      </TouchableOpacity>
-
-    </ScrollView>
+        <View style={styles.footerButtons}>
+          <TouchableOpacity
+            style={[styles.outlineButton, styles.deleteOutline, isDeleting && styles.buttonDisabled]}
+            onPress={handleDeleteAccountPress}
+            disabled={isDeleting}
+            activeOpacity={0.75}
+          >
+            {isDeleting ? (
+              <ActivityIndicator size="small" color="#f87171" />
+            ) : (
+              <Text style={styles.deleteOutlineText}>Delete Account</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.outlineButton, styles.signOutOutline]}
+            onPress={() => void handleSignOut()}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.signOutOutlineText}>Sign Out</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
     backgroundColor: '#0f172a',
   },
+  scroll: {
+    flex: 1,
+  },
   scrollContent: {
-    paddingBottom: 40,
+    paddingBottom: 32,
+    flexGrow: 1,
   },
-
-  // Profile header
-  profileHeader: {
-    alignItems: 'center',
-    paddingTop: 16,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
+  headerCard: {
+    backgroundColor: '#2a2a4e',
+    borderRadius: 12,
     marginHorizontal: 16,
-    marginBottom: 8,
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
+    marginTop: 12,
+    marginBottom: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    alignItems: 'center',
   },
-  avatarContainer: {
-    marginBottom: 8,
+  avatarWrap: {
+    marginBottom: 12,
   },
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+  avatarLarge: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
   },
-  avatarPlaceholder: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+  avatarPlaceholderLarge: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
     backgroundColor: '#8b5cf6',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  avatarText: {
-    fontSize: 26,
+  avatarLetterLarge: {
+    fontSize: 36,
     fontWeight: '700',
     color: '#fff',
   },
-  userName: {
-    fontSize: 18,
+  headerName: {
+    fontSize: 20,
     fontWeight: '700',
     color: '#fff',
-    marginBottom: 2,
+    textAlign: 'center',
   },
-  userEmail: {
-    fontSize: 13,
-    color: '#94a3b8',
+  headerEmail: {
+    fontSize: 14,
+    color: '#9ca3af',
+    textAlign: 'center',
+    marginTop: 6,
   },
-  currentRoleBadge: {
-    backgroundColor: 'rgba(139, 92, 246, 0.2)',
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    marginTop: 8,
+  headerPhone: {
+    fontSize: 14,
+    color: '#9ca3af',
+    textAlign: 'center',
+    marginTop: 4,
   },
-  currentRoleText: {
-    color: '#a78bfa',
-    fontSize: 12,
+  editPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#8b5cf6',
+  },
+  editPillText: {
+    color: '#8b5cf6',
+    fontSize: 15,
     fontWeight: '600',
-    textTransform: 'capitalize',
   },
-
-  // Section headers
-  sectionHeader: {
+  hubCard: {
+    backgroundColor: '#1e1e3a',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  hubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 52,
+    paddingHorizontal: 16,
+  },
+  hubRowDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#2a2a4e',
+  },
+  hubRowIcon: {
+    marginRight: 12,
+  },
+  hubRowLabel: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  hubRowChevronSpacer: {
+    width: 18,
+  },
+  sectionTitle: {
     color: '#888',
     fontSize: 11,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 1,
-    marginTop: 20,
     marginBottom: 8,
+    marginTop: 4,
     paddingHorizontal: 16,
   },
-
-  // Section group card
-  sectionGroup: {
-    marginHorizontal: 16,
-    backgroundColor: '#1e293b',
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-
-  // Row
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    borderBottomWidth: 1,
-    borderBottomColor: '#0f172a',
-    gap: 12,
-  },
-  rowLast: {
-    borderBottomWidth: 0,
-  },
-  rowToggle: {
-    justifyContent: 'space-between',
-  },
-  rowLabelWrap: {
-    flex: 1,
-  },
-  rowLabel: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  rowSubtitle: {
-    color: '#64748b',
-    fontSize: 12,
-    marginTop: 2,
-  },
-
-  // Icon circle
-  iconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  // Version
   versionText: {
     color: '#4b5563',
     fontSize: 12,
     textAlign: 'center',
-    marginTop: 24,
-    marginBottom: 8,
+    marginTop: 8,
+    marginBottom: 16,
   },
-
-  // Delete account
-  deleteAccountButton: {
+  footerButtons: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'transparent',
+    marginHorizontal: 16,
+    gap: 12,
+    marginBottom: 16,
+  },
+  outlineButton: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#7f1d1d',
-    marginHorizontal: 16,
-    marginTop: 8,
-    padding: 15,
-    borderRadius: 12,
-  },
-  deleteAccountButtonDisabled: {
-    opacity: 0.7,
-  },
-  deleteAccountText: {
-    color: '#fecaca',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-
-  // Sign out
-  signOutButton: {
-    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#ef4444',
-    marginHorizontal: 16,
-    marginTop: 8,
-    padding: 15,
-    borderRadius: 12,
+    paddingVertical: 12,
   },
-  signOutText: {
-    color: '#fff',
-    fontSize: 16,
+  deleteOutline: {
+    borderColor: '#dc2626',
+    backgroundColor: 'transparent',
+  },
+  deleteOutlineText: {
+    color: '#f87171',
+    fontSize: 15,
     fontWeight: '600',
+  },
+  signOutOutline: {
+    borderColor: '#6b7280',
+    backgroundColor: 'transparent',
+  },
+  signOutOutlineText: {
+    color: '#9ca3af',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  buttonDisabled: {
+    opacity: 0.65,
   },
 });

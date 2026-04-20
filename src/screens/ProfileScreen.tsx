@@ -46,7 +46,7 @@ function HubRow({ icon, label, onPress, showChevron = true, isLast = false }: Hu
 }
 
 export default function ProfileScreen({ navigation }: any) {
-  const { user, profile, currentRole, signOut } = useAuth();
+  const { user, profile, currentRole, allRoles, signOut } = useAuth();
   const [isDeleting, setIsDeleting] = useState(false);
   const [hasRegistrations, setHasRegistrations] = useState(false);
 
@@ -68,8 +68,8 @@ export default function ProfileScreen({ navigation }: any) {
     })();
   }, [user?.id]);
 
-  const showMyFamilyRow = currentRole?.role === 'parent' || hasRegistrations;
-  const showPaymentsRow = currentRole?.role === 'parent';
+  const showMyFamilyRow = (allRoles || []).some(r => r.role === 'parent') || hasRegistrations;
+  const showPaymentsRow = (allRoles || []).some(r => r.role === 'parent');
 
   const handleSignOut = async () => {
     try {

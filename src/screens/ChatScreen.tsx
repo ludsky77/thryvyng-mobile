@@ -255,6 +255,18 @@ export default function ChatScreen({ navigation, route }: any) {
     }
     setLoading(true);
     try {
+      if (teams.length > 0) {
+        await Promise.all(
+          teams.map(async (team) => {
+            try {
+              await supabase.rpc('ensure_team_channel_membership', { p_team_id: team.id });
+            } catch (err) {
+              console.warn(`ensure_team_channel_membership failed for team ${team.id}:`, err);
+            }
+          })
+        );
+      }
+
       const { data: memberships } = await supabase
         .from('comm_channel_members')
         .select('channel_id')

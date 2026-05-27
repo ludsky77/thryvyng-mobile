@@ -736,9 +736,9 @@ export const JoinTeamScreen: React.FC = () => {
     }
     const age = calculateAge(playerClaimDob);
     setPlayerClaimAge(age);
-    if (age < 11) {
+    if (age < 13) {
       setPlayerClaimAgeError(
-        'You must be at least 11 years old to create your own account. Please ask your parent or guardian to register you using this same team link — they should select "Parent / Guardian."'
+        'You must be at least 13 years old to create your own account. Please ask your parent or guardian to register you using this same team link — they should select "Parent / Guardian."'
       );
     } else {
       setPlayerClaimAgeError('');

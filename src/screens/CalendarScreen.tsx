@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -36,6 +36,7 @@ import { NotificationBell } from '../components/NotificationBell';
 import CalendarSyncModal from '../components/calendar/CalendarSyncModal';
 import { isEventPast } from '../utils/calendar';
 import { openInMaps } from '../lib/maps';
+import { Ionicons } from '@expo/vector-icons';
 
 type ViewMode = 'list' | 'month' | 'week' | 'day';
 
@@ -96,12 +97,20 @@ function getEventTypeLabel(eventType: string): string {
 
 export default function CalendarScreen({ route, navigation }: any) {
   const { user } = useAuth();
-  const { teams, loading: teamsLoading, getDefaultTeam, canManageTeam, refetch: refetchTeams } =
-    useUserTeams();
+  const {
+    teams,
+    pastTeams,
+    loading: teamsLoading,
+    getDefaultTeam,
+    canManageTeam,
+    refetch: refetchTeams,
+  } = useUserTeams();
 
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [teamPickerVisible, setTeamPickerVisible] = useState(false);
+  const [pastTeamsExpanded, setPastTeamsExpanded] = useState(false);
+  const teamsSelectionInitialized = useRef(false);
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [createForTeamId, setCreateForTeamId] = useState<string | null>(null);
   const [cantGoEventId, setCantGoEventId] = useState<string | null>(null);
@@ -127,15 +136,37 @@ export default function CalendarScreen({ route, navigation }: any) {
     createRecurringEvents,
   } = useCalendarEvents(createTeamId, startDate, endDate);
 
+  const allTeams = useMemo(() => [...teams, ...pastTeams], [teams, pastTeams]);
+
   useEffect(() => {
-    if (!selectedTeamId && teams.length > 0) {
+    if (teamsLoading) return;
+    if (teams.length === 0 && pastTeams.length === 0) return;
+
+    if (!selectedTeamId) {
       const defaultTeam = getDefaultTeam();
-      setSelectedTeamId(defaultTeam?.id || ALL_TEAMS_ID);
+      setSelectedTeamId(
+        defaultTeam?.id ??
+          (teams.length > 0 ? ALL_TEAMS_ID : pastTeams[0]?.id ?? ALL_TEAMS_ID)
+      );
+      return;
     }
-  }, [teams, selectedTeamId, getDefaultTeam]);
+
+    if (!teamsSelectionInitialized.current) {
+      teamsSelectionInitialized.current = true;
+      const inActive =
+        selectedTeamId === ALL_TEAMS_ID ||
+        teams.some((t) => t.id === selectedTeamId);
+      const isPastTeam = pastTeams.some((t) => t.id === selectedTeamId);
+      if (!inActive || isPastTeam) {
+        if (teams.length > 0) {
+          setSelectedTeamId(teams[0]?.id ?? ALL_TEAMS_ID);
+        }
+      }
+    }
+  }, [teamsLoading, teams, pastTeams, selectedTeamId, getDefaultTeam]);
 
   const fetchEvents = useCallback(async () => {
-    if (teamsLoading || teams.length === 0) return;
+    if (teamsLoading || (teams.length === 0 && pastTeams.length === 0)) return;
 
     setLoading(true);
     try {
@@ -180,7 +211,7 @@ export default function CalendarScreen({ route, navigation }: any) {
       }
 
       const enrichedEvents = (eventsData || []).map((event: any) => {
-        const team = teams.find((t) => t.id === event.team_id);
+        const team = allTeams.find((t) => t.id === event.team_id);
         const rsvps = rsvpsByEvent[event.id] || [];
         const rsvp_counts = {
           yes: rsvps.filter((r) => r.status === 'yes').length,
@@ -205,7 +236,7 @@ export default function CalendarScreen({ route, navigation }: any) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedTeamId, teams, teamsLoading, startDate, endDate, user?.id]);
+  }, [selectedTeamId, teams, pastTeams, allTeams, teamsLoading, startDate, endDate, user?.id]);
 
   useEffect(() => {
     fetchEvents();
@@ -321,7 +352,12 @@ export default function CalendarScreen({ route, navigation }: any) {
   const selectedTeam =
     selectedTeamId === ALL_TEAMS_ID
       ? null
-      : teams.find((t) => t.id === selectedTeamId);
+      : allTeams.find((t) => t.id === selectedTeamId);
+
+  const isPastTeamSelected =
+    !!selectedTeamId &&
+    selectedTeamId !== ALL_TEAMS_ID &&
+    pastTeams.some((t) => t.id === selectedTeamId);
 
   const selectedTeamName =
     selectedTeamId === ALL_TEAMS_ID
@@ -329,6 +365,7 @@ export default function CalendarScreen({ route, navigation }: any) {
       : selectedTeam?.name || 'Select Team';
 
   const canCreate =
+    !isPastTeamSelected &&
     selectedTeamId !== ALL_TEAMS_ID &&
     selectedTeamId &&
     canManageTeam(selectedTeamId);
@@ -367,7 +404,7 @@ export default function CalendarScreen({ route, navigation }: any) {
     );
   }
 
-  if (teams.length === 0) {
+  if (teams.length === 0 && pastTeams.length === 0) {
     return (
       <View style={styles.emptyContainer}>
         <Text style={styles.emptyIcon}>📅</Text>
@@ -413,6 +450,11 @@ export default function CalendarScreen({ route, navigation }: any) {
             <Text style={styles.teamSelectorText} numberOfLines={1}>
               {selectedTeamName}
             </Text>
+            {isPastTeamSelected && (
+              <View style={styles.seasonEndedPill}>
+                <Text style={styles.seasonEndedPillText}>Season ended</Text>
+              </View>
+            )}
             <Text style={styles.dropdownArrow}>▼</Text>
           </TouchableOpacity>
           {canCreate && (
@@ -995,6 +1037,61 @@ export default function CalendarScreen({ route, navigation }: any) {
                   )}
                 </TouchableOpacity>
               ))}
+
+              {pastTeams.length > 0 && (
+                <View style={styles.pastTeamsSection}>
+                  <TouchableOpacity
+                    style={styles.pastTeamsSectionHeader}
+                    onPress={() => setPastTeamsExpanded((v) => !v)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={pastTeamsExpanded ? 'chevron-down' : 'chevron-forward'}
+                      size={16}
+                      color="#888"
+                    />
+                    <Text style={styles.pastTeamsSectionTitle}>
+                      Past teams ({pastTeams.length})
+                    </Text>
+                  </TouchableOpacity>
+                  {pastTeamsExpanded &&
+                    pastTeams.map((team) => (
+                      <TouchableOpacity
+                        key={team.id}
+                        style={[
+                          styles.teamOption,
+                          styles.teamOptionPast,
+                          selectedTeamId === team.id && styles.teamOptionSelected,
+                        ]}
+                        onPress={() => {
+                          setSelectedTeamId(team.id);
+                          setTeamPickerVisible(false);
+                        }}
+                      >
+                        <Ionicons
+                          name="archive-outline"
+                          size={16}
+                          color="#888"
+                        />
+                        <View
+                          style={[
+                            styles.teamColorDot,
+                            { backgroundColor: team.color || '#8b5cf6' },
+                          ]}
+                        />
+                        <View style={styles.teamOptionInfo}>
+                          <Text style={[styles.teamOptionName, styles.teamOptionNamePast]}>
+                            {team.name}
+                          </Text>
+                          <Text style={styles.teamOptionSub}>Archived</Text>
+                        </View>
+                        {selectedTeamId === team.id && (
+                          <Text style={styles.checkmark}>✓</Text>
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                </View>
+              )}
             </ScrollView>
           </View>
         </TouchableOpacity>
@@ -1468,5 +1565,38 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#2a2a4e',
     marginVertical: 8,
+  },
+  pastTeamsSection: {
+    marginTop: 8,
+  },
+  pastTeamsSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    gap: 8,
+  },
+  pastTeamsSectionTitle: {
+    color: '#888',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  teamOptionPast: {
+    opacity: 0.6,
+  },
+  teamOptionNamePast: {
+    fontSize: 14,
+  },
+  seasonEndedPill: {
+    backgroundColor: '#374151',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginLeft: 6,
+  },
+  seasonEndedPillText: {
+    color: '#9ca3af',
+    fontSize: 11,
+    fontWeight: '600',
   },
 });

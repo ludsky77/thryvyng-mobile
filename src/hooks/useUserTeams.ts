@@ -14,6 +14,32 @@ export interface UserTeam {
   player_id?: string; // If parent, which player
   player_name?: string; // If parent, player's name
   color?: string; // For visual distinction
+  team_status?: string | null;
+  is_test?: boolean | null;
+  season_id?: string | null;
+}
+
+type TeamBucket = 'active' | 'past' | 'hidden';
+
+function getTeamBucket(team: UserTeam): TeamBucket {
+  if (team.is_test === true) return 'hidden';
+  const status = team.team_status;
+  const known =
+    status === 'active' || status === 'archived' || status === 'inactive';
+  if (!status || !known) return 'hidden';
+  if (status === 'archived' || status === 'inactive') return 'past';
+  return 'active';
+}
+
+function bucketTeams(allTeams: UserTeam[]): { active: UserTeam[]; past: UserTeam[] } {
+  const active: UserTeam[] = [];
+  const past: UserTeam[] = [];
+  for (const t of allTeams) {
+    const b = getTeamBucket(t);
+    if (b === 'active') active.push(t);
+    else if (b === 'past') past.push(t);
+  }
+  return { active, past };
 }
 
 // Team colors for "All Teams" view
@@ -28,15 +54,39 @@ const TEAM_COLORS = [
   '#f97316', // Orange
 ];
 
+function mapTeamFromRow(
+  teamsRow: any,
+  access_type: 'staff' | 'parent',
+  extras: Partial<UserTeam>,
+  colorIndex: number
+): UserTeam {
+  return {
+    id: teamsRow.id,
+    name: teamsRow.name,
+    age_group: teamsRow.age_group,
+    gender: teamsRow.gender,
+    club_id: teamsRow.club_id,
+    club_name: teamsRow.clubs?.name || null,
+    access_type,
+    color: teamsRow.color || TEAM_COLORS[colorIndex % TEAM_COLORS.length],
+    team_status: teamsRow.team_status ?? null,
+    is_test: teamsRow.is_test ?? null,
+    season_id: teamsRow.season_id ?? null,
+    ...extras,
+  };
+}
+
 export function useUserTeams() {
   const { user, currentRole } = useAuth();
-  const [teams, setTeams] = useState<UserTeam[]>([]);
+  const [activeTeams, setActiveTeams] = useState<UserTeam[]>([]);
+  const [pastTeams, setPastTeams] = useState<UserTeam[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchTeams = useCallback(async () => {
     if (!user?.id || !user?.email) {
-      setTeams([]);
+      setActiveTeams([]);
+      setPastTeams([]);
       setLoading(false);
       return;
     }
@@ -62,6 +112,9 @@ export function useUserTeams() {
             gender,
             club_id,
             color,
+            team_status,
+            is_test,
+            season_id,
             clubs (
               id,
               name
@@ -75,21 +128,19 @@ export function useUserTeams() {
 
       staffData?.forEach((item: any) => {
         if (item.teams && !teamMap.has(item.teams.id)) {
-          teamMap.set(item.teams.id, {
-            id: item.teams.id,
-            name: item.teams.name,
-            age_group: item.teams.age_group,
-            gender: item.teams.gender,
-            club_id: item.teams.club_id,
-            club_name: item.teams.clubs?.name || null,
-            access_type: 'staff',
-            staff_role: item.staff_role,
-            color: item.teams.color || TEAM_COLORS[colorIndex++ % TEAM_COLORS.length],
-          });
+          teamMap.set(
+            item.teams.id,
+            mapTeamFromRow(
+              item.teams,
+              'staff',
+              { staff_role: item.staff_role },
+              colorIndex++
+            )
+          );
         }
       });
 
-      // 2. Fetch teams from players (parent access)
+      // 2. Fetch teams from players (parent access) — active players only
       const { data: playerData, error: playerError } = await supabase
         .from('players')
         .select(
@@ -105,6 +156,9 @@ export function useUserTeams() {
             gender,
             club_id,
             color,
+            team_status,
+            is_test,
+            season_id,
             clubs (
               id,
               name
@@ -112,6 +166,7 @@ export function useUserTeams() {
           )
         `
         )
+        .eq('status', 'active')
         .or(`parent_email.eq.${user.email},secondary_parent_email.eq.${user.email}`);
 
       if (playerError) throw playerError;
@@ -120,28 +175,25 @@ export function useUserTeams() {
         if (item.teams) {
           const existingTeam = teamMap.get(item.teams.id);
           if (!existingTeam) {
-            // New team via parent access
-            teamMap.set(item.teams.id, {
-              id: item.teams.id,
-              name: item.teams.name,
-              age_group: item.teams.age_group,
-              gender: item.teams.gender,
-              club_id: item.teams.club_id,
-              club_name: item.teams.clubs?.name || null,
-              access_type: 'parent',
-              player_id: item.id,
-              player_name: `${item.first_name} ${item.last_name}`,
-              color: item.teams.color || TEAM_COLORS[colorIndex++ % TEAM_COLORS.length],
-            });
-          } else if (existingTeam.access_type === 'parent') {
-            // Already have parent access, maybe multiple kids on same team
-            // Keep existing, just note we have access
+            teamMap.set(
+              item.teams.id,
+              mapTeamFromRow(
+                item.teams,
+                'parent',
+                {
+                  player_id: item.id,
+                  player_name: `${item.first_name} ${item.last_name}`,
+                },
+                colorIndex++
+              )
+            );
           }
-          // If already have staff access, don't downgrade to parent
         }
       });
 
-      setTeams(Array.from(teamMap.values()));
+      const { active, past } = bucketTeams(Array.from(teamMap.values()));
+      setActiveTeams(active);
+      setPastTeams(past);
     } catch (err: any) {
       console.error('Error fetching user teams:', err);
       setError(err.message || 'Failed to fetch teams');
@@ -154,33 +206,30 @@ export function useUserTeams() {
     fetchTeams();
   }, [fetchTeams]);
 
-  // Get the default team based on currentRole
+  const teams = activeTeams;
+
+  // Get the default team based on currentRole (active teams only)
   const getDefaultTeam = useCallback((): UserTeam | null => {
     if (teams.length === 0) return null;
 
-    // Try to match currentRole's team
     if (currentRole?.team?.id) {
       const match = teams.find((t) => t.id === currentRole.team.id);
       if (match) return match;
     }
 
-    // Try to match currentRole's entity_id
     if (currentRole?.entity_id) {
       const match = teams.find((t) => t.id === currentRole.entity_id);
       if (match) return match;
     }
 
-    // Try to match player's team for parent role
     if (currentRole?.player?.team?.id) {
       const match = teams.find((t) => t.id === currentRole.player.team.id);
       if (match) return match;
     }
 
-    // Fallback to first team
     return teams[0];
   }, [teams, currentRole]);
 
-  // Check if user can create events/channels for a specific team
   const canManageTeam = useCallback(
     (teamId: string): boolean => {
       const team = teams.find((t) => t.id === teamId);
@@ -189,7 +238,6 @@ export function useUserTeams() {
     [teams]
   );
 
-  // Get teams grouped by access type
   const getTeamsByAccess = useCallback(() => {
     const staffTeams = teams.filter((t) => t.access_type === 'staff');
     const parentTeams = teams.filter((t) => t.access_type === 'parent');
@@ -198,6 +246,8 @@ export function useUserTeams() {
 
   return {
     teams,
+    activeTeams: teams,
+    pastTeams,
     loading,
     error,
     refetch: fetchTeams,

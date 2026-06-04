@@ -76,9 +76,11 @@ function getChannelColor(conversation: EnrichedConversation): string {
 function ConversationItem({
   conversation,
   onPress,
+  muted = false,
 }: {
   conversation: EnrichedConversation;
   onPress: () => void;
+  muted?: boolean;
 }) {
   const borderColor = getChannelColor(conversation);
 
@@ -127,10 +129,22 @@ function ConversationItem({
 
   return (
     <TouchableOpacity
-      style={[styles.conversationCard, { borderLeftColor: borderColor }]}
+      style={[
+        styles.conversationCard,
+        { borderLeftColor: borderColor },
+        muted && styles.conversationCardPast,
+      ]}
       onPress={onPress}
       activeOpacity={0.7}
     >
+      {muted && (
+        <Feather
+          name="archive"
+          size={16}
+          color="#888"
+          style={styles.pastChannelPrefixIcon}
+        />
+      )}
       <View style={styles.conversationIcon}>
         {renderBadge()}
       </View>
@@ -140,18 +154,25 @@ function ConversationItem({
           <Text
             style={[
               styles.conversationName,
+              muted && styles.conversationNamePast,
               conversation.unreadCount > 0 && styles.conversationNameUnread,
             ]}
             numberOfLines={1}
           >
             {conversation.displayName}
           </Text>
-          <Text style={styles.conversationTime}>
-            {getTimeAgo(conversation.lastMessageTime)}
-          </Text>
+          {!muted && (
+            <Text style={styles.conversationTime}>
+              {getTimeAgo(conversation.lastMessageTime)}
+            </Text>
+          )}
         </View>
 
-        {conversation.displaySubtitle ? (
+        {muted ? (
+          <Text style={styles.archivedSubtitle} numberOfLines={1}>
+            Archived
+          </Text>
+        ) : conversation.displaySubtitle ? (
           <Text
             style={[styles.conversationSubtitle, { color: borderColor }]}
             numberOfLines={1}
@@ -211,12 +232,14 @@ interface TeamChannelOption {
 
 export default function ChatScreen({ navigation, route }: any) {
   const { user } = useAuth();
-  const { teams } = useUserTeams();
+  const { teams, activeTeams, pastTeams } = useUserTeams();
+  const allTeams = useMemo(() => [...activeTeams, ...pastTeams], [activeTeams, pastTeams]);
 
   const [conversations, setConversations] = useState<EnrichedConversation[]>([]);
+  const [pastConversations, setPastConversations] = useState<EnrichedConversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'recent' | 'byTeam'>('recent');
+  const [activeTab, setActiveTab] = useState<'recent' | 'byTeam' | 'past'>('recent');
   const [teamSearchQuery, setTeamSearchQuery] = useState('');
 
   const [showNewChatModal, setShowNewChatModal] = useState(false);
@@ -250,14 +273,15 @@ export default function ChatScreen({ navigation, route }: any) {
   const fetchConversations = useCallback(async () => {
     if (!user?.id) {
       setConversations([]);
+      setPastConversations([]);
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      if (teams.length > 0) {
+      if (activeTeams.length > 0) {
         await Promise.all(
-          teams.map(async (team) => {
+          activeTeams.map(async (team) => {
             try {
               await supabase.rpc('ensure_team_channel_membership', { p_team_id: team.id });
             } catch (err) {
@@ -275,6 +299,7 @@ export default function ChatScreen({ navigation, route }: any) {
       const channelIds = memberships?.map((m: any) => m.channel_id) || [];
       if (channelIds.length === 0) {
         setConversations([]);
+        setPastConversations([]);
         setLoading(false);
         setRefreshing(false);
         return;
@@ -289,6 +314,7 @@ export default function ChatScreen({ navigation, route }: any) {
 
       if (channelsError || !channels?.length) {
         setConversations([]);
+        setPastConversations([]);
         setLoading(false);
         setRefreshing(false);
         return;
@@ -397,78 +423,92 @@ export default function ChatScreen({ navigation, route }: any) {
         }
       });
 
-      const enriched: EnrichedConversation[] = channels.map((channel: any) => {
-        const lastMsg = lastMessageMap.get(channel.id);
-        const unreadCount = unreadCountMap.get(channel.id) ?? 0;
+      const activeTeamIds = new Set(activeTeams.map((t) => t.id));
+      const pastTeamIds = new Set(pastTeams.map((t) => t.id));
 
-        if (channel.is_direct_message) {
-          const otherUserId =
-            channel.dm_participant_1 === user.id
-              ? channel.dm_participant_2
-              : channel.dm_participant_1;
-          const otherPerson = profileMap.get(otherUserId);
-          const role = roleMap.get(otherUserId);
+      const dmsAndActiveChannels = channels.filter(
+        (c: any) => !c.team_id || activeTeamIds.has(c.team_id)
+      );
+      const pastChannelsRaw = channels.filter(
+        (c: any) => c.team_id && pastTeamIds.has(c.team_id)
+      );
+
+      const enrichChannels = (channelList: any[]): EnrichedConversation[] =>
+        channelList.map((channel: any) => {
+          const lastMsg = lastMessageMap.get(channel.id);
+          const unreadCount = unreadCountMap.get(channel.id) ?? 0;
+
+          if (channel.is_direct_message) {
+            const otherUserId =
+              channel.dm_participant_1 === user.id
+                ? channel.dm_participant_2
+                : channel.dm_participant_1;
+            const otherPerson = profileMap.get(otherUserId);
+            const role = roleMap.get(otherUserId);
+            return {
+              id: channel.id,
+              displayType: 'dm',
+              displayName: otherPerson?.full_name || 'Unknown User',
+              displaySubtitle: formatRoleLabel(role),
+              displayAvatar: otherPerson?.avatar_url || null,
+              displayInitial: otherPerson?.full_name?.charAt(0)?.toUpperCase() || '?',
+              lastMessage: lastMsg?.content || null,
+              lastMessageTime: lastMsg?.created_at || channel.created_at,
+              unreadCount,
+              channel_type: channel.channel_type,
+              name: channel.name,
+            };
+          }
+          if (channel.channel_type === 'group_dm') {
+            return {
+              id: channel.id,
+              displayType: 'group',
+              displayName: channel.name || 'Group Chat',
+              displaySubtitle: `${memberCountMap.get(channel.id) || 0} members`,
+              displayAvatar: null,
+              displayInitial: '👥',
+              lastMessage: lastMsg?.content || null,
+              lastMessageTime: lastMsg?.created_at || channel.created_at,
+              unreadCount,
+              channel_type: channel.channel_type,
+              name: channel.name,
+            };
+          }
+          const team = allTeams.find((t) => t.id === channel.team_id);
           return {
             id: channel.id,
-            displayType: 'dm',
-            displayName: otherPerson?.full_name || 'Unknown User',
-            displaySubtitle: formatRoleLabel(role),
-            displayAvatar: otherPerson?.avatar_url || null,
-            displayInitial: otherPerson?.full_name?.charAt(0)?.toUpperCase() || '?',
-            lastMessage: lastMsg?.content || null,
-            lastMessageTime: lastMsg?.created_at || channel.created_at,
-            unreadCount,
-            channel_type: channel.channel_type,
-            name: channel.name,
-          };
-        }
-        if (channel.channel_type === 'group_dm') {
-          return {
-            id: channel.id,
-            displayType: 'group',
-            displayName: channel.name || 'Group Chat',
-            displaySubtitle: `${memberCountMap.get(channel.id) || 0} members`,
+            displayType: 'team',
+            displayName: channel.name || 'Team Chat',
+            displaySubtitle: team?.name || '',
             displayAvatar: null,
-            displayInitial: '👥',
+            displayInitial: '#',
             lastMessage: lastMsg?.content || null,
             lastMessageTime: lastMsg?.created_at || channel.created_at,
             unreadCount,
             channel_type: channel.channel_type,
+            team_id: channel.team_id,
+            team: team ? { id: team.id, name: team.name, color: team.color } : null,
             name: channel.name,
           };
-        }
-        const team = teams.find((t) => t.id === channel.team_id);
-        return {
-          id: channel.id,
-          displayType: 'team',
-          displayName: channel.name || 'Team Chat',
-          displaySubtitle: team?.name || '',
-          displayAvatar: null,
-          displayInitial: '#',
-          lastMessage: lastMsg?.content || null,
-          lastMessageTime: lastMsg?.created_at || channel.created_at,
-          unreadCount,
-          channel_type: channel.channel_type,
-          team_id: channel.team_id,
-          team: team ? { id: team.id, name: team.name, color: team.color } : null,
-          name: channel.name,
-        };
-      });
+        });
 
-      enriched.sort((a, b) => {
-        const tA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
-        const tB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
-        return tB - tA;
-      });
+      const sortByRecent = (list: EnrichedConversation[]) =>
+        [...list].sort((a, b) => {
+          const tA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+          const tB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+          return tB - tA;
+        });
 
-      setConversations(enriched);
+      setConversations(sortByRecent(enrichChannels(dmsAndActiveChannels)));
+      setPastConversations(sortByRecent(enrichChannels(pastChannelsRaw)));
     } catch (err) {
       console.error('Error fetching conversations:', err);
       setConversations([]);
+      setPastConversations([]);
     }
     setLoading(false);
     setRefreshing(false);
-  }, [user?.id, teams]);
+  }, [user?.id, activeTeams, pastTeams, allTeams]);
 
   useEffect(() => {
     fetchConversations();
@@ -1585,9 +1625,17 @@ export default function ChatScreen({ navigation, route }: any) {
             By Team
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, styles.tabPast, activeTab === 'past' && styles.tabActive]}
+          onPress={() => setActiveTab('past')}
+        >
+          <Text style={[styles.tabText, activeTab === 'past' && styles.tabTextActive]}>
+            Past
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      {conversations.length === 0 ? (
+      {conversations.length === 0 && pastConversations.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyIcon}>💬</Text>
           <Text style={styles.emptyTitle}>No Conversations</Text>
@@ -1620,6 +1668,33 @@ export default function ChatScreen({ navigation, route }: any) {
             />
           }
         />
+      ) : activeTab === 'past' ? (
+        pastConversations.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyIcon}>📁</Text>
+            <Text style={styles.emptyTitle}>No past team chats</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={pastConversations}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <ConversationItem
+                conversation={item}
+                onPress={() => handleConversationPress(item)}
+                muted
+              />
+            )}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor="#8b5cf6"
+              />
+            }
+          />
+        )
       ) : (
         <SectionList
           sections={teamSections}
@@ -1742,6 +1817,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 6,
   },
+  tabPast: {
+    flex: 0.85,
+  },
   tabActive: {
     backgroundColor: '#8B5CF6',
   },
@@ -1798,6 +1876,20 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 12,
     borderLeftWidth: 4,
+  },
+  conversationCardPast: {
+    opacity: 0.6,
+  },
+  pastChannelPrefixIcon: {
+    marginRight: 6,
+  },
+  conversationNamePast: {
+    fontSize: 14,
+  },
+  archivedSubtitle: {
+    color: '#888',
+    fontSize: 11,
+    marginTop: 2,
   },
   conversationIcon: {
     width: 40,

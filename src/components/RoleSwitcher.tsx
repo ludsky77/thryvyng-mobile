@@ -5,10 +5,12 @@ import {
   TouchableOpacity,
   Modal,
   StyleSheet,
-  FlatList,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
+import type { UserRole } from '../types';
+import { bucketRoles } from '../utils/roleFilters';
 
 const ROLE_LABELS: Record<string, string> = {
   parent: 'Parent',
@@ -78,8 +80,11 @@ interface RoleSwitcherProps {
 export function RoleSwitcher({ embedded }: RoleSwitcherProps) {
   const { roles, currentRole, switchRole } = useAuth();
   const [modalVisible, setModalVisible] = useState(false);
+  const [pastExpanded, setPastExpanded] = useState(false);
 
-  if (!currentRole || roles.length <= 1) {
+  const { active, past } = bucketRoles(roles as UserRole[]);
+
+  if (!currentRole || active.length + past.length <= 1) {
     return null;
   }
 
@@ -96,6 +101,43 @@ export function RoleSwitcher({ embedded }: RoleSwitcherProps) {
     switchRole(role);
     setModalVisible(false);
   };
+
+  const renderRoleCard = (item: UserRole, muted: boolean) => (
+    <TouchableOpacity
+      key={item.id}
+      style={[
+        styles.roleOption,
+        muted && styles.roleOptionPast,
+        currentRole.id === item.id && styles.roleOptionActive,
+      ]}
+      onPress={() => handleSelectRole(item)}
+    >
+      {muted && (
+        <Ionicons
+          name="archive-outline"
+          size={16}
+          color="#888"
+          style={styles.pastPrefixIcon}
+        />
+      )}
+      <RoleIconCircle role={item.role} size={muted ? 34 : 40} />
+      <View style={styles.roleOptionTextWrap}>
+        <Text
+          style={[
+            styles.roleOptionText,
+            muted && styles.roleOptionTextPast,
+            currentRole.id === item.id && styles.roleOptionTextActive,
+          ]}
+        >
+          {getRoleDisplayName(item)}
+        </Text>
+        {muted && <Text style={styles.roleOptionSubtitle}>Archived</Text>}
+      </View>
+      {currentRole.id === item.id && (
+        <Ionicons name="checkmark" size={18} color="#fff" />
+      )}
+    </TouchableOpacity>
+  );
 
   return (
     <>
@@ -135,32 +177,29 @@ export function RoleSwitcher({ embedded }: RoleSwitcherProps) {
           >
             <Text style={styles.modalTitle}>Switch Role</Text>
 
-            <FlatList
-              data={roles}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[
-                    styles.roleOption,
-                    currentRole.id === item.id && styles.roleOptionActive,
-                  ]}
-                  onPress={() => handleSelectRole(item)}
-                >
-                  <RoleIconCircle role={item.role} size={40} />
-                  <Text
-                    style={[
-                      styles.roleOptionText,
-                      currentRole.id === item.id && styles.roleOptionTextActive,
-                    ]}
+            <ScrollView style={styles.roleList} nestedScrollEnabled>
+              {active.map((item) => renderRoleCard(item, false))}
+
+              {past.length > 0 && (
+                <View style={styles.pastSection}>
+                  <TouchableOpacity
+                    style={styles.pastSectionHeader}
+                    onPress={() => setPastExpanded((v) => !v)}
+                    activeOpacity={0.7}
                   >
-                    {getRoleDisplayName(item)}
-                  </Text>
-                  {currentRole.id === item.id && (
-                    <Ionicons name="checkmark" size={18} color="#fff" />
-                  )}
-                </TouchableOpacity>
+                    <Ionicons
+                      name={pastExpanded ? 'chevron-down' : 'chevron-forward'}
+                      size={16}
+                      color="#888"
+                    />
+                    <Text style={styles.pastSectionTitle}>
+                      Past teams ({past.length})
+                    </Text>
+                  </TouchableOpacity>
+                  {pastExpanded && past.map((item) => renderRoleCard(item, true))}
+                </View>
               )}
-            />
+            </ScrollView>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -224,6 +263,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 16,
   },
+  roleList: {
+    maxHeight: 400,
+  },
+  pastSection: {
+    marginTop: 8,
+  },
+  pastSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    gap: 8,
+  },
+  pastSectionTitle: {
+    color: '#888',
+    fontSize: 13,
+    fontWeight: '600',
+  },
   roleOption: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -236,11 +293,27 @@ const styles = StyleSheet.create({
   roleOptionActive: {
     backgroundColor: '#8b5cf6',
   },
+  roleOptionPast: {
+    opacity: 0.55,
+  },
+  pastPrefixIcon: {
+    marginRight: 4,
+  },
+  roleOptionTextWrap: {
+    flex: 1,
+    marginLeft: 4,
+  },
   roleOptionText: {
     color: '#fff',
     fontSize: 15,
-    flex: 1,
-    marginLeft: 4,
+  },
+  roleOptionTextPast: {
+    fontSize: 13,
+  },
+  roleOptionSubtitle: {
+    color: '#888',
+    fontSize: 11,
+    marginTop: 2,
   },
   roleOptionTextActive: {
     fontWeight: '600',

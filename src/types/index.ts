@@ -270,10 +270,32 @@ export interface Channel {
   };
   
   // User Role Interface (from useAuth)
+  export interface UserRoleTeam {
+    id: string;
+    name?: string;
+    club_id?: string | null;
+    team_status?: string | null;
+    is_test?: boolean | null;
+    season_id?: string | null;
+  }
+
+  export interface UserRolePlayer {
+    id: string;
+    first_name?: string;
+    last_name?: string;
+    status?: string | null;
+  }
+
   export interface UserRole {
     id: string;
     role: string;
     entity_id: string | null;
     role_metadata: any;
     entityName?: string;
+    team_status?: string | null;
+    team_is_test?: boolean | null;
+    season_id?: string | null;
+    player_status?: string | null;
+    team?: UserRoleTeam | null;
+    player?: UserRolePlayer | null;
   }

@@ -60,9 +60,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         entityName: r.entity_name || '',
         role_metadata: r.role_metadata,
         created_at: r.created_at,
-        team: r.team_id ? { id: r.team_id, name: r.team_name, club_id: r.team_club_id } : null,
+        team_status: r.team_status,
+        team_is_test: r.team_is_test,
+        season_id: r.season_id,
+        player_status: r.player_status,
+        team: r.team_id
+          ? {
+              id: r.team_id,
+              name: r.team_name,
+              club_id: r.team_club_id,
+              team_status: r.team_status,
+              is_test: r.team_is_test,
+              season_id: r.season_id,
+            }
+          : null,
         club: r.club_id ? { id: r.club_id, name: r.club_name } : null,
-        player: r.player_first_name ? { id: r.entity_id, first_name: r.player_first_name, last_name: r.player_last_name } : null,
+        player: r.player_first_name
+          ? {
+              id: r.entity_id,
+              first_name: r.player_first_name,
+              last_name: r.player_last_name,
+              status: r.player_status,
+            }
+          : null,
       }));
     } catch (err) {
       console.error('fetchUserRoles timeout:', err);

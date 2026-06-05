@@ -12,6 +12,7 @@ import {
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -376,7 +377,20 @@ export default function DMChatScreen({ route, navigation }: any) {
             ) : null}
           </View>
         </View>
-        <View style={styles.headerRight} />
+        <TouchableOpacity
+          style={styles.headerMenuButton}
+          onPress={() =>
+            navigation.navigate('ChatInfo', {
+              channelId,
+              channelName: otherPerson?.full_name || 'Direct Message',
+              teamId: null,
+              channelType: 'direct',
+            })
+          }
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Feather name="more-vertical" size={22} color="#fff" />
+        </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView
@@ -501,8 +515,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 1,
   },
-  headerRight: {
-    width: 40,
+  headerMenuButton: {
+    padding: 8,
   },
   chatArea: {
     flex: 1,

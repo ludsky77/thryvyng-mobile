@@ -578,6 +578,7 @@ export default function ChatScreen({ navigation, route }: any) {
       .from('comm_channels')
       .select('id, dm_participant_1, dm_participant_2')
       .eq('is_direct_message', true)
+      .eq('is_archived', false)
       .or(`dm_participant_1.eq.${user.id},dm_participant_2.eq.${user.id}`);
     const map = new Map<string, string>();
     (data || []).forEach((dm: any) => {
@@ -645,37 +646,26 @@ export default function ChatScreen({ navigation, route }: any) {
   const handleSelectDMUser = useCallback(
     async (selectedUser: ProfileResult) => {
       if (!user?.id) return;
-      if (selectedUser.existingChannelId) {
-        setShowNewChatModal(false);
-        setNewChatStep('choose');
-        navigation.navigate('DMChat', {
-          channelId: selectedUser.existingChannelId,
-        });
+
+      const { data: channelId, error } = await supabase.rpc(
+        'get_or_create_dm_channel',
+        {
+          user1_id: user.id,
+          user2_id: selectedUser.id,
+          p_team_id: null,
+          p_club_id: null,
+        }
+      );
+
+      if (error || !channelId) {
+        console.error('get_or_create_dm_channel failed:', error);
+        Alert.alert('Error', 'Could not open conversation');
         return;
       }
-      const { data: newChannel, error } = await supabase
-        .from('comm_channels')
-        .insert({
-          name: 'Direct Message',
-          channel_type: 'dm',
-          is_direct_message: true,
-          dm_participant_1: user.id,
-          dm_participant_2: selectedUser.id,
-          created_by: user.id,
-        })
-        .select()
-        .single();
-      if (error || !newChannel) {
-        Alert.alert('Error', 'Could not create conversation');
-        return;
-      }
-      await supabase.from('comm_channel_members').insert([
-        { channel_id: newChannel.id, user_id: user.id },
-        { channel_id: newChannel.id, user_id: selectedUser.id },
-      ]);
+
       setShowNewChatModal(false);
       setNewChatStep('choose');
-      navigation.navigate('DMChat', { channelId: newChannel.id });
+      navigation.navigate('DMChat', { channelId });
     },
     [user?.id, navigation]
   );

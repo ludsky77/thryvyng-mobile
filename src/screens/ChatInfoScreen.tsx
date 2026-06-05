@@ -7,6 +7,7 @@ import {
   Switch,
   ActivityIndicator,
   SectionList,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, Ionicons } from '@expo/vector-icons';
@@ -23,13 +24,42 @@ interface Member {
   role_label: string;
 }
 
+interface ChannelRecord {
+  id: string;
+  is_default?: boolean | null;
+  is_direct_message?: boolean | null;
+  dm_participant_1?: string | null;
+  dm_participant_2?: string | null;
+  created_by?: string | null;
+}
+
+function mapArchiveError(code: string): string {
+  switch (code) {
+    case 'not_authenticated':
+      return 'Please sign in again';
+    case 'channel_not_found':
+      return 'This chat no longer exists';
+    case 'already_archived':
+      return 'This chat is already archived';
+    case 'default_channel_protected':
+      return 'Default team chats cannot be archived';
+    case 'permission_denied':
+      return "You don't have permission to archive this chat";
+    default:
+      return code;
+  }
+}
+
 export default function ChatInfoScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const { channelId, channelName, teamId, channelType } = (route.params as any) || {};
-  const { user } = useAuth();
+  const { user, roles, currentRole } = useAuth();
 
   const [loading, setLoading] = useState(true);
+  const [channel, setChannel] = useState<ChannelRecord | null>(null);
+  const [myMembershipRole, setMyMembershipRole] = useState<string | null>(null);
+  const [isArchiving, setIsArchiving] = useState(false);
   const [pollsCount, setPollsCount] = useState(0);
   const [filesCount, setFilesCount] = useState(0);
   const [linksCount, setLinksCount] = useState(0);
@@ -88,20 +118,26 @@ export default function ChatInfoScreen() {
 
       const { data: channelData } = await supabase
         .from('comm_channels')
-        .select('allow_member_text')
+        .select(
+          'allow_member_text, is_default, is_direct_message, dm_participant_1, dm_participant_2, created_by'
+        )
         .eq('id', channelId)
         .single();
 
       setStaffOnlyMessaging(channelData?.allow_member_text === false);
+      if (channelData) {
+        setChannel({ id: channelId, ...channelData });
+      }
 
       const { data: memberData } = await supabase
         .from('comm_channel_members')
-        .select('is_muted')
+        .select('is_muted, role')
         .eq('channel_id', channelId)
         .eq('user_id', user?.id)
         .maybeSingle();
 
       setIsMuted(memberData?.is_muted ?? false);
+      setMyMembershipRole(memberData?.role ?? null);
 
       await fetchMembers();
     } catch (err) {
@@ -210,6 +246,30 @@ export default function ChatInfoScreen() {
       .eq('id', channelId);
   };
 
+  const isPlatformAdmin = useMemo(
+    () =>
+      currentRole?.role === 'platform_admin' ||
+      (roles || []).some((r: any) => r.role === 'platform_admin'),
+    [currentRole, roles]
+  );
+
+  const canArchive = useMemo(() => {
+    if (!channel || !user?.id) return false;
+    if (channel.is_default === true) return false;
+
+    if (channel.is_direct_message === true) {
+      return (
+        user.id === channel.dm_participant_1 || user.id === channel.dm_participant_2
+      );
+    }
+
+    return (
+      channel.created_by === user.id ||
+      myMembershipRole === 'admin' ||
+      isPlatformAdmin
+    );
+  }, [channel, user?.id, myMembershipRole, isPlatformAdmin]);
+
   const sections = useMemo(() => {
     if (sortBy === 'alpha') {
       return [
@@ -270,6 +330,54 @@ export default function ChatInfoScreen() {
 
   const handleLinksPress = () => {
     navigation.navigate('ChannelLinks' as never, { channelId } as never);
+  };
+
+  const performArchive = async () => {
+    if (!channelId || isArchiving) return;
+    setIsArchiving(true);
+    try {
+      const { data, error } = await supabase.rpc('archive_channel', {
+        p_channel_id: channelId,
+      });
+
+      if (error) {
+        Alert.alert('Error', error.message);
+        return;
+      }
+
+      const result = data as { success: boolean; error?: string };
+      if (!result?.success) {
+        Alert.alert('Error', mapArchiveError(result?.error || 'Unknown error'));
+        return;
+      }
+
+      Alert.alert('Chat archived', 'This chat has been archived.', [
+        {
+          text: 'OK',
+          onPress: () => navigation.navigate('Conversations' as never),
+        },
+      ]);
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to archive chat');
+    } finally {
+      setIsArchiving(false);
+    }
+  };
+
+  const handleArchivePress = () => {
+    if (isArchiving) return;
+
+    const isDm = channel?.is_direct_message === true;
+    Alert.alert(
+      'Archive this chat?',
+      isDm
+        ? 'This chat will be removed from both your chat lists. If either of you starts a new DM with the same person, the conversation will reappear with full history.'
+        : 'All members will lose access to this chat. History stays preserved. To chat with the same people, create a new group.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Archive', style: 'destructive', onPress: performArchive },
+      ]
+    );
   };
 
   if (loading) {
@@ -385,6 +493,26 @@ export default function ChatInfoScreen() {
           </>
         }
         contentContainerStyle={styles.listContent}
+        ListFooterComponent={
+          canArchive ? (
+            <View style={styles.archiveSection}>
+              <TouchableOpacity
+                style={[
+                  styles.archiveButton,
+                  isArchiving && styles.archiveButtonDisabled,
+                ]}
+                onPress={handleArchivePress}
+                disabled={isArchiving}
+                activeOpacity={0.7}
+              >
+                <Feather name="archive" size={20} color="#ef4444" />
+                <Text style={styles.archiveButtonText}>
+                  {isArchiving ? 'Archiving...' : 'Archive chat'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : null
+        }
       />
     </SafeAreaView>
   );
@@ -559,5 +687,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748b',
     marginTop: 2,
+  },
+  archiveSection: {
+    marginTop: 24,
+    paddingTop: 24,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#1e293b',
+  },
+  archiveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+  },
+  archiveButtonDisabled: {
+    opacity: 0.5,
+  },
+  archiveButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ef4444',
   },
 });

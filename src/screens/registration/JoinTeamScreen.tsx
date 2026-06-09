@@ -517,28 +517,40 @@ export const JoinTeamScreen: React.FC = () => {
       let playerData: any;
 
       if (playerLinkMode === 'existing' && selectedPlayerId) {
-        const { error: updateError } = await supabase
-          .from('players')
-          .update({
-            parent_email: userEmail,
-            parent_first_name:
-              registrationMode === 'new'
-                ? parentFirstName.trim()
-                : existingParentFirstName,
-            parent_last_name:
-              registrationMode === 'new'
-                ? parentLastName.trim()
-                : existingParentLastName,
-            parent_phone:
-              registrationMode === 'new'
-                ? parentPhone.replace(/\D/g, '')
-                : undefined,
-          })
-          .eq('id', selectedPlayerId);
+        const { data: linkResult, error: linkError } = await supabase.rpc('link_parent_to_player', {
+          p_player_id: selectedPlayerId,
+          p_user_id: userId,
+          p_user_email: userEmail,
+          p_verified_dob: playerDOB,
+          p_parent_first_name:
+            (registrationMode === 'new'
+              ? parentFirstName.trim()
+              : existingParentFirstName) || null,
+          p_parent_last_name:
+            (registrationMode === 'new'
+              ? parentLastName.trim()
+              : existingParentLastName) || null,
+          p_parent_phone:
+            (registrationMode === 'new'
+              ? parentPhone.replace(/\D/g, '')
+              : null) || null,
+        });
 
-        if (updateError) {
-          if (__DEV__) console.error('[JoinTeam] Player update error:', updateError);
-          setFormErrors({ submit: 'Failed to link player. Please try again.' });
+        if (linkError) {
+          if (__DEV__) console.error('link_parent_to_player error:', linkError);
+          const hint = linkError.hint || linkError.details;
+          const message =
+            hint === 'player_not_found' ? 'Player record not found.' :
+            hint === 'dob_mismatch' ? "That doesn't match our records. Please check the date of birth and try again." :
+            hint === 'max_parents_reached' ? 'This player already has two parents linked. Please contact your team manager.' :
+            hint === 'auth_mismatch' ? 'Authentication mismatch. Please log in again.' :
+            linkError.message || 'Failed to link to player';
+          setFormErrors({ submit: message });
+          return;
+        }
+
+        if (!linkResult?.success) {
+          setFormErrors({ submit: 'Failed to link to player' });
           return;
         }
 
@@ -596,26 +608,28 @@ export const JoinTeamScreen: React.FC = () => {
           first_name: playerFirstName.trim(),
           last_name: playerLastName.trim(),
         };
+
+        if (__DEV__) console.log('[JoinTeam] Player created:', playerData?.id);
+
+        const { error: roleError } = await supabase.from('user_roles').insert({
+          user_id: userId,
+          role: 'parent',
+          entity_id: playerData.id,
+        });
+
+        if (roleError) {
+          if (roleError.code === '23505') {
+            if (__DEV__)
+              console.log(
+                '[JoinTeam] User already has parent role for this player'
+              );
+          } else {
+            if (__DEV__) console.error('[JoinTeam] Role creation error:', roleError);
+          }
+        }
       }
 
       if (__DEV__) console.log('[JoinTeam] Player created/linked:', playerData?.id);
-
-      const { error: roleError } = await supabase.from('user_roles').insert({
-        user_id: userId,
-        role: 'parent',
-        entity_id: playerData.id,
-      });
-
-      if (roleError) {
-        if (roleError.code === '23505') {
-          if (__DEV__)
-            console.log(
-              '[JoinTeam] User already has parent role for this player'
-            );
-        } else {
-          if (__DEV__) console.error('[JoinTeam] Role creation error:', roleError);
-        }
-      }
 
       try {
         await supabase.functions.invoke('send-email', {
@@ -879,24 +893,32 @@ export const JoinTeamScreen: React.FC = () => {
           console.warn('Auto sign-in after signup failed:', signInError.message);
         }
 
-        const { error: updateError } = await supabase
-          .from('players')
-          .update({
-            email: playerClaimEmail.trim(),
-            claimed_at: new Date().toISOString(),
-          })
-          .eq('id', claimablePlayer.id);
-
-        if (updateError) throw updateError;
-
-        const { error: roleError } = await supabase.from('user_roles').insert({
-          user_id: authData.user.id,
-          role: 'player',
-          entity_id: claimablePlayer.id,
+        const { data: claimResult, error: claimError } = await supabase.rpc('claim_player_for_team', {
+          p_player_id: claimablePlayer.id,
+          p_user_id: authData.user.id,
+          p_user_email: playerClaimEmail.trim().toLowerCase(),
+          p_verified_dob: playerClaimDob,
         });
 
-        if (roleError && roleError.code !== '23505') {
-          if (__DEV__) console.error('[JoinTeam] Role error:', roleError);
+        if (claimError) {
+          if (__DEV__) console.error('claim_player_for_team error:', claimError);
+          const hint = claimError.hint || claimError.details;
+          const message =
+            hint === 'player_not_found' ? 'Player record not found.' :
+            hint === 'dob_mismatch' ? "That doesn't match our records. Please check the date of birth and try again." :
+            hint === 'already_claimed_by_another' ? 'This player account has already been claimed by another user. If this is a mistake, please contact your team manager.' :
+            hint === 'self_registration_disabled' ? 'Self-registration has been disabled for your account by your coach. Please contact your team manager.' :
+            hint === 'auth_mismatch' ? 'Authentication mismatch. Please log in again.' :
+            claimError.message || 'Failed to claim account';
+          setPlayerClaimPasswordError(message);
+          setPlayerClaimSubmitting(false);
+          return;
+        }
+
+        if (!claimResult?.success) {
+          setPlayerClaimPasswordError('Failed to claim account');
+          setPlayerClaimSubmitting(false);
+          return;
         }
 
         try {
@@ -933,24 +955,32 @@ export const JoinTeamScreen: React.FC = () => {
     setPlayerClaimSubmitting(true);
 
     try {
-      const { error: updateError } = await supabase
-        .from('players')
-        .update({
-          email: playerClaimEmail.trim(),
-          claimed_at: new Date().toISOString(),
-        })
-        .eq('id', claimablePlayer.id);
-
-      if (updateError) throw updateError;
-
-      const { error: roleError } = await supabase.from('user_roles').insert({
-        user_id: userId,
-        role: 'player',
-        entity_id: claimablePlayer.id,
+      const { data: claimResult, error: claimError } = await supabase.rpc('claim_player_for_team', {
+        p_player_id: claimablePlayer.id,
+        p_user_id: userId,
+        p_user_email: playerClaimEmail.trim().toLowerCase(),
+        p_verified_dob: playerClaimDob,
       });
 
-      if (roleError && roleError.code !== '23505') {
-        if (__DEV__) console.error('[JoinTeam] Role error:', roleError);
+      if (claimError) {
+        if (__DEV__) console.error('claim_player_for_team error:', claimError);
+        const hint = claimError.hint || claimError.details;
+        const message =
+          hint === 'player_not_found' ? 'Player record not found.' :
+          hint === 'dob_mismatch' ? "That doesn't match our records. Please check the date of birth and try again." :
+          hint === 'already_claimed_by_another' ? 'This player account has already been claimed by another user. If this is a mistake, please contact your team manager.' :
+          hint === 'self_registration_disabled' ? 'Self-registration has been disabled for your account by your coach. Please contact your team manager.' :
+          hint === 'auth_mismatch' ? 'Authentication mismatch. Please log in again.' :
+          claimError.message || 'Failed to claim account';
+        setPlayerClaimPasswordError(message);
+        setPlayerClaimSubmitting(false);
+        return;
+      }
+
+      if (!claimResult?.success) {
+        setPlayerClaimPasswordError('Failed to claim account');
+        setPlayerClaimSubmitting(false);
+        return;
       }
 
       try {

@@ -180,13 +180,27 @@ export default function ChatInfoScreen() {
 
       staffMap = new Map(staffData?.map((s: any) => [s.user_id, s.staff_role]) || []);
 
+      // Legacy path: players.user_id (rarely populated in our architecture)
       const { data: playersData } = await supabase
         .from('players')
-        .select('user_id')
-        .eq('team_id', teamId)
-        .not('user_id', 'is', null);
+        .select('id, user_id')
+        .eq('team_id', teamId);
+      playerUserIds = new Set(
+        (playersData || []).filter((p: any) => p.user_id).map((p: any) => p.user_id)
+      );
 
-      playerUserIds = new Set(playersData?.map((p: any) => p.user_id) || []);
+      // Canonical path: user_roles.role='player' linked via entity_id
+      const playerIds = (playersData || []).map((p: any) => p.id);
+      if (playerIds.length > 0) {
+        const { data: playerRoles } = await supabase
+          .from('user_roles')
+          .select('user_id')
+          .eq('role', 'player')
+          .in('entity_id', playerIds);
+        (playerRoles || []).forEach((ur: any) => {
+          if (ur.user_id) playerUserIds.add(ur.user_id);
+        });
+      }
     }
 
     const membersList: Member[] = userIds.map((userId) => {

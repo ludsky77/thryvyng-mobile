@@ -214,7 +214,7 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
 
         const { data: players } = await supabase
           .from('players')
-          .select('first_name, parent_email, secondary_parent_email')
+          .select('id, first_name, parent_email, secondary_parent_email')
           .eq('team_id', channelTeamId);
 
         const parentMap = new Map<string, string>();
@@ -233,6 +233,24 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
             parentMap.set(userId, name);
           }
         });
+
+        // NEW — player-self mapping: a player-role user's sender_id maps to their own first_name
+        const playerIds = (players || []).map((p: any) => p.id);
+        if (playerIds.length > 0) {
+          const { data: playerRoles } = await supabase
+            .from('user_roles')
+            .select('user_id, entity_id')
+            .eq('role', 'player')
+            .in('entity_id', playerIds);
+          (playerRoles || []).forEach((ur: any) => {
+            if (!ur.user_id) return;
+            const player = (players || []).find((p: any) => p.id === ur.entity_id);
+            if (player?.first_name) {
+              parentMap.set(ur.user_id, player.first_name);
+            }
+          });
+        }
+
         setParentPlayerNames(parentMap);
       } catch (err) {
         console.error('Error fetching parent player names:', err);

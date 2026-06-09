@@ -9,7 +9,7 @@ export interface UserTeam {
   gender: string | null;
   club_id: string | null;
   club_name: string | null;
-  access_type: 'staff' | 'parent'; // How user accesses this team
+  access_type: 'staff' | 'parent' | 'player'; // How user accesses this team
   staff_role?: string; // head_coach, assistant_coach, team_manager
   player_id?: string; // If parent, which player
   player_name?: string; // If parent, player's name
@@ -56,7 +56,7 @@ const TEAM_COLORS = [
 
 function mapTeamFromRow(
   teamsRow: any,
-  access_type: 'staff' | 'parent',
+  access_type: 'staff' | 'parent' | 'player',
   extras: Partial<UserTeam>,
   colorIndex: number
 ): UserTeam {
@@ -190,6 +190,66 @@ export function useUserTeams() {
           }
         }
       });
+
+      // 3. Fetch teams from user_roles (player access — I am the player)
+      const { data: playerRoleData, error: playerRoleError } = await supabase
+        .from('user_roles')
+        .select('entity_id')
+        .eq('user_id', user.id)
+        .eq('role', 'player');
+      if (playerRoleError) throw playerRoleError;
+
+      if (playerRoleData && playerRoleData.length > 0) {
+        const selfPlayerIds = playerRoleData
+          .map((r: any) => r.entity_id)
+          .filter(Boolean);
+        if (selfPlayerIds.length > 0) {
+          const { data: selfPlayerData, error: selfPlayerError } = await supabase
+            .from('players')
+            .select(
+              `
+              id,
+              first_name,
+              last_name,
+              team_id,
+              teams (
+                id,
+                name,
+                age_group,
+                gender,
+                club_id,
+                color,
+                team_status,
+                is_test,
+                season_id,
+                clubs (
+                  id,
+                  name
+                )
+              )
+            `
+            )
+            .in('id', selfPlayerIds)
+            .eq('status', 'active');
+          if (selfPlayerError) throw selfPlayerError;
+          selfPlayerData?.forEach((item: any) => {
+            if (item.teams && !teamMap.has(item.teams.id)) {
+              teamMap.set(
+                item.teams.id,
+                mapTeamFromRow(
+                  item.teams,
+                  'player',
+                  {
+                    player_id: item.id,
+                    player_name: `${item.first_name} ${item.last_name}`,
+                  },
+                  colorIndex++
+                )
+              );
+            }
+          });
+        }
+      }
 
       const { active, past } = bucketTeams(Array.from(teamMap.values()));
       setActiveTeams(active);

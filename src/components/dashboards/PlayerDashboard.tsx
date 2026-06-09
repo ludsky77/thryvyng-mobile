@@ -364,7 +364,7 @@ export default function PlayerDashboard({ playerId, navigation, showLineupWidget
       )}
 
       {/* Wellness Section - Only shows for parents viewing a female athlete */}
-      {currentRole?.role === 'parent' &&
+      {(currentRole?.role === 'parent' || currentRole?.role === 'player') &&
         playerId &&
         user?.id &&
         player && (

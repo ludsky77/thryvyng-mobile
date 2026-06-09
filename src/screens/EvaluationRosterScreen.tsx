@@ -33,7 +33,13 @@ export default function EvaluationRosterScreen() {
   const route = useRoute<RouteProp<{ params: EvaluationRosterParams }, 'params'>>();
   const { currentRole } = useAuth();
 
-  const teamId = route.params?.teamId ?? route.params?.team_id ?? currentRole?.entity_id ?? currentRole?.team?.id;
+  // For player-role users, currentRole.entity_id is the player_id, not team_id.
+  // Prefer currentRole.team?.id when role is 'player', and only fall back to entity_id for staff roles.
+  const teamId =
+    route.params?.teamId ??
+    route.params?.team_id ??
+    (currentRole?.role === 'player' ? currentRole?.team?.id : currentRole?.entity_id) ??
+    currentRole?.team?.id;
   const teamName = route.params?.teamName ?? currentRole?.team?.name;
 
   const [players, setPlayers] = useState<Player[]>([]);

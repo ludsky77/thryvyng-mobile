@@ -25,7 +25,7 @@ async function getTeamMemberUserIds(teamId: string): Promise<string[]> {
 
     const { data: players } = await supabase
       .from('players')
-      .select('user_id, parent_email, secondary_parent_email')
+      .select('id, user_id, parent_email, secondary_parent_email')
       .eq('team_id', teamId);
 
     (players || []).forEach((p: any) => {
@@ -44,6 +44,19 @@ async function getTeamMemberUserIds(teamId: string): Promise<string[]> {
         .select('id')
         .in('email', Array.from(emails));
       (profiles || []).forEach((p: any) => userIds.add(p.id));
+    }
+
+    // Include player-role users themselves (via user_roles linked to team players)
+    const playerIds = (players || []).map((p: any) => p.id);
+    if (playerIds.length > 0) {
+      const { data: playerRoles } = await supabase
+        .from('user_roles')
+        .select('user_id')
+        .eq('role', 'player')
+        .in('entity_id', playerIds);
+      (playerRoles || []).forEach((ur: any) => {
+        if (ur.user_id) userIds.add(ur.user_id);
+      });
     }
 
     return Array.from(userIds);

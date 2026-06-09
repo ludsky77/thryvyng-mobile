@@ -289,6 +289,19 @@ export default function CreateEvaluationScreen() {
 
           let notifyUserId = playerData?.user_id;
 
+          // New: check for a player-role self-claim (preferred over parent fallback)
+          if (!notifyUserId) {
+            const { data: playerRole } = await supabase
+              .from('user_roles')
+              .select('user_id')
+              .eq('role', 'player')
+              .eq('entity_id', playerId)
+              .maybeSingle();
+            if (playerRole?.user_id) {
+              notifyUserId = playerRole.user_id;
+            }
+          }
+
           if (!notifyUserId && playerData?.parent_email) {
             const { data: userData } = await supabase
               .from('profiles')

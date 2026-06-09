@@ -229,7 +229,7 @@ export default function EventDetailScreen({ route, navigation }: any) {
 
       const { data: playersData } = await supabase
         .from('players')
-        .select('parent_email, secondary_parent_email')
+        .select('id, parent_email, secondary_parent_email')
         .eq('team_id', event.team_id);
 
       const emails = new Set<string>();
@@ -245,6 +245,18 @@ export default function EventDetailScreen({ route, navigation }: any) {
           .select('id')
           .in('email', Array.from(emails));
         parentUserIds = (profilesData || []).map((p: any) => p.id);
+      }
+
+      // Include player-role users themselves
+      const playerIds = (playersData || []).map((p: any) => p.id);
+      if (playerIds.length > 0) {
+        const { data: playerRoles } = await supabase
+          .from('user_roles')
+          .select('user_id')
+          .eq('role', 'player')
+          .in('entity_id', playerIds);
+        const playerUserIds = (playerRoles || []).map((ur: any) => ur.user_id).filter(Boolean);
+        parentUserIds = [...parentUserIds, ...playerUserIds];
       }
 
       const staffUserIds = (staffData || []).map((s: any) => s.user_id);

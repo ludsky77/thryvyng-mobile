@@ -111,9 +111,17 @@ export default function EditChildScreen({ navigation }: { navigation: any }) {
       }
 
       const pe = normalizeEmail(data.parent_email);
+      const sp = normalizeEmail(data.secondary_parent_email);
+      const playerEmail = normalizeEmail(data.email);
       const ue = normalizeEmail(user?.email);
       const pr = normalizeEmail(profile?.email);
-      if (!pe || (pe !== ue && pe !== pr)) {
+
+      // Allow access if the user's email matches any of: primary parent, secondary parent, or player self
+      const userEmails = [ue, pr].filter(Boolean);
+      const playerEmails = [pe, sp, playerEmail].filter(Boolean);
+      const canAccess = playerEmails.some((slot) => userEmails.includes(slot));
+
+      if (!canAccess) {
         deny();
         return;
       }

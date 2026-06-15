@@ -4,6 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { useRegistration } from '../contexts/RegistrationContext';
@@ -162,6 +163,7 @@ const TAB_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
 function MainTabs() {
   const { currentRole } = useAuth();
   const totalChatUnread = useTotalChatUnread();
+  const insets = useSafeAreaInsets();
 
   const isStaff =
     currentRole &&
@@ -178,7 +180,7 @@ function MainTabs() {
         headerShown: false,
         tabBarActiveTintColor: '#8B5CF6',
         tabBarInactiveTintColor: '#6B7280',
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [styles.tabBar, { paddingBottom: 24 + insets.bottom, height: 80 + insets.bottom }],
         tabBarLabelStyle: styles.tabBarLabel,
         tabBarIconStyle: styles.tabBarIconStyle,
       }}

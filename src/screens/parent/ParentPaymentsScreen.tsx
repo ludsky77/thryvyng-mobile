@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import ApplyScholarshipModal from './ApplyScholarshipModal';
 
 // Avoid loading native WebView in Expo Go (module unavailable — crashes on render).
 let WebView: React.ComponentType<Record<string, unknown>> | null = null;
@@ -78,6 +79,26 @@ interface ChildGroup {
   photoUrl: string | null;
   teamName: string | null;
   registrations: Registration[];
+}
+
+interface ScholarshipApplication {
+  id: string;
+  club_id: string;
+  parent_id: string;
+  player_id: string;
+  registration_id: string;
+  reason_text: string;
+  household_size: number;
+  household_structure: string;
+  kids_in_club: number;
+  income_range: string | null;
+  additional_context: string | null;
+  status: 'pending' | 'under_review' | 'approved' | 'denied';
+  reviewer_id: string | null;
+  reviewed_at: string | null;
+  decision_notes: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -257,6 +278,58 @@ function RegistrationCard({
   );
 }
 
+function ScholarshipEntryCard({ onApply }: { onApply: () => void }) {
+  return (
+    <View style={styles.scholarshipEntryCard}>
+      <Text style={styles.scholarshipEntryTitle}>Need help with payments?</Text>
+      <Text style={styles.scholarshipEntryBody}>
+        Apply for a scholarship — the club will review and respond.
+      </Text>
+      <TouchableOpacity style={styles.scholarshipApplyBtn} onPress={onApply} activeOpacity={0.85}>
+        <Text style={styles.scholarshipApplyBtnText}>Apply</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function ScholarshipStatusCard({
+  title,
+  body,
+  badgeLabel,
+  accentColor,
+  dateLabel,
+  dateValue,
+  decisionNotes,
+}: {
+  title: string;
+  body?: string;
+  badgeLabel: string;
+  accentColor: string;
+  dateLabel: string;
+  dateValue: string;
+  decisionNotes?: string | null;
+}) {
+  return (
+    <View style={[styles.scholarshipStatusCard, { borderLeftColor: accentColor }]}>
+      <View style={styles.scholarshipStatusHeader}>
+        <Text style={styles.scholarshipStatusTitle}>{title}</Text>
+        <View style={[styles.badge, { backgroundColor: `${accentColor}22` }]}>
+          <Text style={[styles.badgeText, { color: accentColor }]}>{badgeLabel}</Text>
+        </View>
+      </View>
+      {body ? <Text style={styles.scholarshipStatusBody}>{body}</Text> : null}
+      <Text style={styles.scholarshipStatusDate}>
+        {dateLabel}: {dateValue}
+      </Text>
+      {decisionNotes ? (
+        <Text style={styles.scholarshipDecisionNotes}>
+          Note from the club: {decisionNotes}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 function SavedCardRow({
   card,
   onSetDefault,
@@ -312,6 +385,10 @@ export default function ParentPaymentsScreen() {
   const [installments, setInstallments] = useState<PaymentInstallment[]>([]);
   const [cards, setCards] = useState<PaymentMethod[]>([]);
   const [selectedProgram, setSelectedProgram] = useState<string>('all');
+  const [scholarships, setScholarships] = useState<ScholarshipApplication[]>([]);
+  const [scholarshipModalVisible, setScholarshipModalVisible] = useState(false);
+  const [scholarshipModalPlayerId, setScholarshipModalPlayerId] = useState('');
+  const [scholarshipModalPlayerName, setScholarshipModalPlayerName] = useState('');
 
   const [cardSetupWebViewVisible, setCardSetupWebViewVisible] = useState(false);
   const [cardSetupUrl, setCardSetupUrl] = useState<string | null>(null);
@@ -323,7 +400,7 @@ export default function ParentPaymentsScreen() {
     if (!user?.id) return;
 
     try {
-      const [regRes, payRes, cardRes] = await Promise.all([
+      const [regRes, payRes, cardRes, scholarshipRes] = await Promise.all([
         supabase
           .from('program_registrations')
           .select(
@@ -345,11 +422,18 @@ export default function ParentPaymentsScreen() {
           )
           .eq('parent_id', user.id)
           .eq('is_active', true),
+
+        (supabase as any)
+          .from('scholarship_applications')
+          .select('*')
+          .eq('parent_id', user.id)
+          .order('created_at', { ascending: false }),
       ]);
 
       setRegistrations((regRes.data as Registration[]) || []);
       setInstallments((payRes.data as PaymentInstallment[]) || []);
       setCards((cardRes.data as PaymentMethod[]) || []);
+      setScholarships((scholarshipRes.data as ScholarshipApplication[]) || []);
     } catch {
       // silently handle
     } finally {
@@ -421,6 +505,97 @@ export default function ParentPaymentsScreen() {
       .sort((a, b) => (b.paid_at || '').localeCompare(a.paid_at || ''))
       .slice(0, 20);
   }, [installments]);
+
+  const scholarshipByPlayer = useMemo(() => {
+    const map = new Map<string, ScholarshipApplication>();
+    scholarships.forEach((app) => {
+      if (!map.has(app.player_id)) {
+        map.set(app.player_id, app);
+      }
+    });
+    return map;
+  }, [scholarships]);
+
+  const openScholarshipModal = (playerId: string, playerName: string) => {
+    setScholarshipModalPlayerId(playerId);
+    setScholarshipModalPlayerName(playerName);
+    setScholarshipModalVisible(true);
+  };
+
+  const closeScholarshipModal = () => {
+    setScholarshipModalVisible(false);
+    setScholarshipModalPlayerId('');
+    setScholarshipModalPlayerName('');
+  };
+
+  const isScholarshipEligible = (regs: Registration[]) =>
+    regs.some((r) => (r.amount_paid || 0) > 0);
+
+  const renderScholarshipSection = (child: ChildGroup) => {
+    const application = scholarshipByPlayer.get(child.playerId);
+
+    if (!application) {
+      if (!isScholarshipEligible(child.registrations)) return null;
+      return (
+        <ScholarshipEntryCard
+          onApply={() => openScholarshipModal(child.playerId, child.playerName)}
+        />
+      );
+    }
+
+    switch (application.status) {
+      case 'pending':
+        return (
+          <ScholarshipStatusCard
+            title="Scholarship application submitted"
+            body="We'll respond within 3-5 business days"
+            badgeLabel="Pending"
+            accentColor="#f59e0b"
+            dateLabel="Submitted"
+            dateValue={fmtDate(application.created_at)}
+          />
+        );
+      case 'under_review':
+        return (
+          <ScholarshipStatusCard
+            title="Scholarship application under review"
+            body="A club admin is reviewing your application"
+            badgeLabel="Under review"
+            accentColor="#3b82f6"
+            dateLabel="Submitted"
+            dateValue={fmtDate(application.created_at)}
+          />
+        );
+      case 'approved':
+        return (
+          <ScholarshipStatusCard
+            title="Scholarship approved"
+            badgeLabel="Approved"
+            accentColor="#4ade80"
+            dateLabel="Reviewed"
+            dateValue={
+              application.reviewed_at ? fmtDate(application.reviewed_at) : fmtDate(application.updated_at)
+            }
+            decisionNotes={application.decision_notes}
+          />
+        );
+      case 'denied':
+        return (
+          <ScholarshipStatusCard
+            title="Application not approved at this time"
+            badgeLabel="Not approved"
+            accentColor="#ef4444"
+            dateLabel="Reviewed"
+            dateValue={
+              application.reviewed_at ? fmtDate(application.reviewed_at) : fmtDate(application.updated_at)
+            }
+            decisionNotes={application.decision_notes}
+          />
+        );
+      default:
+        return null;
+    }
+  };
 
   // ── Card actions ──────────────────────────────────────────────────────────
 
@@ -716,6 +891,8 @@ export default function ParentPaymentsScreen() {
                   installments={installments}
                 />
               ))}
+
+              {renderScholarshipSection(child)}
             </View>
           ))
         )}
@@ -791,6 +968,14 @@ export default function ParentPaymentsScreen() {
           <ActivityIndicator size="large" color="#8b5cf6" />
         </View>
       )}
+
+      <ApplyScholarshipModal
+        visible={scholarshipModalVisible}
+        onClose={closeScholarshipModal}
+        playerId={scholarshipModalPlayerId}
+        playerName={scholarshipModalPlayerName}
+        onSubmitted={() => void fetchData()}
+      />
 
       <Modal
         visible={cardSetupWebViewVisible && !!WebView}
@@ -1074,4 +1259,70 @@ const styles = StyleSheet.create({
   historyProgram: { color: '#888', fontSize: 11 },
   historyRight: { alignItems: 'flex-end', gap: 4 },
   historyAmount: { color: '#fff', fontSize: 14, fontWeight: '700' },
+
+  // Scholarship
+  scholarshipEntryCard: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+  },
+  scholarshipEntryTitle: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  scholarshipEntryBody: {
+    color: '#888',
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  scholarshipApplyBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#8b5cf622',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#8b5cf655',
+  },
+  scholarshipApplyBtnText: { color: '#8b5cf6', fontSize: 14, fontWeight: '600' },
+  scholarshipStatusCard: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 4,
+    borderLeftWidth: 4,
+  },
+  scholarshipStatusHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 6,
+  },
+  scholarshipStatusTitle: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
+  scholarshipStatusBody: {
+    color: '#888',
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 6,
+  },
+  scholarshipStatusDate: { color: '#666', fontSize: 12 },
+  scholarshipDecisionNotes: {
+    color: '#aaa',
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
 });

@@ -809,6 +809,13 @@ export const JoinTeamScreen: React.FC = () => {
       }
 
       if (fullPlayer?.claimed_at) {
+        // Allow rightful claimant to re-enter — already linked, just exit to main app
+        const callerEmail = user?.email?.toLowerCase();
+        const claimantEmail = (fullPlayer.email as string | null | undefined)?.toLowerCase();
+        if (callerEmail && claimantEmail && callerEmail === claimantEmail) {
+          exitToMain();
+          return;
+        }
         setFormErrors({
           submit:
             'This player account has already been claimed. If this is a mistake, please contact your team manager.',

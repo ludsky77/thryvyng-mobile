@@ -281,6 +281,20 @@ export const JoinTeamScreen: React.FC = () => {
     }
   }, [user, registrationMode]);
 
+  // Auto-switch to existing-user mode when the user is already authed
+  useEffect(() => {
+    if (user) {
+      setRegistrationMode((prev) => (prev === 'new' ? 'existing' : prev));
+    }
+  }, [user]);
+
+  // Auto-switch to existing-player picker when roster has at least one player
+  useEffect(() => {
+    if (existingPlayers.length > 0) {
+      setPlayerLinkMode((prev) => (prev === 'new' ? 'existing' : prev));
+    }
+  }, [existingPlayers.length]);
+
   const validateInvitationCode = async (inviteCode: string) => {
     try {
       setScreenState('loading');

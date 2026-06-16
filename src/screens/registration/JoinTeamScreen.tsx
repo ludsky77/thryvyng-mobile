@@ -2617,6 +2617,23 @@ export const JoinTeamScreen: React.FC = () => {
               isAvailable={isEmailAvailable}
             />
 
+            {!user && registrationMode === 'new' && isEmailAvailable === false && isEmailValid(parentEmail) && (
+              <TouchableOpacity
+                style={styles.signInPromptBox}
+                onPress={() => {
+                  setRegistrationMode('existing');
+                  setShowVerificationModal(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="log-in-outline" size={20} color="#8B5CF6" />
+                <Text style={styles.signInPromptText}>
+                  This email is already registered.{' '}
+                  <Text style={styles.signInPromptLink}>Sign in instead →</Text>
+                </Text>
+              </TouchableOpacity>
+            )}
+
             <PhoneInput
               label="Phone Number"
               value={parentPhone}
@@ -3177,6 +3194,29 @@ const styles = StyleSheet.create({
     gap: 8,
     alignItems: 'center',
     marginTop: 16,
+  },
+  signInPromptBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#1E1B3A',
+    borderWidth: 1,
+    borderColor: '#8B5CF6',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  signInPromptText: {
+    color: '#D1D5DB',
+    fontSize: 14,
+    flex: 1,
+    lineHeight: 20,
+  },
+  signInPromptLink: {
+    color: '#8B5CF6',
+    fontWeight: '600',
   },
   warningText: {
     color: '#FCD34D',

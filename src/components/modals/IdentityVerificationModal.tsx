@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -148,9 +149,15 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
               )}
             </TouchableOpacity>
 
-            <Text style={styles.helpText}>
-              Forgot your password? Sign in on the web app to reset it.
-            </Text>
+            <TouchableOpacity
+              onPress={() => Linking.openURL('https://thryvyng.com/forgot-password')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.helpText}>
+                Forgot your password?{' '}
+                <Text style={styles.helpLink}>Reset it here</Text>
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -238,6 +245,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     marginTop: 16,
+  },
+  helpLink: {
+    color: '#8B5CF6',
+    fontWeight: '600',
   },
 });
 

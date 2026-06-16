@@ -239,7 +239,6 @@ export default function EditChildScreen({ navigation }: { navigation: any }) {
     }
     if (date) {
       setDobDate(date);
-      if (Platform.OS === 'ios') setDobPickerVisible(false);
     }
   };
 

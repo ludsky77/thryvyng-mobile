@@ -1359,9 +1359,6 @@ export const JoinTeamScreen: React.FC = () => {
       setPlayerDOB(ymd);
       setDobVerifyError('');
       setFormErrors((prev) => ({ ...prev, playerDOB: '' }));
-      if (Platform.OS === 'ios') {
-        setPlayerDobPickerVisible(false);
-      }
     }
   };
 
@@ -1390,9 +1387,6 @@ export const JoinTeamScreen: React.FC = () => {
       const clamped = clampDate(date, MIN_PLAYER_DOB, maxDob);
       setPlayerClaimDob(formatYmd(clamped));
       setPlayerClaimAgeError('');
-      if (Platform.OS === 'ios') {
-        setClaimDobPickerVisible(false);
-      }
     }
   };
 
@@ -1832,11 +1826,16 @@ export const JoinTeamScreen: React.FC = () => {
                       <DateTimePicker
                         value={claimDobPickerDate}
                         mode="date"
-                        display="default"
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                         maximumDate={new Date()}
                         minimumDate={MIN_PLAYER_DOB}
                         onChange={onClaimDobPickerChange}
                       />
+                    ) : null}
+                    {Platform.OS === 'ios' && claimDobPickerVisible ? (
+                      <TouchableOpacity style={styles.dobDone} onPress={() => setClaimDobPickerVisible(false)}>
+                        <Text style={styles.dobDoneText}>Done</Text>
+                      </TouchableOpacity>
                     ) : null}
                   </View>
 
@@ -2489,11 +2488,16 @@ export const JoinTeamScreen: React.FC = () => {
                     <DateTimePicker
                       value={playerDobPickerDate}
                       mode="date"
-                      display="default"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                       maximumDate={new Date()}
                       minimumDate={MIN_PLAYER_DOB}
                       onChange={onPlayerDobPickerChange}
                     />
+                  ) : null}
+                  {Platform.OS === 'ios' && playerDobPickerVisible ? (
+                    <TouchableOpacity style={styles.dobDone} onPress={() => setPlayerDobPickerVisible(false)}>
+                      <Text style={styles.dobDoneText}>Done</Text>
+                    </TouchableOpacity>
                   ) : null}
                 </View>
               )}
@@ -2544,11 +2548,16 @@ export const JoinTeamScreen: React.FC = () => {
                 <DateTimePicker
                   value={playerDobPickerDate}
                   mode="date"
-                  display="default"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                   maximumDate={new Date()}
                   minimumDate={MIN_PLAYER_DOB}
                   onChange={onPlayerDobPickerChange}
                 />
+              ) : null}
+              {Platform.OS === 'ios' && playerDobPickerVisible ? (
+                <TouchableOpacity style={styles.dobDone} onPress={() => setPlayerDobPickerVisible(false)}>
+                  <Text style={styles.dobDoneText}>Done</Text>
+                </TouchableOpacity>
               ) : null}
               <FormInput
                 label="Jersey Number (Optional)"
@@ -2870,6 +2879,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
+  dobDone: { alignSelf: 'flex-end', marginTop: 8 },
+  dobDoneText: { color: '#8b5cf6', fontSize: 16, fontWeight: '600' },
   backButton: {
     backgroundColor: '#374151',
     paddingHorizontal: 24,

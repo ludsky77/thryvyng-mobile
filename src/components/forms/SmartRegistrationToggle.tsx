@@ -21,7 +21,7 @@ export const SmartRegistrationToggle: React.FC<SmartRegistrationToggleProps> = (
         style={[
           styles.option,
           mode === 'new' && styles.optionSelected,
-          disabled && styles.optionDisabled,
+          disabled && mode !== 'new' && styles.optionDisabled,
         ]}
         onPress={() => !disabled && onModeChange('new')}
         activeOpacity={disabled ? 1 : 0.7}
@@ -48,7 +48,7 @@ export const SmartRegistrationToggle: React.FC<SmartRegistrationToggleProps> = (
         style={[
           styles.option,
           mode === 'existing' && styles.optionSelected,
-          disabled && styles.optionDisabled,
+          disabled && mode !== 'existing' && styles.optionDisabled,
         ]}
         onPress={() => !disabled && onModeChange('existing')}
         activeOpacity={disabled ? 1 : 0.7}

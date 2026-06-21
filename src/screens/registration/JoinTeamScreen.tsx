@@ -392,19 +392,14 @@ export const JoinTeamScreen: React.FC = () => {
 
   const fetchTeamPlayers = async (teamId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('players')
-        .select('id, first_name, last_name, date_of_birth, jersey_number, parent_email')
-        .eq('team_id', teamId)
-        .is('parent_email', null)
-        .order('last_name');
-
+      const { data, error } = await (supabase as any).rpc('get_team_roster_for_join', {
+        p_team_id: teamId,
+      });
       if (error) {
-        if (__DEV__) console.log('[JoinTeam] Error fetching players:', error);
+        if (__DEV__) console.log('[JoinTeam] Error fetching team roster:', error);
         return;
       }
-
-      if (__DEV__) console.log('[JoinTeam] Found unclaimed players:', data?.length);
+      if (__DEV__) console.log('[JoinTeam] Team roster size:', data?.length);
       setExistingPlayers(data || []);
     } catch (err) {
       if (__DEV__) console.error('[JoinTeam] Error:', err);

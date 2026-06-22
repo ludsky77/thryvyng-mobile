@@ -5,7 +5,9 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
+  TouchableOpacity,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
@@ -322,6 +324,33 @@ export default function DashboardScreen({ navigation }: any) {
         <RoleSwitcher embedded />
       </View>
 
+      <TouchableOpacity
+        style={styles.wcBannerOuter}
+        activeOpacity={0.85}
+        onPress={() => navigation.navigate('WorldCupPredictor')}
+      >
+        <LinearGradient
+          colors={['#1a2350', '#2a1856', '#4a1530']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.wcBanner}
+        >
+          <LinearGradient
+            colors={['#ffd166', '#f0a020']}
+            style={styles.wcTrophyBox}
+          >
+            <Text style={styles.wcTrophyEmoji}>🏆</Text>
+          </LinearGradient>
+          <View style={styles.wcBannerMiddle}>
+            <Text style={styles.wcEyebrow}>THRYVYNG</Text>
+            <Text style={styles.wcTitleLine}>WORLD CUP</Text>
+            <Text style={[styles.wcTitleLine, styles.wcTitleGold]}>PREDICTOR</Text>
+            <Text style={styles.wcSubtitle}>FIFA 2026 · USA · Canada · Mexico</Text>
+          </View>
+          <Feather name="chevron-right" size={24} color="#ffd166" />
+        </LinearGradient>
+      </TouchableOpacity>
+
       <View style={styles.dashboardContent}>
         {renderDashboard()}
       </View>
@@ -397,6 +426,62 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 12,
     padding: 12,
+  },
+  wcBannerOuter: {
+    marginHorizontal: 14,
+    marginTop: 10,
+    marginBottom: 4,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  wcBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: '#ffd166',
+    overflow: 'hidden',
+  },
+  wcTrophyBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wcTrophyEmoji: {
+    fontSize: 28,
+  },
+  wcBannerMiddle: {
+    flex: 1,
+  },
+  wcEyebrow: {
+    color: '#5dcaa5',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 2.5,
+    marginBottom: 4,
+  },
+  wcTitleLine: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 17,
+  },
+  wcTitleGold: {
+    color: '#ffd166',
+    marginTop: 2,
+  },
+  wcSubtitle: {
+    color: '#b8c5db',
+    fontSize: 10,
+    marginTop: 4,
   },
   rolesContainer: {
     flexDirection: 'row',

@@ -65,6 +65,8 @@ interface WcGroupPrediction {
   match_id: string;
   home_score?: number | null;
   away_score?: number | null;
+  predicted_home_score?: number | null;
+  predicted_away_score?: number | null;
   is_submitted?: boolean | null;
   submitted?: boolean | null;
   points_earned?: number | null;
@@ -217,8 +219,35 @@ function predictionPoints(pred?: WcGroupPrediction | null): number {
   return pred?.points_earned ?? pred?.pts_earned ?? 0;
 }
 
+function getPredHomeScore(pred?: WcGroupPrediction | null): number | null {
+  if (!pred) return null;
+  const value = pred.predicted_home_score ?? pred.home_score;
+  return value != null ? value : null;
+}
+
+function getPredAwayScore(pred?: WcGroupPrediction | null): number | null {
+  if (!pred) return null;
+  const value = pred.predicted_away_score ?? pred.away_score;
+  return value != null ? value : null;
+}
+
 function hasPredictionScores(pred?: WcGroupPrediction | null): boolean {
-  return pred?.home_score != null && pred?.away_score != null;
+  return getPredHomeScore(pred) != null && getPredAwayScore(pred) != null;
+}
+
+function getMatchGroupLetter(match: WcMatch): string {
+  if (match.group) return match.group.toUpperCase();
+  const home = teamByCode(match.home_team_code ?? '');
+  const away = teamByCode(match.away_team_code ?? '');
+  return (home?.group ?? away?.group ?? 'A').toUpperCase();
+}
+
+function isOpenSubmittedCard(match: WcMatch, pred?: WcGroupPrediction | null): boolean {
+  if (getMatchUiState(match) !== 'open') return false;
+  if (match.stage !== 'group') return false;
+  if (match.status === 'completed') return false;
+  if (!hasPredictionScores(pred)) return false;
+  return isPredictionSubmitted(pred);
 }
 
 function computeStandings(groupMatches: WcMatch[], groupLetter: string): StandingRow[] {
@@ -309,10 +338,6 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
   } | null>(null);
 
   const [groupPredictions, setGroupPredictions] = useState<WcGroupPrediction[]>([]);
-  const [localGroupScores, setLocalGroupScores] = useState<
-    Record<string, { home: number | null; away: number | null }>
-  >({});
-  const [autoSavedMatchId, setAutoSavedMatchId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [clubIds, setClubIds] = useState<string[]>([]);
@@ -356,16 +381,6 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
     setTimeout(() => setToastMessage(null), 2500);
   }, []);
 
-  const syncGroupScoresFromPredictions = useCallback((preds: WcGroupPrediction[]) => {
-    const scoreMap: Record<string, { home: number | null; away: number | null }> = {};
-    preds.forEach((p) => {
-      if (p.home_score != null && p.away_score != null) {
-        scoreMap[p.match_id] = { home: p.home_score, away: p.away_score };
-      }
-    });
-    setLocalGroupScores(scoreMap);
-  }, []);
-
   const applyPlayerScore = useCallback((row?: { total_pts?: number; ko_picks_submitted?: number | null } | null) => {
     setPlayerScore(row ?? null);
     setTotalPts(row?.total_pts ?? 100);
@@ -395,9 +410,8 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
     setGroupMatches((matchesRes.data as WcMatch[]) || []);
     const preds = (predsRes.data as WcGroupPrediction[]) || [];
     setGroupPredictions(preds);
-    syncGroupScoresFromPredictions(preds);
     applyPlayerScore(scoresRes.data?.[0] ?? null);
-  }, [userId, syncGroupScoresFromPredictions, applyPlayerScore]);
+  }, [userId, applyPlayerScore]);
 
   const fetchKnockoutData = useCallback(async () => {
     if (!userId) return;
@@ -532,11 +546,10 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
     }
     if (groupPreds) {
       setGroupPredictions(groupPreds as WcGroupPrediction[]);
-      syncGroupScoresFromPredictions(groupPreds as WcGroupPrediction[]);
     }
     setResets((resetRows as WcReset[]) || []);
     applyPlayerScore(scores?.[0] ?? null);
-  }, [userId, syncGroupScoresFromPredictions, applyPlayerScore]);
+  }, [userId, applyPlayerScore]);
 
   const loadActiveTab = useCallback(async () => {
     if (!userId) {
@@ -739,15 +752,14 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
   const getScoresForMatch = useCallback(
     (matchId: string) => {
       const pred = groupPredictionsByMatchId.get(matchId);
-      const local = localGroupScores[matchId];
       return {
-        home: local?.home ?? pred?.home_score ?? null,
-        away: local?.away ?? pred?.away_score ?? null,
+        home: getPredHomeScore(pred),
+        away: getPredAwayScore(pred),
         submitted: isPredictionSubmitted(pred),
         pred,
       };
     },
-    [groupPredictionsByMatchId, localGroupScores]
+    [groupPredictionsByMatchId]
   );
 
   const refreshGroupPredictions = useCallback(async () => {
@@ -758,9 +770,46 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
     if (error) throw new Error(error.message);
     const preds = (data as WcGroupPrediction[]) || [];
     setGroupPredictions(preds);
-    syncGroupScoresFromPredictions(preds);
     return preds;
-  }, [userId, syncGroupScoresFromPredictions]);
+  }, [userId]);
+
+  const refreshPlayerScore = useCallback(async () => {
+    const { data, error } = await (supabase as any)
+      .from('wc_player_scores')
+      .select('total_pts, ko_picks_submitted')
+      .eq('user_id', userId)
+      .order('total_pts', { ascending: false })
+      .limit(1);
+    if (error) throw new Error(error.message);
+    applyPlayerScore(data?.[0] ?? null);
+  }, [userId, applyPlayerScore]);
+
+  const optimisticUpdateGroupPrediction = useCallback(
+    (matchId: string, homeScore: number, awayScore: number, prev?: WcGroupPrediction | null) => {
+      setGroupPredictions((current) => {
+        const idx = current.findIndex((p) => p.match_id === matchId);
+        const existing = prev ?? (idx >= 0 ? current[idx] : undefined);
+        const nextEntry: WcGroupPrediction = {
+          ...(existing ?? { id: `opt-${matchId}`, user_id: userId, match_id: matchId }),
+          match_id: matchId,
+          user_id: userId,
+          home_score: homeScore,
+          away_score: awayScore,
+          predicted_home_score: homeScore,
+          predicted_away_score: awayScore,
+          is_submitted: existing?.is_submitted ?? existing?.submitted ?? false,
+          submitted: existing?.submitted ?? existing?.is_submitted ?? false,
+        };
+        if (idx >= 0) {
+          const copy = [...current];
+          copy[idx] = nextEntry;
+          return copy;
+        }
+        return [...current, nextEntry];
+      });
+    },
+    [userId]
+  );
 
   const upsertGroupPrediction = async (
     matchId: string,
@@ -782,38 +831,33 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
     side: 'home' | 'away',
     delta: number
   ) => {
-    if (mutating || getMatchUiState(match) !== 'open') return;
-    const current = getScoresForMatch(match.id);
-    if (current.submitted) return;
+    if (getMatchUiState(match) !== 'open') return;
+    const prev = groupPredictionsByMatchId.get(match.id);
+    if (isPredictionSubmitted(prev)) return;
 
-    let home = current.home;
-    let away = current.away;
+    const curHome = getPredHomeScore(prev) ?? 0;
+    const curAway = getPredAwayScore(prev) ?? 0;
+    const newHome =
+      side === 'home' ? clampScore(curHome + delta) : curHome;
+    const newAway =
+      side === 'away' ? clampScore(curAway + delta) : curAway;
 
-    if (side === 'home') {
-      if (home == null && delta > 0) home = 0;
-      else if (home != null) home = clampScore(home + delta);
-    } else {
-      if (away == null && delta > 0) away = 0;
-      else if (away != null) away = clampScore(away + delta);
-    }
+    optimisticUpdateGroupPrediction(match.id, newHome, newAway, prev);
 
-    setLocalGroupScores((prev) => ({
-      ...prev,
-      [match.id]: { home, away },
-    }));
-
-    if (home == null || away == null) return;
-
-    setMutating(true);
     try {
-      await upsertGroupPrediction(match.id, home, away, false);
-      await refreshGroupPredictions();
-      setAutoSavedMatchId(match.id);
-      setTimeout(() => setAutoSavedMatchId(null), 2000);
+      const { error } = await (supabase as any).rpc('upsert_group_prediction', {
+        p_match_id: match.id,
+        p_home_score: newHome,
+        p_away_score: newAway,
+        p_submit: false,
+      });
+      if (error) {
+        await refreshGroupPredictions();
+        Alert.alert('Save failed', error.message);
+      }
     } catch (err: any) {
-      Alert.alert('Error', err?.message || 'Failed to save prediction');
-    } finally {
-      setMutating(false);
+      await refreshGroupPredictions();
+      Alert.alert('Save failed', err?.message ?? 'Unknown error');
     }
   };
 
@@ -908,6 +952,16 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
     }
   };
 
+  const executeResetGroup = async (letter: string) => {
+    const { error } = await (supabase as any).rpc('reset_group', {
+      p_group_letter: letter,
+    });
+    if (error) throw new Error(error.message);
+    await refreshGroupPredictions();
+    await refreshPlayerScore();
+    if (activeTab === 'me') await fetchMeData();
+  };
+
   const handleResetGroup = (letter: string) => {
     Alert.alert(
       'Reset Group',
@@ -920,21 +974,36 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
           onPress: async () => {
             setMutating(true);
             try {
-              const { error } = await (supabase as any).rpc('reset_group', {
-                p_group_letter: letter,
-              });
-              if (error) throw new Error(error.message);
-              await refreshGroupPredictions();
-              const { data: scores } = await (supabase as any)
-                .from('wc_player_scores')
-                .select('total_pts, ko_picks_submitted')
-                .eq('user_id', userId)
-                .limit(1);
-              applyPlayerScore(scores?.[0] ?? null);
-              if (activeTab === 'me') await fetchMeData();
+              await executeResetGroup(letter);
               showToast(`Group ${letter} reset.`);
             } catch (err: any) {
-              Alert.alert('Error', err?.message || 'Failed to reset group');
+              Alert.alert('Reset failed', err?.message || 'Failed to reset group');
+            } finally {
+              setMutating(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleResetSubmittedCard = (match: WcMatch) => {
+    const groupLetter = getMatchGroupLetter(match);
+    Alert.alert(
+      'Reset this prediction?',
+      `This unlocks ALL predictions in Group ${groupLetter} so you can edit them. Costs 1 pt.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: async () => {
+            setMutating(true);
+            try {
+              await executeResetGroup(groupLetter);
+              showToast(`Group ${groupLetter} reset.`);
+            } catch (err: any) {
+              Alert.alert('Reset failed', err?.message || 'Unknown error');
             } finally {
               setMutating(false);
             }
@@ -1023,19 +1092,14 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
     const home = teamByCode(match.home_team_code ?? '');
     const away = teamByCode(match.away_team_code ?? '');
     const uiState = getMatchUiState(match);
-    const { home: predHome, away: predAway, submitted, pred } = getScoresForMatch(match.id);
+    const { home: predHome, away: predAway, pred } = getScoresForMatch(match.id);
     const hasScores = predHome != null && predAway != null;
+    const openSubmitted = isOpenSubmittedCard(match, pred);
+    const openDraft = uiState === 'open' && hasScores && !isPredictionSubmitted(pred);
+    const openEmpty = uiState === 'open' && !hasScores;
 
-    const scoreBoxStyle = submitted
-      ? styles.scoreBoxSubmitted
-      : hasScores
-        ? styles.scoreBoxDraft
-        : styles.scoreBoxEmpty;
-    const scoreTextStyle = submitted
-      ? styles.scoreTextSubmitted
-      : hasScores
-        ? styles.scoreTextDraft
-        : styles.scoreTextEmpty;
+    const scoreBoxStyle = hasScores ? styles.scoreBoxDraft : styles.scoreBoxEmpty;
+    const scoreTextStyle = hasScores ? styles.scoreTextDraft : styles.scoreTextEmpty;
 
     const renderPredictionSubtitle = () => {
       if (!hasScores) {
@@ -1062,7 +1126,7 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
       <View style={styles.stepperRow}>
         <TouchableOpacity
           style={styles.stepperBtn}
-          disabled={mutating || submitted}
+          disabled={(predHome ?? 0) <= SCORE_MIN}
           onPress={() => handleGroupStepper(match, 'home', -1)}
         >
           <Text style={styles.stepperBtnText}>−</Text>
@@ -1074,7 +1138,7 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
         </View>
         <TouchableOpacity
           style={styles.stepperBtn}
-          disabled={mutating || submitted || predHome === SCORE_MAX}
+          disabled={(predHome ?? 0) >= SCORE_MAX}
           onPress={() => handleGroupStepper(match, 'home', 1)}
         >
           <Text style={styles.stepperBtnText}>+</Text>
@@ -1084,7 +1148,7 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
 
         <TouchableOpacity
           style={styles.stepperBtn}
-          disabled={mutating || submitted}
+          disabled={(predAway ?? 0) <= SCORE_MIN}
           onPress={() => handleGroupStepper(match, 'away', -1)}
         >
           <Text style={styles.stepperBtnText}>−</Text>
@@ -1096,12 +1160,51 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
         </View>
         <TouchableOpacity
           style={styles.stepperBtn}
-          disabled={mutating || submitted || predAway === SCORE_MAX}
+          disabled={(predAway ?? 0) >= SCORE_MAX}
           onPress={() => handleGroupStepper(match, 'away', 1)}
         >
           <Text style={styles.stepperBtnText}>+</Text>
         </TouchableOpacity>
       </View>
+    );
+
+    const renderDraftStatusRow = () => (
+      <View style={styles.cardMetaRow}>
+        <View style={styles.draftStatusPill}>
+          <Text style={styles.draftStatusPillText}>✏️ Draft · tap Submit Group to lock</Text>
+        </View>
+      </View>
+    );
+
+    const renderSubmittedContent = () => (
+      <>
+        <View style={styles.submittedScoreRow}>
+          <TeamFlag team={home} size={26} />
+          <Text style={styles.submittedTeamName} numberOfLines={1}>
+            {home?.short ?? 'TBD'}
+          </Text>
+          <View style={styles.bigLockedScoreBox}>
+            <Text style={styles.bigLockedScoreText}>{predHome}</Text>
+          </View>
+          <Text style={styles.submittedVsSep}>vs</Text>
+          <View style={styles.bigLockedScoreBox}>
+            <Text style={styles.bigLockedScoreText}>{predAway}</Text>
+          </View>
+          <Text style={styles.submittedTeamName} numberOfLines={1}>
+            {away?.short ?? 'TBD'}
+          </Text>
+          <TeamFlag team={away} size={26} />
+        </View>
+        <View style={styles.cardMetaRow}>
+          <View style={styles.lockedInPill}>
+            <Text style={styles.lockedInPillText}>🔒 Locked in</Text>
+          </View>
+          <Text style={styles.earningPtsText}>Earning up to 10 pts</Text>
+          <TouchableOpacity onPress={() => handleResetSubmittedCard(match)} hitSlop={8}>
+            <Text style={styles.resetLinkText}>Reset (−1)</Text>
+          </TouchableOpacity>
+        </View>
+      </>
     );
 
     return (
@@ -1149,7 +1252,9 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
           </>
         )}
 
-        {uiState === 'open' && (
+        {openSubmitted && renderSubmittedContent()}
+
+        {openDraft && (
           <>
             <View style={styles.groupMatchTeamsRow}>
               <TeamFlag team={home} size={22} />
@@ -1163,9 +1268,25 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
               <TeamFlag team={away} size={22} />
             </View>
             {renderSteppers()}
-            {autoSavedMatchId === match.id && (
-              <Text style={styles.autoSavedText}>auto-saved</Text>
-            )}
+            {renderDraftStatusRow()}
+          </>
+        )}
+
+        {openEmpty && (
+          <>
+            <View style={styles.groupMatchTeamsRow}>
+              <TeamFlag team={home} size={22} />
+              <Text style={styles.groupMatchTeamName} numberOfLines={1}>
+                {home?.short ?? 'TBD'}
+              </Text>
+              <Text style={styles.groupMatchVs}>vs</Text>
+              <Text style={styles.groupMatchTeamName} numberOfLines={1}>
+                {away?.short ?? 'TBD'}
+              </Text>
+              <TeamFlag team={away} size={22} />
+            </View>
+            {renderSteppers()}
+            <Text style={styles.openEmptyHint}>Tap + to predict · Earn up to 10 pts</Text>
           </>
         )}
       </View>
@@ -1873,12 +1994,83 @@ const styles = StyleSheet.create({
   scoreTextEmpty: { color: '#64748b' },
   scoreTextDraft: { color: '#ffd166' },
   scoreTextSubmitted: { color: '#5dcaa5' },
-  autoSavedText: {
-    color: '#64748b',
-    fontSize: 10,
+  submittedScoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  submittedTeamName: {
+    flex: 1,
+    color: '#e2e8f0',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  bigLockedScoreBox: {
+    backgroundColor: 'rgba(29,158,117,0.18)',
+    borderColor: '#1d9e75',
+    borderWidth: 1.5,
+    borderRadius: 10,
+    padding: 10,
+    minWidth: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bigLockedScoreText: {
+    color: '#5dcaa5',
+    fontSize: 28,
+    fontWeight: '800',
+  },
+  submittedVsSep: {
+    color: '#4a5878',
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 2,
+  },
+  cardMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    gap: 8,
+  },
+  lockedInPill: {
+    backgroundColor: 'rgba(29,158,117,0.18)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  lockedInPillText: {
+    color: '#5dcaa5',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  earningPtsText: {
+    flex: 1,
+    color: '#7a8aa8',
+    fontSize: 11,
     textAlign: 'center',
-    marginTop: 6,
-    fontStyle: 'italic',
+  },
+  resetLinkText: {
+    color: '#e57373',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  draftStatusPill: {
+    backgroundColor: 'rgba(255,209,102,0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  draftStatusPillText: {
+    color: '#ffd166',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  openEmptyHint: {
+    color: '#7a8aa8',
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 8,
   },
   toastBanner: {
     position: 'absolute',

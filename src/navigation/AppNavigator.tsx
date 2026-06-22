@@ -28,6 +28,7 @@ import { WelcomeScreen } from '../screens/WelcomeScreen';
 import LoginScreen from '../screens/LoginScreen';
 import SupportScreen from '../screens/SupportScreen';
 import DashboardScreen from '../screens/DashboardScreen';
+import WorldCupPredictorScreen from '../screens/WorldCupPredictorScreen';
 import ChatScreen from '../screens/ChatScreen';
 import TeamChatRoomScreen from '../screens/TeamChatRoomScreen';
 import DirectMessagesScreen from '../screens/DirectMessagesScreen';
@@ -331,6 +332,11 @@ function HomeStack() {
       <Stack.Screen name="GamesHub" options={{ headerShown: false }}>
         {(props) => <LazyScreen component={GamesHubScreen} {...props} />}
       </Stack.Screen>
+      <Stack.Screen
+        name="WorldCupPredictor"
+        component={WorldCupPredictorScreen}
+        options={{ headerShown: false }}
+      />
       {/* Health & Wellness Routes */}
       <Stack.Screen name="Health" options={{ headerShown: false }}>
         {(props) => <LazyScreen component={HealthScreen} {...props} />}

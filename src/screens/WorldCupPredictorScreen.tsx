@@ -17,6 +17,29 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { GROUP_LETTERS, TEAMS, teamByCode, type WcTeam } from '../constants/wcTeams';
 
+const formatMountainDateTime = (iso?: string | null): string => {
+  if (!iso) return 'TBD';
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return 'TBD';
+    const datePart = d.toLocaleDateString('en-US', {
+      timeZone: 'America/Denver',
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    });
+    const timePart = d.toLocaleTimeString('en-US', {
+      timeZone: 'America/Denver',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+    return `${datePart} · ${timePart} MT`;
+  } catch {
+    return 'TBD';
+  }
+};
+
 type TabKey = 'groups' | 'knockouts' | 'leaderboard' | 'me';
 type KoStage = 'R32' | 'R16' | 'QF' | 'SF' | 'Final';
 
@@ -32,6 +55,20 @@ interface WcMatch {
   status?: string | null;
   match_date?: string | null;
   kickoff_time?: string | null;
+  scheduled_at?: string | null;
+  predictions_lock_at?: string | null;
+}
+
+interface WcGroupPrediction {
+  id: string;
+  user_id: string;
+  match_id: string;
+  home_score?: number | null;
+  away_score?: number | null;
+  is_submitted?: boolean | null;
+  submitted?: boolean | null;
+  points_earned?: number | null;
+  pts_earned?: number | null;
 }
 
 interface WcKoPick {
@@ -92,6 +129,12 @@ interface StandingRow {
 
 const KO_STAGES: KoStage[] = ['R32', 'R16', 'QF', 'SF', 'Final'];
 const TOTAL_KO_MATCHES = 31;
+const TOTAL_GROUP_MATCHES = 72;
+const TOTAL_SUBMITTED_PICKS = TOTAL_GROUP_MATCHES + TOTAL_KO_MATCHES;
+const SCORE_MIN = 0;
+const SCORE_MAX = 20;
+
+type GroupMatchUiState = 'completed' | 'locked' | 'open';
 
 const BRACKET_FEEDERS: Record<KoStage, number[][] | null> = {
   R32: null,
@@ -139,6 +182,43 @@ function formatMatchDate(match: WcMatch): string {
   if (!match.match_date) return 'TBD';
   const d = new Date(`${match.match_date}T12:00:00`);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function clampScore(value: number): number {
+  return Math.max(SCORE_MIN, Math.min(SCORE_MAX, value));
+}
+
+function matchesForGroup(allMatches: WcMatch[], letter: string): WcMatch[] {
+  return allMatches
+    .filter((m) => {
+      if (m.group?.toUpperCase() === letter) return true;
+      const home = teamByCode(m.home_team_code ?? '');
+      const away = teamByCode(m.away_team_code ?? '');
+      return home?.group === letter && away?.group === letter;
+    })
+    .sort((a, b) => a.match_number - b.match_number);
+}
+
+function getMatchUiState(match: WcMatch): GroupMatchUiState {
+  if (match.status === 'completed') return 'completed';
+  const lockAt = match.predictions_lock_at
+    ? new Date(match.predictions_lock_at).getTime()
+    : null;
+  if (lockAt !== null && lockAt <= Date.now()) return 'locked';
+  if (match.status === 'scheduled') return 'open';
+  return 'locked';
+}
+
+function isPredictionSubmitted(pred?: WcGroupPrediction | null): boolean {
+  return !!(pred?.is_submitted || pred?.submitted);
+}
+
+function predictionPoints(pred?: WcGroupPrediction | null): number {
+  return pred?.points_earned ?? pred?.pts_earned ?? 0;
+}
+
+function hasPredictionScores(pred?: WcGroupPrediction | null): boolean {
+  return pred?.home_score != null && pred?.away_score != null;
 }
 
 function computeStandings(groupMatches: WcMatch[], groupLetter: string): StandingRow[] {
@@ -222,7 +302,18 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
   const [koMatches, setKoMatches] = useState<WcMatch[]>([]);
   const [koPicks, setKoPicks] = useState<WcKoPick[]>([]);
   const [localPicks, setLocalPicks] = useState<Record<string, string>>({});
-  const [totalPts, setTotalPts] = useState(0);
+  const [totalPts, setTotalPts] = useState(100);
+  const [playerScore, setPlayerScore] = useState<{
+    total_pts?: number;
+    ko_picks_submitted?: number | null;
+  } | null>(null);
+
+  const [groupPredictions, setGroupPredictions] = useState<WcGroupPrediction[]>([]);
+  const [localGroupScores, setLocalGroupScores] = useState<
+    Record<string, { home: number | null; away: number | null }>
+  >({});
+  const [autoSavedMatchId, setAutoSavedMatchId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [clubIds, setClubIds] = useState<string[]>([]);
   const [clubs, setClubs] = useState<ClubRow[]>([]);
@@ -254,15 +345,59 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
     return map;
   }, [koPicks, localPicks, userId]);
 
-  const fetchGroupData = useCallback(async () => {
-    const { data, error } = await (supabase as any)
-      .from('wc_matches')
-      .select('*')
-      .eq('stage', 'group')
-      .order('match_number');
-    if (error) throw new Error(error.message);
-    setGroupMatches((data as WcMatch[]) || []);
+  const groupPredictionsByMatchId = useMemo(() => {
+    const map = new Map<string, WcGroupPrediction>();
+    groupPredictions.forEach((p) => map.set(p.match_id, p));
+    return map;
+  }, [groupPredictions]);
+
+  const showToast = useCallback((message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 2500);
   }, []);
+
+  const syncGroupScoresFromPredictions = useCallback((preds: WcGroupPrediction[]) => {
+    const scoreMap: Record<string, { home: number | null; away: number | null }> = {};
+    preds.forEach((p) => {
+      if (p.home_score != null && p.away_score != null) {
+        scoreMap[p.match_id] = { home: p.home_score, away: p.away_score };
+      }
+    });
+    setLocalGroupScores(scoreMap);
+  }, []);
+
+  const applyPlayerScore = useCallback((row?: { total_pts?: number; ko_picks_submitted?: number | null } | null) => {
+    setPlayerScore(row ?? null);
+    setTotalPts(row?.total_pts ?? 100);
+  }, []);
+
+  const fetchGroupData = useCallback(async () => {
+    if (!userId) return;
+    const [matchesRes, predsRes, scoresRes] = await Promise.all([
+      (supabase as any)
+        .from('wc_matches')
+        .select('*')
+        .eq('stage', 'group')
+        .order('match_number'),
+      (supabase as any)
+        .from('wc_group_predictions')
+        .select('*')
+        .eq('user_id', userId),
+      (supabase as any)
+        .from('wc_player_scores')
+        .select('total_pts, ko_picks_submitted')
+        .eq('user_id', userId)
+        .order('total_pts', { ascending: false })
+        .limit(1),
+    ]);
+    if (matchesRes.error) throw new Error(matchesRes.error.message);
+    if (predsRes.error) throw new Error(predsRes.error.message);
+    setGroupMatches((matchesRes.data as WcMatch[]) || []);
+    const preds = (predsRes.data as WcGroupPrediction[]) || [];
+    setGroupPredictions(preds);
+    syncGroupScoresFromPredictions(preds);
+    applyPlayerScore(scoresRes.data?.[0] ?? null);
+  }, [userId, syncGroupScoresFromPredictions, applyPlayerScore]);
 
   const fetchKnockoutData = useCallback(async () => {
     if (!userId) return;
@@ -276,7 +411,7 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
       (supabase as any).from('wc_ko_picks').select('*').eq('user_id', userId),
       (supabase as any)
         .from('wc_player_scores')
-        .select('total_pts')
+        .select('total_pts, ko_picks_submitted')
         .eq('user_id', userId)
         .order('total_pts', { ascending: false })
         .limit(1),
@@ -291,10 +426,8 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
       pickMap[p.match_id] = p.picked_team_code;
     });
     setLocalPicks(pickMap);
-    if (!scoresRes.error && scoresRes.data?.[0]) {
-      setTotalPts(scoresRes.data[0].total_pts ?? 0);
-    }
-  }, [userId]);
+    applyPlayerScore(scoresRes.data?.[0] ?? null);
+  }, [userId, applyPlayerScore]);
 
   const fetchLeaderboardData = useCallback(async () => {
     if (!userId) return;
@@ -366,7 +499,7 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
 
   const fetchMeData = useCallback(async () => {
     if (!userId) return;
-    const [{ data: picks }, { data: resetRows }, { data: scores }, { data: matches }] =
+    const [{ data: picks }, { data: resetRows }, { data: scores }, { data: matches }, { data: groupPreds }] =
       await Promise.all([
       (supabase as any).from('wc_ko_picks').select('*').eq('user_id', userId),
       (supabase as any)
@@ -376,7 +509,7 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
         .order('created_at', { ascending: false }),
       (supabase as any)
         .from('wc_player_scores')
-        .select('total_pts')
+        .select('total_pts, ko_picks_submitted')
         .eq('user_id', userId)
         .order('total_pts', { ascending: false })
         .limit(1),
@@ -386,6 +519,7 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
         .neq('stage', 'group')
         .order('stage')
         .order('match_number'),
+      (supabase as any).from('wc_group_predictions').select('*').eq('user_id', userId),
     ]);
     if (matches) setKoMatches((matches as WcMatch[]) || []);
     if (picks) {
@@ -396,9 +530,13 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
       });
       setLocalPicks(pickMap);
     }
+    if (groupPreds) {
+      setGroupPredictions(groupPreds as WcGroupPrediction[]);
+      syncGroupScoresFromPredictions(groupPreds as WcGroupPrediction[]);
+    }
     setResets((resetRows as WcReset[]) || []);
-    if (scores?.[0]) setTotalPts(scores[0].total_pts ?? 0);
-  }, [userId]);
+    applyPlayerScore(scores?.[0] ?? null);
+  }, [userId, syncGroupScoresFromPredictions, applyPlayerScore]);
 
   const loadActiveTab = useCallback(async () => {
     if (!userId) {
@@ -598,6 +736,214 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
     );
   };
 
+  const getScoresForMatch = useCallback(
+    (matchId: string) => {
+      const pred = groupPredictionsByMatchId.get(matchId);
+      const local = localGroupScores[matchId];
+      return {
+        home: local?.home ?? pred?.home_score ?? null,
+        away: local?.away ?? pred?.away_score ?? null,
+        submitted: isPredictionSubmitted(pred),
+        pred,
+      };
+    },
+    [groupPredictionsByMatchId, localGroupScores]
+  );
+
+  const refreshGroupPredictions = useCallback(async () => {
+    const { data, error } = await (supabase as any)
+      .from('wc_group_predictions')
+      .select('*')
+      .eq('user_id', userId);
+    if (error) throw new Error(error.message);
+    const preds = (data as WcGroupPrediction[]) || [];
+    setGroupPredictions(preds);
+    syncGroupScoresFromPredictions(preds);
+    return preds;
+  }, [userId, syncGroupScoresFromPredictions]);
+
+  const upsertGroupPrediction = async (
+    matchId: string,
+    homeScore: number,
+    awayScore: number,
+    submit: boolean
+  ) => {
+    const { error } = await (supabase as any).rpc('upsert_group_prediction', {
+      p_match_id: matchId,
+      p_home_score: homeScore,
+      p_away_score: awayScore,
+      p_submit: submit,
+    });
+    if (error) throw new Error(error.message);
+  };
+
+  const handleGroupStepper = async (
+    match: WcMatch,
+    side: 'home' | 'away',
+    delta: number
+  ) => {
+    if (mutating || getMatchUiState(match) !== 'open') return;
+    const current = getScoresForMatch(match.id);
+    if (current.submitted) return;
+
+    let home = current.home;
+    let away = current.away;
+
+    if (side === 'home') {
+      if (home == null && delta > 0) home = 0;
+      else if (home != null) home = clampScore(home + delta);
+    } else {
+      if (away == null && delta > 0) away = 0;
+      else if (away != null) away = clampScore(away + delta);
+    }
+
+    setLocalGroupScores((prev) => ({
+      ...prev,
+      [match.id]: { home, away },
+    }));
+
+    if (home == null || away == null) return;
+
+    setMutating(true);
+    try {
+      await upsertGroupPrediction(match.id, home, away, false);
+      await refreshGroupPredictions();
+      setAutoSavedMatchId(match.id);
+      setTimeout(() => setAutoSavedMatchId(null), 2000);
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to save prediction');
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const getGroupStatusPill = (letter: string, matches: WcMatch[]) => {
+    if (matches.length === 0) {
+      return { label: 'Open', style: styles.groupStatusOpen };
+    }
+    if (matches.every((m) => getMatchUiState(m) === 'completed')) {
+      return { label: 'Final', style: styles.groupStatusOpen };
+    }
+
+    const openMatches = matches.filter((m) => getMatchUiState(m) === 'open');
+    const openWithPred = openMatches.filter((m) =>
+      hasPredictionScores(groupPredictionsByMatchId.get(m.id))
+    );
+    const openSubmitted = openMatches.filter((m) =>
+      isPredictionSubmitted(groupPredictionsByMatchId.get(m.id))
+    );
+
+    if (openMatches.length > 0 && openSubmitted.length === openMatches.length) {
+      return { label: '✓ Submitted', style: styles.groupStatusSubmitted };
+    }
+
+    const draftCount = openMatches.filter((m) => {
+      const pred = groupPredictionsByMatchId.get(m.id);
+      return hasPredictionScores(pred) && !isPredictionSubmitted(pred);
+    }).length;
+
+    if (draftCount > 0) {
+      return {
+        label: `✏️ Draft ${draftCount}/${openMatches.length}`,
+        style: styles.groupStatusDraft,
+      };
+    }
+
+    if (openWithPred.length === 0 && groupPredictions.filter((p) => {
+      const m = matches.find((x) => x.id === p.match_id);
+      return !!m;
+    }).length === 0) {
+      return { label: 'Open', style: styles.groupStatusOpen };
+    }
+
+    return { label: 'Open', style: styles.groupStatusOpen };
+  };
+
+  const handleSaveGroupDraft = async (letter: string, matches: WcMatch[]) => {
+    if (mutating) return;
+    const openMatches = matches.filter((m) => getMatchUiState(m) === 'open');
+    setMutating(true);
+    try {
+      for (const match of openMatches) {
+        const { home, away } = getScoresForMatch(match.id);
+        if (home == null || away == null) continue;
+        await upsertGroupPrediction(match.id, home, away, false);
+      }
+      await refreshGroupPredictions();
+      showToast(`Saved Group ${letter} drafts.`);
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to save drafts');
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const handleSubmitGroup = async (letter: string, matches: WcMatch[]) => {
+    if (mutating) return;
+    const openMatches = matches.filter((m) => getMatchUiState(m) === 'open');
+    const toSubmit = openMatches.filter((m) => {
+      const { home, away } = getScoresForMatch(m.id);
+      return home != null && away != null;
+    });
+    if (toSubmit.length === 0) return;
+
+    setMutating(true);
+    try {
+      for (const match of toSubmit) {
+        const { home, away } = getScoresForMatch(match.id);
+        await upsertGroupPrediction(match.id, home!, away!, true);
+      }
+      await refreshGroupPredictions();
+      const { data: scores } = await (supabase as any)
+        .from('wc_player_scores')
+        .select('total_pts, ko_picks_submitted')
+        .eq('user_id', userId)
+        .limit(1);
+      applyPlayerScore(scores?.[0] ?? null);
+      showToast(`Submitted Group ${letter} predictions.`);
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to submit group');
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const handleResetGroup = (letter: string) => {
+    Alert.alert(
+      'Reset Group',
+      `Clear all Group ${letter} predictions? This costs 1 point.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: async () => {
+            setMutating(true);
+            try {
+              const { error } = await (supabase as any).rpc('reset_group', {
+                p_group_letter: letter,
+              });
+              if (error) throw new Error(error.message);
+              await refreshGroupPredictions();
+              const { data: scores } = await (supabase as any)
+                .from('wc_player_scores')
+                .select('total_pts, ko_picks_submitted')
+                .eq('user_id', userId)
+                .limit(1);
+              applyPlayerScore(scores?.[0] ?? null);
+              if (activeTab === 'me') await fetchMeData();
+              showToast(`Group ${letter} reset.`);
+            } catch (err: any) {
+              Alert.alert('Error', err?.message || 'Failed to reset group');
+            } finally {
+              setMutating(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const roleContext = useMemo(() => {
     const roleLabel = ROLE_LABELS[currentRole?.role] || currentRole?.role || 'Member';
     const entity =
@@ -609,7 +955,11 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
     return abbrev ? `${roleLabel} · ${abbrev}` : roleLabel;
   }, [currentRole]);
 
-  const submittedCount = koPicks.filter((p) => p.submitted).length;
+  const groupSubmittedCount = groupPredictions.filter((p) => isPredictionSubmitted(p)).length;
+  const koSubmittedCount =
+    playerScore?.ko_picks_submitted ??
+    koPicks.filter((p) => p.submitted).length;
+  const totalSubmittedCount = groupSubmittedCount + koSubmittedCount;
   const resetPenaltyTotal = resets.reduce((sum, r) => sum + (r.penalty_pts ?? 0), 0);
 
   const finalSubmitted = useMemo(() => {
@@ -669,6 +1019,159 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
     );
   };
 
+  const renderGroupMatchCard = (match: WcMatch) => {
+    const home = teamByCode(match.home_team_code ?? '');
+    const away = teamByCode(match.away_team_code ?? '');
+    const uiState = getMatchUiState(match);
+    const { home: predHome, away: predAway, submitted, pred } = getScoresForMatch(match.id);
+    const hasScores = predHome != null && predAway != null;
+
+    const scoreBoxStyle = submitted
+      ? styles.scoreBoxSubmitted
+      : hasScores
+        ? styles.scoreBoxDraft
+        : styles.scoreBoxEmpty;
+    const scoreTextStyle = submitted
+      ? styles.scoreTextSubmitted
+      : hasScores
+        ? styles.scoreTextDraft
+        : styles.scoreTextEmpty;
+
+    const renderPredictionSubtitle = () => {
+      if (!hasScores) {
+        return <Text style={styles.predictionSubtitleDim}>No prediction</Text>;
+      }
+      const pts = predictionPoints(pred);
+      const label = `You: ${predHome}-${predAway}`;
+      if (uiState === 'completed') {
+        return (
+          <Text
+            style={pts > 0 ? styles.predictionSubtitleGood : styles.predictionSubtitleNeutral}
+          >
+            {label} · {pts > 0 ? `+${pts} pts` : '0 pts'}
+          </Text>
+        );
+      }
+      if (uiState === 'locked') {
+        return <Text style={styles.predictionSubtitleNeutral}>You predicted: {predHome}-{predAway}</Text>;
+      }
+      return null;
+    };
+
+    const renderSteppers = () => (
+      <View style={styles.stepperRow}>
+        <TouchableOpacity
+          style={styles.stepperBtn}
+          disabled={mutating || submitted}
+          onPress={() => handleGroupStepper(match, 'home', -1)}
+        >
+          <Text style={styles.stepperBtnText}>−</Text>
+        </TouchableOpacity>
+        <View style={[styles.scoreBox, scoreBoxStyle]}>
+          <Text style={[styles.scoreBoxText, scoreTextStyle]}>
+            {predHome ?? '–'}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={styles.stepperBtn}
+          disabled={mutating || submitted || predHome === SCORE_MAX}
+          onPress={() => handleGroupStepper(match, 'home', 1)}
+        >
+          <Text style={styles.stepperBtnText}>+</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.stepperColon}>:</Text>
+
+        <TouchableOpacity
+          style={styles.stepperBtn}
+          disabled={mutating || submitted}
+          onPress={() => handleGroupStepper(match, 'away', -1)}
+        >
+          <Text style={styles.stepperBtnText}>−</Text>
+        </TouchableOpacity>
+        <View style={[styles.scoreBox, scoreBoxStyle]}>
+          <Text style={[styles.scoreBoxText, scoreTextStyle]}>
+            {predAway ?? '–'}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={styles.stepperBtn}
+          disabled={mutating || submitted || predAway === SCORE_MAX}
+          onPress={() => handleGroupStepper(match, 'away', 1)}
+        >
+          <Text style={styles.stepperBtnText}>+</Text>
+        </TouchableOpacity>
+      </View>
+    );
+
+    return (
+      <View key={match.id} style={styles.groupMatchCard}>
+        <Text style={styles.groupMatchCardHeader}>
+          M{match.match_number} · {formatMountainDateTime(match.scheduled_at)}
+        </Text>
+
+        {uiState === 'completed' && (
+          <>
+            <View style={styles.groupMatchTeamsRow}>
+              <TeamFlag team={home} size={22} />
+              <Text style={styles.groupMatchTeamName} numberOfLines={1}>
+                {home?.short ?? 'TBD'}
+              </Text>
+              <Text style={styles.groupMatchResultScore}>
+                {match.home_score ?? 0}-{match.away_score ?? 0}
+              </Text>
+              <Text style={styles.groupMatchTeamName} numberOfLines={1}>
+                {away?.short ?? 'TBD'}
+              </Text>
+              <TeamFlag team={away} size={22} />
+            </View>
+            {renderPredictionSubtitle()}
+          </>
+        )}
+
+        {uiState === 'locked' && (
+          <>
+            <View style={styles.groupMatchTeamsRow}>
+              <TeamFlag team={home} size={22} />
+              <Text style={styles.groupMatchTeamName} numberOfLines={1}>
+                {home?.short ?? 'TBD'}
+              </Text>
+              <Text style={styles.groupMatchLockedScore}>—</Text>
+              <Text style={styles.groupMatchTeamName} numberOfLines={1}>
+                {away?.short ?? 'TBD'}
+              </Text>
+              <TeamFlag team={away} size={22} />
+            </View>
+            <View style={styles.lockedPill}>
+              <Text style={styles.lockedPillText}>🔒 Locked · awaiting result</Text>
+            </View>
+            {renderPredictionSubtitle()}
+          </>
+        )}
+
+        {uiState === 'open' && (
+          <>
+            <View style={styles.groupMatchTeamsRow}>
+              <TeamFlag team={home} size={22} />
+              <Text style={styles.groupMatchTeamName} numberOfLines={1}>
+                {home?.short ?? 'TBD'}
+              </Text>
+              <Text style={styles.groupMatchVs}>vs</Text>
+              <Text style={styles.groupMatchTeamName} numberOfLines={1}>
+                {away?.short ?? 'TBD'}
+              </Text>
+              <TeamFlag team={away} size={22} />
+            </View>
+            {renderSteppers()}
+            {autoSavedMatchId === match.id && (
+              <Text style={styles.autoSavedText}>auto-saved</Text>
+            )}
+          </>
+        )}
+      </View>
+    );
+  };
+
   const renderGroupsTab = () => (
     <ScrollView
       contentContainerStyle={styles.scrollContent}
@@ -677,15 +1180,26 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
     >
       {GROUP_LETTERS.map((letter) => {
         const teams = TEAMS.filter((t) => t.group === letter);
-        const matches = groupMatches.filter((m) => m.group === letter);
+        const matches = matchesForGroup(groupMatches, letter);
         const standings = computeStandings(matches, letter);
+        const statusPill = getGroupStatusPill(letter, matches);
+        const openMatches = matches.filter((m) => getMatchUiState(m) === 'open');
+        const canSubmitGroup = openMatches.some((m) => {
+          const { home, away } = getScoresForMatch(m.id);
+          return home != null && away != null;
+        });
 
         return (
           <View key={letter} style={styles.groupCard}>
             <View style={styles.groupHeader}>
               <Text style={styles.groupTitle}>GROUP {letter}</Text>
-              <View style={styles.groupBadge}>
-                <Text style={styles.groupBadgeText}>{letter}</Text>
+              <View style={styles.groupHeaderRight}>
+                <View style={[styles.groupStatusPill, statusPill.style]}>
+                  <Text style={styles.groupStatusText}>{statusPill.label}</Text>
+                </View>
+                <View style={styles.groupBadge}>
+                  <Text style={styles.groupBadgeText}>{letter}</Text>
+                </View>
               </View>
             </View>
 
@@ -735,35 +1249,35 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
               </View>
             </ScrollView>
 
+            <View style={styles.groupActionBar}>
+              <TouchableOpacity
+                style={styles.saveDraftBtn}
+                disabled={mutating}
+                onPress={() => handleSaveGroupDraft(letter, matches)}
+              >
+                <Text style={styles.saveDraftText}>✏️ Save Draft</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.submitBtn, !canSubmitGroup && styles.submitBtnDisabled]}
+                disabled={mutating || !canSubmitGroup}
+                onPress={() => handleSubmitGroup(letter, matches)}
+              >
+                <Text style={styles.submitText}>🔒 Submit Group</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.resetRoundBtn}
+                disabled={mutating}
+                onPress={() => handleResetGroup(letter)}
+              >
+                <Text style={styles.resetRoundText}>↻ Reset (-1)</Text>
+              </TouchableOpacity>
+            </View>
+
             <Text style={styles.tableSectionLabel}>MATCHES</Text>
             {matches.length === 0 ? (
-              <Text style={styles.emptyHint}>No matches scheduled yet</Text>
+              <Text style={styles.emptyHint}>No matches configured for this group</Text>
             ) : (
-              matches.map((match) => {
-                const home = teamByCode(match.home_team_code ?? '');
-                const away = teamByCode(match.away_team_code ?? '');
-                const completed = match.status === 'completed';
-                return (
-                  <View key={match.id} style={styles.groupMatchRow}>
-                    {completed ? (
-                      <Feather name="check-circle" size={16} color="#5dcaa5" style={styles.matchStatusIcon} />
-                    ) : (
-                      <Feather name="circle" size={16} color="#64748b" style={styles.matchStatusIcon} />
-                    )}
-                    <TeamFlag team={home} size={22} />
-                    <Text style={styles.groupMatchTeam} numberOfLines={1}>
-                      {home?.short ?? 'TBD'}
-                    </Text>
-                    <Text style={styles.groupMatchScore}>
-                      {completed ? `${match.home_score ?? 0}-${match.away_score ?? 0}` : 'vs'}
-                    </Text>
-                    <Text style={styles.groupMatchTeam} numberOfLines={1}>
-                      {away?.short ?? 'TBD'}
-                    </Text>
-                    <TeamFlag team={away} size={22} />
-                  </View>
-                );
-              })
+              matches.map((match) => renderGroupMatchCard(match))
             )}
           </View>
         );
@@ -1029,7 +1543,7 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
           <View style={styles.meStatCard}>
             <Text style={styles.meStatLabel}>SUBMITTED PICKS</Text>
             <Text style={styles.meStatValue}>
-              {submittedCount}/{TOTAL_KO_MATCHES}
+              {totalSubmittedCount} / {TOTAL_SUBMITTED_PICKS} submitted
             </Text>
           </View>
           <View style={styles.meStatCard}>
@@ -1132,6 +1646,11 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
         {renderHeader()}
         {renderTabBar()}
         <View style={styles.content}>{renderTabContent()}</View>
+        {toastMessage ? (
+          <View style={styles.toastBanner}>
+            <Text style={styles.toastText}>{toastMessage}</Text>
+          </View>
+        ) : null}
       </SafeAreaView>
     </LinearGradient>
   );
@@ -1213,6 +1732,16 @@ const styles = StyleSheet.create({
     borderColor: '#1e293b',
   },
   groupHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  groupHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  groupStatusPill: {
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  groupStatusSubmitted: { backgroundColor: 'rgba(93, 202, 165, 0.2)' },
+  groupStatusDraft: { backgroundColor: 'rgba(255, 209, 102, 0.15)' },
+  groupStatusOpen: { backgroundColor: 'rgba(100, 116, 139, 0.2)' },
+  groupStatusText: { fontSize: 10, fontWeight: '700', color: '#e2e8f0' },
   groupTitle: { flex: 1, fontSize: 14, fontWeight: '800', color: '#fff', letterSpacing: 1 },
   groupBadge: {
     backgroundColor: '#ffd166',
@@ -1257,17 +1786,113 @@ const styles = StyleSheet.create({
   tableCellTeam: { width: 88, color: '#e2e8f0', fontSize: 12, fontWeight: '600' },
   tableCellNum: { width: 44, textAlign: 'center', color: '#cbd5e1', fontSize: 12 },
   tableCellRecord: { width: 56, textAlign: 'center', color: '#94a3b8', fontSize: 11 },
-  groupMatchRow: {
+  groupActionBar: { marginTop: 12, marginBottom: 8, gap: 10 },
+  groupMatchCard: {
+    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  groupMatchCardHeader: {
+    color: '#64748b',
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  groupMatchTeamsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#334155',
   },
-  matchStatusIcon: { width: 18 },
-  groupMatchTeam: { flex: 1, color: '#e2e8f0', fontSize: 12 },
-  groupMatchScore: { color: '#5dcaa5', fontWeight: '700', fontSize: 13, minWidth: 36, textAlign: 'center' },
+  groupMatchTeamName: { flex: 1, color: '#e2e8f0', fontSize: 12, fontWeight: '600' },
+  groupMatchResultScore: {
+    color: '#5dcaa5',
+    fontWeight: '800',
+    fontSize: 14,
+    minWidth: 44,
+    textAlign: 'center',
+  },
+  groupMatchLockedScore: {
+    color: '#64748b',
+    fontWeight: '700',
+    fontSize: 14,
+    minWidth: 44,
+    textAlign: 'center',
+  },
+  groupMatchVs: {
+    color: '#64748b',
+    fontWeight: '700',
+    fontSize: 12,
+    paddingHorizontal: 4,
+  },
+  lockedPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginTop: 8,
+  },
+  lockedPillText: { color: '#fbbf24', fontSize: 11, fontWeight: '600' },
+  predictionSubtitleGood: { color: '#5dcaa5', fontSize: 11, marginTop: 6, fontWeight: '600' },
+  predictionSubtitleNeutral: { color: '#94a3b8', fontSize: 11, marginTop: 6 },
+  predictionSubtitleDim: { color: '#64748b', fontSize: 11, marginTop: 6, fontStyle: 'italic' },
+  stepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    gap: 6,
+  },
+  stepperBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#1e293b',
+    borderWidth: 1,
+    borderColor: '#475569',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperBtnText: { color: '#e2e8f0', fontSize: 20, fontWeight: '700', lineHeight: 22 },
+  stepperColon: { color: '#64748b', fontSize: 18, fontWeight: '700', marginHorizontal: 4 },
+  scoreBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+  },
+  scoreBoxEmpty: { backgroundColor: '#1e293b', borderColor: '#475569' },
+  scoreBoxDraft: { backgroundColor: 'rgba(255, 209, 102, 0.15)', borderColor: '#ffd166' },
+  scoreBoxSubmitted: { backgroundColor: 'rgba(93, 202, 165, 0.15)', borderColor: '#5dcaa5' },
+  scoreBoxText: { fontSize: 18, fontWeight: '800' },
+  scoreTextEmpty: { color: '#64748b' },
+  scoreTextDraft: { color: '#ffd166' },
+  scoreTextSubmitted: { color: '#5dcaa5' },
+  autoSavedText: {
+    color: '#64748b',
+    fontSize: 10,
+    textAlign: 'center',
+    marginTop: 6,
+    fontStyle: 'italic',
+  },
+  toastBanner: {
+    position: 'absolute',
+    bottom: 24,
+    left: 16,
+    right: 16,
+    backgroundColor: 'rgba(30, 41, 59, 0.95)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#475569',
+  },
+  toastText: { color: '#e2e8f0', fontSize: 14, textAlign: 'center', fontWeight: '600' },
   stageNav: { marginBottom: 12 },
   stagePill: {
     flexDirection: 'row',

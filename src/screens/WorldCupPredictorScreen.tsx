@@ -52,6 +52,8 @@ interface WcMatch {
   away_team_code?: string | null;
   home_score?: number | null;
   away_score?: number | null;
+  home_score_actual?: number | null;
+  away_score_actual?: number | null;
   status?: string | null;
   match_date?: string | null;
   kickoff_time?: string | null;
@@ -71,6 +73,7 @@ interface WcGroupPrediction {
   submitted?: boolean | null;
   points_earned?: number | null;
   pts_earned?: number | null;
+  awarded_pts?: number | null;
 }
 
 interface WcKoPick {
@@ -118,15 +121,18 @@ interface ClubRow {
   name: string;
 }
 
-interface StandingRow {
-  code: string;
+interface WcStanding {
+  group_letter: string;
+  team_code: string;
+  matches_played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  goals_for: number;
+  goals_against: number;
+  goal_diff: number;
   pts: number;
-  gd: number;
-  gf: number;
-  ga: number;
-  w: number;
-  d: number;
-  l: number;
+  position: number;
 }
 
 const KO_STAGES: KoStage[] = ['R32', 'R16', 'QF', 'SF', 'Final'];
@@ -235,6 +241,75 @@ function hasPredictionScores(pred?: WcGroupPrediction | null): boolean {
   return getPredHomeScore(pred) != null && getPredAwayScore(pred) != null;
 }
 
+type AccuracyLabel = 'EXACT' | 'WINNER_GD' | 'WINNER' | 'MISSED';
+
+function isScoredGroupCard(match: WcMatch): boolean {
+  return (
+    match.stage === 'group' &&
+    match.status === 'completed' &&
+    match.home_score_actual != null &&
+    match.away_score_actual != null
+  );
+}
+
+function deriveAccuracy(
+  pred: WcGroupPrediction | null | undefined,
+  match: WcMatch
+): { pts: number; label: AccuracyLabel } {
+  if (!pred || !match || match.home_score_actual == null || match.away_score_actual == null) {
+    return { pts: 0, label: 'MISSED' };
+  }
+  const ph = pred.predicted_home_score ?? pred.home_score;
+  const pa = pred.predicted_away_score ?? pred.away_score;
+  if (ph == null || pa == null) return { pts: 0, label: 'MISSED' };
+
+  const ah = match.home_score_actual;
+  const aa = match.away_score_actual;
+
+  if (ph === ah && pa === aa) return { pts: 10, label: 'EXACT' };
+
+  const predWin = ph > pa ? 'H' : pa > ph ? 'A' : 'D';
+  const actWin = ah > aa ? 'H' : aa > ah ? 'A' : 'D';
+
+  if (predWin !== actWin) return { pts: 0, label: 'MISSED' };
+
+  if (ph - pa === ah - aa) return { pts: 7, label: 'WINNER_GD' };
+
+  return { pts: 5, label: 'WINNER' };
+}
+
+function getPredictionAccuracy(
+  pred: WcGroupPrediction | null | undefined,
+  match: WcMatch
+): { pts: number; label: AccuracyLabel } {
+  const awarded = pred?.awarded_pts;
+  if (awarded != null) {
+    let label: AccuracyLabel = 'MISSED';
+    if (awarded === 10) label = 'EXACT';
+    else if (awarded === 7) label = 'WINNER_GD';
+    else if (awarded === 5) label = 'WINNER';
+    return { pts: awarded, label };
+  }
+  return deriveAccuracy(pred, match);
+}
+
+function getAccuracyPillConfig(label: AccuracyLabel): {
+  text: string;
+  bg: string;
+  color: string;
+} {
+  switch (label) {
+    case 'EXACT':
+      return { text: '✓ EXACT SCORE', bg: 'rgba(29,158,117,0.22)', color: '#5dcaa5' };
+    case 'WINNER_GD':
+      return { text: '✓ WINNER + GD', bg: 'rgba(29,158,117,0.18)', color: '#5dcaa5' };
+    case 'WINNER':
+      return { text: '✓ CORRECT WINNER', bg: 'rgba(255,209,102,0.18)', color: '#ffd166' };
+    default:
+      return { text: '✗ MISSED', bg: 'rgba(229,115,115,0.15)', color: '#e57373' };
+  }
+}
+
 function getMatchGroupLetter(match: WcMatch): string {
   if (match.group) return match.group.toUpperCase();
   const home = teamByCode(match.home_team_code ?? '');
@@ -250,51 +325,37 @@ function isOpenSubmittedCard(match: WcMatch, pred?: WcGroupPrediction | null): b
   return isPredictionSubmitted(pred);
 }
 
-function computeStandings(groupMatches: WcMatch[], groupLetter: string): StandingRow[] {
-  const teams = TEAMS.filter((t) => t.group === groupLetter);
-  const stats: Record<string, StandingRow> = {};
-  teams.forEach((t) => {
-    stats[t.code] = { code: t.code, pts: 0, gd: 0, gf: 0, ga: 0, w: 0, d: 0, l: 0 };
-  });
+function formatGoalDiff(gd: number): { text: string; color: string } {
+  if (gd > 0) return { text: `+${gd}`, color: '#5dcaa5' };
+  if (gd < 0) return { text: `${gd}`, color: '#e57373' };
+  return { text: '0', color: '#7a8aa8' };
+}
 
-  groupMatches
-    .filter(
-      (m) =>
-        m.status === 'completed' &&
-        m.home_score != null &&
-        m.away_score != null &&
-        m.home_team_code &&
-        m.away_team_code
-    )
-    .forEach((m) => {
-      const home = stats[m.home_team_code!];
-      const away = stats[m.away_team_code!];
-      if (!home || !away) return;
-      const hs = m.home_score!;
-      const as = m.away_score!;
-      home.gf += hs;
-      home.ga += as;
-      away.gf += as;
-      away.ga += hs;
-      if (hs > as) {
-        home.w += 1;
-        home.pts += 3;
-        away.l += 1;
-      } else if (hs < as) {
-        away.w += 1;
-        away.pts += 3;
-        home.l += 1;
-      } else {
-        home.d += 1;
-        away.d += 1;
-        home.pts += 1;
-        away.pts += 1;
-      }
-    });
+function getGroupStandingsRows(letter: string, allStandings: WcStanding[]): WcStanding[] {
+  const filtered = allStandings
+    .filter((s) => s.group_letter.toUpperCase() === letter)
+    .sort((a, b) => a.position - b.position);
+  if (filtered.length > 0) return filtered;
 
-  return Object.values(stats)
-    .map((s) => ({ ...s, gd: s.gf - s.ga }))
-    .sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
+  return TEAMS.filter((t) => t.group === letter).map((t, idx) => ({
+    group_letter: letter,
+    team_code: t.code,
+    matches_played: 0,
+    wins: 0,
+    draws: 0,
+    losses: 0,
+    goals_for: 0,
+    goals_against: 0,
+    goal_diff: 0,
+    pts: 0,
+    position: idx + 1,
+  }));
+}
+
+function getStandingRowStyle(position: number) {
+  if (position === 1 || position === 2) return styles.standingRowAdvance;
+  if (position === 3) return styles.standingRowThird;
+  return undefined;
 }
 
 function TeamFlag({
@@ -338,6 +399,7 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
   } | null>(null);
 
   const [groupPredictions, setGroupPredictions] = useState<WcGroupPrediction[]>([]);
+  const [standings, setStandings] = useState<WcStanding[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [clubIds, setClubIds] = useState<string[]>([]);
@@ -388,7 +450,7 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
 
   const fetchGroupData = useCallback(async () => {
     if (!userId) return;
-    const [matchesRes, predsRes, scoresRes] = await Promise.all([
+    const [matchesRes, predsRes, scoresRes, standingsRes] = await Promise.all([
       (supabase as any)
         .from('wc_matches')
         .select('*')
@@ -404,12 +466,19 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
         .eq('user_id', userId)
         .order('total_pts', { ascending: false })
         .limit(1),
+      (supabase as any)
+        .from('wc_group_standings')
+        .select('*')
+        .order('group_letter')
+        .order('position'),
     ]);
     if (matchesRes.error) throw new Error(matchesRes.error.message);
     if (predsRes.error) throw new Error(predsRes.error.message);
+    if (standingsRes.error) throw new Error(standingsRes.error.message);
     setGroupMatches((matchesRes.data as WcMatch[]) || []);
     const preds = (predsRes.data as WcGroupPrediction[]) || [];
     setGroupPredictions(preds);
+    if (standingsRes.data) setStandings(standingsRes.data as WcStanding[]);
     applyPlayerScore(scoresRes.data?.[0] ?? null);
   }, [userId, applyPlayerScore]);
 
@@ -763,13 +832,22 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
   );
 
   const refreshGroupPredictions = useCallback(async () => {
-    const { data, error } = await (supabase as any)
-      .from('wc_group_predictions')
-      .select('*')
-      .eq('user_id', userId);
-    if (error) throw new Error(error.message);
-    const preds = (data as WcGroupPrediction[]) || [];
+    const [predsRes, standingsRes] = await Promise.all([
+      (supabase as any)
+        .from('wc_group_predictions')
+        .select('*')
+        .eq('user_id', userId),
+      (supabase as any)
+        .from('wc_group_standings')
+        .select('*')
+        .order('group_letter')
+        .order('position'),
+    ]);
+    if (predsRes.error) throw new Error(predsRes.error.message);
+    if (standingsRes.error) throw new Error(standingsRes.error.message);
+    const preds = (predsRes.data as WcGroupPrediction[]) || [];
     setGroupPredictions(preds);
+    if (standingsRes.data) setStandings(standingsRes.data as WcStanding[]);
     return preds;
   }, [userId]);
 
@@ -865,8 +943,8 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
     if (matches.length === 0) {
       return { label: 'Open', style: styles.groupStatusOpen };
     }
-    if (matches.every((m) => getMatchUiState(m) === 'completed')) {
-      return { label: 'Final', style: styles.groupStatusOpen };
+    if (matches.length > 0 && matches.every((m) => isScoredGroupCard(m))) {
+      return { label: '🏁 Group complete', style: styles.groupStatusComplete };
     }
 
     const openMatches = matches.filter((m) => getMatchUiState(m) === 'open');
@@ -1105,17 +1183,6 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
       if (!hasScores) {
         return <Text style={styles.predictionSubtitleDim}>No prediction</Text>;
       }
-      const pts = predictionPoints(pred);
-      const label = `You: ${predHome}-${predAway}`;
-      if (uiState === 'completed') {
-        return (
-          <Text
-            style={pts > 0 ? styles.predictionSubtitleGood : styles.predictionSubtitleNeutral}
-          >
-            {label} · {pts > 0 ? `+${pts} pts` : '0 pts'}
-          </Text>
-        );
-      }
       if (uiState === 'locked') {
         return <Text style={styles.predictionSubtitleNeutral}>You predicted: {predHome}-{predAway}</Text>;
       }
@@ -1207,13 +1274,66 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
       </>
     );
 
+    const renderScoredContent = () => {
+      const actualHome = match.home_score_actual!;
+      const actualAway = match.away_score_actual!;
+      const hasSubmittedPred = isPredictionSubmitted(pred) && hasScores;
+
+      return (
+        <>
+          <View style={styles.submittedScoreRow}>
+            <TeamFlag team={home} size={26} />
+            <Text style={styles.submittedTeamName} numberOfLines={1}>
+              {home?.short ?? 'TBD'}
+            </Text>
+            <View style={styles.bigFinalScoreBox}>
+              <Text style={styles.bigFinalScoreText}>{actualHome}</Text>
+            </View>
+            <Text style={styles.scoredSep}>-</Text>
+            <View style={styles.bigFinalScoreBox}>
+              <Text style={styles.bigFinalScoreText}>{actualAway}</Text>
+            </View>
+            <Text style={styles.submittedTeamName} numberOfLines={1}>
+              {away?.short ?? 'TBD'}
+            </Text>
+            <TeamFlag team={away} size={26} />
+          </View>
+          <Text style={styles.finalLabel}>FINAL</Text>
+
+          {hasSubmittedPred ? (() => {
+            const { pts, label } = getPredictionAccuracy(pred, match);
+            const pill = getAccuracyPillConfig(label);
+            const ptsColor =
+              label === 'WINNER' ? '#ffd166' : label === 'MISSED' ? '#7a8aa8' : '#5dcaa5';
+            const ptsText = pts > 0 ? `+${pts} pts` : '0 pts';
+
+            return (
+              <View style={styles.cardMetaRow}>
+                <View style={[styles.accuracyPill, { backgroundColor: pill.bg }]}>
+                  <Text style={[styles.accuracyPillText, { color: pill.color }]}>{pill.text}</Text>
+                </View>
+                <Text style={styles.scoredPickText} numberOfLines={1}>
+                  Your pick: {predHome}-{predAway}
+                </Text>
+                <Text style={[styles.scoredPtsText, { color: ptsColor }]}>{ptsText}</Text>
+              </View>
+            );
+          })() : (
+            <Text style={styles.scoredNoPredText}>No prediction · 0 pts</Text>
+          )}
+        </>
+      );
+    };
+
     return (
       <View key={match.id} style={styles.groupMatchCard}>
         <Text style={styles.groupMatchCardHeader}>
           M{match.match_number} · {formatMountainDateTime(match.scheduled_at)}
         </Text>
 
-        {uiState === 'completed' && (
+        {isScoredGroupCard(match) && renderScoredContent()}
+
+        {uiState === 'completed' && !isScoredGroupCard(match) && (
           <>
             <View style={styles.groupMatchTeamsRow}>
               <TeamFlag team={home} size={22} />
@@ -1302,7 +1422,7 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
       {GROUP_LETTERS.map((letter) => {
         const teams = TEAMS.filter((t) => t.group === letter);
         const matches = matchesForGroup(groupMatches, letter);
-        const standings = computeStandings(matches, letter);
+        const groupStandings = getGroupStandingsRows(letter, standings);
         const statusPill = getGroupStatusPill(letter, matches);
         const openMatches = matches.filter((m) => getMatchUiState(m) === 'open');
         const canSubmitGroup = openMatches.some((m) => {
@@ -1343,26 +1463,24 @@ export default function WorldCupPredictorScreen({ navigation }: { navigation: an
                     </Text>
                   ))}
                 </View>
-                {standings.map((row, idx) => {
-                  const team = teamByCode(row.code);
-                  const rowStyle =
-                    idx === 0 || idx === 1
-                      ? styles.standingRowTop
-                      : idx === 2
-                        ? styles.standingRowMid
-                        : styles.standingRowBottom;
+                {groupStandings.map((row) => {
+                  const team = teamByCode(row.team_code);
+                  const rowStyle = getStandingRowStyle(row.position);
+                  const gdDisplay = formatGoalDiff(row.goal_diff);
                   return (
-                    <View key={row.code} style={[styles.tableRow, rowStyle]}>
-                      <Text style={styles.tableCellRank}>{idx + 1}</Text>
+                    <View key={row.team_code} style={[styles.tableRow, rowStyle]}>
+                      <Text style={styles.tableCellRank}>{row.position}</Text>
                       <TeamFlag team={team} size={22} showCode />
                       <Text style={styles.tableCellTeam} numberOfLines={1}>
-                        {team?.short ?? row.code}
+                        {team?.short ?? row.team_code}
                       </Text>
                       <Text style={styles.tableCellNum}>{row.pts}</Text>
-                      <Text style={styles.tableCellNum}>{row.gd}</Text>
-                      <Text style={styles.tableCellNum}>{row.gf}</Text>
+                      <Text style={[styles.tableCellNum, { color: gdDisplay.color }]}>
+                        {gdDisplay.text}
+                      </Text>
+                      <Text style={styles.tableCellNum}>{row.goals_for}</Text>
                       <Text style={styles.tableCellRecord}>
-                        {row.w}-{row.d}-{row.l}
+                        {row.wins}-{row.draws}-{row.losses}
                       </Text>
                     </View>
                   );
@@ -1862,6 +1980,7 @@ const styles = StyleSheet.create({
   groupStatusSubmitted: { backgroundColor: 'rgba(93, 202, 165, 0.2)' },
   groupStatusDraft: { backgroundColor: 'rgba(255, 209, 102, 0.15)' },
   groupStatusOpen: { backgroundColor: 'rgba(100, 116, 139, 0.2)' },
+  groupStatusComplete: { backgroundColor: 'rgba(100, 116, 139, 0.15)' },
   groupStatusText: { fontSize: 10, fontWeight: '700', color: '#e2e8f0' },
   groupTitle: { flex: 1, fontSize: 14, fontWeight: '800', color: '#fff', letterSpacing: 1 },
   groupBadge: {
@@ -1900,9 +2019,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     paddingHorizontal: 4,
   },
-  standingRowTop: { backgroundColor: 'rgba(93, 202, 165, 0.12)' },
-  standingRowMid: { backgroundColor: 'rgba(255, 209, 102, 0.1)' },
-  standingRowBottom: { backgroundColor: 'rgba(100, 116, 139, 0.08)' },
+  standingRowAdvance: { backgroundColor: 'rgba(29,158,117,0.10)' },
+  standingRowThird: { backgroundColor: 'rgba(255,209,102,0.10)' },
   tableCellRank: { width: 44, textAlign: 'center', color: '#94a3b8', fontWeight: '700' },
   tableCellTeam: { width: 88, color: '#e2e8f0', fontSize: 12, fontWeight: '600' },
   tableCellNum: { width: 44, textAlign: 'center', color: '#cbd5e1', fontSize: 12 },
@@ -2071,6 +2189,61 @@ const styles = StyleSheet.create({
     fontSize: 11,
     textAlign: 'center',
     marginTop: 8,
+  },
+  bigFinalScoreBox: {
+    backgroundColor: 'rgba(255,209,102,0.18)',
+    borderColor: '#ffd166',
+    borderWidth: 1.5,
+    borderRadius: 10,
+    padding: 10,
+    minWidth: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bigFinalScoreText: {
+    color: '#ffd166',
+    fontSize: 28,
+    fontWeight: '800',
+  },
+  scoredSep: {
+    color: '#4a5878',
+    fontSize: 14,
+    fontWeight: '600',
+    paddingHorizontal: 2,
+  },
+  finalLabel: {
+    color: '#7a8aa8',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  accuracyPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  accuracyPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  scoredPickText: {
+    flex: 1,
+    color: '#7a8aa8',
+    fontSize: 11,
+    textAlign: 'center',
+  },
+  scoredPtsText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  scoredNoPredText: {
+    color: '#6b7896',
+    fontSize: 11,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 10,
   },
   toastBanner: {
     position: 'absolute',

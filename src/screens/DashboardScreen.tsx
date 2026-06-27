@@ -19,6 +19,7 @@ import PlayerDashboard from '../components/dashboards/PlayerDashboard';
 import CoachDashboard from '../components/dashboards/CoachDashboard';
 import ClubAdminDashboard from '../components/dashboards/ClubAdminDashboard';
 import SurveyPopupModal from '../components/SurveyPopupModal';
+import { PendingAttachmentsBanner } from '../components/dashboards/PendingAttachmentsBanner';
 
 const SHOW_LINEUP_WIDGET_KEY = 'show_lineup_widget';
 
@@ -96,6 +97,7 @@ function NoRoleDashboard(_props: { navigation: any }) {
         contentContainerStyle={noRoleStyles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        <PendingAttachmentsBanner />
         <View style={noRoleStyles.card}>
           <Feather name="user-plus" size={40} color="#8b5cf6" style={noRoleStyles.iconTop} />
           <Text style={noRoleStyles.heading}>Welcome to Thryvyng</Text>
@@ -119,6 +121,7 @@ function NoRoleDashboard(_props: { navigation: any }) {
       contentContainerStyle={noRoleStyles.scrollContent}
       showsVerticalScrollIndicator={false}
     >
+      <PendingAttachmentsBanner />
       {paidRegs.length > 0 && (
         <View style={noRoleStyles.card}>
           <Feather name="check-circle" size={40} color="#22c55e" style={noRoleStyles.iconTop} />

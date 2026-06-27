@@ -17,6 +17,7 @@ import { LiveGamesWidget } from '../game-stats/LiveGamesWidget';
 import QuickActionsCard from '../QuickActionsCard';
 import WellnessParentAlert from '../WellnessParentAlert';
 import PendingSurveyBanner from '../surveys/PendingSurveyBanner';
+import { PendingAttachmentsBanner } from './PendingAttachmentsBanner';
 import { slugify } from '../../utils/slugify';
 import * as Clipboard from 'expo-clipboard';
 
@@ -223,6 +224,7 @@ export default function PlayerDashboard({ playerId, navigation, showLineupWidget
 
   return (
     <ScrollView style={styles.container}>
+      <PendingAttachmentsBanner />
       <PendingSurveyBanner navigation={navigation} />
       {/* Live Games Widget */}
       {player.team_id && <LiveGamesWidget teamId={player.team_id} />}

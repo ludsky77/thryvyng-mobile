@@ -8,6 +8,6 @@ export { RegisterClubScreen } from './RegisterClubScreen';
 export { RegisterTeamScreen } from './RegisterTeamScreen';
 export const RegisterCreatorScreen = () => <PlaceholderScreen screenName="Register Creator" />;
 export { ProgramRegistrationScreen } from './ProgramRegistrationScreen';
-export const AcceptCoParentScreen = () => <PlaceholderScreen screenName="Accept Co-Parent" />;
+export { default as AcceptCoParentScreen } from './AcceptCoParentScreen';
 export { ClaimPlayerScreen } from './ClaimPlayerScreen';
 export const NotFoundScreen = () => <PlaceholderScreen screenName="Page Not Found" />;

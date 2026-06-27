@@ -40,6 +40,10 @@ import type { RootStackParamList } from '../../navigation/linking';
 import * as Clipboard from 'expo-clipboard';
 import { slugify } from '../../utils/slugify';
 
+const colors = {
+  text: '#ffffff',
+};
+
 type JoinTeamRouteProp = RouteProp<RootStackParamList, 'JoinTeam'>;
 type JoinTeamNavigationProp = NativeStackNavigationProp<RootStackParamList, 'JoinTeam'>;
 
@@ -178,6 +182,11 @@ export const JoinTeamScreen: React.FC = () => {
   const [parentLastName, setParentLastName] = useState('');
   const [parentEmail, setParentEmail] = useState('');
   const [parentPhone, setParentPhone] = useState('');
+  const [showParent2, setShowParent2] = useState(false);
+  const [parent2FirstName, setParent2FirstName] = useState('');
+  const [parent2LastName, setParent2LastName] = useState('');
+  const [parent2Email, setParent2Email] = useState('');
+  const [parent2Phone, setParent2Phone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
@@ -600,6 +609,18 @@ export const JoinTeamScreen: React.FC = () => {
             p_emergency_contact_relationship: null,
             p_city: null,
             p_status: 'active',
+            p_secondary_parent_name:
+              registrationMode === 'new' && playerLinkMode === 'new' && showParent2 && parent2FirstName.trim()
+                ? `${parent2FirstName.trim()} ${parent2LastName.trim()}`.trim()
+                : null,
+            p_secondary_parent_email:
+              registrationMode === 'new' && playerLinkMode === 'new' && showParent2 && parent2Email.trim()
+                ? parent2Email.trim().toLowerCase()
+                : null,
+            p_secondary_parent_phone:
+              registrationMode === 'new' && playerLinkMode === 'new' && showParent2 && parent2Phone
+                ? parent2Phone.replace(/\D/g, '') || null
+                : null,
           });
 
         if (playerError) {
@@ -759,9 +780,9 @@ export const JoinTeamScreen: React.FC = () => {
     }
     const age = calculateAge(playerClaimDob);
     setPlayerClaimAge(age);
-    if (age < 13) {
+    if (age < 11) {
       setPlayerClaimAgeError(
-        'You must be at least 13 years old to create your own account. Please ask your parent or guardian to register you using this same team link — they should select "Parent / Guardian."'
+        'You must be at least 11 years old to create your own account. Please ask your parent or guardian to register you using this same team link — they should select "Parent / Guardian."'
       );
     } else {
       setPlayerClaimAgeError('');
@@ -1278,30 +1299,41 @@ export const JoinTeamScreen: React.FC = () => {
   };
 
   const verifyPlayerDOB = async (playerId: string, enteredDOB: string) => {
-    const player = existingPlayers.find((p) => p.id === playerId);
-    if (!player) return false;
+    try {
+      const { data: isMatch, error } = await supabase.rpc('verify_player_dob', {
+        player_id: playerId,
+        provided_dob: enteredDOB,
+      });
 
-    const playerDOBFormatted = player.date_of_birth?.split('T')[0];
-    const match = playerDOBFormatted === enteredDOB;
-
-    if (!match) {
-      const attempts = dobVerifyAttempts + 1;
-      setDobVerifyAttempts(attempts);
-
-      if (attempts >= 3) {
-        setDobVerifyError(
-          'Too many failed attempts. Please contact your team manager.'
-        );
-      } else {
-        setDobVerifyError(
-          `Incorrect date of birth. ${3 - attempts} attempts remaining.`
-        );
+      if (error) {
+        if (__DEV__) console.error('[JoinTeam] verify_player_dob error:', error);
+        setDobVerifyError('Unable to verify date of birth. Please try again.');
+        return false;
       }
+
+      if (!isMatch) {
+        const attempts = dobVerifyAttempts + 1;
+        setDobVerifyAttempts(attempts);
+
+        if (attempts >= 3) {
+          setDobVerifyError(
+            'Too many failed attempts. Please contact your team manager.'
+          );
+        } else {
+          setDobVerifyError(
+            `Incorrect date of birth. ${3 - attempts} attempts remaining.`
+          );
+        }
+        return false;
+      }
+
+      setDobVerifyError('');
+      return true;
+    } catch (e) {
+      if (__DEV__) console.error('[JoinTeam] verify_player_dob exception:', e);
+      setDobVerifyError('Unable to verify date of birth. Please try again.');
       return false;
     }
-
-    setDobVerifyError('');
-    return true;
   };
 
   const handleBack = () => {
@@ -1821,6 +1853,8 @@ export const JoinTeamScreen: React.FC = () => {
                       <DateTimePicker
                         value={claimDobPickerDate}
                         mode="date"
+                        textColor={colors.text}
+                        themeVariant="dark"
                         display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                         maximumDate={new Date()}
                         minimumDate={MIN_PLAYER_DOB}
@@ -2483,6 +2517,8 @@ export const JoinTeamScreen: React.FC = () => {
                     <DateTimePicker
                       value={playerDobPickerDate}
                       mode="date"
+                      textColor={colors.text}
+                      themeVariant="dark"
                       display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                       maximumDate={new Date()}
                       minimumDate={MIN_PLAYER_DOB}
@@ -2543,6 +2579,8 @@ export const JoinTeamScreen: React.FC = () => {
                 <DateTimePicker
                   value={playerDobPickerDate}
                   mode="date"
+                  textColor={colors.text}
+                  themeVariant="dark"
                   display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                   maximumDate={new Date()}
                   minimumDate={MIN_PLAYER_DOB}
@@ -2639,6 +2677,60 @@ export const JoinTeamScreen: React.FC = () => {
               error={formErrors.parentPhone}
             />
           </View>
+
+          {registrationMode === 'new' && playerLinkMode === 'new' && (
+            <View style={styles.formSection}>
+              <TouchableOpacity
+                style={styles.parent2Toggle}
+                onPress={() => setShowParent2((v) => !v)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.parent2ToggleCheckbox}>
+                  {showParent2 ? (
+                    <Ionicons name="checkbox" size={22} color="#8B5CF6" />
+                  ) : (
+                    <Ionicons name="square-outline" size={22} color="#94A3B8" />
+                  )}
+                </View>
+                <Text style={styles.parent2ToggleLabel}>
+                  Add second parent / guardian (optional)
+                </Text>
+              </TouchableOpacity>
+
+              {showParent2 && (
+                <View style={styles.parent2Fields}>
+                  <FormInput
+                    label="Second Parent First Name"
+                    value={parent2FirstName}
+                    onChangeText={setParent2FirstName}
+                    placeholder="First name"
+                    autoCapitalize="words"
+                  />
+                  <FormInput
+                    label="Second Parent Last Name"
+                    value={parent2LastName}
+                    onChangeText={setParent2LastName}
+                    placeholder="Last name"
+                    autoCapitalize="words"
+                  />
+                  <EmailInput
+                    label="Second Parent Email"
+                    value={parent2Email}
+                    onChangeText={setParent2Email}
+                    placeholder="parent2@example.com"
+                  />
+                  <PhoneInput
+                    label="Second Parent Phone"
+                    value={parent2Phone}
+                    onChangeText={setParent2Phone}
+                  />
+                  <Text style={styles.parent2HelpText}>
+                    We'll send them an invite to join {teamInfo?.name} once your registration is complete.
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
 
           <View style={styles.formSection}>
             <Text style={styles.formSectionTitle}>Create Password</Text>
@@ -3141,6 +3233,37 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#D1D5DB',
     marginBottom: 16,
+  },
+  parent2Toggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    gap: 10,
+  },
+  parent2ToggleCheckbox: {
+    width: 22,
+    height: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  parent2ToggleLabel: {
+    fontSize: 15,
+    color: '#E2E8F0',
+    fontWeight: '500',
+    flex: 1,
+  },
+  parent2Fields: {
+    marginTop: 12,
+    paddingLeft: 12,
+    borderLeftWidth: 2,
+    borderLeftColor: '#334155',
+    gap: 8,
+  },
+  parent2HelpText: {
+    fontSize: 13,
+    color: '#94A3B8',
+    marginTop: 4,
+    fontStyle: 'italic',
   },
   summaryCard: {
     backgroundColor: '#1F2937',

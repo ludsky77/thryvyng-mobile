@@ -652,10 +652,12 @@ function AuthStack() {
 
 function RootStackNavigator() {
   const { user } = useAuth();
+  const initialRouteRef = React.useRef<'Main' | 'Welcome'>(user ? 'Main' : 'Welcome');
+
   return (
     <FamilyCheckoutProvider>
       <RootStack.Navigator
-        initialRouteName={user ? 'Main' : 'Welcome'}
+        initialRouteName={initialRouteRef.current}
         screenOptions={{
           headerShown: false,
           headerStyle: styles.header,
@@ -796,9 +798,10 @@ function RootStackNavigator() {
 
 export default function AppNavigator() {
   const { user, loading } = useAuth();
-  const { pendingProgramId, setPendingProgramId } = useRegistration();
+  const { pendingProgramId, setPendingProgramId, registrationData } = useRegistration();
   const navigationRef = React.useRef<any>(null);
   const pendingNotificationRef = React.useRef<Record<string, any> | null>(null);
+  const hasMountedNavRef = React.useRef(false);
 
   // Navigate when auth state changes
   React.useEffect(() => {
@@ -806,6 +809,17 @@ export default function AppNavigator() {
       const currentRoute = navigationRef.current.getCurrentRoute()?.name;
 
       if (user && (currentRoute === 'Login' || currentRoute === 'Welcome')) {
+        // Guard: in-progress team join — leave JoinTeamScreen mounted underneath
+        if (
+          registrationData?.activeFlow === 'join-team' &&
+          registrationData?.teamInviteCode
+        ) {
+          if (__DEV__) {
+            console.log('[AppNavigator] Auth restored mid join-team flow — staying on JoinTeam');
+          }
+          return;
+        }
+
         if (pendingProgramId) {
           const returnProgramId = pendingProgramId;
           setPendingProgramId(null);
@@ -922,7 +936,11 @@ export default function AppNavigator() {
     }
   }, [loading]);
 
-  if (loading) {
+  // Only show the full-screen loader on the very first load, before the
+  // navigator has ever mounted. After that, keep the NavigationContainer
+  // mounted across loading toggles (e.g. mid-flow sign-in) so in-progress
+  // screens are never destroyed.
+  if (loading && !hasMountedNavRef.current) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#8b5cf6" />
@@ -936,6 +954,9 @@ export default function AppNavigator() {
       ref={navigationRef}
       linking={linking}
       fallback={<LoadingScreen />}
+      onReady={() => {
+        hasMountedNavRef.current = true;
+      }}
     >
       <RootStackNavigator />
     </NavigationContainer>

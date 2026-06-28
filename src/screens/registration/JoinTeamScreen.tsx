@@ -304,6 +304,19 @@ export const JoinTeamScreen: React.FC = () => {
     }
   }, [existingPlayers.length]);
 
+  useEffect(() => {
+    const isAuthed = !!user?.id || !!verifiedUserId;
+    if (
+      isAuthed &&
+      joinRole === 'parent' &&
+      teamInfo?.id &&
+      existingPlayers.length === 0
+    ) {
+      if (__DEV__) console.log('[JoinTeam] Auth ready — re-fetching roster');
+      fetchTeamPlayers(teamInfo.id);
+    }
+  }, [user?.id, verifiedUserId, joinRole, teamInfo?.id]);
+
   const validateInvitationCode = async (inviteCode: string) => {
     try {
       setScreenState('loading');

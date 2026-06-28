@@ -20,6 +20,7 @@ initSentry();
 function AppContent() {
   const { loading } = useAuth();
   const [showSplash, setShowSplash] = useState(true);
+
   const splashOpacity = useRef(new Animated.Value(1)).current;
 
   const handleSplashFinish = () => {
@@ -34,20 +35,17 @@ function AppContent() {
     });
   };
 
-  if (showSplash) {
-    return (
-      <>
-        <Animated.View style={[styles.splashWrapper, { opacity: splashOpacity }]}>
-          <SplashScreen isReady={!loading} onFinish={handleSplashFinish} />
-        </Animated.View>
-        <StatusBar style="light" />
-      </>
-    );
-  }
-
   return (
     <>
       <AppNavigator />
+      {showSplash && (
+        <Animated.View
+          style={[styles.splashOverlay, { opacity: splashOpacity }]}
+          pointerEvents={showSplash ? 'auto' : 'none'}
+        >
+          <SplashScreen isReady={!loading} onFinish={handleSplashFinish} />
+        </Animated.View>
+      )}
       <StatusBar style="light" />
     </>
   );
@@ -70,7 +68,12 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  splashWrapper: {
-    flex: 1,
+  splashOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 999,
   },
 });

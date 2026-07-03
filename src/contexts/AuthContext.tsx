@@ -64,6 +64,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         team_is_test: r.team_is_test,
         season_id: r.season_id,
         player_status: r.player_status,
+        placement_status: r.placement_status ?? null,
         team: r.team_id
           ? {
               id: r.team_id,

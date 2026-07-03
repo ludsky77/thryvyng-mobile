@@ -18,9 +18,11 @@ export function getRoleBucket(role: UserRole): RoleBucket {
 
   // Parent / player keyed on team_status + player_status
   if (role.role === 'parent' || role.role === 'player') {
-    if (role.player_status && role.player_status !== 'active') return 'hidden';
-    // Teamless parent/player roles are hidden until the kid is rostered
-    if (!role.team) return 'hidden';
+    // Invited-placement roles are visible even if player_status is not 'active'
+    // and even if team came from placement rather than rostered players.team_id.
+    const isInvited = role.placement_status === 'invited';
+    if (!isInvited && role.player_status && role.player_status !== 'active') return 'hidden';
+    if (!isInvited && !role.team) return 'hidden';
     if (role.team_status === 'archived' || role.team_status === 'inactive') return 'past';
     return 'active';
   }

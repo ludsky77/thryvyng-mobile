@@ -191,6 +191,73 @@ export function useUserTeams() {
         }
       });
 
+      // 2b. Fetch teams from invited placements (parent access — invited but not yet rostered).
+      // The player.team_id is null until roster/payment completes, so the relationship
+      // lives in player_placements.assigned_team_id for status='invited'.
+      const { data: invitedPlacementData, error: invitedPlacementError } = await supabase
+        .from('player_placements')
+        .select(
+          `
+          id,
+          status,
+          assigned_team_id,
+          player:players!player_placements_player_id_fkey (
+            id,
+            first_name,
+            last_name,
+            parent_email,
+            secondary_parent_email,
+            email
+          ),
+          team:teams!player_placements_assigned_team_id_fkey (
+            id,
+            name,
+            age_group,
+            gender,
+            club_id,
+            color,
+            team_status,
+            is_test,
+            season_id,
+            clubs (
+              id,
+              name
+            )
+          )
+        `
+        )
+        .eq('status', 'invited')
+        .not('assigned_team_id', 'is', null);
+      if (invitedPlacementError) throw invitedPlacementError;
+      invitedPlacementData?.forEach((item: any) => {
+        const player = item.player;
+        const team = item.team;
+        if (!player || !team) return;
+        // Only include placements where this user IS the parent (belt-and-suspenders;
+        // RLS should already filter but we double-check the email match on client too).
+        const userEmail = user.email?.toLowerCase() ?? '';
+        const matches =
+          userEmail === (player.parent_email ?? '').toLowerCase() ||
+          userEmail === (player.secondary_parent_email ?? '').toLowerCase() ||
+          userEmail === (player.email ?? '').toLowerCase();
+        if (!matches) return;
+        // Dedup: if team already added (e.g. by rostered path), skip.
+        if (!teamMap.has(team.id)) {
+          teamMap.set(
+            team.id,
+            mapTeamFromRow(
+              team,
+              'parent',
+              {
+                player_id: player.id,
+                player_name: `${player.first_name} ${player.last_name}`,
+              },
+              colorIndex++
+            )
+          );
+        }
+      });
+
       // 3. Fetch teams from user_roles (player access — I am the player)
       const { data: playerRoleData, error: playerRoleError } = await supabase
         .from('user_roles')

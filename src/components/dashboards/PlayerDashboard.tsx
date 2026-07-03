@@ -59,6 +59,7 @@ interface UpcomingLineup {
 
 export default function PlayerDashboard({ playerId, navigation, showLineupWidget = true }: PlayerDashboardProps) {
   const { user, currentRole } = useAuth();
+  const showPaymentPending = currentRole?.placement_status === 'invited';
   const [player, setPlayer] = useState<Player | null>(null);
   const [enrolledCourses, setEnrolledCourses] = useState<EnrolledCourse[]>([]);
   const [topPlayers, setTopPlayers] = useState<{ id: string; first_name: string; last_name: string; total_xp: number }[]>([]);
@@ -258,6 +259,11 @@ export default function PlayerDashboard({ playerId, navigation, showLineupWidget
             {player.jersey_number != null && (
               <View style={styles.jerseyBadge}>
                 <Text style={styles.badgeText}>🎽 #{player.jersey_number}</Text>
+              </View>
+            )}
+            {showPaymentPending && (
+              <View style={styles.paymentPendingBadge}>
+                <Text style={styles.paymentPendingBadgeText}>Payment pending</Text>
               </View>
             )}
           </View>
@@ -593,6 +599,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
+  },
+  paymentPendingBadge: {
+    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  paymentPendingBadgeText: {
+    color: '#f59e0b',
+    fontSize: 12,
+    fontWeight: '600',
   },
   badgeText: {
     fontSize: 13,

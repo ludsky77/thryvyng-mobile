@@ -395,6 +395,7 @@ export default function ParentPaymentsScreen() {
   const [cardSetupConfirming, setCardSetupConfirming] = useState(false);
   const cardSetupHandledRef = useRef(false);
   const cardSetupSessionIdRef = useRef<string | null>(null);
+  const cardSetupClubIdRef = useRef<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
@@ -670,7 +671,11 @@ export default function ParentPaymentsScreen() {
       closeCardSetupWebView();
       try {
         const { data: confirmData, error } = await supabase.functions.invoke('confirm-card-setup', {
-          body: { session_id: sessionId, set_as_default: true },
+          body: {
+            session_id: sessionId,
+            set_as_default: true,
+            club_id: cardSetupClubIdRef.current,
+          },
         });
         if (error || !confirmData?.success) {
           Alert.alert('Error', 'Failed to save card. Please try again.');
@@ -683,6 +688,18 @@ export default function ParentPaymentsScreen() {
           'Card Added',
           `${brand} ending in ${last4} has been saved as your default payment method.`,
         );
+
+        // Surface auto-retry results from confirm-card-setup edge function
+        // (matches web behavior in ParentPaymentsTab.tsx)
+        const retrySucceeded = (confirmData as { retry_results?: { succeeded?: number } })
+          ?.retry_results?.succeeded;
+        if (typeof retrySucceeded === 'number' && retrySucceeded > 0) {
+          Alert.alert(
+            'Past-Due Payments Processed',
+            `${retrySucceeded} overdue payment${retrySucceeded === 1 ? '' : 's'} charged successfully to your new card.`,
+          );
+        }
+
         await fetchData();
       } catch {
         Alert.alert('Error', 'Failed to save card. Please try again.');
@@ -723,8 +740,32 @@ export default function ParentPaymentsScreen() {
   const handleAddCard = async () => {
     if (!user?.id) return;
     try {
+      // Resolve club_id from parent's first active/completed registration.
+      // Mirrors web pattern (thrive-and-score/src/components/parent/ParentPaymentsTab.tsx:164-171).
+      // Multi-club families deferred to Phase 2.
+      const { data: reg, error: regErr } = await supabase
+        .from('program_registrations')
+        .select('club_id')
+        .eq('parent_id', user.id)
+        .in('status', ['active', 'completed'])
+        .not('club_id', 'is', null)
+        .limit(1)
+        .maybeSingle();
+
+      if (regErr || !reg?.club_id) {
+        Alert.alert(
+          'Cannot add card',
+          'No active registration found. Please contact your club administrator.'
+        );
+        return;
+      }
+
+      const clubId = reg.club_id as string;
+      cardSetupClubIdRef.current = clubId;
+
       const { data, error } = await supabase.functions.invoke('create-card-setup-session', {
         body: {
+          club_id: clubId,
           success_url: 'https://thryvyng.com/card-setup-success',
           cancel_url: 'https://thryvyng.com/card-setup-cancel',
         },

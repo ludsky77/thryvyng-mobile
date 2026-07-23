@@ -75,6 +75,7 @@ const generateReferralCode = (): string => {
 };
 
 const MIN_PLAYER_DOB = new Date(2005, 0, 1);
+const MIN_SELF_REGISTER_DOB = new Date(1970, 0, 1);
 
 function formatYmd(d: Date): string {
   const y = d.getFullYear();
@@ -226,6 +227,19 @@ export const JoinTeamScreen: React.FC = () => {
   const [playerClaimComplete, setPlayerClaimComplete] = useState(false);
   const [showPlayerClaimVerificationModal, setShowPlayerClaimVerificationModal] = useState(false);
 
+  // Player self-registration (self_create teams only)
+  const [selfCreateMode, setSelfCreateMode] = useState(false);
+  const [selfCreateFirstName, setSelfCreateFirstName] = useState('');
+  const [selfCreateLastName, setSelfCreateLastName] = useState('');
+  const [selfCreateEmail, setSelfCreateEmail] = useState('');
+  const [selfCreatePassword, setSelfCreatePassword] = useState('');
+  const [selfCreateJersey, setSelfCreateJersey] = useState('');
+  const [selfCreatePhone, setSelfCreatePhone] = useState('');
+  const [selfCreateDupMatch, setSelfCreateDupMatch] = useState<any>(null);
+  const [selfCreateChecking, setSelfCreateChecking] = useState(false);
+  const [selfCreateSubmitting, setSelfCreateSubmitting] = useState(false);
+  const [selfCreateError, setSelfCreateError] = useState('');
+
   // Staff self-registration state
   const [staffClaimStep, setStaffClaimStep] = useState<'role_pick' | 'account' | null>(null);
   const [selectedStaffRole, setSelectedStaffRole] = useState<
@@ -344,6 +358,7 @@ export const JoinTeamScreen: React.FC = () => {
           gender,
           invitation_code,
           status,
+          player_join_mode,
           club:clubs (
             id,
             name,
@@ -793,9 +808,11 @@ export const JoinTeamScreen: React.FC = () => {
     }
     const age = calculateAge(playerClaimDob);
     setPlayerClaimAge(age);
-    if (age < 11) {
+    const isSelfCreateTeam = (teamInfo as any)?.player_join_mode === 'self_create';
+    const minAge = isSelfCreateTeam ? 16 : 11;
+    if (age < minAge) {
       setPlayerClaimAgeError(
-        'You must be at least 11 years old to create your own account. Please ask your parent or guardian to register you using this same team link — they should select "Parent / Guardian."'
+        `You must be at least ${minAge} years old to create your own account. Please ask your parent or guardian to register you using this same team link — they should select "Parent / Guardian."`
       );
     } else {
       setPlayerClaimAgeError('');
@@ -866,6 +883,118 @@ export const JoinTeamScreen: React.FC = () => {
     } catch (err) {
       if (__DEV__) console.error('[JoinTeam] Select self error:', err);
       setFormErrors({ submit: 'Something went wrong. Please try again.' });
+    }
+  };
+
+  // Check for an existing player before creating a new one (self_create teams only)
+  const handleSelfCreateDupCheck = async () => {
+    setSelfCreateError('');
+    if (!selfCreateFirstName.trim() || !selfCreateLastName.trim() || !selfCreateEmail.trim()) {
+      setSelfCreateError('Please fill in your name and email.');
+      return;
+    }
+    setSelfCreateChecking(true);
+    try {
+      const { data, error } = await supabase.rpc('check_self_register_duplicate', {
+        p_email: selfCreateEmail.trim().toLowerCase(),
+        p_first_name: selfCreateFirstName.trim(),
+        p_last_name: selfCreateLastName.trim(),
+        p_date_of_birth: playerClaimDob,
+      });
+      if (error) throw error;
+      setSelfCreateDupMatch(data);
+    } catch (err: any) {
+      if (__DEV__) console.error('[JoinTeam] Self-create dup check error:', err);
+      setSelfCreateError('Could not check for an existing account. Please try again.');
+    } finally {
+      setSelfCreateChecking(false);
+    }
+  };
+
+  // Create the auth account, then create/attach the player row
+  const handleSelfCreateSubmit = async () => {
+    setSelfCreateError('');
+    if (!selfCreatePassword || selfCreatePassword.length < 6) {
+      setSelfCreateError('Password must be at least 6 characters.');
+      return;
+    }
+    if (!teamInfo?.id) {
+      setSelfCreateError('Team not found. Please reopen the invite link.');
+      return;
+    }
+    setSelfCreateSubmitting(true);
+    try {
+      const { data: authData, error: signUpError } = await supabase.auth.signUp({
+        email: selfCreateEmail.trim().toLowerCase(),
+        password: selfCreatePassword,
+        options: {
+          data: {
+            full_name: `${selfCreateFirstName.trim()} ${selfCreateLastName.trim()}`.trim(),
+            first_name: selfCreateFirstName.trim(),
+            last_name: selfCreateLastName.trim(),
+            role: 'player',
+          },
+        },
+      });
+      if (signUpError) throw signUpError;
+      if (!authData.user) throw new Error('Account creation failed. Please try again.');
+
+      // Establish the session before calling the RPC, otherwise the RPC's
+      // user_roles insert can fail with a foreign key violation.
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: selfCreateEmail.trim().toLowerCase(),
+        password: selfCreatePassword,
+      });
+      if (signInError) {
+        if (__DEV__) console.warn('[JoinTeam] Auto sign-in after self-create signup failed:', signInError.message);
+      }
+
+      const { data: result, error: rpcError } = await supabase.rpc('self_register_player_for_team', {
+        p_team_id: teamInfo.id,
+        p_user_id: authData.user.id,
+        p_email: selfCreateEmail.trim().toLowerCase(),
+        p_first_name: selfCreateFirstName.trim(),
+        p_last_name: selfCreateLastName.trim(),
+        p_date_of_birth: playerClaimDob,
+        p_jersey_number: selfCreateJersey.trim() || null,
+        p_gender: null,
+        p_phone: selfCreatePhone.trim() || null,
+      });
+      if (rpcError) throw rpcError;
+      if (!(result as any)?.success) throw new Error('Registration failed. Please try again.');
+
+      // The player role was just created by the RPC — refresh so the dashboard loads.
+      try {
+        await refreshRoles();
+      } catch {
+        // Non-fatal
+      }
+
+      setClaimablePlayer({
+        first_name: selfCreateFirstName.trim(),
+        last_name: selfCreateLastName.trim(),
+      });
+      setPlayerClaimComplete(true);
+    } catch (err: any) {
+      const raw = String(err?.message || '');
+      let friendly = 'Something went wrong. Please try again.';
+      if (raw.includes('user_roles_user_id_fkey')) {
+        friendly = 'Your account was created but we could not finish joining the team. Please sign in and open the team link again.';
+      } else if (raw.toLowerCase().includes('rate limit') || raw.includes('429')) {
+        friendly = 'Too many sign-up attempts. Please wait a few minutes and try again.';
+      } else if (raw.toLowerCase().includes('already registered') || raw.toLowerCase().includes('already exists')) {
+        friendly = 'An account with this email already exists. Please sign in instead.';
+      } else if (raw.includes('under 16') || raw.includes('under_age_threshold')) {
+        friendly = 'Players under 16 must be registered by a parent or guardian.';
+      } else if (raw.includes('self_create_not_enabled')) {
+        friendly = 'This team requires you to be added by your club before joining.';
+      } else if (raw) {
+        friendly = raw;
+      }
+      if (__DEV__) console.error('[JoinTeam] Self-create submit error:', err);
+      setSelfCreateError(friendly);
+    } finally {
+      setSelfCreateSubmitting(false);
     }
   };
 
@@ -1406,8 +1535,8 @@ export const JoinTeamScreen: React.FC = () => {
     const maxDob = new Date();
     const parsed = parseYmdLocal(playerClaimDob);
     const initial = parsed
-      ? clampDate(parsed, MIN_PLAYER_DOB, maxDob)
-      : clampDate(new Date(2012, 5, 15), MIN_PLAYER_DOB, maxDob);
+      ? clampDate(parsed, MIN_SELF_REGISTER_DOB, maxDob)
+      : clampDate(new Date(2012, 5, 15), MIN_SELF_REGISTER_DOB, maxDob);
     setClaimDobPickerDate(initial);
     setClaimDobPickerVisible(true);
   };
@@ -1424,7 +1553,7 @@ export const JoinTeamScreen: React.FC = () => {
     }
     if (date) {
       const maxDob = new Date();
-      const clamped = clampDate(date, MIN_PLAYER_DOB, maxDob);
+      const clamped = clampDate(date, MIN_SELF_REGISTER_DOB, maxDob);
       setPlayerClaimDob(formatYmd(clamped));
       setPlayerClaimAgeError('');
     }
@@ -1870,7 +1999,7 @@ export const JoinTeamScreen: React.FC = () => {
                         themeVariant="dark"
                         display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                         maximumDate={new Date()}
-                        minimumDate={MIN_PLAYER_DOB}
+                        minimumDate={MIN_SELF_REGISTER_DOB}
                         onChange={onClaimDobPickerChange}
                       />
                     ) : null}
@@ -1947,6 +2076,168 @@ export const JoinTeamScreen: React.FC = () => {
                       ))}
                     </View>
                   )}
+
+    {(teamInfo as any)?.player_join_mode === 'self_create' && !selfCreateMode && (
+      <View style={{ width: '100%', marginTop: 16 }}>
+        <Text style={styles.stepSubtitle}>Not on the list?</Text>
+        <TouchableOpacity
+          style={[styles.continueButton, { width: '100%', marginTop: 8 }]}
+          onPress={() => {
+            setSelfCreateMode(true);
+            setSelfCreateError('');
+            setSelfCreateDupMatch(null);
+          }}
+        >
+          <Text style={styles.continueButtonText}>Register Yourself</Text>
+          <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+    )}
+
+    {(teamInfo as any)?.player_join_mode === 'self_create' && selfCreateMode && (
+      <View style={{ width: '100%', marginTop: 16 }}>
+        <Text style={styles.stepTitle}>Register Yourself</Text>
+
+        {selfCreateError ? (
+          <View style={styles.submitErrorContainer}>
+            <Ionicons name="alert-circle" size={20} color="#EF4444" />
+            <Text style={styles.submitErrorText}>{selfCreateError}</Text>
+          </View>
+        ) : null}
+
+        {!selfCreateDupMatch && (
+          <View style={styles.newPlayerForm}>
+            <FormInput
+              label="First Name"
+              value={selfCreateFirstName}
+              onChangeText={setSelfCreateFirstName}
+              placeholder="First name"
+              autoCapitalize="words"
+              error=""
+            />
+            <FormInput
+              label="Last Name"
+              value={selfCreateLastName}
+              onChangeText={setSelfCreateLastName}
+              placeholder="Last name"
+              autoCapitalize="words"
+              error=""
+            />
+            <EmailInput
+              label="Your Email"
+              value={selfCreateEmail}
+              onChangeText={setSelfCreateEmail}
+              placeholder="your.email@example.com"
+              error=""
+            />
+            <TouchableOpacity
+              style={[styles.continueButton, selfCreateChecking && styles.continueButtonDisabled, { width: '100%' }]}
+              onPress={handleSelfCreateDupCheck}
+              disabled={selfCreateChecking}
+            >
+              <Text style={styles.continueButtonText}>
+                {selfCreateChecking ? 'Checking...' : 'Continue'}
+              </Text>
+              {selfCreateChecking ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.placeholderBackButton}
+              onPress={() => setSelfCreateMode(false)}
+            >
+              <Text style={styles.placeholderBackText}>← Back to roster</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {selfCreateDupMatch?.match_type === 'email' && (
+          <View style={styles.placeholderCard}>
+            <Text style={styles.placeholderText}>
+              You already have an account with this email. Please sign in to join this team.
+            </Text>
+            <TouchableOpacity
+              style={[styles.continueButton, { width: '100%', marginTop: 16 }]}
+              onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Login' }] })}
+            >
+              <Text style={styles.continueButtonText}>Sign In</Text>
+              <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.placeholderBackButton}
+              onPress={() => setSelfCreateDupMatch(null)}
+            >
+              <Text style={styles.placeholderBackText}>← Use a different email</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {selfCreateDupMatch?.match_type === 'name_dob' && (
+          <View style={styles.placeholderCard}>
+            <Text style={styles.placeholderText}>
+              We found an existing player with your name and date of birth. If that's you, sign in to link your account. If not, continue and we'll create a new one.
+            </Text>
+            <TouchableOpacity
+              style={[styles.continueButton, { width: '100%', marginTop: 16 }]}
+              onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Login' }] })}
+            >
+              <Text style={styles.continueButtonText}>Sign In</Text>
+              <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.placeholderBackButton}
+              onPress={() => setSelfCreateDupMatch({ match_type: 'none' })}
+            >
+              <Text style={styles.placeholderBackText}>Not me — continue</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {selfCreateDupMatch?.match_type === 'none' && (
+          <View style={styles.newPlayerForm}>
+            <FormInput
+              label="Jersey Number (optional)"
+              value={selfCreateJersey}
+              onChangeText={setSelfCreateJersey}
+              placeholder="e.g. 10"
+              keyboardType="number-pad"
+              error=""
+            />
+            <FormInput
+              label="Phone (optional)"
+              value={selfCreatePhone}
+              onChangeText={setSelfCreatePhone}
+              placeholder="Phone number"
+              keyboardType="phone-pad"
+              error=""
+            />
+            <PasswordInput
+              label="Create a Password"
+              value={selfCreatePassword}
+              onChangeText={setSelfCreatePassword}
+              showValidation={true}
+              error=""
+            />
+            <TouchableOpacity
+              style={[styles.continueButton, selfCreateSubmitting && styles.continueButtonDisabled, { width: '100%' }]}
+              onPress={handleSelfCreateSubmit}
+              disabled={selfCreateSubmitting}
+            >
+              <Text style={styles.continueButtonText}>
+                {selfCreateSubmitting ? 'Creating account...' : 'Create Account & Join Team'}
+              </Text>
+              {selfCreateSubmitting ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    )}
 
                   <TouchableOpacity
                     style={styles.placeholderBackButton}

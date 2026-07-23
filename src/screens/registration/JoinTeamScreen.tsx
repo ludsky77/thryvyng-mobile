@@ -964,8 +964,10 @@ export const JoinTeamScreen: React.FC = () => {
       if (!(result as any)?.success) throw new Error('Registration failed. Please try again.');
 
       // The player role was just created by the RPC — refresh so the dashboard loads.
+      // Pass the user id explicitly: refreshRoles reads session?.user?.id from context,
+      // which has not committed yet right after signInWithPassword, so a bare call no-ops.
       try {
-        await refreshRoles();
+        await refreshRoles(authData.user.id);
       } catch {
         // Non-fatal
       }

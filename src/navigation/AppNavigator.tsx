@@ -543,6 +543,11 @@ function ChatStack() {
       <Stack.Screen name="PollDetail" options={{ headerShown: false }}>
         {(props) => <LazyScreen component={PollDetailScreen} {...props} />}
       </Stack.Screen>
+      <Stack.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{ headerShown: false }}
+      />
     </Stack.Navigator>
   );
 }
@@ -584,6 +589,11 @@ function CalendarStack() {
       <Stack.Screen name="Attendance" options={{ title: 'Take Attendance' }}>
         {(props) => <LazyScreen component={AttendanceScreen} {...props} />}
       </Stack.Screen>
+      <Stack.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{ headerShown: false }}
+      />
     </Stack.Navigator>
   );
 }

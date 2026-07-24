@@ -28,9 +28,31 @@ export function useTotalChatUnread(): number {
         return;
       }
 
+      // Exclude archived channels — they are filtered out of the conversation list
+      // (ChatScreen.tsx uses .eq('is_archived', false)), so counting their unread
+      // messages produces a badge the user cannot act on.
+      const membershipChannelIds = memberships.map((m: any) => m.channel_id);
+      const { data: activeChannels } = await supabase
+        .from('comm_channels')
+        .select('id')
+        .in('id', membershipChannelIds)
+        .eq('is_archived', false);
+
+      if (!isMountedRef.current) return;
+
+      const activeChannelIds = new Set((activeChannels || []).map((c: any) => c.id));
+      const visibleMemberships = memberships.filter((m: any) =>
+        activeChannelIds.has(m.channel_id)
+      );
+
+      if (!visibleMemberships.length) {
+        setTotalUnread(0);
+        return;
+      }
+
       // Count unread per channel using individual count queries (faster than fetching all messages)
       let total = 0;
-      const countPromises = memberships.map(async (m: any) => {
+      const countPromises = visibleMemberships.map(async (m: any) => {
         const lastRead = m.last_read_at;
         let query = supabase
           .from('comm_messages')

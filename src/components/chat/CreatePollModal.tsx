@@ -10,6 +10,7 @@ import {
   Switch,
   Alert,
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -435,7 +436,10 @@ export function CreatePollModal({
               <View style={styles.customDateTimeBlock}>
                 <TouchableOpacity
                   style={styles.customPickerRow}
-                  onPress={() => setCustomDateExpanded(!customDateExpanded)}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setCustomDateExpanded(!customDateExpanded);
+                  }}
                   disabled={submitting}
                 >
                   <Text style={styles.customPickerLabel}>Date</Text>
@@ -471,7 +475,10 @@ export function CreatePollModal({
 
                 <TouchableOpacity
                   style={styles.customPickerRow}
-                  onPress={() => setCustomTimeExpanded(!customTimeExpanded)}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setCustomTimeExpanded(!customTimeExpanded);
+                  }}
                   disabled={submitting}
                 >
                   <Text style={styles.customPickerLabel}>Time</Text>

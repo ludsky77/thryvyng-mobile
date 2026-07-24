@@ -9,6 +9,7 @@ import {
   ScrollView,
   Switch,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   LayoutAnimation,
@@ -348,6 +349,7 @@ export function EditEventModal({
             <TouchableOpacity
               style={styles.subCollapsible}
               onPress={() => {
+                Keyboard.dismiss();
                 LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                 setDateExpanded(!dateExpanded);
               }}
@@ -375,6 +377,7 @@ export function EditEventModal({
                 <TouchableOpacity
                   style={styles.subCollapsible}
                   onPress={() => {
+                    Keyboard.dismiss();
                     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                     setStartTimeExpanded(!startTimeExpanded);
                   }}
@@ -400,6 +403,7 @@ export function EditEventModal({
                 <TouchableOpacity
                   style={styles.subCollapsible}
                   onPress={() => {
+                    Keyboard.dismiss();
                     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                     setEndTimeExpanded(!endTimeExpanded);
                   }}

@@ -106,6 +106,7 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   const [parentPlayerNames, setParentPlayerNames] = useState<
     Map<string, string>
   >(new Map());
+  const [memberNames, setMemberNames] = useState<Map<string, { name: string; avatar: string | null }>>(new Map());
   const [staffUserIds, setStaffUserIds] = useState<Set<string>>(new Set());
 
   const markChannelAsRead = useCallback(() => {
@@ -167,6 +168,28 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     };
     checkStaffPermission();
   }, [channelId, user?.id]);
+
+  // Sender display names come from a SECURITY DEFINER RPC because RLS on profiles
+  // does not let a regular parent/player read another member's profile row —
+  // the nested profile join on comm_messages returns null and renders "Unknown".
+  const fetchChannelMemberNames = useCallback(async () => {
+    if (!channelId) return;
+    try {
+      const { data, error } = await supabase.rpc('get_channel_member_names', {
+        p_channel_id: channelId,
+      });
+      if (error) throw error;
+      const map = new Map<string, { name: string; avatar: string | null }>();
+      (data || []).forEach((row: any) => {
+        if (row?.user_id && row?.display_name) {
+          map.set(row.user_id, { name: row.display_name, avatar: row.avatar_url ?? null });
+        }
+      });
+      setMemberNames(map);
+    } catch (err) {
+      if (__DEV__) console.error('[TeamChatRoom] fetchChannelMemberNames error:', err);
+    }
+  }, [channelId]);
 
   useEffect(() => {
     if (!channelTeamId) {
@@ -259,6 +282,12 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
 
     fetchParentPlayerNames();
   }, [channelTeamId, messages]);
+
+  // Member names change only when the channel changes — keep this out of the
+  // messages-dependent effect so it does not re-fire on every incoming message.
+  useEffect(() => {
+    fetchChannelMemberNames();
+  }, [fetchChannelMemberNames]);
 
   // 1. Mark read on mount
   useEffect(() => {
@@ -593,11 +622,15 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           }}
           isOwnMessage={isOwnMessage}
           senderName={
-            (item as any).profiles?.full_name || item.profile?.full_name
+            memberNames.get(item.user_id)?.name ||
+            (item as any).profiles?.full_name ||
+            item.profile?.full_name
           }
           playerLabel={playerLabel ?? undefined}
           senderAvatar={
-            (item as any).profiles?.avatar_url || item.profile?.avatar_url
+            memberNames.get(item.user_id)?.avatar ||
+            (item as any).profiles?.avatar_url ||
+            item.profile?.avatar_url
           }
           senderRole={
             (item as any).profiles?.role ||

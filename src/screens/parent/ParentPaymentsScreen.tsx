@@ -157,7 +157,32 @@ function SummaryCard({
   );
 }
 
-function InstallmentRow({ item }: { item: PaymentInstallment }) {
+const PARENT_CHARGE_MESSAGES: Record<string, string> = {
+  card_declined: 'Your bank declined the card. Try a different card, or contact your bank.',
+  insufficient_funds: 'Your card has insufficient funds. Try a different card or add funds and try again.',
+  card_expired: 'Your card has expired. Please add a new card.',
+  no_payment_method: 'No card saved. Add a payment method to continue.',
+  club_not_connected: "Your club isn't set up to accept payments yet. Please contact your club.",
+  auto_charge_off_club: 'Your club has paused payments right now. Please contact your club.',
+  auto_charge_off_registration: 'Payments are turned off for this registration. Please contact your club.',
+  registration_inactive: 'This registration is no longer active. Please contact your club.',
+  already_charged: 'This payment has already been made.',
+  unknown_error: 'Payment could not be completed. Please try again or contact your club.',
+};
+function parentChargeMessage(statusCode?: string): string {
+  if (statusCode && PARENT_CHARGE_MESSAGES[statusCode]) return PARENT_CHARGE_MESSAGES[statusCode];
+  return PARENT_CHARGE_MESSAGES.unknown_error;
+}
+
+function InstallmentRow({
+  item,
+  onPayNow,
+  paying,
+}: {
+  item: PaymentInstallment;
+  onPayNow?: (paymentId: string) => void;
+  paying?: boolean;
+}) {
   const isOverdue = item.status === 'overdue';
   const isPaid = item.status === 'succeeded';
   const icon = isPaid
@@ -166,12 +191,23 @@ function InstallmentRow({ item }: { item: PaymentInstallment }) {
     ? 'warning'
     : 'time-outline';
   const iconColor = isPaid ? '#4ade80' : isOverdue ? '#ef4444' : '#f59e0b';
-
   return (
     <View style={[styles.installmentRow, isOverdue && styles.installmentRowOverdue]}>
       <Text style={styles.installmentDate}>{fmtShortDate(item.due_date)}</Text>
       <Text style={styles.installmentAmount}>{fmtMoney(item.amount)}</Text>
-      <Ionicons name={icon as any} size={18} color={iconColor} />
+      {isOverdue && onPayNow ? (
+        <TouchableOpacity
+          disabled={paying}
+          onPress={() => onPayNow(item.id)}
+          style={{ backgroundColor: '#ef4444', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4, opacity: paying ? 0.5 : 1 }}
+        >
+          <Text style={{ color: '#fff', fontSize: 11, fontWeight: '600' }}>
+            {paying ? 'Charging…' : 'Pay Now'}
+          </Text>
+        </TouchableOpacity>
+      ) : (
+        <Ionicons name={icon as any} size={18} color={iconColor} />
+      )}
     </View>
   );
 }
@@ -179,9 +215,13 @@ function InstallmentRow({ item }: { item: PaymentInstallment }) {
 function RegistrationCard({
   reg,
   installments,
+  onPayNow,
+  payingId,
 }: {
   reg: Registration;
   installments: PaymentInstallment[];
+  onPayNow: (paymentId: string) => void;
+  payingId: string | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const myInstallments = installments.filter((i) => i.registration_id === reg.id);
@@ -270,7 +310,12 @@ function RegistrationCard({
           {myInstallments
             .sort((a, b) => a.due_date.localeCompare(b.due_date))
             .map((item) => (
-              <InstallmentRow key={item.id} item={item} />
+              <InstallmentRow
+                key={item.id}
+                item={item}
+                onPayNow={onPayNow}
+                paying={payingId === item.id}
+              />
             ))}
         </View>
       )}
@@ -396,6 +441,7 @@ export default function ParentPaymentsScreen() {
   const cardSetupHandledRef = useRef(false);
   const cardSetupSessionIdRef = useRef<string | null>(null);
   const cardSetupClubIdRef = useRef<string | null>(null);
+  const [payingId, setPayingId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
@@ -450,6 +496,25 @@ export default function ParentPaymentsScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     fetchData();
+  };
+
+  const handlePayNow = async (paymentId: string) => {
+    setPayingId(paymentId);
+    try {
+      const { data, error } = await supabase.functions.invoke('parent-pay-installment', {
+        body: { paymentId },
+      });
+      if (error) throw new Error(parentChargeMessage(undefined));
+      if (data?.status !== 'succeeded') {
+        throw new Error(parentChargeMessage(data?.statusCode));
+      }
+      Alert.alert('Payment successful', `Charged $${Number(data.chargedAmount).toFixed(2)} to your saved card.`);
+      await fetchData();
+    } catch (err: any) {
+      Alert.alert('Payment failed', err.message);
+    } finally {
+      setPayingId(null);
+    }
   };
 
   // ── Derived data ──────────────────────────────────────────────────────────
@@ -930,6 +995,8 @@ export default function ParentPaymentsScreen() {
                   key={reg.id}
                   reg={reg}
                   installments={installments}
+                  onPayNow={handlePayNow}
+                  payingId={payingId}
                 />
               ))}
 

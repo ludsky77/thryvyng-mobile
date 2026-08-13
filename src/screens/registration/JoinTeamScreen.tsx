@@ -133,7 +133,7 @@ export const JoinTeamScreen: React.FC = () => {
     });
   };
 
-  const { user, session, refreshRoles } = useAuth();
+  const { user, session, refreshRoles, signOut } = useAuth();
   const { setRegistrationData, clearRegistrationData } = useRegistration();
 
   const code = route.params?.code ?? '';
@@ -239,6 +239,9 @@ export const JoinTeamScreen: React.FC = () => {
   const [selfCreateChecking, setSelfCreateChecking] = useState(false);
   const [selfCreateSubmitting, setSelfCreateSubmitting] = useState(false);
   const [selfCreateError, setSelfCreateError] = useState('');
+  // Set once the signup + session are established (or immediately for logged-in users).
+  // Presence enables the "Try again" retry path so we don't re-run signup.
+  const [selfCreatePending, setSelfCreatePending] = useState<{ userId: string; email: string } | null>(null);
 
   // Staff self-registration state
   const [staffClaimStep, setStaffClaimStep] = useState<'role_pick' | 'account' | null>(null);
@@ -317,6 +320,13 @@ export const JoinTeamScreen: React.FC = () => {
       setPlayerLinkMode((prev) => (prev === 'new' ? 'existing' : prev));
     }
   }, [existingPlayers.length]);
+
+  // Pre-fill and lock the self-create email to the current session email when logged in
+  useEffect(() => {
+    if (user?.email) {
+      setSelfCreateEmail(user.email.trim().toLowerCase());
+    }
+  }, [user?.email]);
 
   useEffect(() => {
     const isAuthed = !!user?.id || !!verifiedUserId;
@@ -911,93 +921,161 @@ export const JoinTeamScreen: React.FC = () => {
     }
   };
 
-  // Create the auth account, then create/attach the player row
+  const mapSelfCreateError = (err: any): string => {
+    const raw = String(err?.message || '');
+    if (raw.includes('user_roles_user_id_fkey')) {
+      return 'Your account was created but we could not finish joining the team. Please sign in and open the team link again.';
+    }
+    if (raw.toLowerCase().includes('rate limit') || raw.includes('429')) {
+      return 'Too many sign-up attempts. Please wait a few minutes and try again.';
+    }
+    if (raw.toLowerCase().includes('already registered') || raw.toLowerCase().includes('already exists')) {
+      return 'An account with this email already exists. Please sign in instead.';
+    }
+    if (raw.includes('under 16') || raw.includes('under_age_threshold')) {
+      return 'Players under 16 must be registered by a parent or guardian.';
+    }
+    if (raw.includes('self_create_not_enabled')) {
+      return 'This team requires you to be added by your club before joining.';
+    }
+    if (raw) return raw;
+    return 'Something went wrong. Please try again.';
+  };
+
+  const runSelfRegisterRpc = async (userId: string, email: string): Promise<void> => {
+    if (!teamInfo?.id) throw new Error('Team not found. Please reopen the invite link.');
+    const { data: result, error: rpcError } = await supabase.rpc('self_register_player_for_team', {
+      p_team_id: teamInfo.id,
+      p_user_id: userId,
+      p_email: email,
+      p_first_name: selfCreateFirstName.trim(),
+      p_last_name: selfCreateLastName.trim(),
+      p_date_of_birth: playerClaimDob,
+      p_jersey_number: selfCreateJersey.trim() || null,
+      p_gender: null,
+      p_phone: selfCreatePhone.trim() || null,
+    });
+    if (rpcError) throw rpcError;
+    if (!(result as any)?.success) throw new Error('Registration failed. Please try again.');
+
+    // Pass the user id explicitly: refreshRoles reads session?.user?.id from context,
+    // which may not have committed yet right after setSession, so a bare call no-ops.
+    try {
+      await refreshRoles(userId);
+    } catch {
+      // Non-fatal
+    }
+
+    setSelfCreatePending(null);
+    setClaimablePlayer({
+      first_name: selfCreateFirstName.trim(),
+      last_name: selfCreateLastName.trim(),
+    });
+    setPlayerClaimComplete(true);
+  };
+
+  // Create the auth account (or reuse the existing session), then create/attach the player row
   const handleSelfCreateSubmit = async () => {
     setSelfCreateError('');
-    if (!selfCreatePassword || selfCreatePassword.length < 6) {
-      setSelfCreateError('Password must be at least 6 characters.');
-      return;
-    }
     if (!teamInfo?.id) {
       setSelfCreateError('Team not found. Please reopen the invite link.');
       return;
     }
+    const isLoggedIn = !!user;
+    if (!isLoggedIn && (!selfCreatePassword || selfCreatePassword.length < 6)) {
+      setSelfCreateError('Password must be at least 6 characters.');
+      return;
+    }
     setSelfCreateSubmitting(true);
     try {
-      const { data: authData, error: signUpError } = await supabase.auth.signUp({
-        email: selfCreateEmail.trim().toLowerCase(),
-        password: selfCreatePassword,
-        options: {
-          data: {
-            full_name: `${selfCreateFirstName.trim()} ${selfCreateLastName.trim()}`.trim(),
-            first_name: selfCreateFirstName.trim(),
-            last_name: selfCreateLastName.trim(),
-            role: 'player',
+      let userId: string;
+      let email: string;
+
+      if (isLoggedIn) {
+        userId = user!.id;
+        email = (user!.email || selfCreateEmail).trim().toLowerCase();
+        setSelfCreatePending({ userId, email });
+      } else {
+        const emailLower = selfCreateEmail.trim().toLowerCase();
+        const { data: authData, error: signUpError } = await supabase.auth.signUp({
+          email: emailLower,
+          password: selfCreatePassword,
+          options: {
+            data: {
+              full_name: `${selfCreateFirstName.trim()} ${selfCreateLastName.trim()}`.trim(),
+              first_name: selfCreateFirstName.trim(),
+              last_name: selfCreateLastName.trim(),
+              role: 'player',
+            },
           },
-        },
-      });
-      if (signUpError) throw signUpError;
-      if (!authData.user) throw new Error('Account creation failed. Please try again.');
+        });
+        if (signUpError) throw signUpError;
+        if (!authData.user) throw new Error('Account creation failed. Please try again.');
 
-      // Establish the session before calling the RPC, otherwise the RPC's
-      // user_roles insert can fail with a foreign key violation.
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: selfCreateEmail.trim().toLowerCase(),
-        password: selfCreatePassword,
-      });
-      if (signInError) {
-        if (__DEV__) console.warn('[JoinTeam] Auto sign-in after self-create signup failed:', signInError.message);
+        // Mirror the web app: hydrate the session from the signUp response.
+        // If the tokens aren't returned (e.g. email confirmation is required) the
+        // subsequent RPC would fire with the wrong auth uid, so hard-stop here.
+        const accessToken = authData.session?.access_token;
+        const refreshToken = authData.session?.refresh_token;
+        if (!accessToken || !refreshToken) {
+          setSelfCreateError('Account created. Please sign in and reopen the team link to finish joining.');
+          return;
+        }
+        const { error: setSessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        if (setSessionError) {
+          if (__DEV__) console.warn('[JoinTeam] setSession after self-create signup failed:', setSessionError.message);
+          setSelfCreateError('Account created. Please sign in and reopen the team link to finish joining.');
+          return;
+        }
+
+        userId = authData.user.id;
+        email = emailLower;
+        setSelfCreatePending({ userId, email });
       }
 
-      const { data: result, error: rpcError } = await supabase.rpc('self_register_player_for_team', {
-        p_team_id: teamInfo.id,
-        p_user_id: authData.user.id,
-        p_email: selfCreateEmail.trim().toLowerCase(),
-        p_first_name: selfCreateFirstName.trim(),
-        p_last_name: selfCreateLastName.trim(),
-        p_date_of_birth: playerClaimDob,
-        p_jersey_number: selfCreateJersey.trim() || null,
-        p_gender: null,
-        p_phone: selfCreatePhone.trim() || null,
-      });
-      if (rpcError) throw rpcError;
-      if (!(result as any)?.success) throw new Error('Registration failed. Please try again.');
-
-      // The player role was just created by the RPC — refresh so the dashboard loads.
-      // Pass the user id explicitly: refreshRoles reads session?.user?.id from context,
-      // which has not committed yet right after signInWithPassword, so a bare call no-ops.
-      try {
-        await refreshRoles(authData.user.id);
-      } catch {
-        // Non-fatal
-      }
-
-      setClaimablePlayer({
-        first_name: selfCreateFirstName.trim(),
-        last_name: selfCreateLastName.trim(),
-      });
-      setPlayerClaimComplete(true);
+      await runSelfRegisterRpc(userId, email);
     } catch (err: any) {
-      const raw = String(err?.message || '');
-      let friendly = 'Something went wrong. Please try again.';
-      if (raw.includes('user_roles_user_id_fkey')) {
-        friendly = 'Your account was created but we could not finish joining the team. Please sign in and open the team link again.';
-      } else if (raw.toLowerCase().includes('rate limit') || raw.includes('429')) {
-        friendly = 'Too many sign-up attempts. Please wait a few minutes and try again.';
-      } else if (raw.toLowerCase().includes('already registered') || raw.toLowerCase().includes('already exists')) {
-        friendly = 'An account with this email already exists. Please sign in instead.';
-      } else if (raw.includes('under 16') || raw.includes('under_age_threshold')) {
-        friendly = 'Players under 16 must be registered by a parent or guardian.';
-      } else if (raw.includes('self_create_not_enabled')) {
-        friendly = 'This team requires you to be added by your club before joining.';
-      } else if (raw) {
-        friendly = raw;
-      }
       if (__DEV__) console.error('[JoinTeam] Self-create submit error:', err);
-      setSelfCreateError(friendly);
+      setSelfCreateError(mapSelfCreateError(err));
     } finally {
       setSelfCreateSubmitting(false);
     }
+  };
+
+  // Retry only the RPC. The session stays alive; the RPC is idempotent.
+  const handleSelfCreateRetry = async () => {
+    if (!selfCreatePending) return;
+    setSelfCreateError('');
+    setSelfCreateSubmitting(true);
+    try {
+      await runSelfRegisterRpc(selfCreatePending.userId, selfCreatePending.email);
+    } catch (err: any) {
+      if (__DEV__) console.error('[JoinTeam] Self-create retry error:', err);
+      setSelfCreateError(mapSelfCreateError(err));
+    } finally {
+      setSelfCreateSubmitting(false);
+    }
+  };
+
+  // Sign out and clear the self-create form so the user can register with a different account
+  const handleSelfCreateSignOut = async () => {
+    try {
+      await signOut();
+    } catch {
+      // Non-fatal — the useEffect that mirrors user.email will clear regardless
+    }
+    setSelfCreateEmail('');
+    setSelfCreatePassword('');
+    setSelfCreateFirstName('');
+    setSelfCreateLastName('');
+    setSelfCreateJersey('');
+    setSelfCreatePhone('');
+    setSelfCreateDupMatch(null);
+    setSelfCreateError('');
+    setSelfCreatePending(null);
   };
 
   const handlePlayerClaimSubmit = async () => {
@@ -2125,13 +2203,33 @@ export const JoinTeamScreen: React.FC = () => {
               autoCapitalize="words"
               error=""
             />
-            <EmailInput
-              label="Your Email"
-              value={selfCreateEmail}
-              onChangeText={setSelfCreateEmail}
-              placeholder="your.email@example.com"
-              error=""
-            />
+            {user ? (
+              <>
+                <FormInput
+                  label="Your Email"
+                  value={selfCreateEmail || user.email || ''}
+                  onChangeText={() => { /* locked to session email */ }}
+                  editable={false}
+                  style={{ opacity: 0.7 }}
+                />
+                <TouchableOpacity
+                  onPress={handleSelfCreateSignOut}
+                  style={{ marginTop: -8, marginBottom: 16, alignSelf: 'flex-end' }}
+                >
+                  <Text style={{ color: '#60A5FA', fontSize: 12, fontWeight: '600' }}>
+                    Not you? Sign out
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <EmailInput
+                label="Your Email"
+                value={selfCreateEmail}
+                onChangeText={setSelfCreateEmail}
+                placeholder="your.email@example.com"
+                error=""
+              />
+            )}
             <TouchableOpacity
               style={[styles.continueButton, selfCreateChecking && styles.continueButtonDisabled, { width: '100%' }]}
               onPress={handleSelfCreateDupCheck}
@@ -2215,27 +2313,48 @@ export const JoinTeamScreen: React.FC = () => {
               keyboardType="phone-pad"
               error=""
             />
-            <PasswordInput
-              label="Create a Password"
-              value={selfCreatePassword}
-              onChangeText={setSelfCreatePassword}
-              showValidation={true}
-              error=""
-            />
-            <TouchableOpacity
-              style={[styles.continueButton, selfCreateSubmitting && styles.continueButtonDisabled, { width: '100%' }]}
-              onPress={handleSelfCreateSubmit}
-              disabled={selfCreateSubmitting}
-            >
-              <Text style={styles.continueButtonText}>
-                {selfCreateSubmitting ? 'Creating account...' : 'Create Account & Join Team'}
-              </Text>
-              {selfCreateSubmitting ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-              )}
-            </TouchableOpacity>
+            {!user && (
+              <PasswordInput
+                label="Create a Password"
+                value={selfCreatePassword}
+                onChangeText={setSelfCreatePassword}
+                showValidation={true}
+                error=""
+              />
+            )}
+            {selfCreatePending && selfCreateError ? (
+              <TouchableOpacity
+                style={[styles.continueButton, selfCreateSubmitting && styles.continueButtonDisabled, { width: '100%' }]}
+                onPress={handleSelfCreateRetry}
+                disabled={selfCreateSubmitting}
+              >
+                <Text style={styles.continueButtonText}>
+                  {selfCreateSubmitting ? 'Retrying...' : 'Try again'}
+                </Text>
+                {selfCreateSubmitting ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="refresh" size={20} color="#FFFFFF" />
+                )}
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.continueButton, selfCreateSubmitting && styles.continueButtonDisabled, { width: '100%' }]}
+                onPress={handleSelfCreateSubmit}
+                disabled={selfCreateSubmitting}
+              >
+                <Text style={styles.continueButtonText}>
+                  {selfCreateSubmitting
+                    ? (user ? 'Joining...' : 'Creating account...')
+                    : (user ? 'Join Team' : 'Create Account & Join Team')}
+                </Text>
+                {selfCreateSubmitting ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+                )}
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </View>
@@ -2389,14 +2508,17 @@ export const JoinTeamScreen: React.FC = () => {
             </>
           )}
 
-          {/* Player Claim Success */}
+          {/* Player Claim / Self-Register Success */}
           {joinRole === 'player' && playerClaimComplete && claimablePlayer && (
             <View style={styles.placeholderCard}>
               <Ionicons name="checkmark-circle" size={64} color="#22C55E" />
-              <Text style={[styles.placeholderTitle, { marginTop: 16 }]}>Account Claimed!</Text>
+              <Text style={[styles.placeholderTitle, { marginTop: 16 }]}>
+                {selfCreateMode ? "You're on the team!" : 'Account Claimed!'}
+              </Text>
               <Text style={styles.placeholderText}>
-                Welcome, {claimablePlayer.first_name}! Your player account is now active on{' '}
-                {teamInfo?.name}.
+                {selfCreateMode
+                  ? `Welcome, ${claimablePlayer.first_name}! You're now part of ${teamInfo?.name}.`
+                  : `Welcome, ${claimablePlayer.first_name}! Your player account is now active on ${teamInfo?.name}.`}
               </Text>
               <TouchableOpacity
                 style={[styles.continueButton, { width: '100%', marginTop: 16 }]}

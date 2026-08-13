@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -14,8 +14,23 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { supabase } from '../lib/supabase';
 import type { RootStackParamList } from '../navigation/linking';
+
+// Accept a bare code (e.g. "upsl-premier-0F05E4") or a full share URL
+// (e.g. "https://thryvyng.com/join-team/upsl-premier/upsl-premier-0F05E4")
+// and return the last non-scheme path segment.
+const extractCodeFromInput = (raw: string): string => {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  const withoutQuery = trimmed.split(/[?#]/)[0];
+  const segments = withoutQuery
+    .split('/')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && !s.includes(':'));
+  return (segments[segments.length - 1] || withoutQuery).trim();
+};
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Welcome'>;
 
@@ -26,9 +41,32 @@ export const WelcomeScreen: React.FC = () => {
   const [invitationCode, setInvitationCode] = useState('');
   const [isValidating, setIsValidating] = useState(false);
   const [codeError, setCodeError] = useState('');
+  const codeInputRef = useRef<TextInput>(null);
+
+  // Auto-focus the code input when the modal opens. A small delay lets the
+  // slide-in animation settle before the keyboard is requested.
+  useEffect(() => {
+    if (!showCodeModal) return;
+    const t = setTimeout(() => codeInputRef.current?.focus(), 250);
+    return () => clearTimeout(t);
+  }, [showCodeModal]);
+
+  const handlePasteCode = async () => {
+    try {
+      const clip = await Clipboard.getStringAsync();
+      const extracted = extractCodeFromInput(clip);
+      if (!extracted) return;
+      setInvitationCode(extracted.toUpperCase());
+      setCodeError('');
+    } catch (err) {
+      if (__DEV__) console.warn('[Welcome] Clipboard read failed:', err);
+    }
+  };
 
   const validateAndRouteCode = async () => {
-    const code = invitationCode.trim().toUpperCase();
+    // Normalize once more in case the user typed or OS-pasted a full URL
+    // directly into the field. Bare codes pass through unchanged.
+    const code = extractCodeFromInput(invitationCode).toUpperCase();
 
     if (!code) {
       setCodeError('Please enter an invitation code');
@@ -98,10 +136,26 @@ export const WelcomeScreen: React.FC = () => {
 
         <View style={styles.optionsSection}>
         <TouchableOpacity
-          style={styles.primaryButton}
+          style={styles.primaryOptionCard}
+          onPress={() => setShowCodeModal(true)}
+        >
+          <View style={styles.primaryOptionIcon}>
+            <Ionicons name="ticket" size={26} color="#FFFFFF" />
+          </View>
+          <View style={styles.primaryOptionContent}>
+            <Text style={styles.primaryOptionTitle}>I have an invitation code</Text>
+            <Text style={styles.primaryOptionDescription}>
+              Tapped a team link before installing? Enter or paste your code here.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={22} color="rgba(255,255,255,0.85)" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.secondaryButton}
           onPress={() => navigation.navigate('Login')}
         >
-          <Text style={styles.primaryButtonText}>Sign In</Text>
+          <Text style={styles.secondaryButtonText}>Sign In</Text>
         </TouchableOpacity>
 
         <View style={styles.divider}>
@@ -109,22 +163,6 @@ export const WelcomeScreen: React.FC = () => {
           <Text style={styles.dividerText}>New to Thryvyng?</Text>
           <View style={styles.dividerLine} />
         </View>
-
-        <TouchableOpacity
-          style={styles.optionCard}
-          onPress={() => setShowCodeModal(true)}
-        >
-          <View style={styles.optionIcon}>
-            <Ionicons name="ticket-outline" size={24} color="#8B5CF6" />
-          </View>
-          <View style={styles.optionContent}>
-            <Text style={styles.optionTitle}>I have an invitation code</Text>
-            <Text style={styles.optionDescription}>
-              Join a team as player or staff
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color="#6B7280" />
-        </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.optionCard}
@@ -192,19 +230,32 @@ export const WelcomeScreen: React.FC = () => {
               Enter the code from your team manager or coach
             </Text>
 
-            <TextInput
-              style={[styles.codeInput, codeError && styles.codeInputError]}
-              value={invitationCode}
-              onChangeText={(text) => {
-                setInvitationCode(text.toUpperCase());
-                setCodeError('');
-              }}
-              placeholder="e.g., UPS-RV2RLR"
-              placeholderTextColor="#6B7280"
-              autoCapitalize="characters"
-              autoCorrect={false}
-              maxLength={20}
-            />
+            <View style={styles.inputRow}>
+              <TextInput
+                ref={codeInputRef}
+                style={[styles.codeInput, { flex: 1 }, codeError && styles.codeInputError]}
+                value={invitationCode}
+                onChangeText={(text) => {
+                  setInvitationCode(text.toUpperCase());
+                  setCodeError('');
+                }}
+                placeholder="e.g., UPS-RV2RLR"
+                placeholderTextColor="#6B7280"
+                autoCapitalize="characters"
+                autoCorrect={false}
+                maxLength={120}
+                returnKeyType="go"
+                onSubmitEditing={validateAndRouteCode}
+              />
+              <TouchableOpacity
+                style={styles.pasteButton}
+                onPress={handlePasteCode}
+                accessibilityLabel="Paste invitation code from clipboard"
+              >
+                <Ionicons name="clipboard-outline" size={18} color="#A78BFA" />
+                <Text style={styles.pasteButtonText}>Paste</Text>
+              </TouchableOpacity>
+            </View>
 
             {codeError ? (
               <View style={styles.errorContainer}>
@@ -288,6 +339,57 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#FFFFFF',
     fontSize: 18,
+    fontWeight: '600',
+  },
+  primaryOptionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#8B5CF6',
+    borderRadius: 14,
+    padding: 18,
+    marginTop: 8,
+    marginBottom: 16,
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  primaryOptionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  primaryOptionContent: {
+    flex: 1,
+  },
+  primaryOptionTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  primaryOptionDescription: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.9)',
+    lineHeight: 18,
+  },
+  secondaryButton: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#8B5CF6',
+    backgroundColor: 'transparent',
+    marginBottom: 24,
+  },
+  secondaryButtonText: {
+    color: '#A78BFA',
+    fontSize: 17,
     fontWeight: '600',
   },
   divider: {
@@ -383,6 +485,27 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     borderWidth: 2,
     borderColor: '#374151',
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+  },
+  pasteButton: {
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#4B5563',
+    backgroundColor: '#374151',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  pasteButtonText: {
+    color: '#A78BFA',
+    fontSize: 14,
+    fontWeight: '600',
   },
   codeInputError: {
     borderColor: '#EF4444',

@@ -76,6 +76,31 @@
               "scheme": "https",
               "host": "thryvyng.com",
               "pathPrefix": "/invitations"
+            },
+            {
+              "scheme": "https",
+              "host": "www.thryvyng.com",
+              "pathPrefix": "/join-team"
+            },
+            {
+              "scheme": "https",
+              "host": "www.thryvyng.com",
+              "pathPrefix": "/join-staff"
+            },
+            {
+              "scheme": "https",
+              "host": "www.thryvyng.com",
+              "pathPrefix": "/claim-player"
+            },
+            {
+              "scheme": "https",
+              "host": "www.thryvyng.com",
+              "pathPrefix": "/accept-coparent"
+            },
+            {
+              "scheme": "https",
+              "host": "www.thryvyng.com",
+              "pathPrefix": "/invitation"
             }
           ],
           "category": [

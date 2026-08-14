@@ -40,6 +40,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   const lastProcessedSessionRef = React.useRef<string | null>(null);
+  // Written synchronously inside the auth callback so two events arriving in the same
+  // tick can't both schedule handleAuthChange before lastProcessedSessionRef is set.
+  const lastScheduledSessionRef = React.useRef<string | null>(null);
 
   const fetchUserRoles = async (userId: string) => {
     try {
@@ -104,63 +107,84 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
+    // All async work lives here, never inside the onAuthStateChange callback itself.
+    // Awaiting a supabase call from within the callback deadlocks against supabase-js's
+    // internal auth lock on cold start (the lock is held for the duration of the callback).
+    const handleAuthChange = async (session: Session | null) => {
+      // Skip if we already processed this exact session token
+      const sessionToken = session?.access_token;
+      if (sessionToken && sessionToken === lastProcessedSessionRef.current) {
+        return;
+      }
+
+      if (session?.user) {
+        setLoading(true);
+        try {
+          // Run profile, roles, and saved role ID fetches in parallel
+          const [profileResult, roles, savedRoleId] = await Promise.all([
+            withTimeout(supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .single() as unknown as Promise<{ data: any }>),
+            fetchUserRoles(session.user.id),
+            AsyncStorage.getItem('lastRoleId').then((id) => id ?? AsyncStorage.getItem('currentRoleId')),
+          ]);
+          setProfile((profileResult as any).data ?? null);
+          setAllRoles(roles);
+
+          // Mark session as processed only after successful role loading
+          if (sessionToken) {
+            lastProcessedSessionRef.current = sessionToken;
+          }
+
+          // Auto-select if user has exactly one role
+          if (roles.length === 1 && !currentRole) {
+            setCurrentRole(roles[0]);
+          } else {
+            const role = savedRoleId
+              ? roles.find((r: any) => r.id === savedRoleId) || roles[0]
+              : roles[0];
+            setCurrentRole(role);
+          }
+          setLoading(false);
+          // Register for push notifications (skip in Expo Go)
+          if (session?.user?.id && Constants.appOwnership !== 'expo') {
+            registerForPushNotifications(session.user.id);
+          }
+        } catch (err) {
+          console.error('[AUTH] CRITICAL — Promise.all FAILED:', err);
+          // Allow a later event with the same token to re-schedule after a failed pass
+          lastScheduledSessionRef.current = null;
+          setLoading(false);
+        }
+      } else {
+        setProfile(null);
+        setAllRoles([]);
+        setCurrentRole(null);
+        setLoading(false);
+      }
+    };
+
     // Set up auth state listener first
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
+        // Synchronous only — the callback must return before the auth lock is released.
         setSession(session);
         setUser(session?.user ?? null);
 
-        // Skip if we already processed this exact session token
+        // Skip scheduling if this exact token is already queued or in flight.
+        // Signed-out events carry no token and always schedule, so the reset still runs.
         const sessionToken = session?.access_token;
-        if (sessionToken && sessionToken === lastProcessedSessionRef.current) {
+        if (sessionToken && sessionToken === lastScheduledSessionRef.current) {
           return;
         }
+        lastScheduledSessionRef.current = sessionToken ?? null;
 
-        if (session?.user) {
-          setLoading(true);
-          try {
-            // Run profile, roles, and saved role ID fetches in parallel
-            const [profileResult, roles, savedRoleId] = await Promise.all([
-              withTimeout(supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', session.user.id)
-                .single() as unknown as Promise<{ data: any }>),
-              fetchUserRoles(session.user.id),
-              AsyncStorage.getItem('lastRoleId').then((id) => id ?? AsyncStorage.getItem('currentRoleId')),
-            ]);
-            setProfile((profileResult as any).data ?? null);
-            setAllRoles(roles);
-
-            // Mark session as processed only after successful role loading
-            if (sessionToken) {
-              lastProcessedSessionRef.current = sessionToken;
-            }
-
-            // Auto-select if user has exactly one role
-            if (roles.length === 1 && !currentRole) {
-              setCurrentRole(roles[0]);
-            } else {
-              const role = savedRoleId
-                ? roles.find((r: any) => r.id === savedRoleId) || roles[0]
-                : roles[0];
-              setCurrentRole(role);
-            }
-            setLoading(false);
-            // Register for push notifications (skip in Expo Go)
-            if (session?.user?.id && Constants.appOwnership !== 'expo') {
-              registerForPushNotifications(session.user.id);
-            }
-          } catch (err) {
-            console.error('[AUTH] CRITICAL — Promise.all FAILED:', err);
-            setLoading(false);
-          }
-        } else {
-          setProfile(null);
-          setAllRoles([]);
-          setCurrentRole(null);
-          setLoading(false);
-        }
+        // Defer the async work out of the callback (and off the lock)
+        setTimeout(() => {
+          void handleAuthChange(session);
+        }, 0);
       }
     );
 

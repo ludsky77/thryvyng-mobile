@@ -114,6 +114,20 @@ function normalizeTeamInviteCandidates(inviteCode: string): string[] {
   return [...new Set([trimmed, digits, formatted].filter((c) => c.length > 0))];
 }
 
+/**
+ * Optional phone field: blank is allowed, but anything entered must be exactly
+ * 10 digits. Returns '' when valid, otherwise the inline error to display.
+ */
+function validateOptionalPhone(phone: string): string {
+  const trimmed = phone.trim();
+  if (!trimmed) return '';
+  if (trimmed.includes('@')) return 'Enter a phone number, not an email.';
+  if (trimmed.replace(/\D/g, '').length !== 10) {
+    return 'Enter a valid 10-digit phone number.';
+  }
+  return '';
+}
+
 /** Auto-format team code as user types (max 9 digits + 2 dashes) */
 function formatTeamInviteInput(raw: string): string {
   const digits = raw.replace(/\D/g, '').slice(0, 9);
@@ -260,6 +274,15 @@ export const JoinTeamScreen: React.FC = () => {
   const [staffSubmitting, setStaffSubmitting] = useState(false);
   const [staffComplete, setStaffComplete] = useState(false);
   const [showStaffVerificationModal, setShowStaffVerificationModal] = useState(false);
+  // Set once the account exists and the session is established (or immediately for
+  // logged-in / already-verified users). Presence enables the "Try again" retry path so we
+  // don't re-run signup or identity verification. fullName carries the resolved display
+  // name when it came from a profile lookup rather than the form fields.
+  const [staffJoinPending, setStaffJoinPending] = useState<{
+    userId: string;
+    email: string;
+    fullName?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (invitationCode) {
@@ -514,12 +537,34 @@ export const JoinTeamScreen: React.FC = () => {
           return;
         }
 
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: parentEmail.trim().toLowerCase(),
-          password,
+        // Hydrate the session from the signUp response. If the tokens aren't returned
+        // (e.g. email confirmation is required) the follow-up RPCs would fire with the
+        // wrong auth uid, so hard-stop here.
+        const accessToken = authData.session?.access_token;
+        const refreshToken = authData.session?.refresh_token;
+        if (!accessToken || !refreshToken) {
+          setFormErrors({
+            submit:
+              'Account created. Please sign in and reopen the team link to finish registering.',
+          });
+          return;
+        }
+        const { data: sessionData, error: setSessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
         });
-        if (signInError) {
-          console.warn('Auto sign-in after signup failed:', signInError.message);
+        if (setSessionError || !sessionData?.session) {
+          if (__DEV__) {
+            console.warn(
+              '[JoinTeam] setSession after parent signup failed:',
+              setSessionError?.message
+            );
+          }
+          setFormErrors({
+            submit:
+              'Account created. Please sign in and reopen the team link to finish registering.',
+          });
+          return;
         }
 
         userId = authData.user.id;
@@ -986,6 +1031,11 @@ export const JoinTeamScreen: React.FC = () => {
       setSelfCreateError('Password must be at least 6 characters.');
       return;
     }
+    const selfCreatePhoneError = validateOptionalPhone(selfCreatePhone);
+    if (selfCreatePhoneError) {
+      setSelfCreateError(selfCreatePhoneError);
+      return;
+    }
     setSelfCreateSubmitting(true);
     try {
       let userId: string;
@@ -1144,12 +1194,32 @@ export const JoinTeamScreen: React.FC = () => {
         if (authError) throw authError;
         if (!authData.user) throw new Error('Failed to create account');
 
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: playerClaimEmail.trim().toLowerCase(),
-          password: playerClaimPassword,
+        // Hydrate the session from the signUp response. If the tokens aren't returned
+        // (e.g. email confirmation is required) the claim RPC would fire with the wrong
+        // auth uid, so hard-stop here.
+        const accessToken = authData.session?.access_token;
+        const refreshToken = authData.session?.refresh_token;
+        if (!accessToken || !refreshToken) {
+          setPlayerClaimPasswordError(
+            'Account created. Please sign in and reopen the team link to finish claiming your account.'
+          );
+          return;
+        }
+        const { data: sessionData, error: setSessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
         });
-        if (signInError) {
-          console.warn('Auto sign-in after signup failed:', signInError.message);
+        if (setSessionError || !sessionData?.session) {
+          if (__DEV__) {
+            console.warn(
+              '[JoinTeam] setSession after player claim signup failed:',
+              setSessionError?.message
+            );
+          }
+          setPlayerClaimPasswordError(
+            'Account created. Please sign in and reopen the team link to finish claiming your account.'
+          );
+          return;
         }
 
         const { data: claimResult, error: claimError } = await supabase.rpc('claim_player_for_team', {
@@ -1279,6 +1349,7 @@ export const JoinTeamScreen: React.FC = () => {
     setStaffSubmitting(false);
     setStaffComplete(false);
     setShowStaffVerificationModal(false);
+    setStaffJoinPending(null);
   };
 
   const getStaffRoleDisplay = (role: string | null) => {
@@ -1288,8 +1359,65 @@ export const JoinTeamScreen: React.FC = () => {
     return '';
   };
 
+  // Runs process_staff_join, then refreshes roles and sends the welcome email.
+  // Safe to re-run on its own: the account and session already exist by this point.
+  const runStaffJoinRpc = async (
+    userId: string,
+    email: string,
+    fullNameOverride?: string
+  ): Promise<void> => {
+    if (!selectedStaffRole || !teamInfo) throw new Error('Missing role or team info');
+
+    const fullName =
+      fullNameOverride ||
+      `${staffFirstName.trim()} ${staffLastName.trim()}`.trim() ||
+      staffFullName.trim() ||
+      email.split('@')[0];
+
+    const { error: joinError } = await supabase.rpc('process_staff_join', {
+      p_team_id: teamInfo.id,
+      p_user_id: userId,
+      p_staff_role: selectedStaffRole,
+      p_full_name: fullName,
+      p_email: email,
+      p_phone: staffPhone.trim() || null,
+      p_auto_approve: true,
+    });
+
+    if (joinError) throw joinError;
+
+    // Pass the user id explicitly: refreshRoles reads session?.user?.id from context,
+    // which may not have committed yet right after setSession, so a bare call no-ops.
+    try {
+      await refreshRoles(userId);
+    } catch {
+      // Non-fatal
+    }
+
+    try {
+      await supabase.functions.invoke('send-email', {
+        body: {
+          to: email,
+          template: 'staff-welcome',
+          data: {
+            staffName: fullName,
+            teamName: teamInfo.name,
+            role: getStaffRoleDisplay(selectedStaffRole),
+          },
+        },
+      });
+    } catch (emailErr) {
+      if (__DEV__) console.log('[JoinTeam] Staff email warning:', emailErr);
+    }
+
+    setStaffJoinPending(null);
+    setStaffComplete(true);
+  };
+
   const handleStaffSubmitNew = async () => {
     if (!selectedStaffRole || !teamInfo) return;
+
+    const isLoggedIn = !!session?.user;
 
     if (!staffFirstName.trim()) {
       setStaffPasswordError('Please enter your first name');
@@ -1299,16 +1427,23 @@ export const JoinTeamScreen: React.FC = () => {
       setStaffPasswordError('Please enter your last name');
       return;
     }
-    if (!staffEmail.trim() || !isEmailValid(staffEmail)) {
-      setStaffPasswordError('Please enter a valid email');
-      return;
+    if (!isLoggedIn) {
+      if (!staffEmail.trim() || !isEmailValid(staffEmail)) {
+        setStaffPasswordError('Please enter a valid email');
+        return;
+      }
+      if (!isPasswordValid(staffPassword)) {
+        setStaffPasswordError('Password does not meet requirements');
+        return;
+      }
+      if (staffPassword !== staffConfirmPassword) {
+        setStaffPasswordError('Passwords do not match');
+        return;
+      }
     }
-    if (!isPasswordValid(staffPassword)) {
-      setStaffPasswordError('Password does not meet requirements');
-      return;
-    }
-    if (staffPassword !== staffConfirmPassword) {
-      setStaffPasswordError('Passwords do not match');
+    const staffPhoneError = validateOptionalPhone(staffPhone);
+    if (staffPhoneError) {
+      setStaffPasswordError(staffPhoneError);
       return;
     }
 
@@ -1316,6 +1451,15 @@ export const JoinTeamScreen: React.FC = () => {
     setStaffPasswordError('');
 
     try {
+      // Already authenticated — no signup, just attach this session's user to the team.
+      if (isLoggedIn) {
+        const userId = session!.user.id;
+        const email = (session!.user.email || staffEmail).trim().toLowerCase();
+        setStaffJoinPending({ userId, email });
+        await runStaffJoinRpc(userId, email);
+        return;
+      }
+
       const { data: emailCheck } = await supabase.functions.invoke('check-email-exists', {
         body: { email: staffEmail.trim().toLowerCase() },
       });
@@ -1324,13 +1468,13 @@ export const JoinTeamScreen: React.FC = () => {
         setStaffPasswordError(
           'This email already has an account. Select "Existing Account" instead.'
         );
-        setStaffSubmitting(false);
         return;
       }
 
+      const emailLower = staffEmail.trim().toLowerCase();
       const staffComputedFullName = `${staffFirstName.trim()} ${staffLastName.trim()}`;
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: staffEmail.trim(),
+        email: emailLower,
         password: staffPassword,
         options: {
           data: {
@@ -1345,43 +1489,40 @@ export const JoinTeamScreen: React.FC = () => {
       if (authError) throw authError;
       if (!authData.user) throw new Error('Failed to create account');
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: staffEmail.trim().toLowerCase(),
-        password: staffPassword,
+      // Mirror the player self-create path: hydrate the session from the signUp response.
+      // If the tokens aren't returned (e.g. email confirmation is required) the RPC would
+      // fire with the wrong auth uid, so hard-stop here.
+      const accessToken = authData.session?.access_token;
+      const refreshToken = authData.session?.refresh_token;
+      if (!accessToken || !refreshToken) {
+        setStaffPasswordError(
+          'Account created. Please sign in and reopen the team link to finish joining.'
+        );
+        return;
+      }
+      const { data: sessionData, error: setSessionError } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
       });
-      if (signInError) {
-        console.warn('Auto sign-in after signup failed:', signInError.message);
+      if (setSessionError || !sessionData?.session) {
+        if (__DEV__) {
+          console.warn(
+            '[JoinTeam] setSession after staff signup failed:',
+            setSessionError?.message
+          );
+        }
+        setStaffPasswordError(
+          'Account created. Please sign in and reopen the team link to finish joining.'
+        );
+        return;
       }
 
-      const { error: joinError } = await supabase.rpc('process_staff_join', {
-        p_team_id: teamInfo.id,
-        p_user_id: authData.user.id,
-        p_staff_role: selectedStaffRole,
-        p_full_name: staffComputedFullName,
-        p_email: staffEmail.trim(),
-        p_phone: staffPhone.trim() || null,
-        p_auto_approve: true,
+      setStaffJoinPending({
+        userId: authData.user.id,
+        email: emailLower,
+        fullName: staffComputedFullName,
       });
-
-      if (joinError) throw joinError;
-
-      try {
-        await supabase.functions.invoke('send-email', {
-          body: {
-            to: staffEmail.trim(),
-            template: 'staff-welcome',
-            data: {
-              staffName: staffComputedFullName,
-              teamName: teamInfo.name,
-              role: getStaffRoleDisplay(selectedStaffRole),
-            },
-          },
-        });
-      } catch (emailErr) {
-        if (__DEV__) console.log('[JoinTeam] Staff email warning:', emailErr);
-      }
-
-      setStaffComplete(true);
+      await runStaffJoinRpc(authData.user.id, emailLower, staffComputedFullName);
     } catch (err: any) {
       if (__DEV__) console.error('[JoinTeam] Staff submit error:', err);
       setStaffPasswordError(err.message || 'Failed to join team. Please try again.');
@@ -1390,9 +1531,47 @@ export const JoinTeamScreen: React.FC = () => {
     }
   };
 
+  // Retry only the RPC. The session stays alive; no need to re-run signup.
+  const handleStaffJoinRetry = async () => {
+    if (!staffJoinPending) return;
+    setStaffPasswordError('');
+    setStaffSubmitting(true);
+    try {
+      await runStaffJoinRpc(
+        staffJoinPending.userId,
+        staffJoinPending.email,
+        staffJoinPending.fullName
+      );
+    } catch (err: any) {
+      if (__DEV__) console.error('[JoinTeam] Staff join retry error:', err);
+      setStaffPasswordError(err.message || 'Failed to join team. Please try again.');
+    } finally {
+      setStaffSubmitting(false);
+    }
+  };
+
+  // Sign out and clear the staff form so the user can join with a different account
+  const handleStaffSignOut = async () => {
+    try {
+      await signOut();
+    } catch {
+      // Non-fatal
+    }
+    setStaffEmail('');
+    setStaffPassword('');
+    setStaffConfirmPassword('');
+    setStaffPasswordError('');
+    setStaffJoinPending(null);
+  };
+
   const handleStaffSubmitExisting = async () => {
     if (!staffEmail.trim() || !isEmailValid(staffEmail)) {
       setStaffPasswordError('Please enter a valid email');
+      return;
+    }
+    const staffPhoneError = validateOptionalPhone(staffPhone);
+    if (staffPhoneError) {
+      setStaffPasswordError(staffPhoneError);
       return;
     }
 
@@ -1436,35 +1615,10 @@ export const JoinTeamScreen: React.FC = () => {
 
       const name = profile?.full_name || staffFullName.trim() || email.split('@')[0];
 
-      const { error: joinError } = await supabase.rpc('process_staff_join', {
-        p_team_id: teamInfo.id,
-        p_user_id: userId,
-        p_staff_role: selectedStaffRole,
-        p_full_name: name,
-        p_email: email,
-        p_phone: staffPhone.trim() || null,
-        p_auto_approve: true,
-      });
-
-      if (joinError) throw joinError;
-
-      try {
-        await supabase.functions.invoke('send-email', {
-          body: {
-            to: email,
-            template: 'staff-welcome',
-            data: {
-              staffName: name,
-              teamName: teamInfo.name,
-              role: getStaffRoleDisplay(selectedStaffRole),
-            },
-          },
-        });
-      } catch (emailErr) {
-        if (__DEV__) console.log('[JoinTeam] Staff email warning:', emailErr);
-      }
-
-      setStaffComplete(true);
+      // Identity is already verified at this point — a failed RPC should retry the RPC
+      // alone, not send the user back through the verification modal.
+      setStaffJoinPending({ userId, email, fullName: name });
+      await runStaffJoinRpc(userId, email, name);
     } catch (err: any) {
       if (__DEV__) console.error('[JoinTeam] Staff verified error:', err);
       setStaffPasswordError(err.message || 'Failed to join team.');
@@ -2678,41 +2832,68 @@ export const JoinTeamScreen: React.FC = () => {
                           />
                         </View>
                       </View>
-                      <EmailInput
-                        label="Email (this will be your login)"
-                        value={staffEmail}
-                        onChangeText={(text) => {
-                          setStaffEmail(text);
-                          setStaffPasswordError('');
-                        }}
-                        placeholder="coach@email.com"
-                        error=""
-                      />
+                      {user ? (
+                        <>
+                          <FormInput
+                            label="Email (this will be your login)"
+                            value={staffEmail || user.email || ''}
+                            onChangeText={() => { /* locked to session email */ }}
+                            editable={false}
+                            style={{ opacity: 0.7 }}
+                          />
+                          <TouchableOpacity
+                            onPress={handleStaffSignOut}
+                            style={{ marginTop: -8, marginBottom: 16, alignSelf: 'flex-end' }}
+                          >
+                            <Text style={{ color: '#60A5FA', fontSize: 12, fontWeight: '600' }}>
+                              Logged in as {user.email} — Not you? Sign out
+                            </Text>
+                          </TouchableOpacity>
+                        </>
+                      ) : (
+                        <EmailInput
+                          label="Email (this will be your login)"
+                          value={staffEmail}
+                          onChangeText={(text) => {
+                            setStaffEmail(text);
+                            setStaffPasswordError('');
+                          }}
+                          placeholder="coach@email.com"
+                          error=""
+                        />
+                      )}
                       <PhoneInput
                         label="Phone (optional)"
                         value={staffPhone}
-                        onChangeText={setStaffPhone}
-                        error=""
-                      />
-                      <PasswordInput
-                        label="Password"
-                        value={staffPassword}
                         onChangeText={(text) => {
-                          setStaffPassword(text);
-                          setStaffPasswordError('');
-                        }}
-                        showValidation={true}
-                        error=""
-                      />
-                      <PasswordInput
-                        label="Confirm Password"
-                        value={staffConfirmPassword}
-                        onChangeText={(text) => {
-                          setStaffConfirmPassword(text);
+                          setStaffPhone(text);
                           setStaffPasswordError('');
                         }}
                         error=""
                       />
+                      {!user && (
+                        <>
+                          <PasswordInput
+                            label="Password"
+                            value={staffPassword}
+                            onChangeText={(text) => {
+                              setStaffPassword(text);
+                              setStaffPasswordError('');
+                            }}
+                            showValidation={true}
+                            error=""
+                          />
+                          <PasswordInput
+                            label="Confirm Password"
+                            value={staffConfirmPassword}
+                            onChangeText={(text) => {
+                              setStaffConfirmPassword(text);
+                              setStaffPasswordError('');
+                            }}
+                            error=""
+                          />
+                        </>
+                      )}
                     </View>
                   )}
 
@@ -2738,7 +2919,22 @@ export const JoinTeamScreen: React.FC = () => {
                     </View>
                   ) : null}
 
-                  {staffMode && (
+                  {staffMode && staffJoinPending && staffPasswordError ? (
+                    <TouchableOpacity
+                      style={[styles.continueButton, staffSubmitting && styles.continueButtonDisabled]}
+                      onPress={handleStaffJoinRetry}
+                      disabled={staffSubmitting}
+                    >
+                      <Text style={styles.continueButtonText}>
+                        {staffSubmitting ? 'Retrying...' : 'Try again'}
+                      </Text>
+                      {staffSubmitting ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Ionicons name="refresh" size={20} color="#FFFFFF" />
+                      )}
+                    </TouchableOpacity>
+                  ) : staffMode ? (
                     <TouchableOpacity
                       style={[styles.continueButton, staffSubmitting && styles.continueButtonDisabled]}
                       onPress={
@@ -2759,7 +2955,7 @@ export const JoinTeamScreen: React.FC = () => {
                         <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
                       )}
                     </TouchableOpacity>
-                  )}
+                  ) : null}
 
                   <TouchableOpacity
                     style={styles.placeholderBackButton}

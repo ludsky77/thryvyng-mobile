@@ -42,10 +42,14 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
 
     try {
       const { supabase } = await import('../../lib/supabase');
+      const { getCaptchaToken } = await import('../../lib/captcha');
+
+      const captchaToken = await getCaptchaToken();
 
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
+        options: { captchaToken: captchaToken ?? undefined },
       });
 
       if (signInError) {

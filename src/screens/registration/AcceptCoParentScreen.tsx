@@ -12,6 +12,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
+import { getCaptchaToken } from '../../lib/captcha';
 import type { RootStackParamList } from '../../navigation/linking';
 import { FormInput, PasswordInput, validatePassword } from '../../components/forms';
 
@@ -195,10 +196,12 @@ const AcceptCoParentScreen: React.FC = () => {
 
     try {
       if (__DEV__) console.log('[AcceptCoParent] Creating new user account...');
+      const captchaToken = await getCaptchaToken();
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: emailNorm,
         password: password,
         options: {
+          captchaToken: captchaToken ?? undefined,
           data: {
             full_name: name.trim(),
             first_name: firstName,
@@ -226,14 +229,34 @@ const AcceptCoParentScreen: React.FC = () => {
         return;
       }
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: emailNorm,
-        password: password,
+      // Hydrate the session from the signUp response. If the tokens aren't
+      // returned (e.g. email confirmation is required) the link RPC below would
+      // fire with the wrong auth uid, so hard-stop here.
+      const accessToken = authData.session?.access_token;
+      const refreshToken = authData.session?.refresh_token;
+      if (!accessToken || !refreshToken) {
+        setPasswordError(
+          'Account created. Please sign in and reopen the invitation link to finish joining.'
+        );
+        setSubmitting(false);
+        return;
+      }
+
+      const { data: sessionData, error: setSessionError } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
       });
 
-      if (signInError) {
-        if (__DEV__) console.error('[AcceptCoParent] Sign in after signup error:', signInError);
-        setPasswordError('Account created but sign in failed. Please try logging in.');
+      if (setSessionError || !sessionData?.session) {
+        if (__DEV__) {
+          console.error(
+            '[AcceptCoParent] setSession after signup failed:',
+            setSessionError?.message
+          );
+        }
+        setPasswordError(
+          'Account created. Please sign in and reopen the invitation link to finish joining.'
+        );
         setSubmitting(false);
         return;
       }
@@ -295,9 +318,11 @@ const AcceptCoParentScreen: React.FC = () => {
 
     try {
       if (__DEV__) console.log('[AcceptCoParent] Signing in existing user...');
+      const captchaToken = await getCaptchaToken();
       const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
         email: emailNorm,
         password: password,
+        options: { captchaToken: captchaToken ?? undefined },
       });
 
       if (signInError) {

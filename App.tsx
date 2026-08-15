@@ -11,6 +11,7 @@ import { CartProvider } from './src/contexts/CartContext';
 import { RegistrationProvider } from './src/contexts/RegistrationContext';
 import { NotificationProvider } from './src/contexts/NotificationContext';
 import AppNavigator from './src/navigation/AppNavigator';
+import { CaptchaHost } from './src/components/CaptchaModal';
 import SplashScreen from './src/screens/SplashScreen';
 import { initSentry } from './src/services/sentry';
 
@@ -46,6 +47,7 @@ function AppContent() {
           <SplashScreen isReady={!loading} onFinish={handleSplashFinish} />
         </Animated.View>
       )}
+      <CaptchaHost />
       <StatusBar style="light" />
     </>
   );

@@ -15,6 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
+import { getCaptchaToken } from '../lib/captcha';
 import { useAuth } from '../contexts/AuthContext';
 import { useRegistration } from '../contexts/RegistrationContext';
 import type { RootStackParamList } from '../navigation/linking';
@@ -78,9 +79,12 @@ export default function LoginScreen() {
 
     setLoading(true);
 
+    const captchaToken = await getCaptchaToken();
+
     const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
       email: trimmedEmail,
       password,
+      options: { captchaToken: captchaToken ?? undefined },
     });
 
     setLoading(false);
@@ -168,10 +172,13 @@ export default function LoginScreen() {
     setError('');
 
     try {
+      const captchaToken = await getCaptchaToken();
+
       const { data: signupData, error: signupError } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
         options: {
+          captchaToken: captchaToken ?? undefined,
           data: {
             full_name: `${firstName.trim()} ${lastName.trim()}`,
             first_name: firstName.trim(),
@@ -207,12 +214,26 @@ export default function LoginScreen() {
         return;
       }
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password,
+      // Hydrate the session from the signUp response instead of a second
+      // password sign-in. If the tokens aren't returned (e.g. email confirmation
+      // is required) there is no session to continue with, so hard-stop here.
+      const accessToken = signupData?.session?.access_token;
+      const refreshToken = signupData?.session?.refresh_token;
+      if (!accessToken || !refreshToken) {
+        setError('Account created! Please sign in.');
+        setAuthMode('signin');
+        return;
+      }
+
+      const { data: sessionData, error: setSessionError } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
       });
 
-      if (signInError) {
+      if (setSessionError || !sessionData?.session) {
+        if (__DEV__) {
+          console.warn('[Login] setSession after signup failed:', setSessionError?.message);
+        }
         setError('Account created! Please sign in.');
         setAuthMode('signin');
         return;

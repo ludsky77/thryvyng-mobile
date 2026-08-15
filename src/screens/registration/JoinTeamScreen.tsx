@@ -21,6 +21,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
+import { getCaptchaToken } from '../../lib/captcha';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRegistration } from '../../contexts/RegistrationContext';
 import {
@@ -514,10 +515,12 @@ export const JoinTeamScreen: React.FC = () => {
       if (registrationMode === 'new') {
         if (__DEV__) console.log('[JoinTeam] Creating new user account...');
 
+        const captchaToken = await getCaptchaToken();
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: parentEmail.trim(),
           password: password,
           options: {
+            captchaToken: captchaToken ?? undefined,
             data: {
               full_name: `${parentFirstName.trim()} ${parentLastName.trim()}`,
               first_name: parentFirstName.trim(),
@@ -1047,10 +1050,12 @@ export const JoinTeamScreen: React.FC = () => {
         setSelfCreatePending({ userId, email });
       } else {
         const emailLower = selfCreateEmail.trim().toLowerCase();
+        const captchaToken = await getCaptchaToken();
         const { data: authData, error: signUpError } = await supabase.auth.signUp({
           email: emailLower,
           password: selfCreatePassword,
           options: {
+            captchaToken: captchaToken ?? undefined,
             data: {
               full_name: `${selfCreateFirstName.trim()} ${selfCreateLastName.trim()}`.trim(),
               first_name: selfCreateFirstName.trim(),
@@ -1178,10 +1183,12 @@ export const JoinTeamScreen: React.FC = () => {
           return;
         }
 
+        const captchaToken = await getCaptchaToken();
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: playerClaimEmail.trim(),
           password: playerClaimPassword,
           options: {
+            captchaToken: captchaToken ?? undefined,
             data: {
               full_name: `${claimablePlayer.first_name} ${claimablePlayer.last_name}`,
               first_name: claimablePlayer.first_name,
@@ -1473,10 +1480,12 @@ export const JoinTeamScreen: React.FC = () => {
 
       const emailLower = staffEmail.trim().toLowerCase();
       const staffComputedFullName = `${staffFirstName.trim()} ${staffLastName.trim()}`;
+      const captchaToken = await getCaptchaToken();
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: emailLower,
         password: staffPassword,
         options: {
+          captchaToken: captchaToken ?? undefined,
           data: {
             full_name: staffComputedFullName,
             first_name: staffFirstName.trim(),

@@ -15,6 +15,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
+import { getCaptchaToken } from '../../lib/captcha';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRegistration } from '../../contexts/RegistrationContext';
 import type { RootStackParamList } from '../../navigation/linking';
@@ -245,11 +246,13 @@ export const RegisterTeamScreen: React.FC = () => {
           console.log('[RegisterTeam] Creating new user account...');
 
         const fullName = `${firstName.trim()} ${lastName.trim()}`;
+        const captchaToken = await getCaptchaToken();
         const { data: authData, error: authError } = await supabase.auth.signUp(
           {
             email: email.trim(),
             password: password,
             options: {
+              captchaToken: captchaToken ?? undefined,
               data: {
                 full_name: fullName,
                 first_name: firstName.trim(),
@@ -272,18 +275,34 @@ export const RegisterTeamScreen: React.FC = () => {
           return;
         }
 
-        const { error: signInError } =
-          await supabase.auth.signInWithPassword({
-            email: email.trim(),
-            password: password,
-          });
-
-        if (signInError) {
-          if (__DEV__)
-            console.error('[RegisterTeam] Sign in error:', signInError);
+        // Hydrate the session from the signUp response. If the tokens aren't
+        // returned (e.g. email confirmation is required) the follow-up RPCs
+        // would fire with the wrong auth uid, so hard-stop here.
+        const accessToken = authData.session?.access_token;
+        const refreshToken = authData.session?.refresh_token;
+        if (!accessToken || !refreshToken) {
           setFormErrors({
             submit:
-              'Account created but sign in failed. Please try logging in.',
+              'Account created. Please sign in and start team registration again.',
+          });
+          return;
+        }
+
+        const { data: sessionData, error: setSessionError } =
+          await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+
+        if (setSessionError || !sessionData?.session) {
+          if (__DEV__)
+            console.error(
+              '[RegisterTeam] setSession after signup failed:',
+              setSessionError?.message
+            );
+          setFormErrors({
+            submit:
+              'Account created. Please sign in and start team registration again.',
           });
           return;
         }

@@ -278,6 +278,14 @@ export default function ClubAdminDashboard({
               onPress: () =>
                 navigation.navigate('SurveyList', { clubId }),
             },
+            {
+              id: 'staff-requests',
+              icon: 'person-add-outline',
+              label: 'Staff Requests',
+              color: '#22c55e',
+              onPress: () =>
+                navigation.navigate('StaffRequests', { clubId }),
+            },
           ]}
         />
       </View>

@@ -17,6 +17,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { LiveGamesWidget } from '../game-stats/LiveGamesWidget';
 import QuickActionsCard from '../QuickActionsCard';
 import PendingSurveyBanner from '../surveys/PendingSurveyBanner';
+import { usePendingStaffRequests } from '../../hooks/usePendingStaffRequests';
 import { slugify } from '../../utils/slugify';
 
 interface CoachDashboardProps {
@@ -62,6 +63,7 @@ interface RecentActivity {
 
 export default function CoachDashboard({ teamId }: CoachDashboardProps) {
   const navigation = useNavigation<any>();
+  const pendingStaffRequests = usePendingStaffRequests(teamId);
   const [team, setTeam] = useState<Team | null>(null);
   const [topPlayers, setTopPlayers] = useState<TopPlayer[]>([]);
   const [topFundraisers, setTopFundraisers] = useState<TopFundraiser[]>([]);
@@ -382,10 +384,20 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
           <Text style={styles.statLabel}>Players</Text>
           <Text style={styles.viewLink}>View →</Text>
         </TouchableOpacity>
-        <View style={styles.statBox}>
-          <Text style={styles.statValue}>0</Text>
+        <TouchableOpacity
+          style={styles.statBox}
+          onPress={() =>
+            navigateToScreen('StaffRequests', {
+              teamId,
+              team_id: teamId,
+              teamName: team.name,
+            })
+          }
+        >
+          <Text style={styles.statValue}>{pendingStaffRequests}</Text>
           <Text style={styles.statLabel}>Pending</Text>
-        </View>
+          <Text style={styles.viewLink}>View →</Text>
+        </TouchableOpacity>
       </View>
 
       {/* 3. Invite Members Section */}

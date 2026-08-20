@@ -68,6 +68,7 @@ const RosterScreen = lazy(() => import('../screens/RosterScreen'));
 const CreateEvaluationScreen = lazy(() => import('../screens/CreateEvaluationScreen'));
 const EvaluationRosterScreen = lazy(() => import('../screens/EvaluationRosterScreen'));
 const TeamStaffScreen = lazy(() => import('../screens/TeamStaffScreen'));
+const StaffRequestsScreen = lazy(() => import('../screens/StaffRequestsScreen'));
 const PlayerProfileScreen = lazy(() => import('../screens/PlayerProfileScreen'));
 const EvaluationDetailScreen = lazy(() => import('../screens/EvaluationDetailScreen'));
 const CertificateViewerScreen = lazy(() => import('../screens/CertificateViewerScreen'));
@@ -313,6 +314,9 @@ function HomeStack() {
       </Stack.Screen>
       <Stack.Screen name="TeamStaff" options={{ title: 'Team Staff' }}>
         {(props) => <LazyScreen component={TeamStaffScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="StaffRequests" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={StaffRequestsScreen} {...props} />}
       </Stack.Screen>
       <Stack.Screen name="PlayerEvaluations" options={{ title: 'Player Evaluations' }}>
         {(props) => <LazyScreen component={PlayerEvaluationsScreen} {...props} />}
@@ -647,6 +651,10 @@ function ProfileStack() {
         component={NotificationsScreen}
         options={{ headerShown: false }}
       />
+      {/* The bell lives in this stack's header too, so notification taps must land here. */}
+      <Stack.Screen name="StaffRequests" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={StaffRequestsScreen} {...props} />}
+      </Stack.Screen>
     </Stack.Navigator>
   );
 }
@@ -917,6 +925,17 @@ export default function AppNavigator() {
       const evaluationId = data.evaluation_id ?? data.reference_id;
       if (evaluationId) {
         nav.navigate('EvaluationDetail', { evaluationId });
+      }
+    } else if (type === 'staff_request') {
+      const staffTeamId = data.teamId ?? data.team_id;
+      if (staffTeamId) {
+        nav.navigate('Main', {
+          screen: 'HomeTab',
+          params: {
+            screen: 'StaffRequests',
+            params: { teamId: staffTeamId, team_id: staffTeamId },
+          },
+        });
       }
     } else {
       nav.navigate('Notifications');

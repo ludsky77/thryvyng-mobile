@@ -217,6 +217,22 @@ export default function NotificationsScreen({ navigation }: any) {
       return;
     }
 
+    // Staff join requests — explicit nested target so the tap lands the same way
+    // whichever tab's bell it was opened from.
+    if (type === 'staff_request') {
+      const staffTeamId = data?.teamId ?? data?.team_id;
+      if (staffTeamId) {
+        navigation.navigate('Main', {
+          screen: 'HomeTab',
+          params: {
+            screen: 'StaffRequests',
+            params: { teamId: staffTeamId, team_id: staffTeamId },
+          },
+        });
+      }
+      return;
+    }
+
     // Course notifications
     if (data?.course_id) {
       navigation.navigate('CourseDetail', { courseId: data.course_id });
@@ -245,6 +261,8 @@ export default function NotificationsScreen({ navigation }: any) {
         return { name: 'clipboard-outline', color: '#f59e0b' };
       case 'lineup_published':
         return { name: 'git-network-outline', color: '#f59e0b' };
+      case 'staff_request':
+        return { name: 'person-add-outline', color: '#22c55e' };
       case 'announcement':
         return { name: 'megaphone-outline', color: '#ec4899' };
       default:

@@ -274,6 +274,9 @@ export const JoinTeamScreen: React.FC = () => {
   const [staffMode, setStaffMode] = useState<'new' | 'existing' | null>(null);
   const [staffSubmitting, setStaffSubmitting] = useState(false);
   const [staffComplete, setStaffComplete] = useState(false);
+  // What process_staff_join actually did. Defaults to 'pending' so a missing/garbled
+  // RPC result can never render the "you're on the team" screen for someone who isn't.
+  const [staffJoinStatus, setStaffJoinStatus] = useState<'active' | 'pending'>('pending');
   const [showStaffVerificationModal, setShowStaffVerificationModal] = useState(false);
   // Set once the account exists and the session is established (or immediately for
   // logged-in / already-verified users). Presence enables the "Try again" retry path so we
@@ -1355,6 +1358,7 @@ export const JoinTeamScreen: React.FC = () => {
     setStaffMode(null);
     setStaffSubmitting(false);
     setStaffComplete(false);
+    setStaffJoinStatus('pending');
     setShowStaffVerificationModal(false);
     setStaffJoinPending(null);
   };
@@ -1366,8 +1370,11 @@ export const JoinTeamScreen: React.FC = () => {
     return '';
   };
 
-  // Runs process_staff_join, then refreshes roles and sends the welcome email.
-  // Safe to re-run on its own: the account and session already exist by this point.
+  // Runs process_staff_join and follows whichever branch the server took.
+  // Staff self-joins land in 'pending_approval' — the RPC ignores p_auto_approve — so the
+  // role only exists when it answers status 'active'. Safe to re-run on its own: the
+  // account and session already exist by this point, and a repeat join answers
+  // { status: 'active', already_member: true }.
   const runStaffJoinRpc = async (
     userId: string,
     email: string,
@@ -1381,7 +1388,7 @@ export const JoinTeamScreen: React.FC = () => {
       staffFullName.trim() ||
       email.split('@')[0];
 
-    const { error: joinError } = await supabase.rpc('process_staff_join', {
+    const { data: joinData, error: joinError } = await supabase.rpc('process_staff_join', {
       p_team_id: teamInfo.id,
       p_user_id: userId,
       p_staff_role: selectedStaffRole,
@@ -1393,31 +1400,83 @@ export const JoinTeamScreen: React.FC = () => {
 
     if (joinError) throw joinError;
 
-    // Pass the user id explicitly: refreshRoles reads session?.user?.id from context,
-    // which may not have committed yet right after setSession, so a bare call no-ops.
-    try {
-      await refreshRoles(userId);
-    } catch {
-      // Non-fatal
+    // The RPC returns json, which reaches the client as an object or as a raw string
+    // depending on how it is serialized. Accept both; anything unparseable stays {}.
+    let parsed: Record<string, any> = {};
+    if (typeof joinData === 'string') {
+      try {
+        parsed = JSON.parse(joinData) ?? {};
+      } catch {
+        parsed = {};
+      }
+    } else if (joinData && typeof joinData === 'object') {
+      parsed = joinData as Record<string, any>;
     }
 
-    try {
-      await supabase.functions.invoke('send-email', {
-        body: {
-          to: email,
-          template: 'staff-welcome',
-          data: {
-            staffName: fullName,
-            teamName: teamInfo.name,
-            role: getStaffRoleDisplay(selectedStaffRole),
+    // A transport-level success can still carry a business-level failure.
+    if (parsed.success === false) {
+      throw new Error(parsed.error || 'Failed to join team. Please try again.');
+    }
+
+    // Fail safe: only an explicit 'active' means a usable role exists right now.
+    const isActive = parsed.status === 'active';
+
+    if (isActive) {
+      // Pass the user id explicitly: refreshRoles reads session?.user?.id from context,
+      // which may not have committed yet right after setSession, so a bare call no-ops.
+      try {
+        await refreshRoles(userId);
+      } catch {
+        // Non-fatal
+      }
+
+      try {
+        await supabase.functions.invoke('send-email', {
+          body: {
+            to: email,
+            template: 'staff-welcome',
+            data: {
+              staffName: fullName,
+              teamName: teamInfo.name,
+              role: getStaffRoleDisplay(selectedStaffRole),
+            },
           },
-        },
-      });
-    } catch (emailErr) {
-      if (__DEV__) console.log('[JoinTeam] Staff email warning:', emailErr);
+        });
+      } catch (emailErr) {
+        if (__DEV__) console.log('[JoinTeam] Staff email warning:', emailErr);
+      }
+    } else {
+      // Pending approval: there is no role row to fetch, so refreshRoles would churn the
+      // auth context for nothing. Confirm the request instead of welcoming them aboard.
+      try {
+        await supabase.functions.invoke('send-email', {
+          body: {
+            to: email,
+            template: 'staff-pending',
+            subject: `Your request to join ${teamInfo.name} is pending review`,
+            data: {
+              staffName: fullName,
+              teamName: teamInfo.name,
+              role: getStaffRoleDisplay(selectedStaffRole),
+            },
+          },
+        });
+      } catch (emailErr) {
+        if (__DEV__) console.log('[JoinTeam] Staff pending email warning:', emailErr);
+      }
+
+      // Alerts the approvers. Non-fatal: the request row already exists either way.
+      try {
+        await supabase.functions.invoke('notify-staff-request', {
+          body: { join_request_id: parsed.join_request_id },
+        });
+      } catch (notifyErr) {
+        if (__DEV__) console.log('[JoinTeam] Staff request notify warning:', notifyErr);
+      }
     }
 
     setStaffJoinPending(null);
+    setStaffJoinStatus(isActive ? 'active' : 'pending');
     setStaffComplete(true);
   };
 
@@ -2983,7 +3042,7 @@ export const JoinTeamScreen: React.FC = () => {
           )}
 
           {/* Staff Success */}
-          {joinRole === 'staff' && staffComplete && (
+          {joinRole === 'staff' && staffComplete && staffJoinStatus === 'active' && (
             <View style={styles.placeholderCard}>
               <Ionicons name="checkmark-circle" size={64} color="#22C55E" />
               <Text style={[styles.placeholderTitle, { marginTop: 16 }]}>
@@ -2997,6 +3056,30 @@ export const JoinTeamScreen: React.FC = () => {
                 onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })}
               >
                 <Text style={styles.continueButtonText}>Go to Dashboard</Text>
+                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {joinRole === 'staff' && staffComplete && staffJoinStatus === 'pending' && (
+            <View style={styles.placeholderCard}>
+              <Ionicons name="time-outline" size={64} color="#F59E0B" />
+              <Text style={[styles.placeholderTitle, { marginTop: 16 }]}>
+                Request submitted
+              </Text>
+              <Text style={styles.placeholderText}>
+                Your request to join {teamInfo?.name} as{' '}
+                {getStaffRoleDisplay(selectedStaffRole)} is pending approval. The head coach
+                or club admin will review it — you'll get an email when it's decided.
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.continueButton,
+                  { width: '100%', marginTop: 16, backgroundColor: '#F59E0B' },
+                ]}
+                onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })}
+              >
+                <Text style={styles.continueButtonText}>Done</Text>
                 <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
               </TouchableOpacity>
             </View>

@@ -18,6 +18,8 @@ import * as Clipboard from 'expo-clipboard';
 import { supabase } from '../lib/supabase';
 import type { RootStackParamList } from '../navigation/linking';
 
+const escapeIlike = (s: string) => s.replace(/[%_\\]/g, (m) => '\\' + m);
+
 // Accept a bare code (e.g. "upsl-premier-0F05E4") or a full share URL
 // (e.g. "https://thryvyng.com/join-team/upsl-premier/upsl-premier-0F05E4")
 // and return the last non-scheme path segment.
@@ -56,7 +58,7 @@ export const WelcomeScreen: React.FC = () => {
       const clip = await Clipboard.getStringAsync();
       const extracted = extractCodeFromInput(clip);
       if (!extracted) return;
-      setInvitationCode(extracted.toUpperCase());
+      setInvitationCode(extracted);
       setCodeError('');
     } catch (err) {
       if (__DEV__) console.warn('[Welcome] Clipboard read failed:', err);
@@ -66,7 +68,7 @@ export const WelcomeScreen: React.FC = () => {
   const validateAndRouteCode = async () => {
     // Normalize once more in case the user typed or OS-pasted a full URL
     // directly into the field. Bare codes pass through unchanged.
-    const code = extractCodeFromInput(invitationCode).toUpperCase();
+    const code = extractCodeFromInput(invitationCode).trim();
 
     if (!code) {
       setCodeError('Please enter an invitation code');
@@ -82,7 +84,7 @@ export const WelcomeScreen: React.FC = () => {
       const { data: teamData, error: teamError } = await supabase
         .from('teams')
         .select('id, invitation_code, status')
-        .eq('invitation_code', code)
+        .ilike('invitation_code', escapeIlike(code))
         .single();
 
       if (teamData && !teamError) {
@@ -96,7 +98,7 @@ export const WelcomeScreen: React.FC = () => {
       const { data: staffData, error: staffError } = await supabase
         .from('team_staff_invitations')
         .select('id, code, used_at')
-        .eq('code', code)
+        .ilike('code', escapeIlike(code))
         .single();
 
       if (staffData && !staffError) {
@@ -236,12 +238,12 @@ export const WelcomeScreen: React.FC = () => {
                 style={[styles.codeInput, { flex: 1 }, codeError && styles.codeInputError]}
                 value={invitationCode}
                 onChangeText={(text) => {
-                  setInvitationCode(text.toUpperCase());
+                  setInvitationCode(text);
                   setCodeError('');
                 }}
                 placeholder="e.g., UPS-RV2RLR"
                 placeholderTextColor="#6B7280"
-                autoCapitalize="characters"
+                autoCapitalize="none"
                 autoCorrect={false}
                 maxLength={120}
                 returnKeyType="go"

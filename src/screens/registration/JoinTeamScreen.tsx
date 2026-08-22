@@ -385,6 +385,20 @@ export const JoinTeamScreen: React.FC = () => {
         return;
       }
 
+      // Only feed the .or() filter values that cannot alter its grammar: the
+      // filter string is parsed by PostgREST, where ',' separates conditions.
+      const safeCandidates = candidates.filter((c) => /^[A-Za-z0-9-]+$/.test(c));
+      if (safeCandidates.length === 0) {
+        if (__DEV__) {
+          console.log('[JoinTeam] Team not found: no safe candidates');
+        }
+        setScreenState('invalid');
+        setErrorMessage(
+          'This invitation link is not valid. Please check with your team manager.'
+        );
+        return;
+      }
+
       const { data: teams, error } = await supabase
         .from('teams')
         .select(
@@ -403,7 +417,7 @@ export const JoinTeamScreen: React.FC = () => {
           )
         `
         )
-        .in('invitation_code', candidates)
+        .or(safeCandidates.map((c) => `invitation_code.ilike.${c}`).join(','))
         .limit(1);
 
       const team = teams?.[0];

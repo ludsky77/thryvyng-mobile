@@ -1153,28 +1153,44 @@ export const JoinTeamScreen: React.FC = () => {
   const handlePlayerClaimSubmit = async () => {
     if (!claimablePlayer) return;
 
-    if (!playerClaimEmail.trim()) {
-      setPlayerClaimPasswordError('Please enter your email');
-      return;
-    }
+    const isLoggedIn = !!user;
+    const sessionEmail = (user?.email || '').trim().toLowerCase();
 
-    if (playerClaimEmail.trim().toLowerCase() === claimablePlayer.parent_email?.toLowerCase()) {
-      setPlayerClaimPasswordError("Please use your own email address, not your parent's");
-      return;
-    }
-
-    if (playerClaimMode === 'new') {
-      if (!playerClaimPassword) {
-        setPlayerClaimPasswordError('Password is required');
+    if (isLoggedIn) {
+      // The session owns the identity here: no email to type, no password to set.
+      if (!sessionEmail) {
+        setPlayerClaimPasswordError('Please enter your email');
         return;
       }
-      if (!isPasswordValid(playerClaimPassword)) {
-        setPlayerClaimPasswordError('Password does not meet requirements');
+
+      if (sessionEmail === claimablePlayer.parent_email?.toLowerCase()) {
+        setPlayerClaimPasswordError("Please use your own email address, not your parent's");
         return;
       }
-      if (playerClaimPassword !== playerClaimConfirmPassword) {
-        setPlayerClaimPasswordError('Passwords do not match');
+    } else {
+      if (!playerClaimEmail.trim()) {
+        setPlayerClaimPasswordError('Please enter your email');
         return;
+      }
+
+      if (playerClaimEmail.trim().toLowerCase() === claimablePlayer.parent_email?.toLowerCase()) {
+        setPlayerClaimPasswordError("Please use your own email address, not your parent's");
+        return;
+      }
+
+      if (playerClaimMode === 'new') {
+        if (!playerClaimPassword) {
+          setPlayerClaimPasswordError('Password is required');
+          return;
+        }
+        if (!isPasswordValid(playerClaimPassword)) {
+          setPlayerClaimPasswordError('Password does not meet requirements');
+          return;
+        }
+        if (playerClaimPassword !== playerClaimConfirmPassword) {
+          setPlayerClaimPasswordError('Passwords do not match');
+          return;
+        }
       }
     }
 
@@ -1183,73 +1199,86 @@ export const JoinTeamScreen: React.FC = () => {
 
     try {
       if (playerClaimMode === 'new') {
-        const emailAvailable = await new Promise<boolean>((resolve) => {
-          supabase.functions
-            .invoke('check-email-exists', {
-              body: { email: playerClaimEmail.trim().toLowerCase() },
-            })
-            .then(({ data }) => resolve(!data?.exists))
-            .catch(() => resolve(true));
-        });
+        let claimUserId: string;
+        let claimEmail: string;
 
-        if (!emailAvailable) {
-          setPlayerClaimPasswordError(
-            'This email already has an account. Select "I already have an account" instead.'
-          );
-          setPlayerClaimSubmitting(false);
-          return;
-        }
+        if (isLoggedIn) {
+          // Already authenticated — no signUp, no setSession: swapping the live
+          // session out from under the user is exactly what this guard prevents.
+          claimUserId = user!.id;
+          claimEmail = sessionEmail;
+        } else {
+          const emailAvailable = await new Promise<boolean>((resolve) => {
+            supabase.functions
+              .invoke('check-email-exists', {
+                body: { email: playerClaimEmail.trim().toLowerCase() },
+              })
+              .then(({ data }) => resolve(!data?.exists))
+              .catch(() => resolve(true));
+          });
 
-        const captchaToken = await getCaptchaToken();
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: playerClaimEmail.trim(),
-          password: playerClaimPassword,
-          options: {
-            captchaToken: captchaToken ?? undefined,
-            data: {
-              full_name: `${claimablePlayer.first_name} ${claimablePlayer.last_name}`,
-              first_name: claimablePlayer.first_name,
-              last_name: claimablePlayer.last_name,
-              role: 'player',
-            },
-          },
-        });
-
-        if (authError) throw authError;
-        if (!authData.user) throw new Error('Failed to create account');
-
-        // Hydrate the session from the signUp response. If the tokens aren't returned
-        // (e.g. email confirmation is required) the claim RPC would fire with the wrong
-        // auth uid, so hard-stop here.
-        const accessToken = authData.session?.access_token;
-        const refreshToken = authData.session?.refresh_token;
-        if (!accessToken || !refreshToken) {
-          setPlayerClaimPasswordError(
-            'Account created. Please sign in and reopen the team link to finish claiming your account.'
-          );
-          return;
-        }
-        const { data: sessionData, error: setSessionError } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
-        if (setSessionError || !sessionData?.session) {
-          if (__DEV__) {
-            console.warn(
-              '[JoinTeam] setSession after player claim signup failed:',
-              setSessionError?.message
+          if (!emailAvailable) {
+            setPlayerClaimPasswordError(
+              'This email already has an account. Select "I already have an account" instead.'
             );
+            setPlayerClaimSubmitting(false);
+            return;
           }
-          setPlayerClaimPasswordError(
-            'Account created. Please sign in and reopen the team link to finish claiming your account.'
-          );
-          return;
+
+          const captchaToken = await getCaptchaToken();
+          const { data: authData, error: authError } = await supabase.auth.signUp({
+            email: playerClaimEmail.trim(),
+            password: playerClaimPassword,
+            options: {
+              captchaToken: captchaToken ?? undefined,
+              data: {
+                full_name: `${claimablePlayer.first_name} ${claimablePlayer.last_name}`,
+                first_name: claimablePlayer.first_name,
+                last_name: claimablePlayer.last_name,
+                role: 'player',
+              },
+            },
+          });
+
+          if (authError) throw authError;
+          if (!authData.user) throw new Error('Failed to create account');
+
+          // Hydrate the session from the signUp response. If the tokens aren't returned
+          // (e.g. email confirmation is required) the claim RPC would fire with the wrong
+          // auth uid, so hard-stop here.
+          const accessToken = authData.session?.access_token;
+          const refreshToken = authData.session?.refresh_token;
+          if (!accessToken || !refreshToken) {
+            setPlayerClaimPasswordError(
+              'Account created. Please sign in and reopen the team link to finish claiming your account.'
+            );
+            return;
+          }
+          const { data: sessionData, error: setSessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (setSessionError || !sessionData?.session) {
+            if (__DEV__) {
+              console.warn(
+                '[JoinTeam] setSession after player claim signup failed:',
+                setSessionError?.message
+              );
+            }
+            setPlayerClaimPasswordError(
+              'Account created. Please sign in and reopen the team link to finish claiming your account.'
+            );
+            return;
+          }
+
+          claimUserId = authData.user.id;
+          claimEmail = playerClaimEmail.trim().toLowerCase();
         }
 
         const { data: claimResult, error: claimError } = await supabase.rpc('claim_player_for_team', {
           p_player_id: claimablePlayer.id,
-          p_user_id: authData.user.id,
-          p_user_email: playerClaimEmail.trim().toLowerCase(),
+          p_user_id: claimUserId,
+          p_user_email: claimEmail,
           p_verified_dob: playerClaimDob,
         });
 
@@ -1277,7 +1306,7 @@ export const JoinTeamScreen: React.FC = () => {
         try {
           await supabase.functions.invoke('send-email', {
             body: {
-              to: playerClaimEmail.trim(),
+              to: isLoggedIn ? sessionEmail : playerClaimEmail.trim(),
               template: 'player-registration',
               data: {
                 playerName: `${claimablePlayer.first_name} ${claimablePlayer.last_name}`,
@@ -2655,35 +2684,59 @@ export const JoinTeamScreen: React.FC = () => {
 
                   {playerClaimMode === 'new' && (
                     <View style={styles.newPlayerForm}>
-                      <EmailInput
-                        label="Your Email (not your parent's)"
-                        value={playerClaimEmail}
-                        onChangeText={(text) => {
-                          setPlayerClaimEmail(text);
-                          setPlayerClaimPasswordError('');
-                        }}
-                        placeholder="your.email@example.com"
-                        error=""
-                      />
-                      <PasswordInput
-                        label="Password"
-                        value={playerClaimPassword}
-                        onChangeText={(text) => {
-                          setPlayerClaimPassword(text);
-                          setPlayerClaimPasswordError('');
-                        }}
-                        showValidation={true}
-                        error=""
-                      />
-                      <PasswordInput
-                        label="Confirm Password"
-                        value={playerClaimConfirmPassword}
-                        onChangeText={(text) => {
-                          setPlayerClaimConfirmPassword(text);
-                          setPlayerClaimPasswordError('');
-                        }}
-                        error=""
-                      />
+                      {user ? (
+                        <>
+                          <FormInput
+                            label="Your Email (not your parent's)"
+                            value={user.email || ''}
+                            onChangeText={() => { /* locked to session email */ }}
+                            editable={false}
+                            style={{ opacity: 0.7 }}
+                          />
+                          <TouchableOpacity
+                            onPress={handleSelfCreateSignOut}
+                            style={{ marginTop: -8, marginBottom: 16, alignSelf: 'flex-end' }}
+                          >
+                            <Text style={{ color: '#60A5FA', fontSize: 12, fontWeight: '600' }}>
+                              Logged in as {user.email} — Not you? Sign out
+                            </Text>
+                          </TouchableOpacity>
+                        </>
+                      ) : (
+                        <EmailInput
+                          label="Your Email (not your parent's)"
+                          value={playerClaimEmail}
+                          onChangeText={(text) => {
+                            setPlayerClaimEmail(text);
+                            setPlayerClaimPasswordError('');
+                          }}
+                          placeholder="your.email@example.com"
+                          error=""
+                        />
+                      )}
+                      {!user && (
+                        <>
+                          <PasswordInput
+                            label="Password"
+                            value={playerClaimPassword}
+                            onChangeText={(text) => {
+                              setPlayerClaimPassword(text);
+                              setPlayerClaimPasswordError('');
+                            }}
+                            showValidation={true}
+                            error=""
+                          />
+                          <PasswordInput
+                            label="Confirm Password"
+                            value={playerClaimConfirmPassword}
+                            onChangeText={(text) => {
+                              setPlayerClaimConfirmPassword(text);
+                              setPlayerClaimPasswordError('');
+                            }}
+                            error=""
+                          />
+                        </>
+                      )}
                     </View>
                   )}
 

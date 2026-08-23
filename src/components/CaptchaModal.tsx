@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
-import { registerCaptchaHost } from '../lib/captcha';
+import { registerCaptchaHost, type CaptchaFailureReason } from '../lib/captcha';
 
 /**
  * Cloudflare Turnstile site key. This is a public value (it ships in the
@@ -42,7 +42,11 @@ export interface CaptchaModalProps {
   onCancel: () => void;
 }
 
-function buildTurnstileHtml(siteKey: string): string {
+/**
+ * Builds the self-contained Turnstile page. Exported so any surface that needs
+ * to host the widget itself can reuse the exact markup the root host uses.
+ */
+export function buildTurnstileHtml(siteKey: string): string {
   return `<!DOCTYPE html>
 <html>
   <head>
@@ -106,8 +110,29 @@ function buildTurnstileHtml(siteKey: string): string {
 </html>`;
 }
 
-export const CaptchaModal: React.FC<CaptchaModalProps> = ({
-  visible,
+export interface CaptchaWebViewProps {
+  /** Mount the WebView. Flip to false to tear the widget down between uses. */
+  active: boolean;
+  /** Fired once with a fresh Turnstile token. */
+  onToken: (token: string) => void;
+  /** Fired when the widget errors out or its token expires before we read it. */
+  onError: (reason: string) => void;
+  /** When provided, renders the standard Cancel affordance under the widget. */
+  onCancel?: () => void;
+}
+
+/**
+ * The Turnstile widget itself: WebView, loading state, and message parsing,
+ * with NO <Modal> of its own.
+ *
+ * iOS presents one Modal at a time, so a surface that already owns a Modal
+ * (e.g. IdentityVerificationModal) cannot rely on the root CaptchaHost — its
+ * sheet never appears and the request just times out. Such a surface embeds
+ * this component inline instead. {@link CaptchaModal} wraps it for the root
+ * host case.
+ */
+export const CaptchaWebView: React.FC<CaptchaWebViewProps> = ({
+  active,
   onToken,
   onError,
   onCancel,
@@ -138,6 +163,47 @@ export const CaptchaModal: React.FC<CaptchaModalProps> = ({
   );
 
   return (
+    <>
+      <View style={styles.webViewFrame}>
+        {active && (
+          <WebView
+            source={{ html, baseUrl: CAPTCHA_BASE_URL }}
+            onMessage={handleMessage}
+            onError={() => onError('Could not load the verification widget.')}
+            onHttpError={() => onError('Could not load the verification widget.')}
+            originWhitelist={['*']}
+            javaScriptEnabled
+            domStorageEnabled
+            scrollEnabled={false}
+            setSupportMultipleWindows={false}
+            startInLoadingState
+            renderLoading={() => (
+              <View style={styles.loading}>
+                <ActivityIndicator size="small" color="#8B5CF6" />
+              </View>
+            )}
+            style={styles.webView}
+            containerStyle={styles.webViewContainer}
+          />
+        )}
+      </View>
+
+      {onCancel && (
+        <TouchableOpacity onPress={onCancel} accessibilityRole="button">
+          <Text style={styles.cancelText}>Cancel</Text>
+        </TouchableOpacity>
+      )}
+    </>
+  );
+};
+
+export const CaptchaModal: React.FC<CaptchaModalProps> = ({
+  visible,
+  onToken,
+  onError,
+  onCancel,
+}) => {
+  return (
     <Modal
       visible={visible}
       animationType="slide"
@@ -167,33 +233,12 @@ export const CaptchaModal: React.FC<CaptchaModalProps> = ({
             Confirm you&apos;re human to continue. This usually takes a second.
           </Text>
 
-          <View style={styles.webViewFrame}>
-            {visible && (
-              <WebView
-                source={{ html, baseUrl: CAPTCHA_BASE_URL }}
-                onMessage={handleMessage}
-                onError={() => onError('Could not load the verification widget.')}
-                onHttpError={() => onError('Could not load the verification widget.')}
-                originWhitelist={['*']}
-                javaScriptEnabled
-                domStorageEnabled
-                scrollEnabled={false}
-                setSupportMultipleWindows={false}
-                startInLoadingState
-                renderLoading={() => (
-                  <View style={styles.loading}>
-                    <ActivityIndicator size="small" color="#8B5CF6" />
-                  </View>
-                )}
-                style={styles.webView}
-                containerStyle={styles.webViewContainer}
-              />
-            )}
-          </View>
-
-          <TouchableOpacity onPress={onCancel} accessibilityRole="button">
-            <Text style={styles.cancelText}>Cancel</Text>
-          </TouchableOpacity>
+          <CaptchaWebView
+            active={visible}
+            onToken={onToken}
+            onError={onError}
+            onCancel={onCancel}
+          />
         </View>
       </View>
     </Modal>
@@ -206,7 +251,9 @@ export const CaptchaModal: React.FC<CaptchaModalProps> = ({
  */
 export const CaptchaHost: React.FC = () => {
   const [visible, setVisible] = useState(false);
-  const settleRef = useRef<((token: string | null) => void) | null>(null);
+  const settleRef = useRef<
+    ((token: string | null, reason?: CaptchaFailureReason) => void) | null
+  >(null);
 
   useEffect(
     () =>
@@ -225,24 +272,24 @@ export const CaptchaHost: React.FC = () => {
 
   // Detach the settler before invoking it so the host's own close() is a no-op
   // rather than a re-entrant settle.
-  const finish = useCallback((token: string | null) => {
+  const finish = useCallback((token: string | null, reason?: CaptchaFailureReason) => {
     const settle = settleRef.current;
     settleRef.current = null;
     setVisible(false);
-    settle?.(token);
+    settle?.(token, reason);
   }, []);
 
   const handleToken = useCallback((token: string) => finish(token), [finish]);
 
   const handleError = useCallback(
     (reason: string) => {
-      if (__DEV__) console.warn('[captcha] Widget error, proceeding without a token:', reason);
-      finish(null);
+      if (__DEV__) console.warn('[captcha] Widget error:', reason);
+      finish(null, 'error');
     },
     [finish]
   );
 
-  const handleCancel = useCallback(() => finish(null), [finish]);
+  const handleCancel = useCallback(() => finish(null, 'cancel'), [finish]);
 
   return (
     <CaptchaModal

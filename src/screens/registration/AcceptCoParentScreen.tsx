@@ -12,7 +12,11 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
-import { getCaptchaToken } from '../../lib/captcha';
+import {
+  getCaptchaToken,
+  CaptchaTimeoutError,
+  CAPTCHA_TIMEOUT_MESSAGE,
+} from '../../lib/captcha';
 import type { RootStackParamList } from '../../navigation/linking';
 import { FormInput, PasswordInput, validatePassword } from '../../components/forms';
 
@@ -196,7 +200,16 @@ const AcceptCoParentScreen: React.FC = () => {
 
     try {
       if (__DEV__) console.log('[AcceptCoParent] Creating new user account...');
-      const captchaToken = await getCaptchaToken();
+      let captchaToken: string | null;
+      try {
+        captchaToken = await getCaptchaToken();
+      } catch (captchaErr) {
+        if (captchaErr instanceof CaptchaTimeoutError) {
+          setPasswordError(CAPTCHA_TIMEOUT_MESSAGE);
+        }
+        setSubmitting(false);
+        return;
+      }
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: emailNorm,
         password: password,
@@ -318,7 +331,16 @@ const AcceptCoParentScreen: React.FC = () => {
 
     try {
       if (__DEV__) console.log('[AcceptCoParent] Signing in existing user...');
-      const captchaToken = await getCaptchaToken();
+      let captchaToken: string | null;
+      try {
+        captchaToken = await getCaptchaToken();
+      } catch (captchaErr) {
+        if (captchaErr instanceof CaptchaTimeoutError) {
+          setPasswordError(CAPTCHA_TIMEOUT_MESSAGE);
+        }
+        setSubmitting(false);
+        return;
+      }
       const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
         email: emailNorm,
         password: password,

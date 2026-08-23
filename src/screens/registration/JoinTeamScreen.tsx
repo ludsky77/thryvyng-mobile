@@ -21,7 +21,11 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
-import { getCaptchaToken } from '../../lib/captcha';
+import {
+  getCaptchaToken,
+  CaptchaTimeoutError,
+  CAPTCHA_TIMEOUT_MESSAGE,
+} from '../../lib/captcha';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRegistration } from '../../contexts/RegistrationContext';
 import {
@@ -141,14 +145,24 @@ export const JoinTeamScreen: React.FC = () => {
   const route = useRoute<JoinTeamRouteProp>();
   const navigation = useNavigation<JoinTeamNavigationProp>();
 
-  const exitToMain = () => {
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Main' }],
-    });
-  };
-
   const { user, session, refreshRoles, signOut } = useAuth();
+
+  // Without a session, resetting to 'Main' drops the user into an empty app
+  // shell. Send logged-out users to the entry route instead.
+  // ('Welcome' — RootStack.Screen, AppNavigator.tsx:686)
+  const exitToMain = () => {
+    if (user) {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Main' }],
+      });
+    } else {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Welcome' }],
+      });
+    }
+  };
   const { setRegistrationData, clearRegistrationData } = useRegistration();
 
   const code = route.params?.code ?? '';
@@ -180,6 +194,7 @@ export const JoinTeamScreen: React.FC = () => {
 
   // Player selection state
   const [existingPlayers, setExistingPlayers] = useState<any[]>([]);
+  const [rosterLoadFailed, setRosterLoadFailed] = useState(false);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [playerLinkMode, setPlayerLinkMode] = useState<'existing' | 'new'>('new');
 
@@ -480,17 +495,20 @@ export const JoinTeamScreen: React.FC = () => {
 
   const fetchTeamPlayers = async (teamId: string) => {
     try {
+      setRosterLoadFailed(false);
       const { data, error } = await (supabase as any).rpc('get_team_roster_for_join', {
         p_team_id: teamId,
       });
       if (error) {
         if (__DEV__) console.log('[JoinTeam] Error fetching team roster:', error);
+        setRosterLoadFailed(true);
         return;
       }
       if (__DEV__) console.log('[JoinTeam] Team roster size:', data?.length);
       setExistingPlayers(data || []);
     } catch (err) {
       if (__DEV__) console.error('[JoinTeam] Error:', err);
+      setRosterLoadFailed(true);
     }
   };
 
@@ -532,7 +550,15 @@ export const JoinTeamScreen: React.FC = () => {
       if (registrationMode === 'new') {
         if (__DEV__) console.log('[JoinTeam] Creating new user account...');
 
-        const captchaToken = await getCaptchaToken();
+        let captchaToken: string | null;
+        try {
+          captchaToken = await getCaptchaToken();
+        } catch (captchaErr) {
+          if (captchaErr instanceof CaptchaTimeoutError) {
+            setFormErrors({ submit: CAPTCHA_TIMEOUT_MESSAGE });
+          }
+          return;
+        }
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: parentEmail.trim(),
           password: password,
@@ -1067,7 +1093,15 @@ export const JoinTeamScreen: React.FC = () => {
         setSelfCreatePending({ userId, email });
       } else {
         const emailLower = selfCreateEmail.trim().toLowerCase();
-        const captchaToken = await getCaptchaToken();
+        let captchaToken: string | null;
+        try {
+          captchaToken = await getCaptchaToken();
+        } catch (captchaErr) {
+          if (captchaErr instanceof CaptchaTimeoutError) {
+            setSelfCreateError(CAPTCHA_TIMEOUT_MESSAGE);
+          }
+          return;
+        }
         const { data: authData, error: signUpError } = await supabase.auth.signUp({
           email: emailLower,
           password: selfCreatePassword,
@@ -1225,7 +1259,15 @@ export const JoinTeamScreen: React.FC = () => {
             return;
           }
 
-          const captchaToken = await getCaptchaToken();
+          let captchaToken: string | null;
+          try {
+            captchaToken = await getCaptchaToken();
+          } catch (captchaErr) {
+            if (captchaErr instanceof CaptchaTimeoutError) {
+              setPlayerClaimPasswordError(CAPTCHA_TIMEOUT_MESSAGE);
+            }
+            return;
+          }
           const { data: authData, error: authError } = await supabase.auth.signUp({
             email: playerClaimEmail.trim(),
             password: playerClaimPassword,
@@ -1582,7 +1624,15 @@ export const JoinTeamScreen: React.FC = () => {
 
       const emailLower = staffEmail.trim().toLowerCase();
       const staffComputedFullName = `${staffFirstName.trim()} ${staffLastName.trim()}`;
-      const captchaToken = await getCaptchaToken();
+      let captchaToken: string | null;
+      try {
+        captchaToken = await getCaptchaToken();
+      } catch (captchaErr) {
+        if (captchaErr instanceof CaptchaTimeoutError) {
+          setStaffPasswordError(CAPTCHA_TIMEOUT_MESSAGE);
+        }
+        return;
+      }
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: emailLower,
         password: staffPassword,
@@ -2106,12 +2156,7 @@ export const JoinTeamScreen: React.FC = () => {
 
           <TouchableOpacity
             style={styles.goToDashboardButton}
-            onPress={() =>
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'Main' }],
-              })
-            }
+            onPress={exitToMain}
           >
             <Text style={styles.goToDashboardText}>Go to Dashboard</Text>
             <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
@@ -2811,7 +2856,7 @@ export const JoinTeamScreen: React.FC = () => {
               </Text>
               <TouchableOpacity
                 style={[styles.continueButton, { width: '100%', marginTop: 16 }]}
-                onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })}
+                onPress={exitToMain}
               >
                 <Text style={styles.continueButtonText}>Go to Dashboard</Text>
                 <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
@@ -3120,7 +3165,7 @@ export const JoinTeamScreen: React.FC = () => {
               </Text>
               <TouchableOpacity
                 style={[styles.continueButton, { width: '100%', marginTop: 16 }]}
-                onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })}
+                onPress={exitToMain}
               >
                 <Text style={styles.continueButtonText}>Go to Dashboard</Text>
                 <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
@@ -3144,7 +3189,7 @@ export const JoinTeamScreen: React.FC = () => {
                   styles.continueButton,
                   { width: '100%', marginTop: 16, backgroundColor: '#F59E0B' },
                 ]}
-                onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })}
+                onPress={exitToMain}
               >
                 <Text style={styles.continueButtonText}>Done</Text>
                 <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
@@ -3196,6 +3241,26 @@ export const JoinTeamScreen: React.FC = () => {
       {step === 'player-select' && (
         <>
           <Text style={styles.stepTitle}>Player Information</Text>
+
+          {rosterLoadFailed && (
+            <View style={styles.rosterRetryCard}>
+              <Ionicons name="alert-circle" size={20} color="#FCA5A5" />
+              <View style={styles.rosterRetryBody}>
+                <Text style={styles.rosterRetryText}>
+                  We couldn't load the team roster. Please try again.
+                </Text>
+                <TouchableOpacity
+                  style={styles.rosterRetryButton}
+                  onPress={() => {
+                    if (teamInfo?.id) fetchTeamPlayers(teamInfo.id);
+                  }}
+                >
+                  <Ionicons name="refresh" size={16} color="#FFFFFF" />
+                  <Text style={styles.rosterRetryButtonText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
 
           {existingPlayers.length > 0 && (
             <View style={styles.playerModeToggle}>
@@ -3318,7 +3383,8 @@ export const JoinTeamScreen: React.FC = () => {
             </View>
           )}
 
-          {(playerLinkMode === 'new' || existingPlayers.length === 0) && (
+          {!rosterLoadFailed &&
+            (playerLinkMode === 'new' || existingPlayers.length === 0) && (
             <View style={styles.newPlayerForm}>
               <FormInput
                 label="Player First Name"
@@ -3577,6 +3643,7 @@ export const JoinTeamScreen: React.FC = () => {
               playerLinkMode === 'existing' &&
               !selectedPlayerId) &&
               styles.continueButtonDisabled,
+            step === 'player-select' && rosterLoadFailed && styles.continueButtonDisabled,
             isSubmitting && styles.continueButtonDisabled,
           ]}
           onPress={handleContinue}
@@ -3584,6 +3651,7 @@ export const JoinTeamScreen: React.FC = () => {
             (step === 'player-select' &&
               playerLinkMode === 'existing' &&
               !selectedPlayerId) ||
+            (step === 'player-select' && rosterLoadFailed) ||
             isSubmitting
           }
         >
@@ -4427,6 +4495,38 @@ const styles = StyleSheet.create({
     color: '#FCA5A5',
     fontSize: 14,
     flex: 1,
+  },
+  rosterRetryCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#7F1D1D',
+    borderRadius: 8,
+    padding: 12,
+    gap: 8,
+    marginBottom: 20,
+  },
+  rosterRetryBody: {
+    flex: 1,
+    gap: 10,
+  },
+  rosterRetryText: {
+    color: '#FCA5A5',
+    fontSize: 14,
+  },
+  rosterRetryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#DC2626',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    gap: 6,
+  },
+  rosterRetryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 

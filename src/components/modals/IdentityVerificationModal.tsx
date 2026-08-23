@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FormInput, PasswordInput } from '../forms';
+import { CaptchaWebView } from '../CaptchaModal';
+import { CaptchaTimeoutError, CAPTCHA_TIMEOUT_MESSAGE } from '../../lib/captcha';
 
 interface IdentityVerificationModalProps {
   visible: boolean;
@@ -30,21 +32,27 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
   const [password, setPassword] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState('');
+  const [captchaVisible, setCaptchaVisible] = useState(false);
 
-  const handleVerify = async () => {
+  /**
+   * iOS presents one Modal at a time, so the app-root CaptchaHost can never
+   * appear over this sheet — `getCaptchaToken()` would just time out. The
+   * widget is therefore hosted inline here and the sign-in waits on its token.
+   */
+  const handleVerify = () => {
     if (!email.trim() || !password) {
       setError('Please enter both email and password');
       return;
     }
 
-    setIsVerifying(true);
     setError('');
+    setIsVerifying(true);
+    setCaptchaVisible(true);
+  };
 
+  const signInWithCaptchaToken = async (captchaToken: string) => {
     try {
       const { supabase } = await import('../../lib/supabase');
-      const { getCaptchaToken } = await import('../../lib/captcha');
-
-      const captchaToken = await getCaptchaToken();
 
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
@@ -63,13 +71,39 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
         setError('Verification failed. Please try again.');
       }
     } catch (err) {
-      setError('An unexpected error occurred');
+      // Residual path: nothing here calls getCaptchaToken() any more, but a
+      // helper further down could still surface one.
+      if (err instanceof CaptchaTimeoutError) {
+        setError(CAPTCHA_TIMEOUT_MESSAGE);
+      } else {
+        setError('An unexpected error occurred');
+      }
     } finally {
       setIsVerifying(false);
     }
   };
 
+  // Keep the spinner running: the sign-in is what finally clears it.
+  const handleCaptchaToken = (captchaToken: string) => {
+    setCaptchaVisible(false);
+    void signInWithCaptchaToken(captchaToken);
+  };
+
+  const handleCaptchaError = (reason: string) => {
+    if (__DEV__) console.warn('[IdentityVerification] Captcha error:', reason);
+    setCaptchaVisible(false);
+    setIsVerifying(false);
+    setError(CAPTCHA_TIMEOUT_MESSAGE);
+  };
+
+  const handleCaptchaCancel = () => {
+    setCaptchaVisible(false);
+    setIsVerifying(false);
+  };
+
   const handleClose = () => {
+    setCaptchaVisible(false);
+    setIsVerifying(false);
     setEmail('');
     setPassword('');
     setError('');
@@ -163,6 +197,25 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
               </Text>
             </TouchableOpacity>
           </View>
+
+          {captchaVisible && (
+            <View style={styles.captchaOverlay}>
+              <View style={styles.captchaIcon}>
+                <Ionicons name="shield-checkmark" size={40} color="#8B5CF6" />
+              </View>
+              <Text style={styles.captchaTitle}>Quick security check</Text>
+              <Text style={styles.captchaSubtitle}>
+                Confirm you&apos;re human to continue. This usually takes a second.
+              </Text>
+
+              <CaptchaWebView
+                active={captchaVisible}
+                onToken={handleCaptchaToken}
+                onError={handleCaptchaError}
+                onCancel={handleCaptchaCancel}
+              />
+            </View>
+          )}
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -253,6 +306,32 @@ const styles = StyleSheet.create({
   helpLink: {
     color: '#8B5CF6',
     fontWeight: '600',
+  },
+  captchaOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#1F2937',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    justifyContent: 'center',
+  },
+  captchaIcon: {
+    alignItems: 'center',
+  },
+  captchaTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  captchaSubtitle: {
+    fontSize: 15,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
   },
 });
 

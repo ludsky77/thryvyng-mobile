@@ -15,7 +15,11 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
-import { getCaptchaToken } from '../../lib/captcha';
+import {
+  getCaptchaToken,
+  CaptchaTimeoutError,
+  CAPTCHA_TIMEOUT_MESSAGE,
+} from '../../lib/captcha';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRegistration } from '../../contexts/RegistrationContext';
 import type { RootStackParamList } from '../../navigation/linking';
@@ -246,7 +250,15 @@ export const RegisterTeamScreen: React.FC = () => {
           console.log('[RegisterTeam] Creating new user account...');
 
         const fullName = `${firstName.trim()} ${lastName.trim()}`;
-        const captchaToken = await getCaptchaToken();
+        let captchaToken: string | null;
+        try {
+          captchaToken = await getCaptchaToken();
+        } catch (captchaErr) {
+          if (captchaErr instanceof CaptchaTimeoutError) {
+            setFormErrors({ submit: CAPTCHA_TIMEOUT_MESSAGE });
+          }
+          return;
+        }
         const { data: authData, error: authError } = await supabase.auth.signUp(
           {
             email: email.trim(),

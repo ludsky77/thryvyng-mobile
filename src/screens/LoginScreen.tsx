@@ -15,7 +15,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
-import { getCaptchaToken } from '../lib/captcha';
+import {
+  getCaptchaToken,
+  CaptchaTimeoutError,
+  CAPTCHA_TIMEOUT_MESSAGE,
+} from '../lib/captcha';
 import { useAuth } from '../contexts/AuthContext';
 import { useRegistration } from '../contexts/RegistrationContext';
 import type { RootStackParamList } from '../navigation/linking';
@@ -79,7 +83,17 @@ export default function LoginScreen() {
 
     setLoading(true);
 
-    const captchaToken = await getCaptchaToken();
+    let captchaToken: string | null;
+    try {
+      captchaToken = await getCaptchaToken();
+    } catch (captchaErr) {
+      // No token means the sign-in would be rejected server-side anyway.
+      setLoading(false);
+      if (captchaErr instanceof CaptchaTimeoutError) {
+        setError(CAPTCHA_TIMEOUT_MESSAGE);
+      }
+      return;
+    }
 
     const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
       email: trimmedEmail,
@@ -172,7 +186,15 @@ export default function LoginScreen() {
     setError('');
 
     try {
-      const captchaToken = await getCaptchaToken();
+      let captchaToken: string | null;
+      try {
+        captchaToken = await getCaptchaToken();
+      } catch (captchaErr) {
+        if (captchaErr instanceof CaptchaTimeoutError) {
+          setError(CAPTCHA_TIMEOUT_MESSAGE);
+        }
+        return;
+      }
 
       const { data: signupData, error: signupError } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),

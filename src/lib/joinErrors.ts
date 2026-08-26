@@ -18,6 +18,7 @@ export type JoinErrorToken =
   | 'self_create_not_enabled'
   | 'roster_frozen'
   | 'under_age_threshold'
+  | 'under_age_claim'
   | 'player_not_found'
   | 'auth_mismatch'
   | 'invitation_invalid'
@@ -41,6 +42,7 @@ const TOKENS: JoinErrorToken[] = [
   'self_create_not_enabled',
   'roster_frozen',
   'under_age_threshold',
+  'under_age_claim',
   'player_not_found',
   'auth_mismatch',
   'invitation_invalid',
@@ -74,6 +76,8 @@ const MESSAGES: Record<JoinErrorToken, string> = {
     "This team's roster is currently closed. Please contact your team manager.",
   under_age_threshold:
     'Players under 16 must be registered by a parent or guardian.',
+  under_age_claim:
+    'Players need to be at least 13 to have their own login. A parent or guardian manages this account for now.',
   player_not_found:
     "We couldn't find that player on this team. Check the name and birth date, or contact your team manager.",
   auth_mismatch:

@@ -282,6 +282,7 @@ export const JoinTeamScreen: React.FC = () => {
   // Success state
   const [registrationComplete, setRegistrationComplete] = useState(false);
   const [createdPlayer, setCreatedPlayer] = useState<any>(null);
+  const [staffAccessAlsoGranted, setStaffAccessAlsoGranted] = useState(false);
 
   // Email availability hook
   const {
@@ -593,6 +594,59 @@ export const JoinTeamScreen: React.FC = () => {
     return Object.keys(errors).length === 0;
   };
 
+  /**
+   * Additive (web D5): a parent who also has a pending staff invite on this team
+   * claims it alongside the child registration — never instead of it. Every failure
+   * logs and returns false; nothing here may fail or divert the child registration.
+   */
+  const claimPendingStaffInvite = async (userId: string, email: string): Promise<boolean> => {
+    try {
+      if (!teamInfo?.id) {
+        setStaffAccessAlsoGranted(false);
+        return false;
+      }
+      const { data: staffMember, error: staffLookupError } = await supabase
+        .from('team_staff')
+        .select('id, staff_role, team_id')
+        .eq('team_id', teamInfo.id)
+        .ilike('email', email.trim().replace(/[%_\\]/g, (m) => '\\' + m))
+        .is('user_id', null)
+        .maybeSingle();
+      if (staffLookupError) {
+        console.error('[JoinTeam] Staff invite lookup failed:', staffLookupError);
+      }
+      if (!staffMember) {
+        setStaffAccessAlsoGranted(false);
+        return false;
+      }
+      const { error: staffClaimError } = await supabase
+        .from('team_staff')
+        .update({ user_id: userId })
+        .eq('id', staffMember.id);
+      if (staffClaimError) {
+        console.error('[JoinTeam] team_staff claim failed:', staffClaimError);
+      }
+      const { error: staffRoleError } = await supabase.from('user_roles').insert([
+        {
+          user_id: userId,
+          role: staffMember.staff_role as any,
+          entity_id: staffMember.team_id,
+          role_metadata: { club_id: (teamInfo as any)?.club?.id ?? null },
+        },
+      ]);
+      if (staffRoleError) {
+        console.error('[JoinTeam] staff user_roles insert failed:', staffRoleError);
+      }
+      const granted = !staffClaimError && !staffRoleError;
+      setStaffAccessAlsoGranted(granted);
+      return granted;
+    } catch (err) {
+      console.error('[JoinTeam] Staff invite claim threw:', err);
+      setStaffAccessAlsoGranted(false);
+      return false;
+    }
+  };
+
   const submitRegistration = async () => {
     setIsSubmitting(true);
     setFormErrors({});
@@ -701,6 +755,11 @@ export const JoinTeamScreen: React.FC = () => {
           return;
         }
       }
+
+      // Both parent routes converge here with a usable userId/userEmail: the
+      // new-account route (signUp + setSession above) and the signed-in route.
+      // Additive — the child registration continues regardless of the outcome.
+      await claimPendingStaffInvite(userId, userEmail);
 
       // For existing users, get their name from profile
       let existingParentFirstName = parentFirstName;
@@ -2090,6 +2149,11 @@ export const JoinTeamScreen: React.FC = () => {
           <Text style={styles.successSubtitle}>
             {createdPlayer.first_name} has been registered to {teamInfo?.name}
           </Text>
+          {staffAccessAlsoGranted && (
+            <Text style={styles.successSubtitle}>
+              You also have staff access to this team.
+            </Text>
+          )}
 
           <View style={styles.playerCard}>
             <View style={styles.playerAvatar}>

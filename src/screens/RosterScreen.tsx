@@ -10,6 +10,7 @@ import {
   Modal,
   Alert,
   Share,
+  Linking,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -81,6 +82,10 @@ export default function RosterScreen({ route, navigation }: any) {
   const [isSavingColor, setIsSavingColor] = useState(false);
   const [isStaffInTeam, setIsStaffInTeam] = useState(false);
   const [rosterError, setRosterError] = useState('');
+  const [contactPlayer, setContactPlayer] = useState<Player | null>(null);
+  const [contactData, setContactData] = useState<any>(null);
+  const [contactLoading, setContactLoading] = useState(false);
+  const [contactError, setContactError] = useState('');
 
   useEffect(() => {
     const checkStaffPermission = async () => {
@@ -189,6 +194,125 @@ export default function RosterScreen({ route, navigation }: any) {
     } finally {
       setIsSavingColor(false);
     }
+  };
+
+  /** tel:/sms: want digits only, keeping a leading + when the number carries one. */
+  const toDialTarget = (raw: string): string => {
+    const trimmed = raw.trim();
+    const plus = trimmed.startsWith('+') ? '+' : '';
+    return plus + trimmed.replace(/\D/g, '');
+  };
+
+  const openUrl = (url: string) => {
+    Linking.openURL(url).catch((err) => {
+      console.error('Error opening link:', err);
+      Alert.alert('Error', 'Could not open that link');
+    });
+  };
+
+  const openPlayerDrawer = async (player: Player) => {
+    setContactPlayer(player);
+    setContactData(null);
+    setContactError('');
+    setContactLoading(true);
+    try {
+      const { data, error } = await supabase.rpc('get_player_contact', {
+        p_player_id: player.id,
+      });
+
+      if (error) {
+        console.error('Error fetching player contact:', error);
+        const hint =
+          typeof (error as any)?.hint === 'string' ? (error as any).hint.trim() : '';
+        setContactError(
+          hint === 'not_team_member'
+            ? "You don't have access to this team's roster."
+            : mapJoinError(error)
+        );
+        return;
+      }
+
+      // The RPC returns json, which reaches the client as an object or as a raw
+      // string depending on serialization. Accept both; anything else stays null.
+      let parsed: any = null;
+      if (typeof data === 'string') {
+        try {
+          parsed = JSON.parse(data);
+        } catch {
+          parsed = null;
+        }
+      } else if (data && typeof data === 'object') {
+        parsed = data;
+      }
+      setContactData(parsed);
+    } catch (err) {
+      console.error('Error fetching player contact:', err);
+      setContactError(mapJoinError(err));
+    } finally {
+      setContactLoading(false);
+    }
+  };
+
+  const closePlayerDrawer = () => {
+    setContactPlayer(null);
+    setContactData(null);
+    setContactError('');
+    setContactLoading(false);
+  };
+
+  /**
+   * True when the server shared contact but every contact field came back null —
+   * e.g. a self-registered 16+ player who has no parent record.
+   */
+  const hasNoContactData = (c: any): boolean =>
+    !c?.parent_first_name &&
+    !c?.parent_last_name &&
+    !c?.parent_email &&
+    !c?.parent_phone &&
+    !c?.secondary_parent_name &&
+    !c?.secondary_parent_email &&
+    !c?.secondary_parent_phone;
+
+  /** One contact block. Every button appears only when its datum is non-null. */
+  const renderContactSection = (
+    title: string,
+    name: string | null,
+    email: string | null,
+    phone: string | null
+  ) => {
+    if (!name && !email && !phone) return null;
+    return (
+      <View style={styles.contactSection}>
+        <Text style={styles.contactSectionTitle}>{title}</Text>
+        {name ? <Text style={styles.contactName}>{name}</Text> : null}
+        <View style={styles.contactActionRow}>
+          {phone ? (
+            <TouchableOpacity
+              style={styles.contactAction}
+              onPress={() => openUrl(`tel:${toDialTarget(phone)}`)}
+            >
+              <Text style={styles.contactActionText}>📞 Call</Text>
+            </TouchableOpacity>
+          ) : null}
+          {phone ? (
+            <TouchableOpacity
+              style={styles.contactAction}
+              onPress={() => openUrl(`sms:${toDialTarget(phone)}`)}
+            >
+              <Text style={styles.contactActionText}>💬 Text</Text>
+            </TouchableOpacity>
+          ) : null}
+          {email ? (
+            <TouchableOpacity
+              style={styles.contactAction}
+              onPress={() => openUrl(`mailto:${encodeURIComponent(email)}`)}
+            >
+              <Text style={styles.contactActionText}>✉️ Email</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
+    );
   };
 
   const teamColor = team?.color || '#8b5cf6';
@@ -300,12 +424,7 @@ export default function RosterScreen({ route, navigation }: any) {
               <View key={player.id} style={styles.playerCard}>
                 <TouchableOpacity
                   style={styles.playerCardTouchable}
-                  onPress={() =>
-                    navigation.navigate('PlayerProfile', {
-                      playerId: player.id,
-                      playerName: `${player.first_name} ${player.last_name}`,
-                    })
-                  }
+                  onPress={() => openPlayerDrawer(player)}
                   activeOpacity={0.7}
                 >
                   <PlayerAvatar
@@ -417,6 +536,121 @@ export default function RosterScreen({ route, navigation }: any) {
                 </View>
               )}
             </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Player contact drawer */}
+      <Modal
+        visible={!!contactPlayer}
+        animationType="slide"
+        transparent
+        onRequestClose={closePlayerDrawer}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={closePlayerDrawer}
+        >
+          <View
+            style={styles.modalContent}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Player</Text>
+              <TouchableOpacity onPress={closePlayerDrawer}>
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.drawerBody}>
+              {contactPlayer ? (
+                <View style={styles.drawerPlayerHeader}>
+                  <PlayerAvatar
+                    photoUrl={contactData?.photo_url ?? contactPlayer.photo_url}
+                    jerseyNumber={
+                      contactData?.jersey_number ?? contactPlayer.jersey_number
+                    }
+                    firstName={contactPlayer.first_name}
+                    lastName={contactPlayer.last_name}
+                    size={64}
+                    teamColor={team?.color || '#8B6BAD'}
+                  />
+                  <View style={styles.drawerPlayerInfo}>
+                    <Text style={styles.playerName}>
+                      {contactPlayer.first_name} {contactPlayer.last_name}
+                    </Text>
+                    <View style={styles.drawerMetaRow}>
+                      {(contactData?.jersey_number ??
+                        contactPlayer.jersey_number) != null ? (
+                        <Text style={styles.drawerMetaText}>
+                          #
+                          {contactData?.jersey_number ??
+                            contactPlayer.jersey_number}
+                        </Text>
+                      ) : null}
+                      {contactData?.position ? (
+                        <Text style={styles.drawerMetaText}>
+                          {contactData.position}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                </View>
+              ) : null}
+
+              {contactLoading ? (
+                <View style={styles.drawerLoading}>
+                  <ActivityIndicator color="#8b5cf6" />
+                </View>
+              ) : contactError ? (
+                <Text style={styles.drawerMuted}>{contactError}</Text>
+              ) : contactData?.contact_shared ? (
+                hasNoContactData(contactData) ? (
+                  <Text style={styles.drawerMuted}>
+                    No contact info on file for this player.
+                  </Text>
+                ) : (
+                  <>
+                    {renderContactSection(
+                      'Parent contact',
+                      `${contactData.parent_first_name || ''} ${
+                        contactData.parent_last_name || ''
+                      }`.trim() || null,
+                      contactData.parent_email ?? null,
+                      contactData.parent_phone ?? null
+                    )}
+                    {renderContactSection(
+                      'Second parent',
+                      contactData.secondary_parent_name ?? null,
+                      contactData.secondary_parent_email ?? null,
+                      contactData.secondary_parent_phone ?? null
+                    )}
+                  </>
+                )
+              ) : contactData ? (
+                <Text style={styles.drawerMuted}>
+                  This family keeps their contact info private.
+                </Text>
+              ) : null}
+
+              <TouchableOpacity
+                style={styles.drawerProfileRow}
+                onPress={() => {
+                  const target = contactPlayer;
+                  closePlayerDrawer();
+                  if (target) {
+                    navigation.navigate('PlayerProfile', {
+                      playerId: target.id,
+                      playerName: `${target.first_name} ${target.last_name}`,
+                    });
+                  }
+                }}
+              >
+                <Text style={styles.drawerProfileText}>View full profile</Text>
+                <Text style={styles.playerArrow}>›</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -710,5 +944,82 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 15,
     textAlign: 'center',
+  },
+  drawerBody: {
+    padding: 16,
+  },
+  drawerPlayerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  drawerPlayerInfo: {
+    flex: 1,
+    marginLeft: 14,
+  },
+  drawerMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  drawerMetaText: {
+    color: '#9CA3AF',
+    fontSize: 14,
+  },
+  drawerLoading: {
+    paddingVertical: 24,
+    alignItems: 'center',
+  },
+  drawerMuted: {
+    color: '#888',
+    fontSize: 15,
+    paddingVertical: 12,
+  },
+  contactSection: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    paddingTop: 16,
+    marginBottom: 16,
+  },
+  contactSectionTitle: {
+    color: '#9CA3AF',
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  contactName: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  contactActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  contactAction: {
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  contactActionText: {
+    color: '#C4B5FD',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  drawerProfileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    paddingTop: 16,
+  },
+  drawerProfileText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

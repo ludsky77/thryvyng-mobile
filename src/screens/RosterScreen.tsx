@@ -11,6 +11,7 @@ import {
   Alert,
   Share,
   Linking,
+  Switch,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -86,6 +87,9 @@ export default function RosterScreen({ route, navigation }: any) {
   const [contactData, setContactData] = useState<any>(null);
   const [contactLoading, setContactLoading] = useState(false);
   const [contactError, setContactError] = useState('');
+  const [shareContact, setShareContact] = useState(false);
+  const [shareSaving, setShareSaving] = useState(false);
+  const [shareError, setShareError] = useState('');
 
   useEffect(() => {
     const checkStaffPermission = async () => {
@@ -214,6 +218,9 @@ export default function RosterScreen({ route, navigation }: any) {
     setContactPlayer(player);
     setContactData(null);
     setContactError('');
+    setShareContact(false);
+    setShareError('');
+    setShareSaving(false);
     setContactLoading(true);
     try {
       const { data, error } = await supabase.rpc('get_player_contact', {
@@ -245,6 +252,7 @@ export default function RosterScreen({ route, navigation }: any) {
         parsed = data;
       }
       setContactData(parsed);
+      setShareContact(!!parsed?.share_contact_with_team);
     } catch (err) {
       console.error('Error fetching player contact:', err);
       setContactError(mapJoinError(err));
@@ -258,6 +266,52 @@ export default function RosterScreen({ route, navigation }: any) {
     setContactData(null);
     setContactError('');
     setContactLoading(false);
+    setShareContact(false);
+    setShareError('');
+    setShareSaving(false);
+  };
+
+  /**
+   * Optimistic flip, then persist. The server is still the authority — a rejected
+   * call reverts the switch and surfaces the reason under the row.
+   */
+  const handleToggleShareContact = async (next: boolean) => {
+    const target = contactPlayer;
+    if (!target) return;
+    const previous = shareContact;
+    setShareContact(next);
+    setShareError('');
+    setShareSaving(true);
+    try {
+      const { error } = await supabase.rpc('set_contact_sharing', {
+        p_player_id: target.id,
+        p_share: next,
+      });
+
+      if (error) {
+        console.error('Error updating contact sharing:', error);
+        const hint =
+          typeof (error as any)?.hint === 'string' ? (error as any).hint.trim() : '';
+        setShareError(
+          hint === 'not_player_family'
+            ? "Only this player's family can change this."
+            : mapJoinError(error)
+        );
+        setShareContact(previous);
+        return;
+      }
+
+      // Keep the cached payload in step so a re-render agrees with the switch.
+      setContactData((prev: any) =>
+        prev ? { ...prev, share_contact_with_team: next } : prev
+      );
+    } catch (err) {
+      console.error('Error updating contact sharing:', err);
+      setShareError(mapJoinError(err));
+      setShareContact(previous);
+    } finally {
+      setShareSaving(false);
+    }
   };
 
   /**
@@ -634,6 +688,27 @@ export default function RosterScreen({ route, navigation }: any) {
                 </Text>
               ) : null}
 
+              {contactData?.is_own_player ? (
+                <View style={styles.shareSection}>
+                  <View style={styles.shareRow}>
+                    <Text style={styles.shareLabel}>
+                      Share our contact info with the team
+                    </Text>
+                    <Switch
+                      value={shareContact}
+                      onValueChange={handleToggleShareContact}
+                      disabled={shareSaving}
+                      trackColor={{ false: '#4B5563', true: '#8b5cf6' }}
+                      thumbColor="#fff"
+                      ios_backgroundColor="#4B5563"
+                    />
+                  </View>
+                  {shareError ? (
+                    <Text style={styles.shareError}>{shareError}</Text>
+                  ) : null}
+                </View>
+              ) : null}
+
               <TouchableOpacity
                 style={styles.drawerProfileRow}
                 onPress={() => {
@@ -1008,6 +1083,28 @@ const styles = StyleSheet.create({
     color: '#C4B5FD',
     fontSize: 14,
     fontWeight: '600',
+  },
+  shareSection: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    paddingTop: 16,
+    marginBottom: 16,
+  },
+  shareRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  shareLabel: {
+    flex: 1,
+    color: '#D1D5DB',
+    fontSize: 15,
+  },
+  shareError: {
+    color: '#ef4444',
+    fontSize: 13,
+    marginTop: 8,
   },
   drawerProfileRow: {
     flexDirection: 'row',

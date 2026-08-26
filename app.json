@@ -55,27 +55,12 @@
             {
               "scheme": "https",
               "host": "thryvyng.com",
-              "pathPrefix": "/register"
-            },
-            {
-              "scheme": "https",
-              "host": "thryvyng.com",
               "pathPrefix": "/accept-coparent"
             },
             {
               "scheme": "https",
               "host": "thryvyng.com",
               "pathPrefix": "/claim-player"
-            },
-            {
-              "scheme": "https",
-              "host": "thryvyng.com",
-              "pathPrefix": "/invitation"
-            },
-            {
-              "scheme": "https",
-              "host": "thryvyng.com",
-              "pathPrefix": "/invitations"
             },
             {
               "scheme": "https",
@@ -96,11 +81,6 @@
               "scheme": "https",
               "host": "www.thryvyng.com",
               "pathPrefix": "/accept-coparent"
-            },
-            {
-              "scheme": "https",
-              "host": "www.thryvyng.com",
-              "pathPrefix": "/invitation"
             }
           ],
           "category": [

@@ -39,6 +39,13 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
     onChangeText(formatPhone(text));
   };
 
+  // Live "incomplete" hint. No blurred/touched flag exists here, so the web
+  // version's post-blur invalid hint has no counterpart; precedence is
+  // external error > live incomplete hint, and only one ever renders.
+  const digits = getRawPhone(value);
+  const isIncomplete = digits.length > 0 && !isPhoneValid(value);
+  const showIncompleteHint = !error && isIncomplete && digits.length >= 4;
+
   return (
     <View style={styles.container}>
       {label && <Text style={styles.label}>{label}</Text>}
@@ -52,6 +59,9 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
         maxLength={14}
       />
       {error && <Text style={styles.errorText}>{error}</Text>}
+      {showIncompleteHint && (
+        <Text style={styles.hintText}>This number looks incomplete</Text>
+      )}
     </View>
   );
 };
@@ -81,6 +91,11 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: '#EF4444',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  hintText: {
+    color: '#F59E0B',
     fontSize: 12,
     marginTop: 4,
   },

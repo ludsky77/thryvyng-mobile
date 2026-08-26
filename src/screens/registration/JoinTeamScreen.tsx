@@ -257,7 +257,7 @@ export const JoinTeamScreen: React.FC = () => {
   const [playerClaimComplete, setPlayerClaimComplete] = useState(false);
   const [showPlayerClaimVerificationModal, setShowPlayerClaimVerificationModal] = useState(false);
 
-  // Player self-registration (self_create teams only)
+  // Player self-registration (teams with player_join_mode 'open' only)
   const [selfCreateMode, setSelfCreateMode] = useState(false);
   const [selfCreateFirstName, setSelfCreateFirstName] = useState('');
   const [selfCreateLastName, setSelfCreateLastName] = useState('');
@@ -909,7 +909,7 @@ export const JoinTeamScreen: React.FC = () => {
     }
     const age = calculateAge(playerClaimDob);
     setPlayerClaimAge(age);
-    const isSelfCreateTeam = (teamInfo as any)?.player_join_mode === 'self_create';
+    const isSelfCreateTeam = (teamInfo as any)?.player_join_mode === 'open';
     const minAge = isSelfCreateTeam ? 16 : 11;
     if (age < minAge) {
       setPlayerClaimAgeError(
@@ -987,7 +987,7 @@ export const JoinTeamScreen: React.FC = () => {
     }
   };
 
-  // Check for an existing player before creating a new one (self_create teams only)
+  // Check for an existing player before creating a new one (teams with player_join_mode 'open' only)
   const handleSelfCreateDupCheck = async () => {
     setSelfCreateError('');
     if (!selfCreateFirstName.trim() || !selfCreateLastName.trim() || !selfCreateEmail.trim()) {
@@ -2467,7 +2467,7 @@ export const JoinTeamScreen: React.FC = () => {
                     </View>
                   )}
 
-    {(teamInfo as any)?.player_join_mode === 'self_create' && !selfCreateMode && (
+    {(teamInfo as any)?.player_join_mode === 'open' && !selfCreateMode && (
       <View style={{ width: '100%', marginTop: 16 }}>
         <Text style={styles.stepSubtitle}>Not on the list?</Text>
         <TouchableOpacity
@@ -2484,7 +2484,7 @@ export const JoinTeamScreen: React.FC = () => {
       </View>
     )}
 
-    {(teamInfo as any)?.player_join_mode === 'self_create' && selfCreateMode && (
+    {(teamInfo as any)?.player_join_mode === 'open' && selfCreateMode && (
       <View style={{ width: '100%', marginTop: 16 }}>
         <Text style={styles.stepTitle}>Register Yourself</Text>
 

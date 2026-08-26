@@ -27,6 +27,7 @@ import {
   CAPTCHA_TIMEOUT_MESSAGE,
 } from '../../lib/captcha';
 import { mapJoinError } from '../../lib/joinErrors';
+import { parseDateOnly } from '../../lib/playerFields';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRegistration } from '../../contexts/RegistrationContext';
 import {
@@ -145,6 +146,39 @@ const mapAuthOrJoinError = (err: any): string => {
     return 'An account with this email already exists. Please sign in instead.';
   }
   return mapJoinError(err);
+};
+
+/**
+ * Full years elapsed since a 'YYYY-MM-DD' DOB, in local time. Null if unparseable.
+ * parseDateOnly builds the Date from local parts, so this avoids the UTC
+ * off-by-one that `new Date('YYYY-MM-DD')` produces in US timezones.
+ */
+const ageFromDateOnly = (dob: string): number | null => {
+  const birth = parseDateOnly(dob);
+  if (Number.isNaN(birth.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age--;
+  }
+  return age;
+};
+
+/** Solo self-registration floor. self_register_player_for_team enforces the same rule. */
+const SELF_REGISTER_MIN_AGE = 16;
+
+/**
+ * Same sentence the mapper gives for the server's under_age_threshold hint.
+ * MESSAGES is not exported from joinErrors, so this asks the mapper for it
+ * rather than duplicating the string.
+ */
+const UNDER_AGE_SELF_REGISTER_MESSAGE = mapJoinError({ hint: 'under_age_threshold' });
+
+/** True only for a parseable DOB below the solo self-registration floor. */
+const isUnderSelfRegisterAge = (dob: string): boolean => {
+  const age = ageFromDateOnly(dob);
+  return age !== null && age < SELF_REGISTER_MIN_AGE;
 };
 
 /** Auto-format team code as user types (max 9 digits + 2 dashes) */
@@ -1003,6 +1037,13 @@ export const JoinTeamScreen: React.FC = () => {
       setSelfCreateError('Please fill in your name and email.');
       return;
     }
+    // Earliest point in the solo self-create path where the DOB is known. The server
+    // rejects under-16 too, but only after signUp has already created a durable
+    // orphan account, so stop here before any network call fires.
+    if (isUnderSelfRegisterAge(playerClaimDob)) {
+      setSelfCreateError(UNDER_AGE_SELF_REGISTER_MESSAGE);
+      return;
+    }
     setSelfCreateChecking(true);
     try {
       const { data, error } = await supabase.rpc('check_self_register_duplicate', {
@@ -1068,6 +1109,13 @@ export const JoinTeamScreen: React.FC = () => {
     const selfCreatePhoneError = validateOptionalPhone(selfCreatePhone);
     if (selfCreatePhoneError) {
       setSelfCreateError(selfCreatePhoneError);
+      return;
+    }
+    // Mirrors the gate in handleSelfCreateDupCheck. Submit is only reachable through
+    // that check today, but this keeps signUp unreachable for an under-16 DOB even if
+    // the render conditions upstream change.
+    if (isUnderSelfRegisterAge(playerClaimDob)) {
+      setSelfCreateError(UNDER_AGE_SELF_REGISTER_MESSAGE);
       return;
     }
     setSelfCreateSubmitting(true);

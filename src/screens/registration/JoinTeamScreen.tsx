@@ -26,6 +26,7 @@ import {
   CaptchaTimeoutError,
   CAPTCHA_TIMEOUT_MESSAGE,
 } from '../../lib/captcha';
+import { mapJoinError } from '../../lib/joinErrors';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRegistration } from '../../contexts/RegistrationContext';
 import {
@@ -685,14 +686,7 @@ export const JoinTeamScreen: React.FC = () => {
 
         if (linkError) {
           if (__DEV__) console.error('link_parent_to_player error:', linkError);
-          const hint = linkError.hint || linkError.details;
-          const message =
-            hint === 'player_not_found' ? 'Player record not found.' :
-            hint === 'dob_mismatch' ? "That doesn't match our records. Please check the date of birth and try again." :
-            hint === 'max_parents_reached' ? 'This player already has two parents linked. Please contact your team manager.' :
-            hint === 'auth_mismatch' ? 'Authentication mismatch. Please log in again.' :
-            linkError.message || 'Failed to link to player';
-          setFormErrors({ submit: message });
+          setFormErrors({ submit: mapJoinError(linkError) });
           return;
         }
 
@@ -755,10 +749,7 @@ export const JoinTeamScreen: React.FC = () => {
         if (playerError) {
           if (__DEV__)
             console.error('[JoinTeam] Player creation error:', playerError);
-          setFormErrors({
-            submit:
-              playerError.message || 'Failed to create player. Please try again.',
-          });
+          setFormErrors({ submit: mapJoinError(playerError) });
           return;
         }
 
@@ -819,13 +810,9 @@ export const JoinTeamScreen: React.FC = () => {
       if (__DEV__) console.log('[JoinTeam] Registration complete!');
     } catch (error: any) {
       console.error('[JoinTeam] Registration error:', error);
-      Alert.alert(
-        'Registration Failed',
-        error?.message || 'An unexpected error occurred. Please try again.'
-      );
-      setFormErrors({
-        submit: error?.message || 'An unexpected error occurred.',
-      });
+      const message = mapJoinError(error);
+      Alert.alert('Registration Failed', message);
+      setFormErrors({ submit: message });
     } finally {
       setIsSubmitting(false);
     }
@@ -1012,27 +999,6 @@ export const JoinTeamScreen: React.FC = () => {
     }
   };
 
-  const mapSelfCreateError = (err: any): string => {
-    const raw = String(err?.message || '');
-    if (raw.includes('user_roles_user_id_fkey')) {
-      return 'Your account was created but we could not finish joining the team. Please sign in and open the team link again.';
-    }
-    if (raw.toLowerCase().includes('rate limit') || raw.includes('429')) {
-      return 'Too many sign-up attempts. Please wait a few minutes and try again.';
-    }
-    if (raw.toLowerCase().includes('already registered') || raw.toLowerCase().includes('already exists')) {
-      return 'An account with this email already exists. Please sign in instead.';
-    }
-    if (raw.includes('under 16') || raw.includes('under_age_threshold')) {
-      return 'Players under 16 must be registered by a parent or guardian.';
-    }
-    if (raw.includes('self_create_not_enabled')) {
-      return 'This team requires you to be added by your club before joining.';
-    }
-    if (raw) return raw;
-    return 'Something went wrong. Please try again.';
-  };
-
   const runSelfRegisterRpc = async (userId: string, email: string): Promise<void> => {
     if (!teamInfo?.id) throw new Error('Team not found. Please reopen the invite link.');
     const { data: result, error: rpcError } = await supabase.rpc('self_register_player_for_team', {
@@ -1145,7 +1111,7 @@ export const JoinTeamScreen: React.FC = () => {
       await runSelfRegisterRpc(userId, email);
     } catch (err: any) {
       if (__DEV__) console.error('[JoinTeam] Self-create submit error:', err);
-      setSelfCreateError(mapSelfCreateError(err));
+      setSelfCreateError(mapJoinError(err));
     } finally {
       setSelfCreateSubmitting(false);
     }
@@ -1160,7 +1126,7 @@ export const JoinTeamScreen: React.FC = () => {
       await runSelfRegisterRpc(selfCreatePending.userId, selfCreatePending.email);
     } catch (err: any) {
       if (__DEV__) console.error('[JoinTeam] Self-create retry error:', err);
-      setSelfCreateError(mapSelfCreateError(err));
+      setSelfCreateError(mapJoinError(err));
     } finally {
       setSelfCreateSubmitting(false);
     }
@@ -1326,15 +1292,7 @@ export const JoinTeamScreen: React.FC = () => {
 
         if (claimError) {
           if (__DEV__) console.error('claim_player_for_team error:', claimError);
-          const hint = claimError.hint || claimError.details;
-          const message =
-            hint === 'player_not_found' ? 'Player record not found.' :
-            hint === 'dob_mismatch' ? "That doesn't match our records. Please check the date of birth and try again." :
-            hint === 'already_claimed_by_another' ? 'This player account has already been claimed by another user. If this is a mistake, please contact your team manager.' :
-            hint === 'self_registration_disabled' ? 'Self-registration has been disabled for your account by your coach. Please contact your team manager.' :
-            hint === 'auth_mismatch' ? 'Authentication mismatch. Please log in again.' :
-            claimError.message || 'Failed to claim account';
-          setPlayerClaimPasswordError(message);
+          setPlayerClaimPasswordError(mapJoinError(claimError));
           setPlayerClaimSubmitting(false);
           return;
         }
@@ -1368,7 +1326,7 @@ export const JoinTeamScreen: React.FC = () => {
       }
     } catch (err: any) {
       if (__DEV__) console.error('[JoinTeam] Claim submit error:', err);
-      setPlayerClaimPasswordError(err.message || 'Failed to claim account. Please try again.');
+      setPlayerClaimPasswordError(mapJoinError(err));
     } finally {
       setPlayerClaimSubmitting(false);
     }
@@ -1388,15 +1346,7 @@ export const JoinTeamScreen: React.FC = () => {
 
       if (claimError) {
         if (__DEV__) console.error('claim_player_for_team error:', claimError);
-        const hint = claimError.hint || claimError.details;
-        const message =
-          hint === 'player_not_found' ? 'Player record not found.' :
-          hint === 'dob_mismatch' ? "That doesn't match our records. Please check the date of birth and try again." :
-          hint === 'already_claimed_by_another' ? 'This player account has already been claimed by another user. If this is a mistake, please contact your team manager.' :
-          hint === 'self_registration_disabled' ? 'Self-registration has been disabled for your account by your coach. Please contact your team manager.' :
-          hint === 'auth_mismatch' ? 'Authentication mismatch. Please log in again.' :
-          claimError.message || 'Failed to claim account';
-        setPlayerClaimPasswordError(message);
+        setPlayerClaimPasswordError(mapJoinError(claimError));
         setPlayerClaimSubmitting(false);
         return;
       }
@@ -1425,7 +1375,7 @@ export const JoinTeamScreen: React.FC = () => {
       setPlayerClaimComplete(true);
     } catch (err: any) {
       if (__DEV__) console.error('[JoinTeam] Claim verify error:', err);
-      setPlayerClaimPasswordError(err.message || 'Failed to claim account.');
+      setPlayerClaimPasswordError(mapJoinError(err));
     } finally {
       setPlayerClaimSubmitting(false);
     }
@@ -1686,7 +1636,7 @@ export const JoinTeamScreen: React.FC = () => {
       await runStaffJoinRpc(authData.user.id, emailLower, staffComputedFullName);
     } catch (err: any) {
       if (__DEV__) console.error('[JoinTeam] Staff submit error:', err);
-      setStaffPasswordError(err.message || 'Failed to join team. Please try again.');
+      setStaffPasswordError(mapJoinError(err));
     } finally {
       setStaffSubmitting(false);
     }
@@ -1705,7 +1655,7 @@ export const JoinTeamScreen: React.FC = () => {
       );
     } catch (err: any) {
       if (__DEV__) console.error('[JoinTeam] Staff join retry error:', err);
-      setStaffPasswordError(err.message || 'Failed to join team. Please try again.');
+      setStaffPasswordError(mapJoinError(err));
     } finally {
       setStaffSubmitting(false);
     }
@@ -1782,7 +1732,7 @@ export const JoinTeamScreen: React.FC = () => {
       await runStaffJoinRpc(userId, email, name);
     } catch (err: any) {
       if (__DEV__) console.error('[JoinTeam] Staff verified error:', err);
-      setStaffPasswordError(err.message || 'Failed to join team.');
+      setStaffPasswordError(mapJoinError(err));
     } finally {
       setStaffSubmitting(false);
     }

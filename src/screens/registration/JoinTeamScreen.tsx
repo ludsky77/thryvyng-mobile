@@ -168,12 +168,18 @@ const ageFromDateOnly = (dob: string): number | null => {
 /** Solo self-registration floor. self_register_player_for_team enforces the same rule. */
 const SELF_REGISTER_MIN_AGE = 16;
 
+/** Claim-an-existing-player floor. claim_player_for_team enforces the same rule. */
+const CLAIM_MIN_AGE = 13;
+
 /**
  * Same sentence the mapper gives for the server's under_age_threshold hint.
  * MESSAGES is not exported from joinErrors, so this asks the mapper for it
  * rather than duplicating the string.
  */
 const UNDER_AGE_SELF_REGISTER_MESSAGE = mapJoinError({ hint: 'under_age_threshold' });
+
+/** Same sentence the mapper gives for the server's under_age_claim hint. */
+const UNDER_AGE_CLAIM_MESSAGE = mapJoinError({ hint: 'under_age_claim' });
 
 /** True only for a parseable DOB below the solo self-registration floor. */
 const isUnderSelfRegisterAge = (dob: string): boolean => {
@@ -902,17 +908,6 @@ export const JoinTeamScreen: React.FC = () => {
     setStep('player-select');
   };
 
-  const calculateAge = (dob: string): number => {
-    const birthDate = new Date(dob);
-    const today = new Date();
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-      age--;
-    }
-    return age;
-  };
-
   const resetPlayerClaimState = () => {
     setPlayerClaimStep('age_gate');
     setPlayerClaimDob('');
@@ -950,13 +945,20 @@ export const JoinTeamScreen: React.FC = () => {
       setPlayerClaimAgeError('Please enter your date of birth');
       return;
     }
-    const age = calculateAge(playerClaimDob);
+    const age = ageFromDateOnly(playerClaimDob);
+    if (age === null) {
+      // An unparseable date must never pass the gate.
+      setPlayerClaimAgeError('Please enter your date of birth');
+      return;
+    }
     setPlayerClaimAge(age);
     const isSelfCreateTeam = (teamInfo as any)?.player_join_mode === 'open';
-    const minAge = isSelfCreateTeam ? 16 : 11;
+    const minAge = isSelfCreateTeam ? SELF_REGISTER_MIN_AGE : CLAIM_MIN_AGE;
     if (age < minAge) {
       setPlayerClaimAgeError(
-        `You must be at least ${minAge} years old to create your own account. Please ask your parent or guardian to register you using this same team link — they should select "Parent / Guardian."`
+        isSelfCreateTeam
+          ? `You must be at least ${minAge} years old to create your own account. Please ask your parent or guardian to register you using this same team link — they should select "Parent / Guardian."`
+          : UNDER_AGE_CLAIM_MESSAGE
       );
     } else {
       setPlayerClaimAgeError('');

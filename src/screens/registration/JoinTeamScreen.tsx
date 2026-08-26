@@ -134,6 +134,19 @@ function validateOptionalPhone(phone: string): string {
   return '';
 }
 
+/**
+ * Supabase auth errors carry their own vocabulary, which the RPC-oriented
+ * join mapper flattens to the generic text. Catch the duplicate-account case
+ * before delegating; everything else stays with mapJoinError.
+ */
+const mapAuthOrJoinError = (err: any): string => {
+  const raw = String(err?.message || '').toLowerCase();
+  if (raw.includes('already registered') || raw.includes('already exists')) {
+    return 'An account with this email already exists. Please sign in instead.';
+  }
+  return mapJoinError(err);
+};
+
 /** Auto-format team code as user types (max 9 digits + 2 dashes) */
 function formatTeamInviteInput(raw: string): string {
   const digits = raw.replace(/\D/g, '').slice(0, 9);
@@ -575,7 +588,16 @@ export const JoinTeamScreen: React.FC = () => {
 
         if (authError) {
           if (__DEV__) console.error('[JoinTeam] Auth error:', authError);
-          setFormErrors({ submit: authError.message });
+          // Duplicate-account only: every other auth message is more useful raw
+          // (password length, email format) than anything a mapper would give.
+          const rawAuth = String(authError.message || '').toLowerCase();
+          const isDuplicate =
+            rawAuth.includes('already registered') || rawAuth.includes('already exists');
+          setFormErrors({
+            submit: isDuplicate
+              ? 'An account with this email already exists. Please sign in instead.'
+              : authError.message,
+          });
           return;
         }
 
@@ -1111,7 +1133,7 @@ export const JoinTeamScreen: React.FC = () => {
       await runSelfRegisterRpc(userId, email);
     } catch (err: any) {
       if (__DEV__) console.error('[JoinTeam] Self-create submit error:', err);
-      setSelfCreateError(mapJoinError(err));
+      setSelfCreateError(mapAuthOrJoinError(err));
     } finally {
       setSelfCreateSubmitting(false);
     }
@@ -1326,7 +1348,7 @@ export const JoinTeamScreen: React.FC = () => {
       }
     } catch (err: any) {
       if (__DEV__) console.error('[JoinTeam] Claim submit error:', err);
-      setPlayerClaimPasswordError(mapJoinError(err));
+      setPlayerClaimPasswordError(mapAuthOrJoinError(err));
     } finally {
       setPlayerClaimSubmitting(false);
     }
@@ -1636,7 +1658,7 @@ export const JoinTeamScreen: React.FC = () => {
       await runStaffJoinRpc(authData.user.id, emailLower, staffComputedFullName);
     } catch (err: any) {
       if (__DEV__) console.error('[JoinTeam] Staff submit error:', err);
-      setStaffPasswordError(mapJoinError(err));
+      setStaffPasswordError(mapAuthOrJoinError(err));
     } finally {
       setStaffSubmitting(false);
     }

@@ -14,6 +14,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import PlayerAvatar from '../components/PlayerAvatar';
+import { mapJoinError } from '../lib/joinErrors';
 
 const TEAM_COLOR_PALETTE = [
   { hex: '#5B7BB5', name: 'Soft Blue' },
@@ -57,16 +58,14 @@ interface Team {
   color?: string | null;
 }
 
+/** Exactly the column set get_team_roster returns — nothing else is available. */
 interface Player {
   id: string;
   first_name: string;
   last_name: string;
   jersey_number: number | null;
-  team_id: string;
-  birth_date?: string | null;
-  date_of_birth?: string | null;
-  position: string | null;
-  parent_email: string | null;
+  photo_url: string | null;
+  status: string | null;
 }
 
 export default function RosterScreen({ route, navigation }: any) {
@@ -81,6 +80,7 @@ export default function RosterScreen({ route, navigation }: any) {
   const [selectedColor, setSelectedColor] = useState('#5B7BB5');
   const [isSavingColor, setIsSavingColor] = useState(false);
   const [isStaffInTeam, setIsStaffInTeam] = useState(false);
+  const [rosterError, setRosterError] = useState('');
 
   useEffect(() => {
     const checkStaffPermission = async () => {
@@ -107,6 +107,8 @@ export default function RosterScreen({ route, navigation }: any) {
       return;
     }
 
+    setRosterError('');
+
     try {
       const { data: teamData, error: teamError } = await supabase
         .from('teams')
@@ -119,14 +121,28 @@ export default function RosterScreen({ route, navigation }: any) {
       setTeam(teamObj);
       setSelectedColor(teamObj?.color || '#5B7BB5');
 
-      const { data: playersData, error: playersError } = await supabase
-        .from('players')
-        .select('*')
-        .eq('team_id', team_id)
-        .order('jersey_number', { ascending: true, nullsFirst: false })
-        .order('last_name', { ascending: true });
+      // SECURITY DEFINER RPC: RLS on `players` hides teammates from parents and
+      // players, so a direct select renders an empty roster for them.
+      const { data: playersData, error: playersError } = await supabase.rpc(
+        'get_team_roster',
+        { p_team_id: team_id }
+      );
 
-      if (playersError) throw playersError;
+      if (playersError) {
+        console.error('Error fetching roster:', playersError);
+        const hint =
+          typeof (playersError as any)?.hint === 'string'
+            ? (playersError as any).hint.trim()
+            : '';
+        // 'not_team_member' has no token in the shared mapper; the mapper stays untouched.
+        setRosterError(
+          hint === 'not_team_member'
+            ? "You don't have access to this team's roster."
+            : mapJoinError(playersError)
+        );
+        setPlayers([]);
+        return;
+      }
 
       const sorted = (playersData || []).sort((a: any, b: any) => {
         const aNum = a.jersey_number;
@@ -173,18 +189,6 @@ export default function RosterScreen({ route, navigation }: any) {
     } finally {
       setIsSavingColor(false);
     }
-  };
-
-  const calculateAge = (birthDate: string | null) => {
-    if (!birthDate) return null;
-    const birth = new Date(birthDate);
-    const today = new Date();
-    let age = today.getFullYear() - birth.getFullYear();
-    const monthDiff = today.getMonth() - birth.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-      age--;
-    }
-    return age;
   };
 
   const teamColor = team?.color || '#8b5cf6';
@@ -276,7 +280,13 @@ export default function RosterScreen({ route, navigation }: any) {
           />
         }
       >
-        {players.length === 0 ? (
+        {rosterError ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyIcon}>🔒</Text>
+            <Text style={styles.emptyTitle}>Roster unavailable</Text>
+            <Text style={styles.emptyText}>{rosterError}</Text>
+          </View>
+        ) : players.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyIcon}>👥</Text>
             <Text style={styles.emptyTitle}>No players yet</Text>
@@ -286,7 +296,6 @@ export default function RosterScreen({ route, navigation }: any) {
           </View>
         ) : (
           players.map((player) => {
-            const age = calculateAge(player.birth_date ?? player.date_of_birth);
             return (
               <View key={player.id} style={styles.playerCard}>
                 <TouchableOpacity
@@ -311,16 +320,6 @@ export default function RosterScreen({ route, navigation }: any) {
                     <Text style={styles.playerName}>
                       {player.first_name} {player.last_name}
                     </Text>
-                    <View style={styles.playerMeta}>
-                      {player.position && (
-                        <View style={styles.positionBadge}>
-                          <Text style={styles.positionText}>{player.position}</Text>
-                        </View>
-                      )}
-                      {age != null && (
-                        <Text style={styles.ageText}>{age} yrs</Text>
-                      )}
-                    </View>
                   </View>
                   <Text style={styles.playerArrow}>›</Text>
                 </TouchableOpacity>

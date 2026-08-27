@@ -26,6 +26,7 @@ import {
   CaptchaTimeoutError,
   CAPTCHA_TIMEOUT_MESSAGE,
 } from '../../lib/captcha';
+import { checkEmailExists } from '../../lib/checkEmailExists';
 import { mapJoinError } from '../../lib/joinErrors';
 import { parseDateOnly } from '../../lib/playerFields';
 import { useAuth } from '../../contexts/AuthContext';
@@ -1376,16 +1377,17 @@ export const JoinTeamScreen: React.FC = () => {
           claimUserId = user!.id;
           claimEmail = sessionEmail;
         } else {
-          const emailAvailable = await new Promise<boolean>((resolve) => {
-            supabase.functions
-              .invoke('check-email-exists', {
-                body: { email: playerClaimEmail.trim().toLowerCase() },
-              })
-              .then(({ data }) => resolve(!data?.exists))
-              .catch(() => resolve(true));
-          });
+          const emailCheck = await checkEmailExists(playerClaimEmail);
 
-          if (!emailAvailable) {
+          // Unknown is not "available": signing up against an unverified answer is
+          // how this path used to strand people on a duplicate-email error later.
+          if (emailCheck.exists === null) {
+            setPlayerClaimPasswordError("We couldn't verify that email. Please try again.");
+            setPlayerClaimSubmitting(false);
+            return;
+          }
+
+          if (emailCheck.exists) {
             setPlayerClaimPasswordError(
               'This email already has an account. Select "I already have an account" instead.'
             );
@@ -1749,11 +1751,14 @@ export const JoinTeamScreen: React.FC = () => {
         return;
       }
 
-      const { data: emailCheck } = await supabase.functions.invoke('check-email-exists', {
-        body: { email: staffEmail.trim().toLowerCase() },
-      });
+      const emailCheck = await checkEmailExists(staffEmail);
 
-      if (emailCheck?.exists) {
+      if (emailCheck.exists === null) {
+        setStaffPasswordError("We couldn't verify that email. Please try again.");
+        return;
+      }
+
+      if (emailCheck.exists) {
         setStaffPasswordError(
           'This email already has an account. Select "Existing Account" instead.'
         );
@@ -1882,11 +1887,27 @@ export const JoinTeamScreen: React.FC = () => {
     setStaffPasswordError('');
 
     try {
-      const { data: emailCheck } = await supabase.functions.invoke('check-email-exists', {
-        body: { email: staffEmail.trim().toLowerCase() },
-      });
+      // Mirrors handleStaffSubmit: an authenticated user already is the account, so
+      // asking the server whether their email exists only burns a captcha to be told
+      // what the session already says. isLoggedIn is function-local in each handler.
+      const isLoggedIn = !!session?.user;
+      if (isLoggedIn) {
+        const userId = session!.user.id;
+        const email = (session!.user.email || staffEmail).trim().toLowerCase();
+        setStaffJoinPending({ userId, email });
+        await runStaffJoinRpc(userId, email);
+        return;
+      }
 
-      if (!emailCheck?.exists) {
+      const emailCheck = await checkEmailExists(staffEmail);
+
+      if (emailCheck.exists === null) {
+        setStaffPasswordError("We couldn't verify that email. Please try again.");
+        setStaffSubmitting(false);
+        return;
+      }
+
+      if (!emailCheck.exists) {
         setStaffPasswordError(
           'No account found with this email. Select "New Account" instead.'
         );

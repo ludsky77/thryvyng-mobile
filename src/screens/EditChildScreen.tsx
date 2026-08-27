@@ -19,6 +19,7 @@ import DateTimePicker, { type DateTimePickerEvent } from '@react-native-communit
 import { useRoute } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import InviteCoParentModal from '../components/InviteCoParentModal';
 
 const AVATAR_BUCKET = 'avatars';
 
@@ -79,6 +80,10 @@ export default function EditChildScreen({ navigation }: { navigation: any }) {
   const [saving, setSaving] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
+  const [teamName, setTeamName] = useState('');
+  const [bothParentsLinked, setBothParentsLinked] = useState(false);
+  const [inviteVisible, setInviteVisible] = useState(false);
+  const [inviteNotice, setInviteNotice] = useState('');
 
   useEffect(() => {
     if (!playerId) {
@@ -137,6 +142,19 @@ export default function EditChildScreen({ navigation }: { navigation: any }) {
       setEmergencyRelation(data.emergency_contact_relation ?? '');
       setAllergies(data.allergies ?? '');
       setMedicalNotes(data.medical_notes ?? '');
+
+      // Both parent slots filled means no room for a co-parent invitation.
+      setBothParentsLinked(!!pe && !!sp);
+
+      if (data.team_id) {
+        const { data: team } = await supabase
+          .from('teams')
+          .select('name')
+          .eq('id', data.team_id)
+          .maybeSingle();
+        if (!cancelled) setTeamName(team?.name ?? '');
+      }
+
       setLoading(false);
     };
 
@@ -291,6 +309,15 @@ export default function EditChildScreen({ navigation }: { navigation: any }) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleInvitePress = () => {
+    if (bothParentsLinked) {
+      setInviteNotice('This player already has two parents linked.');
+      return;
+    }
+    setInviteNotice('');
+    setInviteVisible(true);
   };
 
   const displayPhotoUri = photoFileUri ?? (photoRemoved ? null : photoUrl);
@@ -480,8 +507,28 @@ export default function EditChildScreen({ navigation }: { navigation: any }) {
         </TouchableOpacity>
 
         {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
+
+        <Text style={styles.cardTitle}>Parent Access</Text>
+        <View style={styles.card}>
+          <TouchableOpacity style={styles.inviteButton} onPress={handleInvitePress}>
+            <Text style={styles.inviteButtonText}>Invite Co-Parent</Text>
+          </TouchableOpacity>
+          {inviteNotice ? <Text style={styles.inviteNotice}>{inviteNotice}</Text> : null}
+        </View>
+
         <View style={styles.bottomPad} />
       </ScrollView>
+
+      {playerId && user?.id ? (
+        <InviteCoParentModal
+          visible={inviteVisible}
+          onClose={() => setInviteVisible(false)}
+          playerId={playerId}
+          playerName={`${firstName} ${lastName}`.trim()}
+          teamName={teamName}
+          invitedBy={user.id}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -584,6 +631,21 @@ const styles = StyleSheet.create({
   saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   submitError: {
     color: '#EF4444',
+    fontSize: 14,
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  inviteButton: {
+    backgroundColor: '#8b5cf6',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    minHeight: 52,
+    justifyContent: 'center',
+  },
+  inviteButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  inviteNotice: {
+    color: '#F59E0B',
     fontSize: 14,
     marginTop: 12,
     textAlign: 'center',

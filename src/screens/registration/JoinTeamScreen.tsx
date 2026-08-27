@@ -148,6 +148,17 @@ function validateOptionalPhone(phone: string): string {
 }
 
 /**
+ * Supabase's anti-enumeration response: signing up with an email that already
+ * has an account returns no error and a user object, but with an EMPTY
+ * identities array and no session. Nothing was created.
+ */
+const isExistingEmailSignUp = (data: any): boolean =>
+  !!data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0;
+
+const EXISTING_EMAIL_MESSAGE =
+  'An account with this email already exists. Please sign in instead.';
+
+/**
  * Supabase auth errors carry their own vocabulary, which the RPC-oriented
  * join mapper flattens to the generic text. Catch the duplicate-account case
  * before delegating; everything else stays with mapJoinError.
@@ -707,6 +718,13 @@ export const JoinTeamScreen: React.FC = () => {
           return;
         }
 
+        // Fake-success for an email that already has an account: no error, but an
+        // empty identities array and no session. Nothing was created.
+        if (isExistingEmailSignUp(authData)) {
+          setFormErrors({ submit: EXISTING_EMAIL_MESSAGE });
+          return;
+        }
+
         if (!authData.user) {
           setFormErrors({ submit: 'Failed to create account. Please try again.' });
           return;
@@ -1225,6 +1243,10 @@ export const JoinTeamScreen: React.FC = () => {
           },
         });
         if (signUpError) throw signUpError;
+        if (isExistingEmailSignUp(authData)) {
+          setSelfCreateError(EXISTING_EMAIL_MESSAGE);
+          return;
+        }
         if (!authData.user) throw new Error('Account creation failed. Please try again.');
 
         // Mirror the web app: hydrate the session from the signUp response.
@@ -1392,6 +1414,10 @@ export const JoinTeamScreen: React.FC = () => {
           });
 
           if (authError) throw authError;
+          if (isExistingEmailSignUp(authData)) {
+            setPlayerClaimPasswordError(EXISTING_EMAIL_MESSAGE);
+            return;
+          }
           if (!authData.user) throw new Error('Failed to create account');
 
           // Hydrate the session from the signUp response. If the tokens aren't returned
@@ -1741,6 +1767,10 @@ export const JoinTeamScreen: React.FC = () => {
       });
 
       if (authError) throw authError;
+      if (isExistingEmailSignUp(authData)) {
+        setStaffPasswordError(EXISTING_EMAIL_MESSAGE);
+        return;
+      }
       if (!authData.user) throw new Error('Failed to create account');
 
       // Mirror the player self-create path: hydrate the session from the signUp response.

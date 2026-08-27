@@ -3342,26 +3342,6 @@ export const JoinTeamScreen: React.FC = () => {
         <>
           <Text style={styles.stepTitle}>Player Information</Text>
 
-          {rosterLoadFailed && (
-            <View style={styles.rosterRetryCard}>
-              <Ionicons name="alert-circle" size={20} color="#FCA5A5" />
-              <View style={styles.rosterRetryBody}>
-                <Text style={styles.rosterRetryText}>
-                  We couldn't load the team roster. Please try again.
-                </Text>
-                <TouchableOpacity
-                  style={styles.rosterRetryButton}
-                  onPress={() => {
-                    if (teamInfo?.id) fetchTeamPlayers(teamInfo.id);
-                  }}
-                >
-                  <Ionicons name="refresh" size={16} color="#FFFFFF" />
-                  <Text style={styles.rosterRetryButtonText}>Retry</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
           {existingPlayers.length > 0 && (
             <View style={styles.playerModeToggle}>
               <TouchableOpacity
@@ -3483,8 +3463,7 @@ export const JoinTeamScreen: React.FC = () => {
             </View>
           )}
 
-          {!rosterLoadFailed &&
-            (playerLinkMode === 'new' || existingPlayers.length === 0) && (
+          {(playerLinkMode === 'new' || existingPlayers.length === 0) && (
             <View style={styles.newPlayerForm}>
               <FormInput
                 label="Player First Name"
@@ -3743,7 +3722,6 @@ export const JoinTeamScreen: React.FC = () => {
               playerLinkMode === 'existing' &&
               !selectedPlayerId) &&
               styles.continueButtonDisabled,
-            step === 'player-select' && rosterLoadFailed && styles.continueButtonDisabled,
             isSubmitting && styles.continueButtonDisabled,
           ]}
           onPress={handleContinue}
@@ -3751,7 +3729,6 @@ export const JoinTeamScreen: React.FC = () => {
             (step === 'player-select' &&
               playerLinkMode === 'existing' &&
               !selectedPlayerId) ||
-            (step === 'player-select' && rosterLoadFailed) ||
             isSubmitting
           }
         >

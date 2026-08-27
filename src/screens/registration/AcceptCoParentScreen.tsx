@@ -6,6 +6,8 @@ import {
   ActivityIndicator,
   ScrollView,
   TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -529,9 +531,15 @@ const AcceptCoParentScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.safeAreaRoot} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={90}
+      >
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
       >
         <View style={styles.headerCard}>
           <Ionicons name="people-circle-outline" size={64} color="#22C55E" />
@@ -666,6 +674,7 @@ const AcceptCoParentScreen: React.FC = () => {
           </View>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };

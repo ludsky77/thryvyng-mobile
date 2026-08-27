@@ -14,6 +14,7 @@ import { supabase } from '../../lib/supabase';
 import { LiveGamesWidget } from '../game-stats/LiveGamesWidget';
 import QuickActionsCard from '../QuickActionsCard';
 import PendingSurveyBanner from '../surveys/PendingSurveyBanner';
+import { usePendingStaffRequests } from '../../hooks/usePendingStaffRequests';
 
 interface ClubAdminDashboardProps {
   clubId: string | null;
@@ -43,6 +44,9 @@ export default function ClubAdminDashboard({
   const [club, setClub] = useState<Club | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Top level, not inside the actions array: hooks cannot run conditionally per render.
+  const pendingStaffRequests = usePendingStaffRequests(null, clubId);
 
   const fetchData = useCallback(async () => {
     if (!clubId) {
@@ -283,6 +287,7 @@ export default function ClubAdminDashboard({
               icon: 'person-add-outline',
               label: 'Staff Requests',
               color: '#22c55e',
+              badge: pendingStaffRequests,
               onPress: () =>
                 navigation.navigate('StaffRequests', { clubId }),
             },

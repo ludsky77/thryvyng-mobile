@@ -196,8 +196,11 @@ export default function StaffRequestsScreen({ route, navigation }: any) {
         return;
       }
 
+      // invoke() reports a failed function as a returned error, not a throw, so the
+      // catch alone would let a silently undelivered welcome email look like success.
+      let emailFailed = false;
       try {
-        await supabase.functions.invoke('send-email', {
+        const { error: emailError } = await supabase.functions.invoke('send-email', {
           body: {
             to: req.applicant_email,
             template: 'staff-welcome',
@@ -208,15 +211,23 @@ export default function StaffRequestsScreen({ route, navigation }: any) {
             },
           },
         });
+        if (emailError) {
+          emailFailed = true;
+          if (__DEV__) console.log('[StaffRequests] Welcome email error:', emailError);
+        }
       } catch (emailErr) {
+        emailFailed = true;
         if (__DEV__) console.log('[StaffRequests] Welcome email warning:', emailErr);
       }
 
+      const approvedMessage = `${req.applicant_name || 'They'} joined ${teamNameFor(
+        req.team_id
+      )} as ${formatRole(req.requested_role)}.`;
       Alert.alert(
         'Approved',
-        `${req.applicant_name || 'They'} joined ${teamNameFor(req.team_id)} as ${formatRole(
-          req.requested_role
-        )}.`
+        emailFailed
+          ? `${approvedMessage} We could not send the welcome email — let them know directly.`
+          : approvedMessage
       );
       await fetchData();
     } catch (err: any) {
@@ -474,6 +485,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    // Clears the iOS status bar so the back arrow is tappable (same value as InviteCoParentModal).
+    paddingTop: 56,
     backgroundColor: '#0f172a',
     borderBottomWidth: 1,
     borderBottomColor: '#1e293b',

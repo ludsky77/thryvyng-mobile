@@ -8,6 +8,7 @@ interface QuickAction {
   label: string;
   color: string;
   onPress: () => void;
+  badge?: number;
 }
 
 interface QuickActionsCardProps {
@@ -32,6 +33,11 @@ export default function QuickActionsCard({ actions, title }: QuickActionsCardPro
           <Ionicons name={action.icon as any} size={22} color="#fff" />
         </View>
         <Text style={styles.label}>{action.label}</Text>
+        {!!action.badge && action.badge > 0 && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{action.badge > 99 ? '99+' : action.badge}</Text>
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -120,5 +126,22 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#9ca3af',
     textAlign: 'center',
+  },
+  badge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#ef4444',
+    paddingHorizontal: 5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#fff',
   },
 });

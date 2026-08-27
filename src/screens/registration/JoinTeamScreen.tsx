@@ -91,6 +91,18 @@ function formatYmd(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/**
+ * Display-only: 'YYYY-MM-DD' -> 'MM/DD/YYYY'. State and every RPC argument stay
+ * 'YYYY-MM-DD'; unparseable input is returned untouched.
+ */
+const displayDateMDY = (ymd: string): string => {
+  const d = parseDateOnly(ymd);
+  if (Number.isNaN(d.getTime())) return ymd;
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${mm}/${dd}/${d.getFullYear()}`;
+};
+
 function parseYmdLocal(s: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s.trim());
   if (!match) return null;
@@ -2460,7 +2472,9 @@ export const JoinTeamScreen: React.FC = () => {
                               : styles.dobPickerPlaceholder
                           }
                         >
-                          {playerClaimDob || 'Select date of birth'}
+                          {playerClaimDob
+                            ? displayDateMDY(playerClaimDob)
+                            : 'Select date of birth'}
                         </Text>
                       </TouchableOpacity>
                       {playerClaimAgeError ? (
@@ -3440,7 +3454,7 @@ export const JoinTeamScreen: React.FC = () => {
                           playerDOB ? styles.dobPickerFieldText : styles.dobPickerPlaceholder
                         }
                       >
-                        {playerDOB || 'Select date of birth'}
+                        {playerDOB ? displayDateMDY(playerDOB) : 'Select date of birth'}
                       </Text>
                     </TouchableOpacity>
                     {dobVerifyError ? (
@@ -3503,7 +3517,7 @@ export const JoinTeamScreen: React.FC = () => {
                       playerDOB ? styles.dobPickerFieldText : styles.dobPickerPlaceholder
                     }
                   >
-                    {playerDOB || 'Select date of birth'}
+                    {playerDOB ? displayDateMDY(playerDOB) : 'Select date of birth'}
                   </Text>
                 </TouchableOpacity>
                 {formErrors.playerDOB ? (

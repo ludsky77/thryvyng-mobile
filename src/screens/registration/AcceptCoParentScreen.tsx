@@ -14,6 +14,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   getCaptchaToken,
   CaptchaTimeoutError,
@@ -52,6 +53,8 @@ type ScreenState = 'loading' | 'valid' | 'invalid' | 'expired' | 'used' | 'error
 const AcceptCoParentScreen: React.FC = () => {
   const route = useRoute<AcceptCoParentRouteProp>();
   const navigation = useNavigation<AcceptCoParentNavigationProp>();
+
+  const { user, refreshRoles } = useAuth();
 
   const { code } = route.params;
 
@@ -296,6 +299,14 @@ const AcceptCoParentScreen: React.FC = () => {
         return;
       }
 
+      // Pass the user id explicitly: refreshRoles reads session?.user?.id from context,
+      // which may not have committed yet right after sign-up, so a bare call no-ops.
+      try {
+        await refreshRoles(authData.user.id);
+      } catch {
+        // Non-fatal
+      }
+
       if (__DEV__) console.log('[AcceptCoParent] Link successful, showing success state');
       setLinkedPlayerName(`${invitation.players.first_name} ${invitation.players.last_name}`);
       setScreenState('success');
@@ -386,6 +397,14 @@ const AcceptCoParentScreen: React.FC = () => {
         setPasswordError('Failed to link account');
         setSubmitting(false);
         return;
+      }
+
+      // Pass the user id explicitly: refreshRoles reads session?.user?.id from context,
+      // which may not have committed yet right after sign-in, so a bare call no-ops.
+      try {
+        await refreshRoles(authData.user.id);
+      } catch {
+        // Non-fatal
       }
 
       if (__DEV__) console.log('[AcceptCoParent] Existing-user link successful, showing success state');
@@ -504,10 +523,17 @@ const AcceptCoParentScreen: React.FC = () => {
             <TouchableOpacity
               style={styles.successButton}
               onPress={() => {
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'Dashboard' }],
-                });
+                if (user) {
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'Main' }],
+                  });
+                } else {
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'Welcome' }],
+                  });
+                }
               }}
             >
               <Text style={styles.successButtonText}>Continue to Dashboard</Text>

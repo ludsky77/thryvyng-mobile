@@ -89,27 +89,10 @@ const AcceptCoParentScreen: React.FC = () => {
         setScreenState('loading');
         setErrorMessage('');
 
-        const { data: row, error } = await supabase
-          .from('coparent_invitations')
-          .select(
-            `
-            *,
-            players (
-              id,
-              first_name,
-              last_name,
-              team_id,
-              teams (
-                name,
-                clubs (
-                  name
-                )
-              )
-            )
-          `
-          )
-          .eq('invitation_code', code)
-          .maybeSingle();
+        const { data, error } = await supabase.rpc('get_coparent_invitation', {
+          p_code: code,
+        });
+        const row = Array.isArray(data) ? data[0] ?? null : data ?? null;
 
         if (error || !row) {
           setErrorMessage(
@@ -135,11 +118,20 @@ const AcceptCoParentScreen: React.FC = () => {
           return;
         }
 
-        const playersRaw = row.players as
-          | InvitationData['players']
-          | InvitationData['players'][]
-          | null;
-        const players = Array.isArray(playersRaw) ? playersRaw[0] : playersRaw;
+        const players: InvitationData['players'] | null = row.player_id
+          ? {
+              id: row.player_id,
+              first_name: row.player_first_name,
+              last_name: row.player_last_name,
+              team_id: row.player_team_id,
+              teams: row.team_name
+                ? {
+                    name: row.team_name,
+                    clubs: row.club_name ? { name: row.club_name } : null,
+                  }
+                : null,
+            }
+          : null;
 
         if (!players) {
           setErrorMessage(
@@ -149,17 +141,14 @@ const AcceptCoParentScreen: React.FC = () => {
           return;
         }
 
-        let teams = players.teams;
-        if (Array.isArray(teams)) {
-          teams = teams[0] ?? null;
-        }
-        if (teams?.clubs && Array.isArray(teams.clubs)) {
-          teams = { ...teams, clubs: teams.clubs[0] ?? null };
-        }
-
         setInvitation({
-          ...(row as Omit<InvitationData, 'players'>),
-          players: { ...players, teams: teams ?? null },
+          id: row.invitation_id,
+          player_id: row.player_id,
+          invitee_email: row.invitee_email,
+          invitee_relationship: row.invitee_relationship ?? null,
+          status: row.status,
+          expires_at: row.expires_at ?? null,
+          players,
         });
         setScreenState('valid');
       } catch (err) {

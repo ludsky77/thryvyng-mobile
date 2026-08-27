@@ -2619,10 +2619,19 @@ export const JoinTeamScreen: React.FC = () => {
         <Text style={styles.stepTitle}>Register Yourself</Text>
 
         {selfCreateError ? (
-          <View style={styles.submitErrorContainer}>
-            <Ionicons name="alert-circle" size={20} color="#EF4444" />
-            <Text style={styles.submitErrorText}>{selfCreateError}</Text>
-          </View>
+          <>
+            <View style={styles.submitErrorContainer}>
+              <Ionicons name="alert-circle" size={20} color="#EF4444" />
+              <Text style={styles.submitErrorText}>{selfCreateError}</Text>
+            </View>
+            {selfCreateError === EXISTING_EMAIL_MESSAGE ? (
+              <TouchableOpacity
+                onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Login' }] })}
+              >
+                <Text style={styles.signInLinkText}>Sign in</Text>
+              </TouchableOpacity>
+            ) : null}
+          </>
         ) : null}
 
         {!selfCreateDupMatch && (
@@ -2931,10 +2940,19 @@ export const JoinTeamScreen: React.FC = () => {
                   )}
 
                   {playerClaimPasswordError ? (
-                    <View style={styles.submitErrorContainer}>
-                      <Ionicons name="alert-circle" size={20} color="#EF4444" />
-                      <Text style={styles.submitErrorText}>{playerClaimPasswordError}</Text>
-                    </View>
+                    <>
+                      <View style={styles.submitErrorContainer}>
+                        <Ionicons name="alert-circle" size={20} color="#EF4444" />
+                        <Text style={styles.submitErrorText}>{playerClaimPasswordError}</Text>
+                      </View>
+                      {playerClaimPasswordError === EXISTING_EMAIL_MESSAGE ? (
+                        <TouchableOpacity
+                          onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Login' }] })}
+                        >
+                          <Text style={styles.signInLinkText}>Sign in</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </>
                   ) : null}
 
                   {playerClaimMode && (
@@ -3223,10 +3241,19 @@ export const JoinTeamScreen: React.FC = () => {
                   )}
 
                   {staffPasswordError ? (
-                    <View style={styles.submitErrorContainer}>
-                      <Ionicons name="alert-circle" size={20} color="#EF4444" />
-                      <Text style={styles.submitErrorText}>{staffPasswordError}</Text>
-                    </View>
+                    <>
+                      <View style={styles.submitErrorContainer}>
+                        <Ionicons name="alert-circle" size={20} color="#EF4444" />
+                        <Text style={styles.submitErrorText}>{staffPasswordError}</Text>
+                      </View>
+                      {staffPasswordError === EXISTING_EMAIL_MESSAGE ? (
+                        <TouchableOpacity
+                          onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Login' }] })}
+                        >
+                          <Text style={styles.signInLinkText}>Sign in</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </>
                   ) : null}
 
                   {staffMode && staffJoinPending && staffPasswordError ? (
@@ -3729,10 +3756,19 @@ export const JoinTeamScreen: React.FC = () => {
           </View>
 
           {formErrors.submit && (
-            <View style={styles.submitErrorContainer}>
-              <Ionicons name="alert-circle" size={20} color="#EF4444" />
-              <Text style={styles.submitErrorText}>{formErrors.submit}</Text>
-            </View>
+            <>
+              <View style={styles.submitErrorContainer}>
+                <Ionicons name="alert-circle" size={20} color="#EF4444" />
+                <Text style={styles.submitErrorText}>{formErrors.submit}</Text>
+              </View>
+              {formErrors.submit === EXISTING_EMAIL_MESSAGE ? (
+                <TouchableOpacity
+                  onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Login' }] })}
+                >
+                  <Text style={styles.signInLinkText}>Sign in</Text>
+                </TouchableOpacity>
+              ) : null}
+            </>
           )}
         </>
       )}
@@ -4602,6 +4638,11 @@ const styles = StyleSheet.create({
     color: '#FCA5A5',
     fontSize: 14,
     flex: 1,
+  },
+  signInLinkText: {
+    color: '#8b5cf6',
+    fontWeight: '600',
+    paddingVertical: 8,
   },
   rosterRetryCard: {
     flexDirection: 'row',

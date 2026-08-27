@@ -1475,6 +1475,14 @@ export const JoinTeamScreen: React.FC = () => {
           return;
         }
 
+        // Pass the user id explicitly: refreshRoles reads session?.user?.id from context,
+        // which may not have committed yet right after setSession, so a bare call no-ops.
+        try {
+          await refreshRoles(claimUserId);
+        } catch {
+          // Non-fatal
+        }
+
         try {
           await supabase.functions.invoke('send-email', {
             body: {
@@ -1527,6 +1535,14 @@ export const JoinTeamScreen: React.FC = () => {
         setPlayerClaimPasswordError('Failed to claim account');
         setPlayerClaimSubmitting(false);
         return;
+      }
+
+      // Pass the user id explicitly: refreshRoles reads session?.user?.id from context,
+      // which may not have committed yet right after setSession, so a bare call no-ops.
+      try {
+        await refreshRoles(userId);
+      } catch {
+        // Non-fatal
       }
 
       try {

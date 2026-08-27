@@ -204,6 +204,12 @@ const UNDER_AGE_SELF_REGISTER_MESSAGE = mapJoinError({ hint: 'under_age_threshol
 /** Same sentence the mapper gives for the server's under_age_claim hint. */
 const UNDER_AGE_CLAIM_MESSAGE = mapJoinError({ hint: 'under_age_claim' });
 
+/**
+ * Shown when a 13-15 year old tries to enter solo self-creation. Claiming a roster
+ * spot stays open to them (D12), so this fires at the self-create entry, not the age gate.
+ */
+const UNDER_AGE_SELF_CREATE_ENTRY_MESSAGE = `You must be at least ${SELF_REGISTER_MIN_AGE} years old to create your own account. Please ask your parent or guardian to register you using this same team link — they should select "Parent / Guardian."`;
+
 /** True only for a parseable DOB below the solo self-registration floor. */
 const isUnderSelfRegisterAge = (dob: string): boolean => {
   const age = ageFromDateOnly(dob);
@@ -1041,14 +1047,11 @@ export const JoinTeamScreen: React.FC = () => {
       return;
     }
     setPlayerClaimAge(age);
-    const isSelfCreateTeam = (teamInfo as any)?.player_join_mode === 'open';
-    const minAge = isSelfCreateTeam ? SELF_REGISTER_MIN_AGE : CLAIM_MIN_AGE;
-    if (age < minAge) {
-      setPlayerClaimAgeError(
-        isSelfCreateTeam
-          ? `You must be at least ${minAge} years old to create your own account. Please ask your parent or guardian to register you using this same team link — they should select "Parent / Guardian."`
-          : UNDER_AGE_CLAIM_MESSAGE
-      );
+    // D12: claiming an existing roster spot has one floor (13) on every team mode.
+    // The 16 floor belongs to solo self-creation and is gated at its entry point,
+    // so an open team no longer dead-ends a parent-registered 13-15 year old here.
+    if (age < CLAIM_MIN_AGE) {
+      setPlayerClaimAgeError(UNDER_AGE_CLAIM_MESSAGE);
     } else {
       setPlayerClaimAgeError('');
       if (teamInfo?.id) {
@@ -2313,6 +2316,11 @@ export const JoinTeamScreen: React.FC = () => {
     );
   }
 
+  // Once the player-claim flow moves past its age gate, the role cards are stale UI
+  // stacked above the active panel. The age gate itself still shows them.
+  const playerClaimInProgress =
+    joinRole === 'player' && (playerClaimStep !== 'age_gate' || playerClaimComplete);
+
   // Valid team - show multi-step flow
   return (
     <SafeAreaView style={styles.safeAreaRoot} edges={['top', 'left', 'right']}>
@@ -2419,6 +2427,8 @@ export const JoinTeamScreen: React.FC = () => {
 
       {step === 'role-select' && (
         <>
+          {!playerClaimInProgress && (
+            <>
           <Text style={styles.stepTitle}>How are you joining?</Text>
           <Text style={styles.stepSubtitle}>Select your role for {teamInfo?.name}</Text>
 
@@ -2473,6 +2483,8 @@ export const JoinTeamScreen: React.FC = () => {
             </View>
             <Ionicons name="chevron-forward" size={20} color="#6B7280" />
           </TouchableOpacity>
+            </>
+          )}
 
           {/* Player Claim Flow */}
           {joinRole === 'player' && !playerClaimComplete && (
@@ -2603,6 +2615,11 @@ export const JoinTeamScreen: React.FC = () => {
         <TouchableOpacity
           style={[styles.continueButton, { width: '100%', marginTop: 8 }]}
           onPress={() => {
+            // D12: 13-15 may claim a roster spot but not create their own account.
+            if (isUnderSelfRegisterAge(playerClaimDob)) {
+              setFormErrors({ submit: UNDER_AGE_SELF_CREATE_ENTRY_MESSAGE });
+              return;
+            }
             setSelfCreateMode(true);
             setSelfCreateError('');
             setSelfCreateDupMatch(null);

@@ -43,8 +43,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // Written synchronously inside the auth callback so two events arriving in the same
   // tick can't both schedule handleAuthChange before lastProcessedSessionRef is set.
   const lastScheduledSessionRef = React.useRef<string | null>(null);
+  // The AppState effect has [] deps, so its closure keeps the first-render `session`
+  // forever. These refs give it a live user id and throttle stamp instead.
+  const sessionUserIdRef = React.useRef<string | null>(null);
+  const lastForegroundRefreshRef = React.useRef<number>(0);
 
-  const fetchUserRoles = async (userId: string) => {
+  useEffect(() => {
+    sessionUserIdRef.current = session?.user?.id ?? null;
+  }, [session]);
+
+  // Returns null (not []) when the fetch fails, so callers can tell "no roles" apart
+  // from "could not load roles" and avoid wiping good state on a transient failure.
+  const fetchUserRoles = async (userId: string): Promise<any[] | null> => {
     try {
       const { data, error } = await withTimeout(
         supabase.rpc('get_enriched_roles_v2', { p_user_id: userId }) as unknown as Promise<{ data: any; error: any }>,
@@ -52,7 +62,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       );
       if (error) {
         console.error('Error fetching roles:', error);
-        return [];
+        return null;
       }
       // Map RPC response to match the shape the app expects
       return (data || []).map((r: any) => ({
@@ -90,20 +100,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }));
     } catch (err) {
       console.error('fetchUserRoles timeout:', err);
-      return [];
+      return null;
     }
   };
 
   const refreshRoles = async (overrideUserId?: string) => {
-    const userId = overrideUserId || session?.user?.id;
+    const userId = overrideUserId || session?.user?.id || sessionUserIdRef.current;
     if (!userId) return;
     const roles = await fetchUserRoles(userId);
+    if (roles === null) return;                 // failed fetch: keep current state
     setAllRoles(roles);
-    if (roles.length === 1) {
-      setCurrentRole(roles[0]);
-    } else if (roles.length > 0 && !currentRole) {
-      setCurrentRole(roles[0]);
-    }
+    // Functional updater: a foreground refresh fired from a [] deps effect would
+    // otherwise compare against the currentRole captured on first render.
+    setCurrentRole((prev: any) => {
+      if (roles.length === 1) return roles[0];
+      if (roles.length === 0) return prev;
+      if (!prev) return roles[0];
+      return roles.find((r: any) => r.id === prev.id) ?? prev;
+    });
   };
 
   useEffect(() => {
@@ -121,7 +135,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setLoading(true);
         try {
           // Run profile, roles, and saved role ID fetches in parallel
-          const [profileResult, roles, savedRoleId] = await Promise.all([
+          const [profileResult, rolesResult, savedRoleId] = await Promise.all([
             withTimeout(supabase
               .from('profiles')
               .select('*')
@@ -131,6 +145,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             AsyncStorage.getItem('lastRoleId').then((id) => id ?? AsyncStorage.getItem('currentRoleId')),
           ]);
           setProfile((profileResult as any).data ?? null);
+          // Cold start keeps its original behavior on a failed fetch: empty roles,
+          // profile still set. Only the foreground path treats null as "keep state".
+          const roles = rolesResult ?? [];
           setAllRoles(roles);
 
           // Mark session as processed only after successful role loading
@@ -199,6 +216,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (nextAppState === 'background' || nextAppState === 'inactive') {
         // Remove all realtime subscriptions when app goes to background
         supabase.removeAllChannels();
+      } else if (nextAppState === 'active') {
+        // Roles can change while the app is backgrounded (a claim approved elsewhere).
+        // Throttled so rapid app-switching can't fan out into repeated RPC calls.
+        const now = Date.now();
+        if (sessionUserIdRef.current && now - lastForegroundRefreshRef.current > 15000) {
+          lastForegroundRefreshRef.current = now;
+          refreshRoles(sessionUserIdRef.current).catch(() => {});
+        }
       }
     };
 

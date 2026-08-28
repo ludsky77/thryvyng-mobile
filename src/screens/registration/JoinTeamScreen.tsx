@@ -195,13 +195,6 @@ const SELF_REGISTER_MIN_AGE = 16;
 /** Claim-an-existing-player floor. claim_player_for_team enforces the same rule. */
 const CLAIM_MIN_AGE = 13;
 
-/**
- * Same sentence the mapper gives for the server's under_age_threshold hint.
- * MESSAGES is not exported from joinErrors, so this asks the mapper for it
- * rather than duplicating the string.
- */
-const UNDER_AGE_SELF_REGISTER_MESSAGE = mapJoinError({ hint: 'under_age_threshold' });
-
 /** Same sentence the mapper gives for the server's under_age_claim hint. */
 const UNDER_AGE_CLAIM_MESSAGE = mapJoinError({ hint: 'under_age_claim' });
 
@@ -399,10 +392,6 @@ export const JoinTeamScreen: React.FC = () => {
   const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null);
 
   // Player self-claim state
-  // 'retired' is the parked initial value: the age_gate / find_self / create_account
-  // render blocks below are kept for the cleanup pass but are no longer routed to.
-  const [playerClaimStep, setPlayerClaimStep] = useState<'retired' | 'age_gate' | 'find_self' | 'create_account'>('retired');
-
   // P1a player flow: email -> identity -> (confirm | details). No roster list is rendered.
   const [playerFlowStep, setPlayerFlowStep] = useState<'email' | 'identity' | 'confirm' | 'details'>('email');
   const [playerFlowEmailError, setPlayerFlowEmailError] = useState('');
@@ -415,15 +404,12 @@ export const JoinTeamScreen: React.FC = () => {
   // check_player_claim_status is not guaranteed to echo them back.
   const [playerCandidateRow, setPlayerCandidateRow] = useState<any>(null);
   const [playerClaimDob, setPlayerClaimDob] = useState('');
-  const [playerClaimAge, setPlayerClaimAge] = useState<number | null>(null);
-  const [playerClaimAgeError, setPlayerClaimAgeError] = useState('');
   const [claimablePlayer, setClaimablePlayer] = useState<any>(null);
-  const [claimRosterPlayers, setClaimRosterPlayers] = useState<any[]>([]);
   const [playerClaimEmail, setPlayerClaimEmail] = useState('');
   const [playerClaimPassword, setPlayerClaimPassword] = useState('');
   const [playerClaimConfirmPassword, setPlayerClaimConfirmPassword] = useState('');
   const [playerClaimPasswordError, setPlayerClaimPasswordError] = useState('');
-  const [playerClaimMode, setPlayerClaimMode] = useState<'new' | 'existing' | null>(null);
+  const [playerAccountMode, setPlayerAccountMode] = useState<'new' | 'existing' | null>(null);
   const [playerClaimSubmitting, setPlayerClaimSubmitting] = useState(false);
   const [playerClaimComplete, setPlayerClaimComplete] = useState(false);
   const [showPlayerClaimVerificationModal, setShowPlayerClaimVerificationModal] = useState(false);
@@ -1091,18 +1077,13 @@ export const JoinTeamScreen: React.FC = () => {
   };
 
   const resetPlayerClaimState = () => {
-    // 'retired', not 'age_gate': resetting must not resurrect the old render blocks.
-    setPlayerClaimStep('retired');
     setPlayerClaimDob('');
-    setPlayerClaimAge(null);
-    setPlayerClaimAgeError('');
     setClaimablePlayer(null);
-    setClaimRosterPlayers([]);
     setPlayerClaimEmail('');
     setPlayerClaimPassword('');
     setPlayerClaimConfirmPassword('');
     setPlayerClaimPasswordError('');
-    setPlayerClaimMode(null);
+    setPlayerAccountMode(null);
     setPlayerClaimSubmitting(false);
     setPlayerClaimComplete(false);
     setShowPlayerClaimVerificationModal(false);
@@ -1121,8 +1102,8 @@ export const JoinTeamScreen: React.FC = () => {
     setSelfCreateError('');
   };
 
-  // Returns the rows as well as storing them: the P1a identity step matches against
-  // the roster without ever rendering it, so it needs the data in-hand, not in state.
+  // The identity step matches against the roster without ever rendering it, so the
+  // rows are returned to the caller rather than parked in state.
   const fetchRosterForClaim = async (teamId: string): Promise<any[]> => {
     try {
       const { data, error } = await supabase
@@ -1131,101 +1112,10 @@ export const JoinTeamScreen: React.FC = () => {
         .eq('team_id', teamId)
         .order('last_name', { ascending: true });
       if (error) throw error;
-      setClaimRosterPlayers(data || []);
       return data || [];
     } catch (err) {
       if (__DEV__) console.error('[JoinTeam] Error fetching roster for claim:', err);
-      setClaimRosterPlayers([]);
       return [];
-    }
-  };
-
-  const handlePlayerClaimAgeCheck = () => {
-    if (!playerClaimDob) {
-      setPlayerClaimAgeError('Please enter your date of birth');
-      return;
-    }
-    const age = ageFromDateOnly(playerClaimDob);
-    if (age === null) {
-      // An unparseable date must never pass the gate.
-      setPlayerClaimAgeError('Please enter your date of birth');
-      return;
-    }
-    setPlayerClaimAge(age);
-    // D12: claiming an existing roster spot has one floor (13) on every team mode.
-    // The 16 floor belongs to solo self-creation and is gated at its entry point,
-    // so an open team no longer dead-ends a parent-registered 13-15 year old here.
-    if (age < CLAIM_MIN_AGE) {
-      setPlayerClaimAgeError(UNDER_AGE_CLAIM_MESSAGE);
-    } else {
-      setPlayerClaimAgeError('');
-      if (teamInfo?.id) {
-        fetchRosterForClaim(teamInfo.id);
-      }
-      setPlayerClaimStep('find_self');
-    }
-  };
-
-  const handleSelectSelfFromRoster = async (player: any) => {
-    try {
-      const { data: isMatch, error: dobError } = await supabase.rpc('verify_player_dob', {
-        player_id: player.id,
-        provided_dob: playerClaimDob,
-      });
-
-      if (dobError) {
-        if (__DEV__) console.error('[JoinTeam] DOB verify error:', dobError);
-        setFormErrors({ submit: 'Unable to verify. Please try again.' });
-        return;
-      }
-
-      if (!isMatch) {
-        setFormErrors({
-          submit:
-            "That doesn't match our records. Make sure you entered your correct date of birth on the previous screen.",
-        });
-        return;
-      }
-
-      const { data: fullPlayer, error: claimError } = await supabase.rpc('check_player_claim_status', {
-        target_player_id: player.id,
-      });
-
-      if (claimError) {
-        if (__DEV__) console.error('[JoinTeam] Claim check error:', claimError);
-        setFormErrors({ submit: 'Unable to verify player status. Please try again.' });
-        return;
-      }
-
-      if (fullPlayer?.claimed_at) {
-        // Allow rightful claimant to re-enter — already linked, just exit to main app
-        const callerEmail = user?.email?.toLowerCase();
-        const claimantEmail = (fullPlayer.email as string | null | undefined)?.toLowerCase();
-        if (callerEmail && claimantEmail && callerEmail === claimantEmail) {
-          exitToMain();
-          return;
-        }
-        setFormErrors({
-          submit:
-            'This player account has already been claimed. If this is a mistake, please contact your team manager.',
-        });
-        return;
-      }
-
-      if (!fullPlayer?.allow_self_registration) {
-        setFormErrors({
-          submit:
-            'Self-registration has been disabled for your account by your coach. Please contact your team manager.',
-        });
-        return;
-      }
-
-      setFormErrors({});
-      setClaimablePlayer(fullPlayer);
-      setPlayerClaimStep('create_account');
-    } catch (err) {
-      if (__DEV__) console.error('[JoinTeam] Select self error:', err);
-      setFormErrors({ submit: 'Something went wrong. Please try again.' });
     }
   };
 
@@ -1240,7 +1130,7 @@ export const JoinTeamScreen: React.FC = () => {
     // rejects under-16 too, but only after signUp has already created a durable
     // orphan account, so stop here before any network call fires.
     if (isUnderSelfRegisterAge(playerClaimDob)) {
-      setSelfCreateError(UNDER_AGE_SELF_REGISTER_MESSAGE);
+      setSelfCreateError(UNDER_AGE_SELF_CREATE_ENTRY_MESSAGE);
       return;
     }
     setSelfCreateChecking(true);
@@ -1314,7 +1204,7 @@ export const JoinTeamScreen: React.FC = () => {
     // that check today, but this keeps signUp unreachable for an under-16 DOB even if
     // the render conditions upstream change.
     if (isUnderSelfRegisterAge(playerClaimDob)) {
-      setSelfCreateError(UNDER_AGE_SELF_REGISTER_MESSAGE);
+      setSelfCreateError(UNDER_AGE_SELF_CREATE_ENTRY_MESSAGE);
       return;
     }
     setSelfCreateSubmitting(true);
@@ -1470,9 +1360,9 @@ export const JoinTeamScreen: React.FC = () => {
   };
 
   /**
-   * Modal onVerified for the email step. Unlike the retired handlePlayerClaimVerified
-   * this does NOT claim anything - there is no candidate yet. It banks the verified
-   * identity and moves on; handlePlayerClaimSubmit's isLoggedIn path does the claim.
+   * Modal onVerified for the email step. This does NOT claim anything - there is no
+   * candidate yet. It banks the verified identity and moves on; the claim happens at
+   * 'confirm' via handlePlayerClaimSubmit's isLoggedIn path.
    */
   const handlePlayerEmailVerified = (userId: string, email: string) => {
     setShowPlayerClaimVerificationModal(false);
@@ -1604,7 +1494,7 @@ export const JoinTeamScreen: React.FC = () => {
       setPlayerCandidateRow(candidate);
       // misleading name, rename in cleanup: 'new' selects handlePlayerClaimSubmit's
       // claim branch, whose isLoggedIn path skips signUp for an already-signed-in user.
-      setPlayerClaimMode('new');
+      setPlayerAccountMode('new');
       setPlayerFlowStep('confirm');
     } catch (err) {
       if (__DEV__) console.error('[JoinTeam] Identity continue error:', err);
@@ -1618,7 +1508,7 @@ export const JoinTeamScreen: React.FC = () => {
   const handleCandidateNotMe = () => {
     setClaimablePlayer(null);
     setPlayerCandidateRow(null);
-    setPlayerClaimMode(null);
+    setPlayerAccountMode(null);
     setPlayerClaimPasswordError('');
     setPlayerFlowStep('identity');
     routeToSelfCreate();
@@ -1652,7 +1542,7 @@ export const JoinTeamScreen: React.FC = () => {
         return;
       }
 
-      if (playerClaimMode === 'new') {
+      if (playerAccountMode === 'new') {
         if (!playerClaimPassword) {
           setPlayerClaimPasswordError('Password is required');
           return;
@@ -1672,7 +1562,7 @@ export const JoinTeamScreen: React.FC = () => {
     setPlayerClaimPasswordError('');
 
     try {
-      if (playerClaimMode === 'new') {
+      if (playerAccountMode === 'new') {
         let claimUserId: string;
         let claimEmail: string;
 
@@ -1682,24 +1572,9 @@ export const JoinTeamScreen: React.FC = () => {
           claimUserId = user!.id;
           claimEmail = sessionEmail;
         } else {
-          const emailCheck = await checkEmailExists(playerClaimEmail);
-
-          // Unknown is not "available": signing up against an unverified answer is
-          // how this path used to strand people on a duplicate-email error later.
-          if (emailCheck.exists === null) {
-            setPlayerClaimPasswordError("We couldn't verify that email. Please try again.");
-            setPlayerClaimSubmitting(false);
-            return;
-          }
-
-          if (emailCheck.exists) {
-            setPlayerClaimPasswordError(
-              'This email already has an account. Select "I already have an account" instead.'
-            );
-            setPlayerClaimSubmitting(false);
-            return;
-          }
-
+          // No existence lookup here: the 'email' step already resolved it (and an
+          // existing account was signed in there), so re-asking only spent a second
+          // captcha to be told the same thing.
           let captchaToken: string | null;
           try {
             captchaToken = await getCaptchaToken();
@@ -1806,7 +1681,7 @@ export const JoinTeamScreen: React.FC = () => {
         }
 
         setPlayerClaimComplete(true);
-      } else if (playerClaimMode === 'existing') {
+      } else if (playerAccountMode === 'existing') {
         setShowPlayerClaimVerificationModal(true);
         setPlayerClaimSubmitting(false);
         return;
@@ -1814,64 +1689,6 @@ export const JoinTeamScreen: React.FC = () => {
     } catch (err: any) {
       if (__DEV__) console.error('[JoinTeam] Claim submit error:', err);
       setPlayerClaimPasswordError(mapAuthOrJoinError(err));
-    } finally {
-      setPlayerClaimSubmitting(false);
-    }
-  };
-
-  // DEAD after P1a — remove in cleanup
-  const handlePlayerClaimVerified = async (userId: string, email: string) => {
-    setShowPlayerClaimVerificationModal(false);
-    setPlayerClaimSubmitting(true);
-
-    try {
-      const { data: claimResult, error: claimError } = await supabase.rpc('claim_player_for_team', {
-        p_player_id: claimablePlayer.id,
-        p_user_id: userId,
-        p_user_email: playerClaimEmail.trim().toLowerCase(),
-        p_verified_dob: playerClaimDob,
-      });
-
-      if (claimError) {
-        if (__DEV__) console.error('claim_player_for_team error:', claimError);
-        setPlayerClaimPasswordError(mapJoinError(claimError));
-        setPlayerClaimSubmitting(false);
-        return;
-      }
-
-      if (!claimResult?.success) {
-        setPlayerClaimPasswordError('Failed to claim account');
-        setPlayerClaimSubmitting(false);
-        return;
-      }
-
-      // Pass the user id explicitly: refreshRoles reads session?.user?.id from context,
-      // which may not have committed yet right after setSession, so a bare call no-ops.
-      try {
-        await refreshRoles(userId);
-      } catch {
-        // Non-fatal
-      }
-
-      try {
-        await supabase.functions.invoke('send-email', {
-          body: {
-            to: playerClaimEmail.trim(),
-            template: 'player-registration',
-            data: {
-              playerName: `${claimablePlayer.first_name} ${claimablePlayer.last_name}`,
-              teamName: teamInfo?.name,
-            },
-          },
-        });
-      } catch (emailErr) {
-        if (__DEV__) console.log('[JoinTeam] Email warning:', emailErr);
-      }
-
-      setPlayerClaimComplete(true);
-    } catch (err: any) {
-      if (__DEV__) console.error('[JoinTeam] Claim verify error:', err);
-      setPlayerClaimPasswordError(mapJoinError(err));
     } finally {
       setPlayerClaimSubmitting(false);
     }
@@ -2419,7 +2236,6 @@ export const JoinTeamScreen: React.FC = () => {
       const maxDob = new Date();
       const clamped = clampDate(date, MIN_SELF_REGISTER_DOB, maxDob);
       setPlayerClaimDob(formatYmd(clamped));
-      setPlayerClaimAgeError('');
     }
   };
 
@@ -2919,10 +2735,12 @@ export const JoinTeamScreen: React.FC = () => {
                       </View>
                       {playerCandidateLocked ? (
                         <TouchableOpacity
-                          style={[styles.continueButton, { width: '100%', marginBottom: 8 }]}
+                          style={[styles.continueButton, styles.identityEscapeButton]}
                           onPress={routeToSelfCreate}
                         >
-                          <Text style={styles.continueButtonText}>
+                          <Text
+                            style={[styles.continueButtonText, styles.identityEscapeButtonText]}
+                          >
                             Not on the roster? Continue as new player
                           </Text>
                           <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
@@ -3336,521 +3154,6 @@ export const JoinTeamScreen: React.FC = () => {
                     disabled={selfCreateSubmitting}
                   >
                     <Text style={styles.placeholderBackText}>← Back to name and birthday</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {playerClaimStep === 'age_gate' && (
-                <View style={styles.placeholderCard}>
-                  <Ionicons name="football-outline" size={48} color="#3B82F6" />
-                  <Text style={styles.placeholderTitle}>Player Registration</Text>
-                  <Text style={styles.placeholderText}>Enter your date of birth to get started</Text>
-
-                  <View style={{ width: '100%', marginTop: 8 }}>
-                    <View style={styles.dobPickerBlock}>
-                      <Text style={styles.dobPickerLabel}>Date of Birth</Text>
-                      <TouchableOpacity
-                        style={[
-                          styles.dobPickerField,
-                          playerClaimAgeError ? styles.dobPickerFieldError : null,
-                        ]}
-                        onPress={openClaimDobPicker}
-                        activeOpacity={0.8}
-                      >
-                        <Text
-                          style={
-                            playerClaimDob
-                              ? styles.dobPickerFieldText
-                              : styles.dobPickerPlaceholder
-                          }
-                        >
-                          {playerClaimDob
-                            ? displayDateMDY(playerClaimDob)
-                            : 'Select date of birth'}
-                        </Text>
-                      </TouchableOpacity>
-                      {playerClaimAgeError ? (
-                        <Text style={styles.dobPickerErrorText}>{playerClaimAgeError}</Text>
-                      ) : null}
-                    </View>
-                    {claimDobPickerVisible ? (
-                      <DateTimePicker
-                        value={claimDobPickerDate}
-                        mode="date"
-                        textColor={colors.text}
-                        themeVariant="dark"
-                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                        maximumDate={new Date()}
-                        minimumDate={MIN_SELF_REGISTER_DOB}
-                        onChange={onClaimDobPickerChange}
-                      />
-                    ) : null}
-                    {Platform.OS === 'ios' && claimDobPickerVisible ? (
-                      <TouchableOpacity style={styles.dobDone} onPress={() => setClaimDobPickerVisible(false)}>
-                        <Text style={styles.dobDoneText}>Done</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-
-                  <TouchableOpacity
-                    style={[styles.continueButton, { marginTop: 16, width: '100%' }]}
-                    onPress={handlePlayerClaimAgeCheck}
-                  >
-                    <Text style={styles.continueButtonText}>Continue</Text>
-                    <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.placeholderBackButton}
-                    onPress={() => {
-                      resetPlayerClaimState();
-                      setJoinRole(null);
-                    }}
-                  >
-                    <Text style={styles.placeholderBackText}>← Choose a different role</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {/* FIND YOURSELF ON ROSTER */}
-              {playerClaimStep === 'find_self' && (
-                <View style={{ width: '100%' }}>
-                  <Text style={styles.stepTitle}>Find Yourself</Text>
-                  <Text style={styles.stepSubtitle}>Select your name from the team roster</Text>
-
-                  {formErrors.submit && (
-                    <View style={styles.submitErrorContainer}>
-                      <Ionicons name="alert-circle" size={20} color="#EF4444" />
-                      <Text style={styles.submitErrorText}>{formErrors.submit}</Text>
-                    </View>
-                  )}
-
-                  {claimRosterPlayers.length === 0 ? (
-                    <View style={styles.placeholderCard}>
-                      <Text style={styles.placeholderText}>
-                        No players found on this team. Your parent or guardian needs to register
-                        you first. Ask them to use this same team link and select "Parent /
-                        Guardian."
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={styles.playerList}>
-                      {claimRosterPlayers.map((player) => (
-                        <TouchableOpacity
-                          key={player.id}
-                          style={[styles.playerItem]}
-                          onPress={() => {
-                            setFormErrors({});
-                            handleSelectSelfFromRoster(player);
-                          }}
-                        >
-                          <View style={styles.playerItemContent}>
-                            <Text style={styles.playerItemName}>
-                              {player.first_name} {player.last_name}
-                            </Text>
-                            <Text style={styles.playerItemJersey}>
-                              Born: {player.birth_year}
-                              {player.jersey_number ? ` · #${player.jersey_number}` : ''}
-                            </Text>
-                          </View>
-                          <Ionicons name="chevron-forward" size={20} color="#6B7280" />
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-
-    {(teamInfo as any)?.player_join_mode === 'open' && !selfCreateMode && (
-      <View style={{ width: '100%', marginTop: 16 }}>
-        <Text style={styles.stepSubtitle}>Not on the list?</Text>
-        <TouchableOpacity
-          style={[styles.continueButton, { width: '100%', marginTop: 8 }]}
-          onPress={() => {
-            // D12: 13-15 may claim a roster spot but not create their own account.
-            if (isUnderSelfRegisterAge(playerClaimDob)) {
-              setFormErrors({ submit: UNDER_AGE_SELF_CREATE_ENTRY_MESSAGE });
-              return;
-            }
-            setSelfCreateMode(true);
-            setSelfCreateError('');
-            setSelfCreateDupMatch(null);
-          }}
-        >
-          <Text style={styles.continueButtonText}>Register Yourself</Text>
-          <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
-    )}
-
-    {(teamInfo as any)?.player_join_mode === 'open' && selfCreateMode && (
-      <View style={{ width: '100%', marginTop: 16 }}>
-        <Text style={styles.stepTitle}>Register Yourself</Text>
-
-        {selfCreateError ? (
-          <>
-            <View style={styles.submitErrorContainer}>
-              <Ionicons name="alert-circle" size={20} color="#EF4444" />
-              <Text style={styles.submitErrorText}>{selfCreateError}</Text>
-            </View>
-            {selfCreateError === EXISTING_EMAIL_MESSAGE ? (
-              <TouchableOpacity
-                onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Login' }] })}
-              >
-                <Text style={styles.signInLinkText}>Sign in</Text>
-              </TouchableOpacity>
-            ) : null}
-          </>
-        ) : null}
-
-        {!selfCreateDupMatch && (
-          <View style={styles.newPlayerForm}>
-            <FormInput
-              label="First Name"
-              value={selfCreateFirstName}
-              onChangeText={setSelfCreateFirstName}
-              placeholder="First name"
-              autoCapitalize="words"
-              error=""
-            />
-            <FormInput
-              label="Last Name"
-              value={selfCreateLastName}
-              onChangeText={setSelfCreateLastName}
-              placeholder="Last name"
-              autoCapitalize="words"
-              error=""
-            />
-            {user ? (
-              <>
-                <FormInput
-                  label="Your Email"
-                  value={selfCreateEmail || user.email || ''}
-                  onChangeText={() => { /* locked to session email */ }}
-                  editable={false}
-                  style={{ opacity: 0.7 }}
-                />
-                <TouchableOpacity
-                  onPress={handleSelfCreateSignOut}
-                  style={{ marginTop: -8, marginBottom: 16, alignSelf: 'flex-end' }}
-                >
-                  <Text style={{ color: '#60A5FA', fontSize: 12, fontWeight: '600' }}>
-                    Not you? Sign out
-                  </Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <EmailInput
-                label="Your Email"
-                value={selfCreateEmail}
-                onChangeText={setSelfCreateEmail}
-                placeholder="your.email@example.com"
-                error=""
-              />
-            )}
-            <TouchableOpacity
-              style={[styles.continueButton, selfCreateChecking && styles.continueButtonDisabled, { width: '100%' }]}
-              onPress={handleSelfCreateDupCheck}
-              disabled={selfCreateChecking}
-            >
-              <Text style={styles.continueButtonText}>
-                {selfCreateChecking ? 'Checking...' : 'Continue'}
-              </Text>
-              {selfCreateChecking ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.placeholderBackButton}
-              onPress={() => setSelfCreateMode(false)}
-            >
-              <Text style={styles.placeholderBackText}>← Back to roster</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {selfCreateDupMatch?.match_type === 'email' && (
-          <View style={styles.placeholderCard}>
-            <Text style={styles.placeholderText}>
-              You already have an account with this email. Please sign in to join this team.
-            </Text>
-            <TouchableOpacity
-              style={[styles.continueButton, { width: '100%', marginTop: 16 }]}
-              onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Login' }] })}
-            >
-              <Text style={styles.continueButtonText}>Sign In</Text>
-              <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.placeholderBackButton}
-              onPress={() => setSelfCreateDupMatch(null)}
-            >
-              <Text style={styles.placeholderBackText}>← Use a different email</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {selfCreateDupMatch?.match_type === 'name_dob' && (
-          <View style={styles.placeholderCard}>
-            <Text style={styles.placeholderText}>
-              We found an existing player with your name and date of birth. If that's you, sign in to link your account. If not, continue and we'll create a new one.
-            </Text>
-            <TouchableOpacity
-              style={[styles.continueButton, { width: '100%', marginTop: 16 }]}
-              onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Login' }] })}
-            >
-              <Text style={styles.continueButtonText}>Sign In</Text>
-              <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.placeholderBackButton}
-              onPress={() => setSelfCreateDupMatch({ match_type: 'none' })}
-            >
-              <Text style={styles.placeholderBackText}>Not me — continue</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {selfCreateDupMatch?.match_type === 'none' && (
-          <View style={styles.newPlayerForm}>
-            <FormInput
-              label="Jersey Number (optional)"
-              value={selfCreateJersey}
-              onChangeText={setSelfCreateJersey}
-              placeholder="e.g. 10"
-              keyboardType="number-pad"
-              error=""
-            />
-            <FormInput
-              label="Phone (optional)"
-              value={selfCreatePhone}
-              onChangeText={setSelfCreatePhone}
-              placeholder="Phone number"
-              keyboardType="phone-pad"
-              error=""
-            />
-            {!user && (
-              <PasswordInput
-                label="Create a Password"
-                value={selfCreatePassword}
-                onChangeText={setSelfCreatePassword}
-                showValidation={true}
-                error=""
-              />
-            )}
-            {selfCreatePending && selfCreateError ? (
-              <TouchableOpacity
-                style={[styles.continueButton, selfCreateSubmitting && styles.continueButtonDisabled, { width: '100%' }]}
-                onPress={handleSelfCreateRetry}
-                disabled={selfCreateSubmitting}
-              >
-                <Text style={styles.continueButtonText}>
-                  {selfCreateSubmitting ? 'Retrying...' : 'Try again'}
-                </Text>
-                {selfCreateSubmitting ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Ionicons name="refresh" size={20} color="#FFFFFF" />
-                )}
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={[styles.continueButton, selfCreateSubmitting && styles.continueButtonDisabled, { width: '100%' }]}
-                onPress={handleSelfCreateSubmit}
-                disabled={selfCreateSubmitting}
-              >
-                <Text style={styles.continueButtonText}>
-                  {selfCreateSubmitting
-                    ? (user ? 'Joining...' : 'Creating account...')
-                    : (user ? 'Join Team' : 'Create Account & Join Team')}
-                </Text>
-                {selfCreateSubmitting ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-                )}
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-      </View>
-    )}
-
-                  <TouchableOpacity
-                    style={styles.placeholderBackButton}
-                    onPress={() => setPlayerClaimStep('age_gate')}
-                  >
-                    <Text style={styles.placeholderBackText}>← Back to date of birth</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {/* CREATE YOUR ACCOUNT */}
-              {playerClaimStep === 'create_account' && claimablePlayer && (
-                <View style={{ width: '100%' }}>
-                  <Text style={styles.stepTitle}>Create Your Account</Text>
-
-                  <View style={styles.summaryCard}>
-                    <Text style={styles.summaryTitle}>Claiming Account For</Text>
-                    <Text style={styles.summaryText}>
-                      {claimablePlayer.first_name} {claimablePlayer.last_name}
-                    </Text>
-                    <Text style={styles.summarySubtext}>{teamInfo?.name}</Text>
-                  </View>
-
-                  <View style={styles.playerModeToggle}>
-                    <TouchableOpacity
-                      style={[
-                        styles.playerModeOption,
-                        playerClaimMode === 'new' && styles.playerModeActive,
-                      ]}
-                      onPress={() => setPlayerClaimMode('new')}
-                    >
-                      <Text
-                        style={[
-                          styles.playerModeText,
-                          playerClaimMode === 'new' && styles.playerModeTextActive,
-                        ]}
-                      >
-                        New Account
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.playerModeOption,
-                        playerClaimMode === 'existing' && styles.playerModeActive,
-                      ]}
-                      onPress={() => setPlayerClaimMode('existing')}
-                    >
-                      <Text
-                        style={[
-                          styles.playerModeText,
-                          playerClaimMode === 'existing' && styles.playerModeTextActive,
-                        ]}
-                      >
-                        Existing Account
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {playerClaimMode === 'new' && (
-                    <View style={styles.newPlayerForm}>
-                      {user ? (
-                        <>
-                          <FormInput
-                            label="Your Email (not your parent's)"
-                            value={user.email || ''}
-                            onChangeText={() => { /* locked to session email */ }}
-                            editable={false}
-                            style={{ opacity: 0.7 }}
-                          />
-                          <TouchableOpacity
-                            onPress={handleSelfCreateSignOut}
-                            style={{ marginTop: -8, marginBottom: 16, alignSelf: 'flex-end' }}
-                          >
-                            <Text style={{ color: '#60A5FA', fontSize: 12, fontWeight: '600' }}>
-                              Logged in as {user.email} — Not you? Sign out
-                            </Text>
-                          </TouchableOpacity>
-                        </>
-                      ) : (
-                        <EmailInput
-                          label="Your Email (not your parent's)"
-                          value={playerClaimEmail}
-                          onChangeText={(text) => {
-                            setPlayerClaimEmail(text);
-                            setPlayerClaimPasswordError('');
-                          }}
-                          placeholder="your.email@example.com"
-                          error=""
-                        />
-                      )}
-                      {!user && (
-                        <>
-                          <PasswordInput
-                            label="Password"
-                            value={playerClaimPassword}
-                            onChangeText={(text) => {
-                              setPlayerClaimPassword(text);
-                              setPlayerClaimPasswordError('');
-                            }}
-                            showValidation={true}
-                            error=""
-                          />
-                          <PasswordInput
-                            label="Confirm Password"
-                            value={playerClaimConfirmPassword}
-                            onChangeText={(text) => {
-                              setPlayerClaimConfirmPassword(text);
-                              setPlayerClaimPasswordError('');
-                            }}
-                            error=""
-                          />
-                        </>
-                      )}
-                    </View>
-                  )}
-
-                  {playerClaimMode === 'existing' && (
-                    <View style={styles.newPlayerForm}>
-                      <EmailInput
-                        label="Your Email"
-                        value={playerClaimEmail}
-                        onChangeText={(text) => {
-                          setPlayerClaimEmail(text);
-                          setPlayerClaimPasswordError('');
-                        }}
-                        placeholder="your.email@example.com"
-                        error=""
-                      />
-                    </View>
-                  )}
-
-                  {playerClaimPasswordError ? (
-                    <>
-                      <View style={styles.submitErrorContainer}>
-                        <Ionicons name="alert-circle" size={20} color="#EF4444" />
-                        <Text style={styles.submitErrorText}>{playerClaimPasswordError}</Text>
-                      </View>
-                      {playerClaimPasswordError === EXISTING_EMAIL_MESSAGE ? (
-                        <TouchableOpacity
-                          onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Login' }] })}
-                        >
-                          <Text style={styles.signInLinkText}>Sign in</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </>
-                  ) : null}
-
-                  {playerClaimMode && (
-                    <TouchableOpacity
-                      style={[styles.continueButton, playerClaimSubmitting && styles.continueButtonDisabled]}
-                      onPress={handlePlayerClaimSubmit}
-                      disabled={playerClaimSubmitting}
-                    >
-                      <Text style={styles.continueButtonText}>
-                        {playerClaimSubmitting
-                          ? 'Processing...'
-                          : playerClaimMode === 'new'
-                            ? 'Create My Account'
-                            : 'Continue'}
-                      </Text>
-                      {playerClaimSubmitting ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                      ) : (
-                        <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-                      )}
-                    </TouchableOpacity>
-                  )}
-
-                  <TouchableOpacity
-                    style={styles.placeholderBackButton}
-                    onPress={() => {
-                      setClaimablePlayer(null);
-                      setPlayerClaimStep('find_self');
-                    }}
-                  >
-                    <Text style={styles.placeholderBackText}>← Back to roster</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -4975,6 +4278,23 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '600',
+  },
+  /**
+   * Identity-step escape hatch. Its label is far longer than a normal CTA's, and a
+   * Text in a row-direction flex parent will not shrink on its own — it ran past the
+   * pill edge on narrow screens. flexShrink lets it take the width left by the arrow
+   * and wrap inside the button; the parent's alignItems keeps the arrow centred
+   * against the wrapped block. marginBottom matches submitErrorContainer's 20 so the
+   * banner -> escape -> form rhythm is even.
+   */
+  identityEscapeButton: {
+    width: '100%',
+    paddingHorizontal: 16,
+    marginBottom: 20,
+  },
+  identityEscapeButtonText: {
+    flexShrink: 1,
+    textAlign: 'center',
   },
   helpText: {
     color: '#6B7280',

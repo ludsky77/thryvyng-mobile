@@ -27,7 +27,7 @@ import {
   CAPTCHA_TIMEOUT_MESSAGE,
 } from '../../lib/captcha';
 import { checkEmailExists } from '../../lib/checkEmailExists';
-import { mapJoinError } from '../../lib/joinErrors';
+import { mapJoinError, joinErrorToken } from '../../lib/joinErrors';
 import { parseDateOnly } from '../../lib/playerFields';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRegistration } from '../../contexts/RegistrationContext';
@@ -42,7 +42,6 @@ import {
   isPhoneValid,
   isEmailValid,
 } from '../../components/forms';
-import { useEmailAvailability } from '../../hooks/useEmailAvailability';
 import { IdentityVerificationModal } from '../../components/modals';
 import type { RootStackParamList } from '../../navigation/linking';
 import * as Clipboard from 'expo-clipboard';
@@ -294,7 +293,7 @@ export const JoinTeamScreen: React.FC = () => {
   const route = useRoute<JoinTeamRouteProp>();
   const navigation = useNavigation<JoinTeamNavigationProp>();
 
-  const { user, session, refreshRoles, signOut } = useAuth();
+  const { user, session, allRoles, refreshRoles, signOut } = useAuth();
 
   // Without a session, resetting to 'Main' drops the user into an empty app
   // shell. Send logged-out users to the entry route instead.
@@ -336,13 +335,24 @@ export const JoinTeamScreen: React.FC = () => {
 
   // Registration flow state
   const [step, setStep] = useState<
-    'team-info' | 'role-select' | 'mode-select' | 'player-select' | 'parent-form'
+    | 'team-info'
+    | 'entry-gate'
+    | 'role-select'
+    | 'parent-identity'
+    | 'parent-confirm'
+    | 'parent-details'
+    // RETIRED (P2a): the pre-gate parent machine. Unreachable — no setStep writes
+    // these any more. Parked per P2a §6; a later janitor stone purges them.
+    | 'mode-select'
+    | 'player-select'
+    | 'parent-form'
   >('team-info');
   const [joinRole, setJoinRole] = useState<'parent' | 'player' | 'staff' | null>(null);
   const [registrationMode, setRegistrationMode] = useState<'new' | 'existing'>('new');
 
   // Player selection state
   const [existingPlayers, setExistingPlayers] = useState<any[]>([]);
+  // RETIRED (P2a/B3): write-only flag. Replaced by parentRosterLoadFailed, which renders.
   const [rosterLoadFailed, setRosterLoadFailed] = useState(false);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [playerLinkMode, setPlayerLinkMode] = useState<'existing' | 'new'>('new');
@@ -379,13 +389,6 @@ export const JoinTeamScreen: React.FC = () => {
   const [createdPlayer, setCreatedPlayer] = useState<any>(null);
   const [staffAccessAlsoGranted, setStaffAccessAlsoGranted] = useState(false);
 
-  // Email availability hook
-  const {
-    isChecking: isCheckingEmail,
-    isAvailable: isEmailAvailable,
-    checkEmail,
-  } = useEmailAvailability();
-
   // Identity verification state (for existing users)
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [verifiedUserId, setVerifiedUserId] = useState<string | null>(null);
@@ -393,7 +396,10 @@ export const JoinTeamScreen: React.FC = () => {
 
   // Player self-claim state
   // P1a player flow: email -> identity -> (confirm | details). No roster list is rendered.
-  const [playerFlowStep, setPlayerFlowStep] = useState<'email' | 'identity' | 'confirm' | 'details'>('email');
+  // 'email' is RETIRED (P2a §3): the entry gate answers it for every branch.
+  const [playerFlowStep, setPlayerFlowStep] = useState<'email' | 'identity' | 'confirm' | 'details'>(
+    'identity'
+  );
   const [playerFlowEmailError, setPlayerFlowEmailError] = useState('');
   const [playerFlowIdentityError, setPlayerFlowIdentityError] = useState('');
   const [playerFlowChecking, setPlayerFlowChecking] = useState(false);
@@ -460,6 +466,53 @@ export const JoinTeamScreen: React.FC = () => {
     fullName?: string;
   } | null>(null);
 
+  // ---------------------------------------------------------------------------
+  // P2a ENTRY GATE — one email question for the whole screen, asked before the
+  // role cards. Every branch downstream consumes gateEmail / the session and
+  // never asks again. Mirrors web JoinTeam handleEntryEmailSubmit + recognizeOnTeam.
+  // ---------------------------------------------------------------------------
+  const [gateEmail, setGateEmail] = useState('');
+  const [gateEmailError, setGateEmailError] = useState('');
+  const [gateChecking, setGateChecking] = useState(false);
+  /** True once an account is known to exist for gateEmail (session, or modal sign-in). */
+  const [gateAccountExists, setGateAccountExists] = useState(false);
+  /** Set when recognizeOnTeam says this user is already on this team. */
+  const [gateRecognized, setGateRecognized] = useState(false);
+  /** Guards the signed-in auto-recognition so it runs at most once per mount. */
+  const [gateAutoResolved, setGateAutoResolved] = useState(false);
+  /** Role from the ?role= deep link, applied after the gate rather than before it. */
+  const [deepLinkRole, setDeepLinkRole] = useState<'parent' | 'player' | 'staff' | null>(null);
+
+  // ---------------------------------------------------------------------------
+  // P2a PARENT MACHINE — identity -> silent fuzzy match -> confirm | details.
+  // The roster is matched with findRosterCandidate and NEVER rendered, exactly
+  // as the P1a player branch does it.
+  // ---------------------------------------------------------------------------
+  /** The single roster row findRosterCandidate picked, or null for the new-child path. */
+  const [parentMatchCandidate, setParentMatchCandidate] = useState<any>(null);
+  /** B3: roster fetch failed — non-blocking notice, registration still proceeds. */
+  const [parentRosterLoadFailed, setParentRosterLoadFailed] = useState(false);
+  const [parentIdentityError, setParentIdentityError] = useState('');
+  const [parentIdentityChecking, setParentIdentityChecking] = useState(false);
+  const [parentDetailsError, setParentDetailsError] = useState('');
+  /** Mirrors playerCandidateLocked. Reset whenever the candidate changes. */
+  const [parentDobAttempts, setParentDobAttempts] = useState(0);
+  const [parentCandidateLocked, setParentCandidateLocked] = useState(false);
+  /** Post-signUp dob_mismatch: re-open the date field on the details step. */
+  const [parentDobRetry, setParentDobRetry] = useState(false);
+  /**
+   * Retry ledger, copied from staffJoinPending. Once signUp has succeeded the
+   * account is durable, so a later failure must never re-run signUp — it re-runs
+   * runParentPostSignup from the step that failed. playerId is remembered so a
+   * retry after register_player succeeded does not create a second child row.
+   */
+  const [parentJoinPending, setParentJoinPending] = useState<{
+    userId: string;
+    email: string;
+    playerId?: string;
+  } | null>(null);
+  const [parentSubmitting, setParentSubmitting] = useState(false);
+
   useEffect(() => {
     if (invitationCode) {
       validateInvitationCode(invitationCode);
@@ -472,13 +525,6 @@ export const JoinTeamScreen: React.FC = () => {
       setErrorMessage('No invitation code provided');
     }
   }, [invitationCode]);
-
-  // Check email availability when email changes (for new users)
-  useEffect(() => {
-    if (registrationMode === 'new' && parentEmail && isEmailValid(parentEmail)) {
-      checkEmail(parentEmail);
-    }
-  }, [parentEmail, registrationMode]);
 
   // Auto-detect if user is already logged in (for existing user mode)
   useEffect(() => {
@@ -513,12 +559,8 @@ export const JoinTeamScreen: React.FC = () => {
     }
   }, [user]);
 
-  // Auto-switch to existing-player picker when roster has at least one player
-  useEffect(() => {
-    if (existingPlayers.length > 0) {
-      setPlayerLinkMode((prev) => (prev === 'new' ? 'existing' : prev));
-    }
-  }, [existingPlayers.length]);
+  // RETIRED (P2a): drove the roster picker on the retired 'player-select' step.
+  // The parent branch now matches the roster silently and never renders it.
 
   // Pre-fill and lock the self-create email to the current session email when logged in
   useEffect(() => {
@@ -527,18 +569,8 @@ export const JoinTeamScreen: React.FC = () => {
     }
   }, [user?.email]);
 
-  useEffect(() => {
-    const isAuthed = !!user?.id || !!verifiedUserId;
-    if (
-      isAuthed &&
-      joinRole === 'parent' &&
-      teamInfo?.id &&
-      existingPlayers.length === 0
-    ) {
-      if (__DEV__) console.log('[JoinTeam] Auth ready — re-fetching roster');
-      fetchTeamPlayers(teamInfo.id);
-    }
-  }, [user?.id, verifiedUserId, joinRole, teamInfo?.id]);
+  // RETIRED (P2a): fed the retired 'player-select' roster picker. The parent
+  // branch fetches the roster on demand in handleParentIdentityContinue.
 
   const validateInvitationCode = async (inviteCode: string) => {
     try {
@@ -631,15 +663,12 @@ export const JoinTeamScreen: React.FC = () => {
       });
       setScreenState('valid');
 
-      // Auto-select role if provided via deep link
+      // Auto-select role if provided via deep link. P2a: the role is banked and
+      // applied AFTER the entry gate — nothing may skip the email/recognition
+      // question, or a branch would have to ask for the email itself.
       if (role === 'parent' || role === 'player' || role === 'staff') {
-        setJoinRole(role);
-        if (role === 'parent' && team.id) {
-          fetchTeamPlayers(team.id);
-          setStep('mode-select');
-        } else {
-          setStep('role-select');
-        }
+        setDeepLinkRole(role);
+        setStep('entry-gate');
       }
     } catch (err) {
       if (__DEV__) {
@@ -650,6 +679,8 @@ export const JoinTeamScreen: React.FC = () => {
     }
   };
 
+  // RETIRED (P2a §4): fed the retired 'player-select' roster picker. The parent
+  // branch uses fetchRosterForParentMatch, which never renders the roster.
   const fetchTeamPlayers = async (teamId: string) => {
     try {
       setRosterLoadFailed(false);
@@ -669,6 +700,212 @@ export const JoinTeamScreen: React.FC = () => {
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // P2a ENTRY GATE
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Does this user already belong to this team? Three sources, each answering a
+   * different part of the question — copied from web JoinTeam recognizeOnTeam:
+   *  - allRoles (useAuth): staff/team roles whose entity_id IS the team
+   *  - is_user_of_team_player / is_team_staff: parent/player and staff membership
+   *  - check_team_email_match: matches a supplied address against the roster, for
+   *    an address that may differ from the signed-in profile email
+   *
+   * Fails OPEN (returns false) on any error: stranding a real member in the join
+   * flow is recoverable, blocking a genuine newcomer is not.
+   */
+  const recognizeOnTeam = async (
+    userId: string,
+    teamId: string,
+    email?: string
+  ): Promise<boolean> => {
+    if (allRoles.some((r: any) => r.entity_id === teamId)) return true;
+    try {
+      const [rosterResult, staffResult] = await Promise.all([
+        (supabase as any).rpc('is_user_of_team_player', {
+          check_user_id: userId,
+          check_team_id: teamId,
+        }),
+        (supabase as any).rpc('is_team_staff', { _user_id: userId, _team_id: teamId }),
+      ]);
+      if (Boolean(rosterResult?.data) || Boolean(staffResult?.data)) return true;
+
+      if (email) {
+        const { data, error } = await (supabase as any).rpc('check_team_email_match', {
+          p_team_id: teamId,
+          p_email: email,
+        });
+        if (error) {
+          console.error('[JoinTeam] check_team_email_match failed:', error);
+          return false;
+        }
+        return Boolean(data?.is_player_email) || Boolean(data?.is_parent_email);
+      }
+
+      return false;
+    } catch (err) {
+      console.error('[JoinTeam] Recognition check failed:', err);
+      return false;
+    }
+  };
+
+  /**
+   * Single handoff from the gate to the role cards. Everything downstream reads
+   * the email from here, so no branch ever asks for it again.
+   */
+  const leaveGateToRolePick = (email: string, accountExists: boolean) => {
+    const normalized = email.trim().toLowerCase();
+    setGateEmail(normalized);
+    setGateAccountExists(accountExists);
+    // Seed every branch's email field from the one answer the gate collected.
+    setParentEmail(normalized);
+    setPlayerClaimEmail(normalized);
+    setSelfCreateEmail(normalized);
+    setStaffEmail(normalized);
+    // The gate replaced the New/Existing account toggle: an account we can sign
+    // into means 'existing', anything else (including UNKNOWN) means 'new'.
+    setRegistrationMode(accountExists ? 'existing' : 'new');
+    setStep('role-select');
+    if (deepLinkRole) {
+      enterRole(deepLinkRole);
+      if (deepLinkRole === 'parent') setStep('parent-identity');
+      setDeepLinkRole(null);
+    }
+  };
+
+  /**
+   * Signed-in visitors are never asked for an email — the session is the proof.
+   * Runs at most once, and never after the visitor has moved past the gate.
+   */
+  useEffect(() => {
+    if (!teamInfo?.id || gateAutoResolved || step !== 'entry-gate') return;
+    if (!user?.id) return;
+
+    setGateAutoResolved(true);
+    (async () => {
+      setGateChecking(true);
+      try {
+        const sessionEmail = (user.email || '').trim().toLowerCase();
+        const recognized = await recognizeOnTeam(user.id, teamInfo.id, sessionEmail);
+        if (recognized) {
+          setGateRecognized(true);
+          return;
+        }
+        leaveGateToRolePick(sessionEmail, true);
+      } finally {
+        setGateChecking(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamInfo?.id, user?.id, step, gateAutoResolved]);
+
+  /**
+   * Signed-out visitors: one email field. checkEmailExists is the ONLY way this
+   * screen may ask — exists === null means UNKNOWN, and an unknown is treated as
+   * a new visitor rather than guessed either way.
+   */
+  const handleGateEmailContinue = async () => {
+    setGateEmailError('');
+    const typed = gateEmail.trim().toLowerCase();
+    if (!typed || !isEmailValid(typed)) {
+      setGateEmailError('Please enter a valid email address');
+      return;
+    }
+
+    setGateChecking(true);
+    try {
+      const result = await checkEmailExists(typed);
+
+      if (result.exists === true) {
+        // An account to sign into. Recognition runs after the modal returns.
+        setGateEmail(typed);
+        setShowVerificationModal(true);
+        return;
+      }
+
+      // exists === false (no account) and exists === null (UNKNOWN) both proceed
+      // as a new visitor. Never treat "we could not find out" as an answer.
+      leaveGateToRolePick(typed, false);
+    } finally {
+      setGateChecking(false);
+    }
+  };
+
+  /**
+   * IdentityVerificationModal onVerified for the gate. Banks the identity, then
+   * runs the same recognition the signed-in path runs.
+   */
+  const handleGateVerified = async (userId: string, email: string) => {
+    setShowVerificationModal(false);
+    const verified = (email || '').trim().toLowerCase();
+    setVerifiedUserId(userId);
+    setVerifiedEmail(verified);
+    setGateAutoResolved(true);
+
+    setGateChecking(true);
+    try {
+      const recognized = teamInfo?.id
+        ? await recognizeOnTeam(userId, teamInfo.id, verified)
+        : false;
+      if (recognized) {
+        setGateEmail(verified);
+        setGateRecognized(true);
+        return;
+      }
+      leaveGateToRolePick(verified, true);
+    } finally {
+      setGateChecking(false);
+    }
+  };
+
+  /**
+   * Drop the chosen role and return to the role cards. Each branch's full reset
+   * runs, so no sub-step survives to be re-entered with stale data — but those
+   * resets also blank the branch email fields they used to own, so the gate's
+   * answer is seeded back in.
+   */
+  const dropRoleKeepGate = () => {
+    resetPlayerClaimState();
+    resetStaffState();
+    resetParentMachine();
+    setJoinRole(null);
+    if (gateEmail) {
+      setPlayerClaimEmail(gateEmail);
+      setSelfCreateEmail(gateEmail);
+      setStaffEmail(gateEmail);
+      setParentEmail(gateEmail);
+    }
+  };
+
+  /** Full reset back to the gate, used by the branches' "different email" escapes. */
+  const returnToGate = () => {
+    resetPlayerClaimState();
+    resetStaffState();
+    setJoinRole(null);
+    setGateRecognized(false);
+    setGateAccountExists(false);
+    setGateEmailError('');
+    resetParentMachine();
+    setStep('entry-gate');
+  };
+
+  /** The gate has answered the email question; every role starts from that answer. */
+  const enterRole = (nextRole: 'parent' | 'player' | 'staff') => {
+    setJoinRole(nextRole);
+    if (nextRole === 'player') {
+      // P2a §3: the player branch's own email step is retired — entry IS identity.
+      setPlayerFlowStep('identity');
+    } else if (nextRole === 'staff') {
+      // P2a §3: the gate answered New-vs-Existing, so the staff toggle is gone.
+      // 'new' is the only variant left; handleStaffSubmitNew short-circuits for a
+      // signed-in user and runs signUp for a gate-confirmed new address.
+      setStaffMode('new');
+    }
+  };
+
+  // RETIRED (P2a §4): validated the retired 'parent-form'. Replaced by
+  // validateParentDetails.
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
 
@@ -681,8 +918,6 @@ export const JoinTeamScreen: React.FC = () => {
       if (!parentLastName.trim()) errors.parentLastName = 'Your last name is required';
       if (!parentEmail.trim()) errors.parentEmail = 'Email is required';
       else if (!isEmailValid(parentEmail)) errors.parentEmail = 'Please enter a valid email';
-      else if (isEmailAvailable === false)
-        errors.parentEmail = 'This email is already registered';
       if (!parentPhone.trim()) errors.parentPhone = 'Phone number is required';
       else if (!isPhoneValid(parentPhone))
         errors.parentPhone = 'Please enter a valid 10-digit phone';
@@ -749,6 +984,497 @@ export const JoinTeamScreen: React.FC = () => {
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // P2a PARENT MACHINE
+  // identity -> silent fuzzy roster match -> confirm | details -> submit
+  // The account is created LAST: every client check, the fuzzy match and the
+  // confirm decision all complete before supabase.auth.signUp is reached.
+  // ---------------------------------------------------------------------------
+
+  const resetParentMachine = () => {
+    setParentMatchCandidate(null);
+    setParentRosterLoadFailed(false);
+    setParentIdentityError('');
+    setParentIdentityChecking(false);
+    setParentDetailsError('');
+    setParentDobAttempts(0);
+    setParentCandidateLocked(false);
+    setParentDobRetry(false);
+    setParentJoinPending(null);
+    setParentSubmitting(false);
+    setPlayerFirstName('');
+    setPlayerLastName('');
+    setPlayerDOB('');
+    setPlayerJersey('');
+    setFormErrors({});
+  };
+
+  /**
+   * B3: the roster is matched, never rendered, so a failed fetch has to say so —
+   * silence here is what lets a parent create a duplicate of a child already on
+   * the roster. Returns the rows and records the failure for a visible notice.
+   */
+  const fetchRosterForParentMatch = async (teamId: string): Promise<any[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('team_players_for_registration')
+        .select('id, first_name, last_name, birth_year, jersey_number')
+        .eq('team_id', teamId)
+        .order('last_name', { ascending: true });
+      if (error) throw error;
+      setParentRosterLoadFailed(false);
+      return data || [];
+    } catch (err) {
+      if (__DEV__) console.error('[JoinTeam] Parent roster fetch failed:', err);
+      setParentRosterLoadFailed(true);
+      return [];
+    }
+  };
+
+  /**
+   * Step 'parent-identity'. The child's name and DOB are asked ONCE here and are
+   * never asked again — the confirm card echoes the typed DOB rather than
+   * re-collecting it. Matching reuses findRosterCandidate exactly as the player
+   * branch does: names plus birth_year only, so a later security pass can strip
+   * every other column from the roster view without touching this call.
+   */
+  const handleParentIdentityContinue = async () => {
+    setParentIdentityError('');
+
+    if (!playerFirstName.trim()) {
+      setParentIdentityError("Please enter your child's first name");
+      return;
+    }
+    if (!playerLastName.trim()) {
+      setParentIdentityError("Please enter your child's last name");
+      return;
+    }
+    if (!playerDOB) {
+      setParentIdentityError("Please enter your child's date of birth");
+      return;
+    }
+    if (!teamInfo?.id) {
+      setParentIdentityError('Team not found. Please reopen the invite link.');
+      return;
+    }
+
+    setParentIdentityChecking(true);
+    try {
+      const roster = await fetchRosterForParentMatch(teamInfo.id);
+      const candidate = findRosterCandidate(
+        roster,
+        playerFirstName,
+        playerLastName,
+        playerDOB
+      );
+
+      if (!candidate) {
+        // No match (or the roster failed to load — the notice on the next step
+        // says so). New-child path: register_player, exactly as before.
+        setParentMatchCandidate(null);
+        setStep('parent-details');
+        return;
+      }
+
+      // A different candidate than last time gets a fresh set of DOB attempts.
+      if (candidate.id !== parentMatchCandidate?.id) {
+        setParentDobAttempts(0);
+        setParentCandidateLocked(false);
+      }
+      setParentMatchCandidate(candidate);
+      setStep('parent-confirm');
+    } finally {
+      setParentIdentityChecking(false);
+    }
+  };
+
+  /** "Yes, that's my child" — no write happens here; the link runs after signUp. */
+  const handleParentConfirmYes = () => {
+    setParentDetailsError('');
+    setStep('parent-details');
+  };
+
+  /** "Go back" on the confirm card: exits to identity with NO write of any kind. */
+  const handleParentConfirmGoBack = () => {
+    setParentMatchCandidate(null);
+    setParentDobAttempts(0);
+    setParentCandidateLocked(false);
+    setParentIdentityError('');
+    setStep('parent-identity');
+  };
+
+  /** Client-side validation for 'parent-details'. Runs entirely before signUp. */
+  const validateParentDetails = (): boolean => {
+    const isNewAccount = !user?.id && !verifiedUserId;
+    const errors: Record<string, string> = {};
+
+    if (!parentFirstName.trim()) errors.parentFirstName = 'Your first name is required';
+    if (!parentLastName.trim()) errors.parentLastName = 'Your last name is required';
+    if (!parentPhone.trim()) errors.parentPhone = 'Phone number is required';
+    else if (!isPhoneValid(parentPhone))
+      errors.parentPhone = 'Please enter a valid 10-digit phone';
+
+    if (isNewAccount) {
+      if (!parentEmail.trim() || !isEmailValid(parentEmail)) {
+        errors.parentEmail = 'Please enter a valid email';
+      }
+      if (!password) errors.password = 'Password is required';
+      else if (!isPasswordValid(password))
+        errors.password = 'Password does not meet requirements';
+      if (password !== confirmPassword) errors.confirmPassword = 'Passwords do not match';
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  /**
+   * Everything after signUp, in one re-runnable unit — the staffJoinPending /
+   * handleStaffJoinRetry pattern. The account is durable by the time this runs,
+   * so a failure here must NEVER send the user back through signUp. Each step
+   * that produces durable state records it in parentJoinPending so a retry
+   * resumes rather than repeats: a second register_player call would create a
+   * second child row.
+   */
+  const runParentPostSignup = async (
+    userId: string,
+    userEmail: string,
+    knownPlayerId?: string
+  ): Promise<void> => {
+    const isNewAccount = registrationMode === 'new';
+
+    // Profile: additive, never fatal, but no longer silent in production.
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({
+        full_name: `${parentFirstName.trim()} ${parentLastName.trim()}`,
+        first_name: parentFirstName.trim(),
+        last_name: parentLastName.trim(),
+      })
+      .eq('id', userId);
+    if (profileError) {
+      console.error('[JoinTeam] Profile update failed:', profileError);
+    }
+
+    // A parent who also has a pending staff invite claims it alongside the child
+    // registration — never instead of it.
+    await claimPendingStaffInvite(userId, userEmail);
+
+    // Existing users: prefer the name on their profile over the form fields.
+    let resolvedFirstName = parentFirstName.trim();
+    let resolvedLastName = parentLastName.trim();
+    if (!isNewAccount) {
+      const { data: profile, error: profileFetchError } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', userId)
+        .single();
+      if (profileFetchError) {
+        if (__DEV__) console.log('[JoinTeam] Parent name lookup failed:', profileFetchError);
+      } else if (profile?.full_name) {
+        const parts = profile.full_name.split(' ');
+        resolvedFirstName = parts[0] || resolvedFirstName;
+        resolvedLastName = parts.slice(1).join(' ') || resolvedLastName;
+      }
+    }
+
+    let playerId = knownPlayerId;
+    // Data in hand, used verbatim if the row re-fetch fails (B4).
+    let playerFallback: any = {
+      id: playerId,
+      first_name: parentMatchCandidate?.first_name || playerFirstName.trim(),
+      last_name: parentMatchCandidate?.last_name || playerLastName.trim(),
+    };
+
+    if (!playerId) {
+      if (parentMatchCandidate) {
+        // Confirmed fuzzy match: attach to the existing roster row. The DOB the
+        // parent typed on the identity step is the proof.
+        const { data: linkResult, error: linkError } = await supabase.rpc(
+          'link_parent_to_player',
+          {
+            p_player_id: parentMatchCandidate.id,
+            p_user_id: userId,
+            p_user_email: userEmail,
+            p_verified_dob: playerDOB,
+            p_parent_first_name: resolvedFirstName || null,
+            p_parent_last_name: resolvedLastName || null,
+            p_parent_phone: isNewAccount ? parentPhone.replace(/\D/g, '') || null : null,
+          }
+        );
+
+        if (linkError || !(linkResult as any)?.success) {
+          if (linkError) console.error('[JoinTeam] link_parent_to_player error:', linkError);
+          const token = linkError ? joinErrorToken(linkError) : 'unknown';
+          if (token === 'dob_mismatch') {
+            // Set-and-return rather than throw: mapJoinError would flatten this
+            // wording back to the generic message. The account already exists, so
+            // the details step re-opens the date field and Retry re-runs the link.
+            const attempts = parentDobAttempts + 1;
+            setParentDobAttempts(attempts);
+            if (attempts >= 3) {
+              setParentCandidateLocked(true);
+              setParentDobRetry(false);
+              setParentDetailsError(
+                'Too many failed attempts. Please contact your team manager.'
+              );
+              return;
+            }
+            setParentDobRetry(true);
+            setParentDetailsError(
+              `Double-check the birthday. ${3 - attempts} attempts remaining.`
+            );
+            return;
+          }
+          throw linkError ?? new Error('Failed to link to player');
+        }
+
+        setParentDobRetry(false);
+        playerId = parentMatchCandidate.id as string;
+        playerFallback = {
+          id: playerId,
+          first_name: parentMatchCandidate.first_name,
+          last_name: parentMatchCandidate.last_name,
+          jersey_number: parentMatchCandidate.jersey_number ?? null,
+        };
+      } else {
+        const { data: registeredPlayerId, error: playerError } = await supabase.rpc(
+          'register_player',
+          {
+            p_first_name: playerFirstName.trim(),
+            p_last_name: playerLastName.trim(),
+            p_date_of_birth: playerDOB,
+            p_gender: null,
+            p_parent_email: userEmail.toLowerCase(),
+            p_parent_first_name: resolvedFirstName,
+            p_parent_last_name: resolvedLastName,
+            p_parent_phone: isNewAccount ? parentPhone.replace(/\D/g, '') || null : null,
+            p_player_email: null,
+            p_jersey_number: playerJersey || null,
+            p_team_id: teamInfo?.id || null,
+            p_allergies: null,
+            p_medical_notes: null,
+            p_emergency_contact_name: null,
+            p_emergency_contact_phone: null,
+            p_emergency_contact_relationship: null,
+            p_city: null,
+            p_status: 'active',
+            p_secondary_parent_name:
+              showParent2 && parent2FirstName.trim()
+                ? `${parent2FirstName.trim()} ${parent2LastName.trim()}`.trim()
+                : null,
+            p_secondary_parent_email:
+              showParent2 && parent2Email.trim() ? parent2Email.trim().toLowerCase() : null,
+            p_secondary_parent_phone:
+              showParent2 && parent2Phone ? parent2Phone.replace(/\D/g, '') || null : null,
+          }
+        );
+
+        if (playerError) {
+          console.error('[JoinTeam] register_player error:', playerError);
+          throw playerError;
+        }
+
+        playerId = registeredPlayerId as string;
+        playerFallback = {
+          id: playerId,
+          first_name: playerFirstName.trim(),
+          last_name: playerLastName.trim(),
+          jersey_number: playerJersey || null,
+        };
+
+        const { error: roleError } = await supabase.from('user_roles').insert({
+          user_id: userId,
+          role: 'parent',
+          entity_id: playerId,
+        });
+        if (roleError && roleError.code !== '23505') {
+          console.error('[JoinTeam] Parent role insert failed:', roleError);
+        }
+      }
+
+      // Durable from here on: a retry must not re-run the link/register above.
+      setParentJoinPending({ userId, email: userEmail, playerId });
+    }
+
+    // B4/B5: re-fetch the row so the success card can show the referral code.
+    // register_player returns only the new player's id, so the code lives on the
+    // row, not in the RPC result. A failed re-fetch must NOT turn a completed
+    // registration into "Registration Failed" — fall back to data in hand.
+    let playerData: any = playerFallback;
+    const { data: fetchedPlayer, error: playerFetchError } = await supabase
+      .from('players')
+      .select('*')
+      .eq('id', playerId)
+      .single();
+    if (playerFetchError) {
+      console.error('[JoinTeam] Player re-fetch failed (non-fatal):', playerFetchError);
+    } else if (fetchedPlayer) {
+      playerData = fetchedPlayer;
+    }
+
+    // F1: destructure { error } — a failed confirmation email is non-fatal but
+    // must not be invisible.
+    const { error: emailError } = await supabase.functions.invoke('send-email', {
+      body: {
+        to: userEmail,
+        template: 'player-registration',
+        data: {
+          parentName: `${resolvedFirstName} ${resolvedLastName}`.trim() || 'Parent',
+          playerName: `${playerData.first_name} ${playerData.last_name}`,
+          teamName: teamInfo?.name,
+          clubName: teamInfo?.club?.name,
+        },
+      },
+    });
+    if (emailError) {
+      console.error('[JoinTeam] Registration email failed:', emailError);
+      setParentDetailsError(
+        "You're registered, but we couldn't send the confirmation email."
+      );
+    }
+
+    try {
+      await refreshRoles(userId);
+    } catch {
+      // Non-fatal
+    }
+
+    setParentJoinPending(null);
+    setCreatedPlayer(playerData);
+    setRegistrationComplete(true);
+    clearRegistrationData();
+  };
+
+  /**
+   * Step 'parent-details' submit. Ordering is the whole point of P2a: nothing
+   * durable is created until every client check, the fuzzy match and the confirm
+   * decision are already behind us.
+   */
+  const handleParentSubmit = async () => {
+    if (parentCandidateLocked) return;
+    setParentDetailsError('');
+    if (!validateParentDetails()) return;
+
+    const isNewAccount = !user?.id && !verifiedUserId;
+    setParentSubmitting(true);
+    try {
+      let userId: string;
+      let userEmail: string;
+
+      if (isNewAccount) {
+        let captchaToken: string | null;
+        try {
+          captchaToken = await getCaptchaToken();
+        } catch (captchaErr) {
+          if (captchaErr instanceof CaptchaTimeoutError) {
+            setParentDetailsError(CAPTCHA_TIMEOUT_MESSAGE);
+          }
+          return;
+        }
+
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: parentEmail.trim().toLowerCase(),
+          password,
+          options: {
+            captchaToken: captchaToken ?? undefined,
+            data: {
+              full_name: `${parentFirstName.trim()} ${parentLastName.trim()}`,
+              first_name: parentFirstName.trim(),
+              last_name: parentLastName.trim(),
+              role: 'parent',
+            },
+          },
+        });
+
+        if (authError) {
+          setParentDetailsError(mapAuthOrJoinError(authError));
+          return;
+        }
+        if (isExistingEmailSignUp(authData)) {
+          setParentDetailsError(EXISTING_EMAIL_MESSAGE);
+          return;
+        }
+        if (!authData.user) {
+          setParentDetailsError('Failed to create account. Please try again.');
+          return;
+        }
+
+        const accessToken = authData.session?.access_token;
+        const refreshToken = authData.session?.refresh_token;
+        if (!accessToken || !refreshToken) {
+          setParentDetailsError(
+            'Account created. Please sign in and reopen the team link to finish registering.'
+          );
+          return;
+        }
+        const { data: sessionData, error: setSessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        if (setSessionError || !sessionData?.session) {
+          if (__DEV__) {
+            console.warn(
+              '[JoinTeam] setSession after parent signup failed:',
+              setSessionError?.message
+            );
+          }
+          setParentDetailsError(
+            'Account created. Please sign in and reopen the team link to finish registering.'
+          );
+          return;
+        }
+
+        userId = authData.user.id;
+        userEmail = parentEmail.trim().toLowerCase();
+      } else {
+        userId = user?.id || verifiedUserId || '';
+        userEmail = (user?.email || verifiedEmail || parentEmail).trim().toLowerCase();
+        if (!userId) {
+          setParentDetailsError('User verification failed. Please try again.');
+          return;
+        }
+      }
+
+      // The account exists from here on. Every later failure is retried through
+      // handleParentRetry, never through a second signUp.
+      setParentJoinPending({ userId, email: userEmail });
+      await runParentPostSignup(userId, userEmail);
+    } catch (err: any) {
+      console.error('[JoinTeam] Parent submit error:', err);
+      setParentDetailsError(mapAuthOrJoinError(err));
+    } finally {
+      setParentSubmitting(false);
+    }
+  };
+
+  /**
+   * Retry only the failed server step. The session and the account already
+   * exist, and any player row already created is passed straight back in — so
+   * this never runs signUp twice and never creates a second child.
+   */
+  const handleParentRetry = async () => {
+    if (!parentJoinPending || parentCandidateLocked) return;
+    setParentDetailsError('');
+    setParentSubmitting(true);
+    try {
+      await runParentPostSignup(
+        parentJoinPending.userId,
+        parentJoinPending.email,
+        parentJoinPending.playerId
+      );
+    } catch (err: any) {
+      console.error('[JoinTeam] Parent retry error:', err);
+      setParentDetailsError(mapJoinError(err));
+    } finally {
+      setParentSubmitting(false);
+    }
+  };
+
+  // RETIRED (P2a §6): the pre-gate parent machine — mode-select -> player-select
+  // -> parent-form -> submitRegistration. Unreachable: no step transition leads
+  // here any more and no button calls it. Kept intact for one release so the
+  // rewrite can be compared against it; a later janitor stone purges it.
   const submitRegistration = async () => {
     setIsSubmitting(true);
     setFormErrors({});
@@ -1048,6 +1774,8 @@ export const JoinTeamScreen: React.FC = () => {
     }
   };
 
+  // RETIRED (P2a §1): the pre-gate parent existing-user handler. The identity
+  // modal now reports to handleGateVerified.
   const handleVerificationSuccess = (userId: string, email: string) => {
     setVerifiedUserId(userId);
     setVerifiedEmail(email);
@@ -1087,7 +1815,7 @@ export const JoinTeamScreen: React.FC = () => {
     setPlayerClaimSubmitting(false);
     setPlayerClaimComplete(false);
     setShowPlayerClaimVerificationModal(false);
-    setPlayerFlowStep('email');
+    setPlayerFlowStep('identity');
     setPlayerFlowEmailError('');
     setPlayerFlowIdentityError('');
     setPlayerFlowChecking(false);
@@ -1302,15 +2030,9 @@ export const JoinTeamScreen: React.FC = () => {
     } catch {
       // Non-fatal — the useEffect that mirrors user.email will clear regardless
     }
-    setSelfCreateEmail('');
-    setSelfCreatePassword('');
-    setSelfCreateFirstName('');
-    setSelfCreateLastName('');
-    setSelfCreateJersey('');
-    setSelfCreatePhone('');
-    setSelfCreateDupMatch(null);
-    setSelfCreateError('');
-    setSelfCreatePending(null);
+    // P2a §3: the retired email step used to re-collect the address here. The
+    // gate owns it now, and signing out invalidates its answer — so go back to it.
+    returnToGate();
   };
 
   // ---------------------------------------------------------------------------
@@ -1318,6 +2040,7 @@ export const JoinTeamScreen: React.FC = () => {
   // ---------------------------------------------------------------------------
 
   /** Step 'email'. Signed-in users skip the lookup entirely; the session is the answer. */
+  // RETIRED (P2a §3): the player branch's own email step handler.
   const handlePlayerEmailContinue = async () => {
     setPlayerFlowEmailError('');
 
@@ -1703,7 +2426,9 @@ export const JoinTeamScreen: React.FC = () => {
     setStaffPassword('');
     setStaffConfirmPassword('');
     setStaffPasswordError('');
-    setStaffMode(null);
+    // P2a: 'new' is the only surviving variant (create-or-attach). Never null,
+    // or the submit button would not render after a reset.
+    setStaffMode('new');
     setStaffSubmitting(false);
     setStaffComplete(false);
     setStaffJoinStatus('pending');
@@ -1779,7 +2504,7 @@ export const JoinTeamScreen: React.FC = () => {
       }
 
       try {
-        await supabase.functions.invoke('send-email', {
+        const { error: welcomeEmailError } = await supabase.functions.invoke('send-email', {
           body: {
             to: email,
             template: 'staff-welcome',
@@ -1790,14 +2515,17 @@ export const JoinTeamScreen: React.FC = () => {
             },
           },
         });
+        if (welcomeEmailError) {
+          console.error('[JoinTeam] Staff welcome email failed:', welcomeEmailError);
+        }
       } catch (emailErr) {
-        if (__DEV__) console.log('[JoinTeam] Staff email warning:', emailErr);
+        console.error('[JoinTeam] Staff welcome email threw:', emailErr);
       }
     } else {
       // Pending approval: there is no role row to fetch, so refreshRoles would churn the
       // auth context for nothing. Confirm the request instead of welcoming them aboard.
       try {
-        await supabase.functions.invoke('send-email', {
+        const { error: pendingEmailError } = await supabase.functions.invoke('send-email', {
           body: {
             to: email,
             template: 'staff-pending',
@@ -1809,17 +2537,23 @@ export const JoinTeamScreen: React.FC = () => {
             },
           },
         });
+        if (pendingEmailError) {
+          console.error('[JoinTeam] Staff pending email failed:', pendingEmailError);
+        }
       } catch (emailErr) {
-        if (__DEV__) console.log('[JoinTeam] Staff pending email warning:', emailErr);
+        console.error('[JoinTeam] Staff pending email threw:', emailErr);
       }
 
       // Alerts the approvers. Non-fatal: the request row already exists either way.
       try {
-        await supabase.functions.invoke('notify-staff-request', {
+        const { error: notifyError } = await supabase.functions.invoke('notify-staff-request', {
           body: { join_request_id: parsed.join_request_id },
         });
+        if (notifyError) {
+          console.error('[JoinTeam] Staff request notify failed:', notifyError);
+        }
       } catch (notifyErr) {
-        if (__DEV__) console.log('[JoinTeam] Staff request notify warning:', notifyErr);
+        console.error('[JoinTeam] Staff request notify threw:', notifyErr);
       }
     }
 
@@ -1988,13 +2722,13 @@ export const JoinTeamScreen: React.FC = () => {
     } catch {
       // Non-fatal
     }
-    setStaffEmail('');
-    setStaffPassword('');
-    setStaffConfirmPassword('');
-    setStaffPasswordError('');
-    setStaffJoinPending(null);
+    // Signing out invalidates the address the gate resolved, so the gate is the
+    // only honest place to land — otherwise the locked email field would keep
+    // showing an account they are no longer in.
+    returnToGate();
   };
 
+  // RETIRED (P2a §3): the gate resolves New-vs-Existing, so this never runs.
   const handleStaffSubmitExisting = async () => {
     if (!staffEmail.trim() || !isEmailValid(staffEmail)) {
       setStaffPasswordError('Please enter a valid email');
@@ -2047,6 +2781,7 @@ export const JoinTeamScreen: React.FC = () => {
     }
   };
 
+  // RETIRED (P2a §3): staff sign-in happens at the gate, not inside the branch.
   const handleStaffVerified = async (userId: string, email: string) => {
     setShowStaffVerificationModal(false);
     setStaffSubmitting(true);
@@ -2076,8 +2811,13 @@ export const JoinTeamScreen: React.FC = () => {
 
   const handleContinue = async () => {
     if (step === 'team-info') {
-      setStep('role-select');
-    } else if (step === 'role-select') {
+      // P2a: the entry gate sits between the team card and the role cards.
+      setStep('entry-gate');
+      return;
+    }
+    // RETIRED (P2a §6): every arm below drove the pre-gate machine. The footer
+    // button now renders only on 'team-info', so none of them is reachable.
+    if (step === 'role-select') {
       if (joinRole === 'parent') {
         if (teamInfo?.id) {
           fetchTeamPlayers(teamInfo.id);
@@ -2160,14 +2900,29 @@ export const JoinTeamScreen: React.FC = () => {
   };
 
   const handleBack = () => {
-    if (step === 'parent-form') {
-      setStep('player-select');
-    } else if (step === 'player-select') {
-      setStep('mode-select');
-    } else if (step === 'mode-select') {
+    if (step === 'parent-details') {
+      // Back through the confirm card when there is one, so the "is this your
+      // child?" decision is re-made rather than silently kept.
+      setParentDetailsError('');
+      setStep(parentMatchCandidate ? 'parent-confirm' : 'parent-identity');
+    } else if (step === 'parent-confirm') {
+      handleParentConfirmGoBack();
+    } else if (step === 'parent-identity') {
+      resetParentMachine();
+      setJoinRole(null);
       setStep('role-select');
     } else if (step === 'role-select') {
-      setJoinRole(null);
+      // P2a: a chosen role owns the screen, so back means "drop the role" first
+      // and only then leave the role cards. Each branch's own reset runs here,
+      // so no sub-step survives to be re-entered with stale data.
+      if (joinRole) {
+        dropRoleKeepGate();
+        return;
+      }
+      setStep('entry-gate');
+    } else if (step === 'entry-gate') {
+      setGateRecognized(false);
+      setGateEmailError('');
       setStep('team-info');
     } else {
       exitToMain();
@@ -2455,15 +3210,14 @@ export const JoinTeamScreen: React.FC = () => {
           <TouchableOpacity
             style={styles.addAnotherLink}
             onPress={() => {
+              // The parent is signed in by now, so the gate has nothing left to
+              // ask — start the next child straight at the identity step.
               setRegistrationComplete(false);
               setCreatedPlayer(null);
-              setStep('team-info');
-              setPlayerFirstName('');
-              setPlayerLastName('');
-              setPlayerDOB('');
-              setPlayerJersey('');
-              setSelectedPlayerId(null);
-              setPlayerLinkMode('new');
+              setStaffAccessAlsoGranted(false);
+              resetParentMachine();
+              setJoinRole('parent');
+              setStep('parent-identity');
             }}
           >
             <Ionicons name="add-circle-outline" size={18} color="#8B5CF6" />
@@ -2475,10 +3229,9 @@ export const JoinTeamScreen: React.FC = () => {
     );
   }
 
-  // Once the player-claim flow moves past its age gate, the role cards are stale UI
-  // stacked above the active panel. The age gate itself still shows them.
-  const playerClaimInProgress =
-    joinRole === 'player' && (playerFlowStep !== 'email' || playerClaimComplete);
+  // P2a §2: a chosen role unmounts the cards for ALL three branches. Before P2a
+  // only the player branch suppressed them, so staff rendered its panel below
+  // three still-live cards.
 
   // Valid team - show multi-step flow
   return (
@@ -2512,13 +3265,18 @@ export const JoinTeamScreen: React.FC = () => {
       <View style={styles.stepIndicator}>
         <View style={[styles.stepDot, step === 'team-info' && styles.stepDotActive]} />
         <View style={styles.stepLine} />
+        <View style={[styles.stepDot, step === 'entry-gate' && styles.stepDotActive]} />
+        <View style={styles.stepLine} />
         <View style={[styles.stepDot, step === 'role-select' && styles.stepDotActive]} />
         <View style={styles.stepLine} />
-        <View style={[styles.stepDot, step === 'mode-select' && styles.stepDotActive]} />
+        <View style={[styles.stepDot, step === 'parent-identity' && styles.stepDotActive]} />
         <View style={styles.stepLine} />
-        <View style={[styles.stepDot, step === 'player-select' && styles.stepDotActive]} />
-        <View style={styles.stepLine} />
-        <View style={[styles.stepDot, step === 'parent-form' && styles.stepDotActive]} />
+        <View
+          style={[
+            styles.stepDot,
+            (step === 'parent-confirm' || step === 'parent-details') && styles.stepDotActive,
+          ]}
+        />
       </View>
 
       {step === 'team-info' && (
@@ -2584,9 +3342,80 @@ export const JoinTeamScreen: React.FC = () => {
         </>
       )}
 
+      {step === 'entry-gate' && (
+        <>
+          {gateRecognized ? (
+            /* Already on this team: no join flow, just a way through. */
+            <View style={styles.placeholderCard}>
+              <Ionicons name="checkmark-circle" size={64} color="#22C55E" />
+              <Text style={[styles.placeholderTitle, { marginTop: 16 }]}>
+                You're already on {teamInfo?.name}
+              </Text>
+              <Text style={styles.placeholderText}>
+                Nothing to do here — head to your dashboard.
+              </Text>
+              <TouchableOpacity
+                style={[styles.continueButton, { width: '100%', marginTop: 16 }]}
+                onPress={exitToMain}
+              >
+                <Text style={styles.continueButtonText}>Go to Dashboard</Text>
+                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          ) : user || gateChecking ? (
+            /* Signed in: the session is the proof, so we never ask for an email. */
+            <View style={styles.placeholderCard}>
+              <ActivityIndicator size="large" color="#8B5CF6" />
+              <Text style={[styles.placeholderText, { marginTop: 16 }]}>
+                Checking your account…
+              </Text>
+            </View>
+          ) : (
+            <View style={{ width: '100%' }}>
+              <Text style={styles.stepTitle}>Let's start with your email</Text>
+              <Text style={styles.stepSubtitle}>
+                We'll check whether you already have a Thryvyng account. You'll only be
+                asked this once.
+              </Text>
+
+              <View style={styles.newPlayerForm}>
+                <EmailInput
+                  label="Email Address"
+                  value={gateEmail}
+                  onChangeText={(text) => {
+                    setGateEmail(text);
+                    setGateEmailError('');
+                  }}
+                  placeholder="you@example.com"
+                  error={gateEmailError}
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.continueButton,
+                  gateChecking && styles.continueButtonDisabled,
+                ]}
+                onPress={handleGateEmailContinue}
+                disabled={gateChecking}
+              >
+                <Text style={styles.continueButtonText}>
+                  {gateChecking ? 'Checking…' : 'Continue'}
+                </Text>
+                {gateChecking ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+        </>
+      )}
+
       {step === 'role-select' && (
         <>
-          {!playerClaimInProgress && (
+          {!joinRole && (
             <>
           <Text style={styles.stepTitle}>How are you joining?</Text>
           <Text style={styles.stepSubtitle}>Select your role for {teamInfo?.name}</Text>
@@ -2594,11 +3423,8 @@ export const JoinTeamScreen: React.FC = () => {
           <TouchableOpacity
             style={[styles.roleCard, { borderColor: '#22C55E' }]}
             onPress={() => {
-              setJoinRole('parent');
-              if (teamInfo?.id) {
-                fetchTeamPlayers(teamInfo.id);
-              }
-              setStep('mode-select');
+              enterRole('parent');
+              setStep('parent-identity');
             }}
           >
             <View style={[styles.roleIconContainer, { backgroundColor: '#14532D' }]}>
@@ -2613,9 +3439,7 @@ export const JoinTeamScreen: React.FC = () => {
 
           <TouchableOpacity
             style={[styles.roleCard, { borderColor: '#3B82F6' }]}
-            onPress={() => {
-              setJoinRole('player');
-            }}
+            onPress={() => enterRole('player')}
           >
             <View style={[styles.roleIconContainer, { backgroundColor: '#1E3A5F' }]}>
               <Ionicons name="football-outline" size={28} color="#3B82F6" />
@@ -2629,9 +3453,7 @@ export const JoinTeamScreen: React.FC = () => {
 
           <TouchableOpacity
             style={[styles.roleCard, { borderColor: '#8B5CF6' }]}
-            onPress={() => {
-              setJoinRole('staff');
-            }}
+            onPress={() => enterRole('staff')}
           >
             <View style={[styles.roleIconContainer, { backgroundColor: '#2D2050' }]}>
               <Ionicons name="clipboard-outline" size={28} color="#8B5CF6" />
@@ -2648,77 +3470,9 @@ export const JoinTeamScreen: React.FC = () => {
           {/* Player Claim Flow */}
           {joinRole === 'player' && !playerClaimComplete && (
             <>
-              {/* AGE GATE */}
-              {/* P1a STEP 1 — EMAIL */}
-              {playerFlowStep === 'email' && (
-                <View style={styles.placeholderCard}>
-                  <Ionicons name="football-outline" size={48} color="#3B82F6" />
-                  <Text style={styles.placeholderTitle}>Player Registration</Text>
-                  <Text style={styles.placeholderText}>
-                    {user ? "We'll use your account email." : "Let's start with your email."}
-                  </Text>
-
-                  <View style={{ width: '100%', marginTop: 16 }}>
-                    {user ? (
-                      <FormInput
-                        label="Your Email (not your parent's)"
-                        value={user.email || ''}
-                        onChangeText={() => { /* locked to session email */ }}
-                        editable={false}
-                        style={{ opacity: 0.7 }}
-                      />
-                    ) : (
-                      <EmailInput
-                        label="Your Email (not your parent's)"
-                        value={playerClaimEmail}
-                        onChangeText={(text) => {
-                          setPlayerClaimEmail(text);
-                          setPlayerFlowEmailError('');
-                        }}
-                        placeholder="your.email@example.com"
-                        error=""
-                      />
-                    )}
-
-                    {playerFlowEmailError ? (
-                      <View style={styles.submitErrorContainer}>
-                        <Ionicons name="alert-circle" size={20} color="#EF4444" />
-                        <Text style={styles.submitErrorText}>{playerFlowEmailError}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.continueButton,
-                      playerFlowChecking && styles.continueButtonDisabled,
-                      { marginTop: 16, width: '100%' },
-                    ]}
-                    onPress={handlePlayerEmailContinue}
-                    disabled={playerFlowChecking}
-                  >
-                    <Text style={styles.continueButtonText}>
-                      {playerFlowChecking ? 'Checking...' : 'Continue'}
-                    </Text>
-                    {playerFlowChecking ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : (
-                      <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-                    )}
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.placeholderBackButton}
-                    onPress={() => {
-                      resetPlayerClaimState();
-                      setJoinRole(null);
-                    }}
-                  >
-                    <Text style={styles.placeholderBackText}>← Choose a different role</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-
+              {/* RETIRED (P2a §3): the player branch's own email step. The entry
+                  gate now resolves the address for every branch, so playerFlowStep
+                  starts at 'identity' and nothing sets it back to 'email'. */}
               {/* P1a STEP 2 — IDENTITY (name + DOB; roster is matched, never shown) */}
               {playerFlowStep === 'identity' && (
                 <View style={{ width: '100%' }}>
@@ -2839,14 +3593,9 @@ export const JoinTeamScreen: React.FC = () => {
 
                   <TouchableOpacity
                     style={styles.placeholderBackButton}
-                    onPress={() => {
-                      setPlayerFlowIdentityError('');
-                      setDobVerifyAttemptsPlayer(0);
-                      setPlayerCandidateLocked(false);
-                      setPlayerFlowStep('email');
-                    }}
+                    onPress={dropRoleKeepGate}
                   >
-                    <Text style={styles.placeholderBackText}>← Back to email</Text>
+                    <Text style={styles.placeholderBackText}>← Choose a different role</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -3040,10 +3789,7 @@ export const JoinTeamScreen: React.FC = () => {
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.placeholderBackButton}
-                        onPress={() => {
-                          setSelfCreateDupMatch(null);
-                          setPlayerFlowStep('email');
-                        }}
+                        onPress={returnToGate}
                       >
                         <Text style={styles.placeholderBackText}>← Use a different email</Text>
                       </TouchableOpacity>
@@ -3247,8 +3993,7 @@ export const JoinTeamScreen: React.FC = () => {
                   <TouchableOpacity
                     style={styles.placeholderBackButton}
                     onPress={() => {
-                      resetStaffState();
-                      setJoinRole(null);
+                      dropRoleKeepGate();
                     }}
                   >
                     <Text style={styles.placeholderBackText}>← Choose a different role</Text>
@@ -3259,7 +4004,9 @@ export const JoinTeamScreen: React.FC = () => {
               {/* ACCOUNT CREATION */}
               {staffClaimStep === 'account' && (
                 <View style={{ width: '100%' }}>
-                  <Text style={styles.stepTitle}>Create Your Account</Text>
+                  <Text style={styles.stepTitle}>
+                    {user || verifiedUserId ? 'Confirm Your Details' : 'Create Your Account'}
+                  </Text>
 
                   <View style={styles.summaryCard}>
                     <Text style={styles.summaryTitle}>Joining As</Text>
@@ -3267,40 +4014,10 @@ export const JoinTeamScreen: React.FC = () => {
                     <Text style={styles.summarySubtext}>{teamInfo?.name}</Text>
                   </View>
 
-                  <View style={styles.playerModeToggle}>
-                    <TouchableOpacity
-                      style={[
-                        styles.playerModeOption,
-                        staffMode === 'new' && styles.playerModeActive,
-                      ]}
-                      onPress={() => setStaffMode('new')}
-                    >
-                      <Text
-                        style={[
-                          styles.playerModeText,
-                          staffMode === 'new' && styles.playerModeTextActive,
-                        ]}
-                      >
-                        New Account
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.playerModeOption,
-                        staffMode === 'existing' && styles.playerModeActive,
-                      ]}
-                      onPress={() => setStaffMode('existing')}
-                    >
-                      <Text
-                        style={[
-                          styles.playerModeText,
-                          staffMode === 'existing' && styles.playerModeTextActive,
-                        ]}
-                      >
-                        Existing Account
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+                  {/* RETIRED (P2a §3): the New/Existing account toggle. The entry
+                      gate resolved the address before the role cards rendered, so
+                      staffMode is always 'new' — which is the create-or-attach
+                      variant, short-circuiting for a signed-in user. */}
 
                   {staffMode === 'new' && (
                     <View style={styles.newPlayerForm}>
@@ -3330,35 +4047,32 @@ export const JoinTeamScreen: React.FC = () => {
                           />
                         </View>
                       </View>
+                      {/* P2a §3: the gate collected this address. No branch asks twice. */}
+                      <FormInput
+                        label="Email (this will be your login)"
+                        value={user?.email || staffEmail || gateEmail}
+                        onChangeText={() => { /* locked to the gate's answer */ }}
+                        editable={false}
+                        style={{ opacity: 0.7 }}
+                      />
                       {user ? (
-                        <>
-                          <FormInput
-                            label="Email (this will be your login)"
-                            value={staffEmail || user.email || ''}
-                            onChangeText={() => { /* locked to session email */ }}
-                            editable={false}
-                            style={{ opacity: 0.7 }}
-                          />
-                          <TouchableOpacity
-                            onPress={handleStaffSignOut}
-                            style={{ marginTop: -8, marginBottom: 16, alignSelf: 'flex-end' }}
-                          >
-                            <Text style={{ color: '#60A5FA', fontSize: 12, fontWeight: '600' }}>
-                              Logged in as {user.email} — Not you? Sign out
-                            </Text>
-                          </TouchableOpacity>
-                        </>
+                        <TouchableOpacity
+                          onPress={handleStaffSignOut}
+                          style={{ marginTop: -8, marginBottom: 16, alignSelf: 'flex-end' }}
+                        >
+                          <Text style={{ color: '#60A5FA', fontSize: 12, fontWeight: '600' }}>
+                            Logged in as {user.email} — Not you? Sign out
+                          </Text>
+                        </TouchableOpacity>
                       ) : (
-                        <EmailInput
-                          label="Email (this will be your login)"
-                          value={staffEmail}
-                          onChangeText={(text) => {
-                            setStaffEmail(text);
-                            setStaffPasswordError('');
-                          }}
-                          placeholder="coach@email.com"
-                          error=""
-                        />
+                        <TouchableOpacity
+                          onPress={returnToGate}
+                          style={{ marginTop: -8, marginBottom: 16, alignSelf: 'flex-end' }}
+                        >
+                          <Text style={{ color: '#60A5FA', fontSize: 12, fontWeight: '600' }}>
+                            Use a different email
+                          </Text>
+                        </TouchableOpacity>
                       )}
                       <PhoneInput
                         label="Phone (optional)"
@@ -3395,20 +4109,9 @@ export const JoinTeamScreen: React.FC = () => {
                     </View>
                   )}
 
-                  {staffMode === 'existing' && (
-                    <View style={styles.newPlayerForm}>
-                      <EmailInput
-                        label="Your Email"
-                        value={staffEmail}
-                        onChangeText={(text) => {
-                          setStaffEmail(text);
-                          setStaffPasswordError('');
-                        }}
-                        placeholder="coach@email.com"
-                        error=""
-                      />
-                    </View>
-                  )}
+                  {/* RETIRED (P2a §3): the Existing-Account email ask, and with it
+                      handleStaffSubmitExisting + handleStaffVerified. The gate's
+                      sign-in already produced the verified session they needed. */}
 
                   {staffPasswordError ? (
                     <>
@@ -3444,17 +4147,11 @@ export const JoinTeamScreen: React.FC = () => {
                   ) : staffMode ? (
                     <TouchableOpacity
                       style={[styles.continueButton, staffSubmitting && styles.continueButtonDisabled]}
-                      onPress={
-                        staffMode === 'new' ? handleStaffSubmitNew : handleStaffSubmitExisting
-                      }
+                      onPress={handleStaffSubmitNew}
                       disabled={staffSubmitting}
                     >
                       <Text style={styles.continueButtonText}>
-                        {staffSubmitting
-                          ? 'Processing...'
-                          : staffMode === 'new'
-                            ? 'Join Team'
-                            : 'Continue'}
+                        {staffSubmitting ? 'Processing...' : 'Join Team'}
                       </Text>
                       {staffSubmitting ? (
                         <ActivityIndicator size="small" color="#FFFFFF" />
@@ -3469,7 +4166,6 @@ export const JoinTeamScreen: React.FC = () => {
                     onPress={() => {
                       setStaffClaimStep(null);
                       setSelectedStaffRole(null);
-                      setStaffMode(null);
                       setStaffPasswordError('');
                     }}
                   >
@@ -3526,6 +4222,425 @@ export const JoinTeamScreen: React.FC = () => {
         </>
       )}
 
+      {/* P2a PARENT STEP 1 — CHILD IDENTITY. Asked once; never asked again. */}
+      {step === 'parent-identity' && (
+        <>
+          <Text style={styles.stepTitle}>About Your Child</Text>
+          <Text style={styles.stepSubtitle}>
+            We'll check the {teamInfo?.name} roster for them automatically.
+          </Text>
+
+          <View style={styles.newPlayerForm}>
+            <FormInput
+              label="Child's First Name"
+              value={playerFirstName}
+              onChangeText={(text) => {
+                setPlayerFirstName(text);
+                setParentIdentityError('');
+              }}
+              placeholder="First name"
+              autoCapitalize="words"
+            />
+            <FormInput
+              label="Child's Last Name"
+              value={playerLastName}
+              onChangeText={(text) => {
+                setPlayerLastName(text);
+                setParentIdentityError('');
+              }}
+              placeholder="Last name"
+              autoCapitalize="words"
+            />
+            <View style={styles.dobPickerBlock}>
+              <Text style={styles.dobPickerLabel}>Date of Birth</Text>
+              <TouchableOpacity
+                style={styles.dobPickerField}
+                onPress={openPlayerDobPicker}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={playerDOB ? styles.dobPickerFieldText : styles.dobPickerPlaceholder}
+                >
+                  {playerDOB ? displayDateMDY(playerDOB) : 'Select date of birth'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {playerDobPickerVisible ? (
+              <DateTimePicker
+                value={playerDobPickerDate}
+                mode="date"
+                textColor={colors.text}
+                themeVariant="dark"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                maximumDate={new Date()}
+                minimumDate={MIN_PLAYER_DOB}
+                onChange={onPlayerDobPickerChange}
+              />
+            ) : null}
+            {Platform.OS === 'ios' && playerDobPickerVisible ? (
+              <TouchableOpacity
+                style={styles.dobDone}
+                onPress={() => setPlayerDobPickerVisible(false)}
+              >
+                <Text style={styles.dobDoneText}>Done</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          {parentIdentityError ? (
+            <View style={styles.submitErrorContainer}>
+              <Ionicons name="alert-circle" size={20} color="#EF4444" />
+              <Text style={styles.submitErrorText}>{parentIdentityError}</Text>
+            </View>
+          ) : null}
+
+          <TouchableOpacity
+            style={[
+              styles.continueButton,
+              parentIdentityChecking && styles.continueButtonDisabled,
+            ]}
+            onPress={handleParentIdentityContinue}
+            disabled={parentIdentityChecking}
+          >
+            <Text style={styles.continueButtonText}>
+              {parentIdentityChecking ? 'Checking…' : 'Continue'}
+            </Text>
+            {parentIdentityChecking ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.placeholderBackButton}
+            onPress={() => {
+              dropRoleKeepGate();
+              setStep('role-select');
+            }}
+          >
+            <Text style={styles.placeholderBackText}>← Choose a different role</Text>
+          </TouchableOpacity>
+        </>
+      )}
+
+      {/* P2a PARENT STEP 2 — CONFIRM. Name + the DOB already typed. No email,
+          no roster list, and no write of any kind happens on this screen. */}
+      {step === 'parent-confirm' && parentMatchCandidate && (
+        <>
+          <Text style={styles.stepTitle}>Is this your child?</Text>
+          <Text style={styles.stepSubtitle}>
+            We found a matching player on {teamInfo?.name}.
+          </Text>
+
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryTitle}>Player on this team</Text>
+            <Text style={styles.summaryText}>
+              {parentMatchCandidate.first_name} {parentMatchCandidate.last_name}
+            </Text>
+            <Text style={styles.summarySubtext}>
+              Date of birth you entered: {displayDateMDY(playerDOB)}
+            </Text>
+          </View>
+
+          <TouchableOpacity style={styles.continueButton} onPress={handleParentConfirmYes}>
+            <Text style={styles.continueButtonText}>Yes, that's my child</Text>
+            <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.placeholderBackButton}
+            onPress={handleParentConfirmGoBack}
+          >
+            <Text style={styles.placeholderBackText}>← Go back — that's not my child</Text>
+          </TouchableOpacity>
+        </>
+      )}
+
+      {/* P2a PARENT STEP 3 — PARENT DETAILS + SUBMIT. The account is created
+          here and nowhere earlier. */}
+      {step === 'parent-details' && (
+        <>
+          <Text style={styles.stepTitle}>Your Information</Text>
+          <Text style={styles.stepSubtitle}>
+            {parentMatchCandidate
+              ? `Linking you to ${parentMatchCandidate.first_name}`
+              : `Registering ${playerFirstName} ${playerLastName}`}
+          </Text>
+
+          {/* B3: a silent roster failure is what lets a parent create a duplicate
+              of a child already on the roster. Non-blocking, but never invisible. */}
+          {parentRosterLoadFailed && (
+            <View style={styles.warningBox}>
+              <Ionicons name="information-circle" size={20} color="#FBBF24" />
+              <Text style={styles.warningText}>
+                We couldn't load the team roster — you can still register your child.
+              </Text>
+            </View>
+          )}
+
+          <View style={styles.formSection}>
+            <Text style={styles.formSectionTitle}>About You</Text>
+
+            <FormInput
+              label="Your First Name"
+              value={parentFirstName}
+              onChangeText={(text) => {
+                setParentFirstName(text);
+                setFormErrors((prev) => ({ ...prev, parentFirstName: '' }));
+              }}
+              placeholder="First name"
+              autoCapitalize="words"
+              error={formErrors.parentFirstName}
+            />
+
+            <FormInput
+              label="Your Last Name"
+              value={parentLastName}
+              onChangeText={(text) => {
+                setParentLastName(text);
+                setFormErrors((prev) => ({ ...prev, parentLastName: '' }));
+              }}
+              placeholder="Last name"
+              autoCapitalize="words"
+              error={formErrors.parentLastName}
+            />
+
+            {/* The gate already collected and resolved this address. */}
+            <FormInput
+              label="Email (this will be your login)"
+              value={parentEmail}
+              onChangeText={() => { /* locked to the gate's answer */ }}
+              editable={false}
+              style={{ opacity: 0.7 }}
+            />
+
+            <PhoneInput
+              label="Phone Number"
+              value={parentPhone}
+              onChangeText={(text) => {
+                setParentPhone(text);
+                setFormErrors((prev) => ({ ...prev, parentPhone: '' }));
+              }}
+              error={formErrors.parentPhone}
+            />
+          </View>
+
+          {/* New-child path only: jersey and a second guardian are meaningless
+              when attaching to a roster row the club already created. */}
+          {!parentMatchCandidate && (
+            <View style={styles.formSection}>
+              <FormInput
+                label="Jersey Number (Optional)"
+                value={playerJersey}
+                onChangeText={setPlayerJersey}
+                placeholder="00"
+                keyboardType="number-pad"
+                maxLength={3}
+              />
+
+              <TouchableOpacity
+                style={styles.parent2Toggle}
+                onPress={() => setShowParent2((v) => !v)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.parent2ToggleCheckbox}>
+                  {showParent2 ? (
+                    <Ionicons name="checkbox" size={22} color="#8B5CF6" />
+                  ) : (
+                    <Ionicons name="square-outline" size={22} color="#94A3B8" />
+                  )}
+                </View>
+                <Text style={styles.parent2ToggleLabel}>
+                  Add second parent / guardian (optional)
+                </Text>
+              </TouchableOpacity>
+
+              {showParent2 && (
+                <View style={styles.parent2Fields}>
+                  <FormInput
+                    label="Second Parent First Name"
+                    value={parent2FirstName}
+                    onChangeText={setParent2FirstName}
+                    placeholder="First name"
+                    autoCapitalize="words"
+                  />
+                  <FormInput
+                    label="Second Parent Last Name"
+                    value={parent2LastName}
+                    onChangeText={setParent2LastName}
+                    placeholder="Last name"
+                    autoCapitalize="words"
+                  />
+                  <EmailInput
+                    label="Second Parent Email"
+                    value={parent2Email}
+                    onChangeText={setParent2Email}
+                    placeholder="parent2@example.com"
+                  />
+                  <PhoneInput
+                    label="Second Parent Phone"
+                    value={parent2Phone}
+                    onChangeText={setParent2Phone}
+                  />
+                  <Text style={styles.parent2HelpText}>
+                    We'll send them an invite to join {teamInfo?.name} once your
+                    registration is complete.
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Password only for an address the gate found no account for. */}
+          {!user && !verifiedUserId && (
+            <View style={styles.formSection}>
+              <Text style={styles.formSectionTitle}>Create Password</Text>
+
+              <PasswordInput
+                label="Password"
+                value={password}
+                onChangeText={(text) => {
+                  setPassword(text);
+                  setFormErrors((prev) => ({ ...prev, password: '' }));
+                }}
+                showValidation={true}
+                error={formErrors.password}
+              />
+
+              <PasswordInput
+                label="Confirm Password"
+                value={confirmPassword}
+                onChangeText={(text) => {
+                  setConfirmPassword(text);
+                  setFormErrors((prev) => ({ ...prev, confirmPassword: '' }));
+                }}
+                error={formErrors.confirmPassword}
+              />
+            </View>
+          )}
+
+          {/* Post-signUp dob_mismatch: the account already exists, so the only
+              thing to re-collect is the date. Retry re-runs the link alone. */}
+          {parentDobRetry && !parentCandidateLocked && (
+            <View style={styles.formSection}>
+              <Text style={styles.formSectionTitle}>Confirm the date of birth</Text>
+              <View style={styles.dobPickerBlock}>
+                <TouchableOpacity
+                  style={styles.dobPickerField}
+                  onPress={openPlayerDobPicker}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={playerDOB ? styles.dobPickerFieldText : styles.dobPickerPlaceholder}
+                  >
+                    {playerDOB ? displayDateMDY(playerDOB) : 'Select date of birth'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {playerDobPickerVisible ? (
+                <DateTimePicker
+                  value={playerDobPickerDate}
+                  mode="date"
+                  textColor={colors.text}
+                  themeVariant="dark"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  maximumDate={new Date()}
+                  minimumDate={MIN_PLAYER_DOB}
+                  onChange={onPlayerDobPickerChange}
+                />
+              ) : null}
+              {Platform.OS === 'ios' && playerDobPickerVisible ? (
+                <TouchableOpacity
+                  style={styles.dobDone}
+                  onPress={() => setPlayerDobPickerVisible(false)}
+                >
+                  <Text style={styles.dobDoneText}>Done</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          )}
+
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryTitle}>Registering Player</Text>
+            <Text style={styles.summaryText}>
+              {parentMatchCandidate
+                ? `${parentMatchCandidate.first_name} ${parentMatchCandidate.last_name}`
+                : `${playerFirstName} ${playerLastName}`}
+            </Text>
+            <Text style={styles.summarySubtext}>to {teamInfo?.name}</Text>
+          </View>
+
+          {parentDetailsError ? (
+            <>
+              <View style={styles.submitErrorContainer}>
+                <Ionicons name="alert-circle" size={20} color="#EF4444" />
+                <Text style={styles.submitErrorText}>{parentDetailsError}</Text>
+              </View>
+              {parentDetailsError === EXISTING_EMAIL_MESSAGE ? (
+                <TouchableOpacity
+                  onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Login' }] })}
+                >
+                  <Text style={styles.signInLinkText}>Sign in</Text>
+                </TouchableOpacity>
+              ) : null}
+            </>
+          ) : null}
+
+          {/* The account survives every failure past this point, so the button
+              becomes Retry rather than a second signUp. */}
+          {parentJoinPending && parentDetailsError && !parentCandidateLocked ? (
+            <TouchableOpacity
+              style={[
+                styles.continueButton,
+                parentSubmitting && styles.continueButtonDisabled,
+              ]}
+              onPress={handleParentRetry}
+              disabled={parentSubmitting}
+            >
+              <Text style={styles.continueButtonText}>
+                {parentSubmitting ? 'Retrying…' : 'Try again'}
+              </Text>
+              {parentSubmitting ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="refresh" size={20} color="#FFFFFF" />
+              )}
+            </TouchableOpacity>
+          ) : parentCandidateLocked ? null : (
+            <TouchableOpacity
+              style={[
+                styles.continueButton,
+                parentSubmitting && styles.continueButtonDisabled,
+              ]}
+              onPress={handleParentSubmit}
+              disabled={parentSubmitting}
+            >
+              <Text style={styles.continueButtonText}>
+                {parentSubmitting ? 'Processing…' : 'Complete Registration'}
+              </Text>
+              {parentSubmitting ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+              )}
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={styles.placeholderBackButton}
+            onPress={() => {
+              setParentDetailsError('');
+              setStep(parentMatchCandidate ? 'parent-confirm' : 'parent-identity');
+            }}
+          >
+            <Text style={styles.placeholderBackText}>← Back</Text>
+          </TouchableOpacity>
+        </>
+      )}
+
+      {/* RETIRED (P2a §6): 'mode-select' / 'player-select' / 'parent-form' below
+          are the pre-gate parent machine. Nothing sets these step values now. */}
       {step === 'mode-select' && (
         <>
           <Text style={styles.stepTitle}>Account Setup</Text>
@@ -3801,26 +4916,7 @@ export const JoinTeamScreen: React.FC = () => {
               }}
               placeholder="you@example.com"
               error={formErrors.parentEmail}
-              isChecking={isCheckingEmail}
-              isAvailable={isEmailAvailable}
             />
-
-            {!user && registrationMode === 'new' && isEmailAvailable === false && isEmailValid(parentEmail) && (
-              <TouchableOpacity
-                style={styles.signInPromptBox}
-                onPress={() => {
-                  setRegistrationMode('existing');
-                  setShowVerificationModal(true);
-                }}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="log-in-outline" size={20} color="#8B5CF6" />
-                <Text style={styles.signInPromptText}>
-                  This email is already registered.{' '}
-                  <Text style={styles.signInPromptLink}>Sign in instead →</Text>
-                </Text>
-              </TouchableOpacity>
-            )}
 
             <PhoneInput
               label="Phone Number"
@@ -3950,33 +5046,13 @@ export const JoinTeamScreen: React.FC = () => {
         </View>
       )}
 
-      {step !== 'role-select' && (
+      {step === 'team-info' && (
         <TouchableOpacity
-          style={[
-            styles.continueButton,
-            (step === 'player-select' &&
-              playerLinkMode === 'existing' &&
-              !selectedPlayerId) &&
-              styles.continueButtonDisabled,
-            isSubmitting && styles.continueButtonDisabled,
-          ]}
+          style={[styles.continueButton, isSubmitting && styles.continueButtonDisabled]}
           onPress={handleContinue}
-          disabled={
-            (step === 'player-select' &&
-              playerLinkMode === 'existing' &&
-              !selectedPlayerId) ||
-            isSubmitting
-          }
+          disabled={isSubmitting}
         >
-          <Text style={styles.continueButtonText}>
-            {step === 'parent-form'
-              ? 'Complete Registration'
-              : step === 'player-select' && registrationMode === 'existing'
-                ? 'Verify Account'
-                : step === 'player-select'
-                  ? 'Continue to Your Info'
-                  : 'Continue'}
-          </Text>
+          <Text style={styles.continueButtonText}>Continue</Text>
           {isSubmitting ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
@@ -3985,16 +5061,18 @@ export const JoinTeamScreen: React.FC = () => {
         </TouchableOpacity>
       )}
 
-      {step !== 'role-select' && (
+      {step !== 'role-select' && step !== 'entry-gate' && (
         <Text style={styles.helpText}>
           Need help? Contact your team manager or coach.
         </Text>
       )}
 
+      {/* P2a: this modal is the entry gate's sign-in. handleVerificationSuccess,
+          the pre-gate parent handler, is retired. */}
       <IdentityVerificationModal
         visible={showVerificationModal}
         onClose={() => setShowVerificationModal(false)}
-        onVerified={handleVerificationSuccess}
+        onVerified={handleGateVerified}
         teamName={teamInfo?.name}
       />
 

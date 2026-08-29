@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,13 @@ interface IdentityVerificationModalProps {
   onClose: () => void;
   onVerified: (userId: string, email: string) => void;
   teamName?: string;
+  /**
+   * Optional: prefill the email field when the sheet opens, for callers that
+   * already asked for the address (the JoinTeam entry gate). The field stays
+   * editable. Omitting it leaves the previous behaviour untouched — the field
+   * simply opens empty.
+   */
+  initialEmail?: string;
 }
 
 export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps> = ({
@@ -27,12 +34,23 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
   onClose,
   onVerified,
   teamName,
+  initialEmail,
 }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState('');
   const [captchaVisible, setCaptchaVisible] = useState(false);
+
+  // Seed on the closed -> open transition only. Depending on `visible` alone
+  // keeps a later change to initialEmail from overwriting what the user typed,
+  // and the guard means callers that omit the prop are entirely unaffected.
+  useEffect(() => {
+    if (visible && initialEmail) {
+      setEmail(initialEmail);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   /**
    * iOS presents one Modal at a time, so the app-root CaptchaHost can never

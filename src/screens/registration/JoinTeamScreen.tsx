@@ -255,9 +255,15 @@ const findRosterCandidate = (
   const typedYear = parseDateOnly(dob);
   const year = typedYear && !Number.isNaN(typedYear.getTime()) ? typedYear.getFullYear() : null;
 
-  let best: { row: any; score: number } | null = null;
+  // Two buckets, never one pool: an exact last-name match must always win over a
+  // one-letter-off one, whatever the birth_year adjustment does to their scores.
+  // Ranking inside each bucket is identical and unchanged.
+  let bestExact: { row: any; score: number } | null = null;
+  let bestFuzzyLast: { row: any; score: number } | null = null;
+
   for (const row of roster) {
-    if (normalizeName(row.last_name || '') !== last) continue;
+    const rowLast = normalizeName(row.last_name || '');
+    if (!rowLast) continue;
 
     const rowFirst = normalizeName(row.first_name || '');
     if (!rowFirst) continue;
@@ -269,16 +275,36 @@ const findRosterCandidate = (
     else if (rowFirst[0] === first[0]) score = 60;
     else continue;
 
+    const lastIsExact = rowLast === last;
+    // A one-letter typo in the last name is the cheapest way to silently create a
+    // duplicate of a child already on the roster. Tolerate distance 1, but only
+    // behind a strong first name (equality / initial+edits / edits) — never behind
+    // the initial-only tier, which on its own is far too weak to carry a fuzzy
+    // surname as well.
+    const lastIsNearMiss = !lastIsExact && score >= 70 && levenshtein(rowLast, last) === 1;
+    if (!lastIsExact && !lastIsNearMiss) continue;
+
     if (year !== null && typeof row.birth_year === 'number') {
       if (Math.abs(row.birth_year - year) <= 1) score += 15;
       else score -= 25;
     }
 
-    if (!best || score > best.score) best = { row, score };
+    if (lastIsExact) {
+      if (!bestExact || score > bestExact.score) bestExact = { row, score };
+    } else if (!bestFuzzyLast || score > bestFuzzyLast.score) {
+      bestFuzzyLast = { row, score };
+    }
   }
 
   // A first-initial-only match on a mismatched birth year is too weak to act on.
-  return best && best.score >= 60 ? best.row : null;
+  // The same floor applies to both buckets, so a near-miss surname still has to
+  // clear it — which a weak first name plus a wrong birth year never does.
+  // The floor is applied per bucket rather than after picking: an exact surname
+  // that fails it is not a candidate at all, so it must not suppress a strong
+  // near-miss behind it.
+  if (bestExact && bestExact.score >= 60) return bestExact.row;
+  if (bestFuzzyLast && bestFuzzyLast.score >= 60) return bestFuzzyLast.row;
+  return null;
 };
 
 /** Auto-format team code as user types (max 9 digits + 2 dashes) */
@@ -501,6 +527,13 @@ export const JoinTeamScreen: React.FC = () => {
   /** Post-signUp dob_mismatch: re-open the date field on the details step. */
   const [parentDobRetry, setParentDobRetry] = useState(false);
   /**
+   * P2b: link_parent_to_player answered max_parents_reached. The roster player
+   * already has two guardians, so this is almost always a different child who
+   * happens to share the name — the escape re-runs the same account down the
+   * new-child path instead of stranding them.
+   */
+  const [parentCeilingBlocked, setParentCeilingBlocked] = useState(false);
+  /**
    * Retry ledger, copied from staffJoinPending. Once signUp has succeeded the
    * account is durable, so a later failure must never re-run signUp — it re-runs
    * runParentPostSignup from the step that failed. playerId is remembered so a
@@ -668,7 +701,7 @@ export const JoinTeamScreen: React.FC = () => {
       // question, or a branch would have to ask for the email itself.
       if (role === 'parent' || role === 'player' || role === 'staff') {
         setDeepLinkRole(role);
-        setStep('entry-gate');
+        goToGate();
       }
     } catch (err) {
       if (__DEV__) {
@@ -878,6 +911,22 @@ export const JoinTeamScreen: React.FC = () => {
     }
   };
 
+  /**
+   * The one way into the gate step. gateAutoResolved is a per-ARRIVAL latch, not
+   * a per-mount one: leaving it set is what stranded a signed-in visitor on the
+   * "Checking your account…" spinner, because the render keys that spinner on
+   * `user` while only the recognition effect can clear it — and the consumed
+   * latch had disabled that effect for the rest of the mount.
+   *
+   * Clearing it here and nowhere else keeps the no-re-run guarantee: the only
+   * writers are explicit, user-initiated navigations, so the latch can never be
+   * cleared while recognition is already in flight.
+   */
+  const goToGate = () => {
+    setGateAutoResolved(false);
+    setStep('entry-gate');
+  };
+
   /** Full reset back to the gate, used by the branches' "different email" escapes. */
   const returnToGate = () => {
     resetPlayerClaimState();
@@ -887,7 +936,7 @@ export const JoinTeamScreen: React.FC = () => {
     setGateAccountExists(false);
     setGateEmailError('');
     resetParentMachine();
-    setStep('entry-gate');
+    goToGate();
   };
 
   /** The gate has answered the email question; every role starts from that answer. */
@@ -1000,6 +1049,7 @@ export const JoinTeamScreen: React.FC = () => {
     setParentDobAttempts(0);
     setParentCandidateLocked(false);
     setParentDobRetry(false);
+    setParentCeilingBlocked(false);
     setParentJoinPending(null);
     setParentSubmitting(false);
     setPlayerFirstName('');
@@ -1096,6 +1146,7 @@ export const JoinTeamScreen: React.FC = () => {
 
   /** "Go back" on the confirm card: exits to identity with NO write of any kind. */
   const handleParentConfirmGoBack = () => {
+    setParentCeilingBlocked(false);
     setParentMatchCandidate(null);
     setParentDobAttempts(0);
     setParentCandidateLocked(false);
@@ -1139,9 +1190,15 @@ export const JoinTeamScreen: React.FC = () => {
   const runParentPostSignup = async (
     userId: string,
     userEmail: string,
-    knownPlayerId?: string
+    knownPlayerId?: string,
+    forceNewChild = false
   ): Promise<void> => {
     const isNewAccount = registrationMode === 'new';
+    // P2b: the ceiling escape re-enters here with the same account and the same
+    // typed child details, but takes the register_player branch instead of the
+    // link branch. Passed as an argument, not read from state — a setState made
+    // by the caller would not be visible inside this call.
+    const linkTarget = forceNewChild ? null : parentMatchCandidate;
 
     // Profile: additive, never fatal, but no longer silent in production.
     const { error: profileError } = await supabase
@@ -1182,18 +1239,18 @@ export const JoinTeamScreen: React.FC = () => {
     // Data in hand, used verbatim if the row re-fetch fails (B4).
     let playerFallback: any = {
       id: playerId,
-      first_name: parentMatchCandidate?.first_name || playerFirstName.trim(),
-      last_name: parentMatchCandidate?.last_name || playerLastName.trim(),
+      first_name: linkTarget?.first_name || playerFirstName.trim(),
+      last_name: linkTarget?.last_name || playerLastName.trim(),
     };
 
     if (!playerId) {
-      if (parentMatchCandidate) {
+      if (linkTarget) {
         // Confirmed fuzzy match: attach to the existing roster row. The DOB the
         // parent typed on the identity step is the proof.
         const { data: linkResult, error: linkError } = await supabase.rpc(
           'link_parent_to_player',
           {
-            p_player_id: parentMatchCandidate.id,
+            p_player_id: linkTarget.id,
             p_user_id: userId,
             p_user_email: userEmail,
             p_verified_dob: playerDOB,
@@ -1226,16 +1283,24 @@ export const JoinTeamScreen: React.FC = () => {
             );
             return;
           }
+          if (token === 'max_parents_reached') {
+            // Set-and-return, like dob_mismatch: the account already exists, so
+            // the details step offers the escape rather than a dead end.
+            setParentCeilingBlocked(true);
+            setParentDetailsError(mapJoinError(linkError));
+            return;
+          }
           throw linkError ?? new Error('Failed to link to player');
         }
 
         setParentDobRetry(false);
-        playerId = parentMatchCandidate.id as string;
+        setParentCeilingBlocked(false);
+        playerId = linkTarget.id as string;
         playerFallback = {
           id: playerId,
-          first_name: parentMatchCandidate.first_name,
-          last_name: parentMatchCandidate.last_name,
-          jersey_number: parentMatchCandidate.jersey_number ?? null,
+          first_name: linkTarget.first_name,
+          last_name: linkTarget.last_name,
+          jersey_number: linkTarget.jersey_number ?? null,
         };
       } else {
         const { data: registeredPlayerId, error: playerError } = await supabase.rpc(
@@ -1354,6 +1419,7 @@ export const JoinTeamScreen: React.FC = () => {
   const handleParentSubmit = async () => {
     if (parentCandidateLocked) return;
     setParentDetailsError('');
+    setParentCeilingBlocked(false);
     if (!validateParentDetails()) return;
 
     const isNewAccount = !user?.id && !verifiedUserId;
@@ -1453,9 +1519,42 @@ export const JoinTeamScreen: React.FC = () => {
    * exist, and any player row already created is passed straight back in — so
    * this never runs signUp twice and never creates a second child.
    */
+  /**
+   * P2b ceiling escape. The roster player is full, so this child is a different
+   * one who shares the name: keep the account that already exists, keep every
+   * detail already typed, and resume runParentPostSignup at the register_player
+   * step. Never a second signUp, and the form is never re-asked.
+   */
+  const handleParentRegisterInstead = async () => {
+    if (!parentJoinPending) return;
+    setParentDetailsError('');
+    setParentCeilingBlocked(false);
+    setParentDobRetry(false);
+    setParentDobAttempts(0);
+    setParentCandidateLocked(false);
+    // The screen is on the new-child path from here on: summary copy, jersey and
+    // second-guardian fields all key off parentMatchCandidate.
+    setParentMatchCandidate(null);
+    setParentSubmitting(true);
+    try {
+      await runParentPostSignup(
+        parentJoinPending.userId,
+        parentJoinPending.email,
+        parentJoinPending.playerId,
+        true
+      );
+    } catch (err: any) {
+      console.error('[JoinTeam] Parent register-instead error:', err);
+      setParentDetailsError(mapJoinError(err));
+    } finally {
+      setParentSubmitting(false);
+    }
+  };
+
   const handleParentRetry = async () => {
     if (!parentJoinPending || parentCandidateLocked) return;
     setParentDetailsError('');
+    setParentCeilingBlocked(false);
     setParentSubmitting(true);
     try {
       await runParentPostSignup(
@@ -2812,7 +2911,7 @@ export const JoinTeamScreen: React.FC = () => {
   const handleContinue = async () => {
     if (step === 'team-info') {
       // P2a: the entry gate sits between the team card and the role cards.
-      setStep('entry-gate');
+      goToGate();
       return;
     }
     // RETIRED (P2a §6): every arm below drove the pre-gate machine. The footer
@@ -2919,7 +3018,15 @@ export const JoinTeamScreen: React.FC = () => {
         dropRoleKeepGate();
         return;
       }
-      setStep('entry-gate');
+      // The gate has nothing left to ask a signed-in visitor — their session is
+      // the answer. Sending them back into it would re-run recognition only to
+      // bounce them straight back here. Signed-out, the gate's email field is
+      // exactly what "back" should show.
+      if (user?.id || verifiedUserId) {
+        setStep('team-info');
+        return;
+      }
+      goToGate();
     } else if (step === 'entry-gate') {
       setGateRecognized(false);
       setGateEmailError('');
@@ -4007,6 +4114,11 @@ export const JoinTeamScreen: React.FC = () => {
                   <Text style={styles.stepTitle}>
                     {user || verifiedUserId ? 'Confirm Your Details' : 'Create Your Account'}
                   </Text>
+                  <Text style={styles.stepSubtitle}>
+                    {user || verifiedUserId
+                      ? "Check your name and phone, then join the team — you're already signed in."
+                      : "We'll create your account and add you to the team."}
+                  </Text>
 
                   <View style={styles.summaryCard}>
                     <Text style={styles.summaryTitle}>Joining As</Text>
@@ -4049,7 +4161,11 @@ export const JoinTeamScreen: React.FC = () => {
                       </View>
                       {/* P2a §3: the gate collected this address. No branch asks twice. */}
                       <FormInput
-                        label="Email (this will be your login)"
+                        label={
+                          user || verifiedUserId
+                            ? 'Your account email'
+                            : 'Email (this will be your login)'
+                        }
                         value={user?.email || staffEmail || gateEmail}
                         onChangeText={() => { /* locked to the gate's answer */ }}
                         editable={false}
@@ -4590,23 +4706,56 @@ export const JoinTeamScreen: React.FC = () => {
           {/* The account survives every failure past this point, so the button
               becomes Retry rather than a second signUp. */}
           {parentJoinPending && parentDetailsError && !parentCandidateLocked ? (
-            <TouchableOpacity
-              style={[
-                styles.continueButton,
-                parentSubmitting && styles.continueButtonDisabled,
-              ]}
-              onPress={handleParentRetry}
-              disabled={parentSubmitting}
-            >
-              <Text style={styles.continueButtonText}>
-                {parentSubmitting ? 'Retrying…' : 'Try again'}
-              </Text>
-              {parentSubmitting ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Ionicons name="refresh" size={20} color="#FFFFFF" />
+            <>
+              <TouchableOpacity
+                style={[
+                  styles.continueButton,
+                  parentSubmitting && styles.continueButtonDisabled,
+                ]}
+                onPress={handleParentRetry}
+                disabled={parentSubmitting}
+              >
+                <Text style={styles.continueButtonText}>
+                  {parentSubmitting ? 'Retrying…' : 'Try again'}
+                </Text>
+                {parentSubmitting ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="refresh" size={20} color="#FFFFFF" />
+                )}
+              </TouchableOpacity>
+
+              {/* P2b ceiling escape: the roster player already has two guardians,
+                  so the usual cause is a different child with the same name. */}
+              {parentCeilingBlocked && (
+                <>
+                  <Text style={styles.parent2HelpText}>
+                    That player on the roster already has two parents linked. If your
+                    child is a different player who happens to share the name, register
+                    them as a new player instead — we'll keep the account and the
+                    details you just entered.
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.continueButton,
+                      { backgroundColor: '#F59E0B' },
+                      parentSubmitting && styles.continueButtonDisabled,
+                    ]}
+                    onPress={handleParentRegisterInstead}
+                    disabled={parentSubmitting}
+                  >
+                    <Text style={styles.continueButtonText}>
+                      {parentSubmitting ? 'Registering…' : 'Register as a new player instead'}
+                    </Text>
+                    {parentSubmitting ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Ionicons name="person-add-outline" size={20} color="#FFFFFF" />
+                    )}
+                  </TouchableOpacity>
+                </>
               )}
-            </TouchableOpacity>
+            </>
           ) : parentCandidateLocked ? null : (
             <TouchableOpacity
               style={[
@@ -5074,6 +5223,7 @@ export const JoinTeamScreen: React.FC = () => {
         onClose={() => setShowVerificationModal(false)}
         onVerified={handleGateVerified}
         teamName={teamInfo?.name}
+        initialEmail={gateEmail}
       />
 
       <IdentityVerificationModal
@@ -5081,6 +5231,7 @@ export const JoinTeamScreen: React.FC = () => {
         onClose={() => setShowPlayerClaimVerificationModal(false)}
         onVerified={handlePlayerEmailVerified}
         teamName={teamInfo?.name}
+        initialEmail={gateEmail}
       />
 
       <IdentityVerificationModal
@@ -5088,6 +5239,7 @@ export const JoinTeamScreen: React.FC = () => {
         onClose={() => setShowStaffVerificationModal(false)}
         onVerified={handleStaffVerified}
         teamName={teamInfo?.name}
+        initialEmail={gateEmail}
       />
       </ScrollView>
     </KeyboardAvoidingView>

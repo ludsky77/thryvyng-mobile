@@ -153,8 +153,7 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
 
             <Text style={styles.title}>Verify Your Identity</Text>
             <Text style={styles.subtitle}>
-              Sign in to add a player to your existing account
-              {teamName && ` and join ${teamName}`}
+              {teamName ? `Sign in to continue joining ${teamName}` : 'Sign in to continue'}
             </Text>
 
             <View style={styles.form}>

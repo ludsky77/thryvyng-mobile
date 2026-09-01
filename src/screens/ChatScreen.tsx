@@ -25,6 +25,11 @@ import { supabase } from '../lib/supabase';
 import { formatRoleLabel, getRolePriority, getTimeAgo } from '../lib/chatHelpers';
 import { NotificationBell } from '../components/NotificationBell';
 import { useFocusEffect } from '@react-navigation/native';
+import {
+  countsTowardUnread,
+  isUnreadMessage,
+  unreadFallbackCutoff,
+} from '../hooks/useTotalChatUnread';
 
 interface EnrichedConversation {
   id: string;
@@ -36,6 +41,8 @@ interface EnrichedConversation {
   lastMessage: string | null;
   lastMessageTime: string | null;
   unreadCount: number;
+  /** Channel is muted for this user. Counted in the card badge, excluded from the tab total. */
+  isMuted?: boolean;
   channel_type?: string;
   team_id?: string | null;
   team?: { id: string; name: string; color?: string } | null;
@@ -364,7 +371,7 @@ export default function ChatScreen({ navigation, route }: any) {
           : Promise.resolve({ data: [] }),
         supabase
           .from('comm_channel_members')
-          .select('channel_id, last_read_at')
+          .select('channel_id, last_read_at, is_muted')
           .eq('user_id', user.id)
           .in('channel_id', channelIds),
         supabase
@@ -411,14 +418,22 @@ export default function ChatScreen({ navigation, route }: any) {
       });
 
       const lastReadMap = new Map<string, string>();
+      const mutedChannelIds = new Set<string>();
       (memberDataResult.data || []).forEach((m: any) => {
         if (m.last_read_at) lastReadMap.set(m.channel_id, m.last_read_at);
+        if (!countsTowardUnread(m)) mutedChannelIds.add(m.channel_id);
       });
 
+      // Counting rule lives in useTotalChatUnread so the card badge and the tab
+      // total can never drift apart on WHICH messages are unread.
+      // Muted channels ARE counted here (WhatsApp standard: a muted chat still
+      // shows its own badge); only the tab total in useTotalChatUnread drops
+      // them. isMuted rides along on each conversation so the card can style
+      // that badge differently.
+      const fallbackCutoff = unreadFallbackCutoff();
       const unreadCountMap = new Map<string, number>();
       (unreadMsgsResult.data || []).forEach((msg: any) => {
-        const lastRead = lastReadMap.get(msg.channel_id);
-        if (!lastRead || new Date(msg.created_at) > new Date(lastRead)) {
+        if (isUnreadMessage(msg.created_at, lastReadMap.get(msg.channel_id), fallbackCutoff)) {
           unreadCountMap.set(msg.channel_id, (unreadCountMap.get(msg.channel_id) ?? 0) + 1);
         }
       });
@@ -437,6 +452,7 @@ export default function ChatScreen({ navigation, route }: any) {
         channelList.map((channel: any) => {
           const lastMsg = lastMessageMap.get(channel.id);
           const unreadCount = unreadCountMap.get(channel.id) ?? 0;
+          const isMuted = mutedChannelIds.has(channel.id);
 
           if (channel.is_direct_message) {
             const otherUserId =
@@ -455,6 +471,7 @@ export default function ChatScreen({ navigation, route }: any) {
               lastMessage: lastMsg?.content || null,
               lastMessageTime: lastMsg?.created_at || channel.created_at,
               unreadCount,
+              isMuted,
               channel_type: channel.channel_type,
               name: channel.name,
             };
@@ -470,6 +487,7 @@ export default function ChatScreen({ navigation, route }: any) {
               lastMessage: lastMsg?.content || null,
               lastMessageTime: lastMsg?.created_at || channel.created_at,
               unreadCount,
+              isMuted,
               channel_type: channel.channel_type,
               name: channel.name,
             };
@@ -485,6 +503,7 @@ export default function ChatScreen({ navigation, route }: any) {
             lastMessage: lastMsg?.content || null,
             lastMessageTime: lastMsg?.created_at || channel.created_at,
             unreadCount,
+            isMuted,
             channel_type: channel.channel_type,
             team_id: channel.team_id,
             team: team ? { id: team.id, name: team.name, color: team.color } : null,

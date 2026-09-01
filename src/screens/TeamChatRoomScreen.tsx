@@ -109,6 +109,9 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   const [memberNames, setMemberNames] = useState<Map<string, { name: string; avatar: string | null }>>(new Map());
   const [staffUserIds, setStaffUserIds] = useState<Set<string>>(new Set());
 
+  // Called on mount, on focus, and on each incoming message (via useMessages'
+  // onNewMessage). A failed stamp leaves a stale unread badge, so it is logged
+  // rather than swallowed -- non-fatal, never thrown.
   const markChannelAsRead = useCallback(() => {
     if (!channelId || !user?.id) return;
     supabase
@@ -116,7 +119,11 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
       .update({ last_read_at: new Date().toISOString() })
       .eq('channel_id', channelId)
       .eq('user_id', user.id)
-      .then(() => {});
+      .then(({ error }) => {
+        if (error && __DEV__) {
+          console.error('[markChannelAsRead] mark read failed:', error);
+        }
+      });
   }, [channelId, user?.id]);
 
   const {

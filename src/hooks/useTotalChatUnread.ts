@@ -2,8 +2,58 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
-const LOOKBACK_DAYS = 30;
+export const LOOKBACK_DAYS = 30;
 const DEBOUNCE_MS = 3000; // Wait 3 seconds after last message before re-fetching
+
+/*
+ * ONE RULE for unread counting, shared by every surface that shows a count
+ * (this hook's tab total and ChatScreen's per-card badge). Both previously
+ * re-derived the rule and disagreed; these helpers are the single writer.
+ *
+ * A message is unread when ALL of the following hold:
+ *   - its channel is not archived      (enforced by the caller's channel query)
+ *   - the channel is not muted         (countsTowardUnread)
+ *   - it is not the reader's own       (enforced by the caller's .neq('user_id'))
+ *   - it is not deleted                (enforced by the caller's .eq('is_deleted'))
+ *   - it is strictly newer than the channel's unread floor (isUnreadMessage)
+ *
+ * The floor is last_read_at, falling back to the 30-day cutoff ONLY when
+ * last_read_at is null.
+ */
+
+/** The 30-day floor, used only for channels the user has never read. */
+export function unreadFallbackCutoff(now: Date = new Date()): string {
+  const cutoff = new Date(now);
+  cutoff.setDate(cutoff.getDate() - LOOKBACK_DAYS);
+  return cutoff.toISOString();
+}
+
+/** A channel's unread floor: last_read_at, else the 30-day fallback. */
+export function unreadFloor(
+  lastReadAt: string | null | undefined,
+  fallbackCutoff: string
+): string {
+  return lastReadAt ?? fallbackCutoff;
+}
+
+/** A message is unread when it is strictly newer than its channel's floor. */
+export function isUnreadMessage(
+  createdAt: string,
+  lastReadAt: string | null | undefined,
+  fallbackCutoff: string
+): boolean {
+  return (
+    new Date(createdAt).getTime() >
+    new Date(unreadFloor(lastReadAt, fallbackCutoff)).getTime()
+  );
+}
+
+/** Muted channels are excluded from every unread surface. */
+export function countsTowardUnread(membership: {
+  is_muted?: boolean | null;
+}): boolean {
+  return membership?.is_muted !== true;
+}
 
 export function useTotalChatUnread(): number {
   const { user } = useAuth();
@@ -20,7 +70,7 @@ export function useTotalChatUnread(): number {
     try {
       const { data: memberships } = await supabase
         .from('comm_channel_members')
-        .select('channel_id, last_read_at')
+        .select('channel_id, last_read_at, is_muted')
         .eq('user_id', user.id);
 
       if (!memberships?.length || !isMountedRef.current) {
@@ -40,9 +90,11 @@ export function useTotalChatUnread(): number {
 
       if (!isMountedRef.current) return;
 
+      // Muted channels are excluded here as well as in ChatScreen's per-card
+      // count, so the tab total never advertises a badge the list does not show.
       const activeChannelIds = new Set((activeChannels || []).map((c: any) => c.id));
-      const visibleMemberships = memberships.filter((m: any) =>
-        activeChannelIds.has(m.channel_id)
+      const visibleMemberships = memberships.filter(
+        (m: any) => activeChannelIds.has(m.channel_id) && countsTowardUnread(m)
       );
 
       if (!visibleMemberships.length) {
@@ -52,24 +104,15 @@ export function useTotalChatUnread(): number {
 
       // Count unread per channel using individual count queries (faster than fetching all messages)
       let total = 0;
+      const fallbackCutoff = unreadFallbackCutoff();
       const countPromises = visibleMemberships.map(async (m: any) => {
-        const lastRead = m.last_read_at;
-        let query = supabase
+        const { count } = await supabase
           .from('comm_messages')
           .select('id', { count: 'exact', head: true })
           .eq('channel_id', m.channel_id)
           .eq('is_deleted', false)
-          .neq('user_id', user.id);
-
-        if (lastRead) {
-          query = query.gt('created_at', lastRead);
-        } else {
-          const cutoff = new Date();
-          cutoff.setDate(cutoff.getDate() - LOOKBACK_DAYS);
-          query = query.gte('created_at', cutoff.toISOString());
-        }
-
-        const { count } = await query;
+          .neq('user_id', user.id)
+          .gt('created_at', unreadFloor(m.last_read_at, fallbackCutoff));
         return count || 0;
       });
 

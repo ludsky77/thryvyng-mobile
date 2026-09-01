@@ -81,6 +81,9 @@ export default function DMChatScreen({ route, navigation }: any) {
   const [reactionPickerMessage, setReactionPickerMessage] =
     useState<Message | null>(null);
 
+  // Called on mount, on focus, and on each incoming message (via useMessages'
+  // onNewMessage). A failed stamp leaves a stale unread badge, so it is logged
+  // rather than swallowed -- non-fatal, never thrown.
   const markChannelRead = useCallback(() => {
     if (!channelId || !user?.id) return;
     supabase
@@ -88,7 +91,11 @@ export default function DMChatScreen({ route, navigation }: any) {
       .update({ last_read_at: new Date().toISOString() })
       .eq('channel_id', channelId)
       .eq('user_id', user.id)
-      .then(() => {});
+      .then(({ error }) => {
+        if (error && __DEV__) {
+          console.error('[markChannelRead] mark read failed:', error);
+        }
+      });
   }, [channelId, user?.id]);
 
   const {

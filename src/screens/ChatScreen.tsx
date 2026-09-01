@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -26,11 +26,6 @@ import { formatRoleLabel, getRolePriority, getTimeAgo } from '../lib/chatHelpers
 import { NotificationBell } from '../components/NotificationBell';
 import { useFocusEffect } from '@react-navigation/native';
 import { subscribeToMessageInserts } from '../lib/realtimeHub';
-import {
-  countsTowardUnread,
-  isUnreadMessage,
-  unreadFallbackCutoff,
-} from '../hooks/useTotalChatUnread';
 
 interface EnrichedConversation {
   id: string;
@@ -247,6 +242,11 @@ export default function ChatScreen({ navigation, route }: any) {
   const [pastConversations, setPastConversations] = useState<EnrichedConversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // First fetch has resolved (success or failure). Until it does we must not
+  // claim the user has no conversations.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  // ensure_team_channel_membership is a one-time repair, not a per-fetch step.
+  const membershipEnsuredRef = useRef(false);
   const [activeTab, setActiveTab] = useState<'recent' | 'byTeam' | 'past'>('recent');
   const [teamSearchQuery, setTeamSearchQuery] = useState('');
 
@@ -257,12 +257,16 @@ export default function ChatScreen({ navigation, route }: any) {
 
   const [dmSearchQuery, setDmSearchQuery] = useState('');
   const [dmSearchResults, setDmSearchResults] = useState<ProfileResult[]>([]);
+  const [isSearchingDm, setIsSearchingDm] = useState(false);
+  const dmSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [existingDMs, setExistingDMs] = useState<Map<string, string>>(new Map());
 
   const [groupName, setGroupName] = useState('');
   const [selectedGroupUsers, setSelectedGroupUsers] = useState<ProfileResult[]>([]);
   const [groupSearchQuery, setGroupSearchQuery] = useState('');
   const [groupSearchResults, setGroupSearchResults] = useState<ProfileResult[]>([]);
+  const [isSearchingGroup, setIsSearchingGroup] = useState(false);
+  const groupSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [existingGroupMatch, setExistingGroupMatch] = useState<{
     id: string;
     name: string;
@@ -283,11 +287,15 @@ export default function ChatScreen({ navigation, route }: any) {
       setConversations([]);
       setPastConversations([]);
       setLoading(false);
+      setHasLoadedOnce(true);
       return;
     }
     setLoading(true);
     try {
-      if (activeTeams.length > 0) {
+      // One-time membership repair, in parallel, and only on the first load of
+      // the session -- it used to run serially before every single refetch.
+      if (!membershipEnsuredRef.current && activeTeams.length > 0) {
+        membershipEnsuredRef.current = true;
         await Promise.all(
           activeTeams.map(async (team) => {
             try {
@@ -299,236 +307,88 @@ export default function ChatScreen({ navigation, route }: any) {
         );
       }
 
-      const { data: memberships } = await supabase
-        .from('comm_channel_members')
-        .select('channel_id')
-        .eq('user_id', user.id);
-
-      const channelIds = memberships?.map((m: any) => m.channel_id) || [];
-      if (channelIds.length === 0) {
-        setConversations([]);
-        setPastConversations([]);
-        setLoading(false);
-        setRefreshing(false);
+      // One server-side call replaces the former 3 serial stages + 7-query
+      // parallel batch + client-side joins. Unread counting, muting, archiving
+      // and last-message resolution now all happen in the database.
+      const { data, error } = await supabase.rpc('get_my_conversations');
+      if (error) {
+        if (__DEV__) {
+          console.error('[ChatScreen] get_my_conversations failed:', error);
+        }
+        // Keep whatever is already on screen rather than blanking the list.
         return;
       }
-
-      const { data: channels, error: channelsError } = await supabase
-        .from('comm_channels')
-        .select('*')
-        .in('id', channelIds)
-        .eq('is_archived', false)
-        .order('created_at', { ascending: false });
-
-      if (channelsError || !channels?.length) {
-        setConversations([]);
-        setPastConversations([]);
-        setLoading(false);
-        setRefreshing(false);
-        return;
-      }
-
-      const dmChannels = channels.filter((c: any) => c.is_direct_message);
-      const otherUserIds = dmChannels
-        .map((c: any) =>
-          c.dm_participant_1 === user.id ? c.dm_participant_2 : c.dm_participant_1
-        )
-        .filter(Boolean);
-      const groupChannels = channels.filter((c: any) => c.channel_type === 'group_dm');
-
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - 30);
-
-      // Run all independent queries in parallel
-      const [
-        profilesResult,
-        userRolesResult,
-        staffRolesResult,
-        lastMessagesResult,
-        memberRowsResult,
-        memberDataResult,
-        unreadMsgsResult,
-      ] = await Promise.all([
-        otherUserIds.length > 0
-          ? // Membership-gated RPC; RLS on profiles hides other members' rows
-            // from a plain parent/player, which rendered DMs as "Unknown User".
-            supabase
-              .rpc('get_chat_profiles', { p_user_ids: otherUserIds })
-              .then(({ data, error }: any) => {
-                if (error) {
-                  if (__DEV__) {
-                    console.error('[ChatScreen] get_chat_profiles failed:', error);
-                  }
-                  return { data: [] };
-                }
-                return {
-                  data: (data || []).map((r: any) => ({
-                    id: r.user_id,
-                    full_name: r.display_name ?? null,
-                    avatar_url: r.avatar_url ?? null,
-                  })),
-                };
-              })
-          : Promise.resolve({ data: [] }),
-        otherUserIds.length > 0
-          ? supabase.from('user_roles').select('user_id, role').in('user_id', otherUserIds)
-          : Promise.resolve({ data: [] }),
-        otherUserIds.length > 0
-          ? supabase.from('team_staff').select('user_id, staff_role').in('user_id', otherUserIds)
-          : Promise.resolve({ data: [] }),
-        supabase
-          .from('comm_messages')
-          .select('channel_id, content, created_at, user_id')
-          .in('channel_id', channelIds)
-          .eq('is_deleted', false)
-          .order('created_at', { ascending: false }),
-        groupChannels.length > 0
-          ? supabase
-              .from('comm_channel_members')
-              .select('channel_id')
-              .in('channel_id', groupChannels.map((c: any) => c.id))
-          : Promise.resolve({ data: [] }),
-        supabase
-          .from('comm_channel_members')
-          .select('channel_id, last_read_at, is_muted')
-          .eq('user_id', user.id)
-          .in('channel_id', channelIds),
-        supabase
-          .from('comm_messages')
-          .select('channel_id, created_at')
-          .in('channel_id', channelIds)
-          .eq('is_deleted', false)
-          .neq('user_id', user.id)
-          .gte('created_at', cutoff.toISOString()),
-      ]);
-
-      // Build lookup maps from parallel results
-      const profileMap = new Map<string, { id: string; full_name: string | null; avatar_url: string | null }>();
-      (profilesResult.data || []).forEach((p: any) => profileMap.set(p.id, p));
-
-      const roleMap = new Map<string, string>();
-      (userRolesResult.data || []).forEach((r: any) => {
-        const existing = roleMap.get(r.user_id);
-        if (!existing || getRolePriority(r.role) > getRolePriority(existing)) {
-          roleMap.set(r.user_id, r.role);
-        }
-      });
-      (staffRolesResult.data || []).forEach((r: any) => {
-        const existing = roleMap.get(r.user_id);
-        if (!existing || getRolePriority(r.staff_role) > getRolePriority(existing)) {
-          roleMap.set(r.user_id, r.staff_role);
-        }
-      });
-
-      const lastMessageMap = new Map<string, { content: string; created_at: string; user_id: string }>();
-      (lastMessagesResult.data || []).forEach((msg: any) => {
-        if (!lastMessageMap.has(msg.channel_id)) {
-          lastMessageMap.set(msg.channel_id, {
-            content: msg.content,
-            created_at: msg.created_at,
-            user_id: msg.user_id,
-          });
-        }
-      });
-
-      const memberCountMap = new Map<string, number>();
-      (memberRowsResult.data || []).forEach((m: any) => {
-        memberCountMap.set(m.channel_id, (memberCountMap.get(m.channel_id) || 0) + 1);
-      });
-
-      const lastReadMap = new Map<string, string>();
-      const mutedChannelIds = new Set<string>();
-      (memberDataResult.data || []).forEach((m: any) => {
-        if (m.last_read_at) lastReadMap.set(m.channel_id, m.last_read_at);
-        if (!countsTowardUnread(m)) mutedChannelIds.add(m.channel_id);
-      });
-
-      // Counting rule lives in useTotalChatUnread so the card badge and the tab
-      // total can never drift apart on WHICH messages are unread.
-      // Muted channels ARE counted here (WhatsApp standard: a muted chat still
-      // shows its own badge); only the tab total in useTotalChatUnread drops
-      // them. isMuted rides along on each conversation so the card can style
-      // that badge differently.
-      const fallbackCutoff = unreadFallbackCutoff();
-      const unreadCountMap = new Map<string, number>();
-      (unreadMsgsResult.data || []).forEach((msg: any) => {
-        if (isUnreadMessage(msg.created_at, lastReadMap.get(msg.channel_id), fallbackCutoff)) {
-          unreadCountMap.set(msg.channel_id, (unreadCountMap.get(msg.channel_id) ?? 0) + 1);
-        }
-      });
 
       const activeTeamIds = new Set(activeTeams.map((t) => t.id));
       const pastTeamIds = new Set(pastTeams.map((t) => t.id));
 
-      const dmsAndActiveChannels = channels.filter(
-        (c: any) => !c.team_id || activeTeamIds.has(c.team_id)
-      );
-      const pastChannelsRaw = channels.filter(
-        (c: any) => c.team_id && pastTeamIds.has(c.team_id)
-      );
+      const toConversation = (row: any): EnrichedConversation => {
+        const lastMessageTime = row.last_message_at ?? null;
+        const unreadCount = row.unread_count ?? 0;
+        const isMuted = row.is_muted === true;
 
-      const enrichChannels = (channelList: any[]): EnrichedConversation[] =>
-        channelList.map((channel: any) => {
-          const lastMsg = lastMessageMap.get(channel.id);
-          const unreadCount = unreadCountMap.get(channel.id) ?? 0;
-          const isMuted = mutedChannelIds.has(channel.id);
-
-          if (channel.is_direct_message) {
-            const otherUserId =
-              channel.dm_participant_1 === user.id
-                ? channel.dm_participant_2
-                : channel.dm_participant_1;
-            const otherPerson = profileMap.get(otherUserId);
-            const role = roleMap.get(otherUserId);
-            return {
-              id: channel.id,
-              displayType: 'dm',
-              displayName: otherPerson?.full_name || 'Unknown User',
-              displaySubtitle: formatRoleLabel(role),
-              displayAvatar: otherPerson?.avatar_url || null,
-              displayInitial: otherPerson?.full_name?.charAt(0)?.toUpperCase() || '?',
-              lastMessage: lastMsg?.content || null,
-              lastMessageTime: lastMsg?.created_at || channel.created_at,
-              unreadCount,
-              isMuted,
-              channel_type: channel.channel_type,
-              name: channel.name,
-            };
-          }
-          if (channel.channel_type === 'group_dm') {
-            return {
-              id: channel.id,
-              displayType: 'group',
-              displayName: channel.name || 'Group Chat',
-              displaySubtitle: `${memberCountMap.get(channel.id) || 0} members`,
-              displayAvatar: null,
-              displayInitial: '👥',
-              lastMessage: lastMsg?.content || null,
-              lastMessageTime: lastMsg?.created_at || channel.created_at,
-              unreadCount,
-              isMuted,
-              channel_type: channel.channel_type,
-              name: channel.name,
-            };
-          }
-          const team = allTeams.find((t) => t.id === channel.team_id);
+        if (row.is_direct_message) {
+          const otherName = row.other_user_name || 'Unknown User';
           return {
-            id: channel.id,
-            displayType: 'team',
-            displayName: channel.name || 'Team Chat',
-            displaySubtitle: team?.name || '',
-            displayAvatar: null,
-            displayInitial: '#',
-            lastMessage: lastMsg?.content || null,
-            lastMessageTime: lastMsg?.created_at || channel.created_at,
+            id: row.channel_id,
+            displayType: 'dm',
+            displayName: otherName,
+            displaySubtitle: '',
+            displayAvatar: row.other_user_avatar || null,
+            displayInitial: otherName.charAt(0)?.toUpperCase() || '?',
+            lastMessage: row.last_message_content || null,
+            lastMessageTime,
             unreadCount,
             isMuted,
-            channel_type: channel.channel_type,
-            team_id: channel.team_id,
-            team: team ? { id: team.id, name: team.name, color: team.color } : null,
-            name: channel.name,
+            channel_type: row.channel_type,
+            name: row.name,
           };
-        });
+        }
+        if (row.channel_type === 'group_dm') {
+          return {
+            id: row.channel_id,
+            displayType: 'group',
+            displayName: row.name || 'Group Chat',
+            displaySubtitle: `${row.member_count || 0} members`,
+            displayAvatar: null,
+            displayInitial: '👥',
+            lastMessage: row.last_message_content || null,
+            lastMessageTime,
+            unreadCount,
+            isMuted,
+            channel_type: row.channel_type,
+            name: row.name,
+          };
+        }
+        const team = allTeams.find((t) => t.id === row.team_id);
+        return {
+          id: row.channel_id,
+          displayType: 'team',
+          displayName: row.name || 'Team Chat',
+          displaySubtitle: row.team_name || team?.name || '',
+          displayAvatar: null,
+          displayInitial: '#',
+          lastMessage: row.last_message_content || null,
+          lastMessageTime,
+          unreadCount,
+          isMuted,
+          channel_type: row.channel_type,
+          team_id: row.team_id,
+          team: row.team_id
+            ? { id: row.team_id, name: row.team_name || team?.name || '', color: team?.color }
+            : null,
+          name: row.name,
+        };
+      };
+
+      // Archived channels never reach the list, matching the previous query.
+      const rows = (data || []).filter((r: any) => r?.channel_id && !r.is_archived);
+      const activeRows = rows.filter(
+        (r: any) => !r.team_id || activeTeamIds.has(r.team_id)
+      );
+      const pastRows = rows.filter(
+        (r: any) => r.team_id && pastTeamIds.has(r.team_id)
+      );
 
       const sortByRecent = (list: EnrichedConversation[]) =>
         [...list].sort((a, b) => {
@@ -537,15 +397,14 @@ export default function ChatScreen({ navigation, route }: any) {
           return tB - tA;
         });
 
-      setConversations(sortByRecent(enrichChannels(dmsAndActiveChannels)));
-      setPastConversations(sortByRecent(enrichChannels(pastChannelsRaw)));
+      setConversations(sortByRecent(activeRows.map(toConversation)));
+      setPastConversations(sortByRecent(pastRows.map(toConversation)));
     } catch (err) {
       console.error('Error fetching conversations:', err);
-      setConversations([]);
-      setPastConversations([]);
     }
     setLoading(false);
     setRefreshing(false);
+    setHasLoadedOnce(true);
   }, [user?.id, activeTeams, pastTeams, allTeams]);
 
   useEffect(() => {
@@ -750,6 +609,57 @@ export default function ChatScreen({ navigation, route }: any) {
     },
     [user?.id, selectedGroupUsers]
   );
+
+  // 300 ms debounce: the pickers fire on every keystroke, and each keystroke is
+  // an RPC round trip. isSearching drives the spinner between keystroke and result.
+  const DEBOUNCE_MS = 300;
+
+  const queueDmSearch = useCallback(
+    (text: string) => {
+      if (dmSearchTimerRef.current) clearTimeout(dmSearchTimerRef.current);
+      if (!text.trim()) {
+        setIsSearchingDm(false);
+        setDmSearchResults([]);
+        return;
+      }
+      setIsSearchingDm(true);
+      dmSearchTimerRef.current = setTimeout(async () => {
+        try {
+          await searchUsersForDM(text);
+        } finally {
+          setIsSearchingDm(false);
+        }
+      }, DEBOUNCE_MS);
+    },
+    [searchUsersForDM]
+  );
+
+  const queueGroupSearch = useCallback(
+    (text: string) => {
+      if (groupSearchTimerRef.current) clearTimeout(groupSearchTimerRef.current);
+      if (!text.trim()) {
+        setIsSearchingGroup(false);
+        setGroupSearchResults([]);
+        return;
+      }
+      setIsSearchingGroup(true);
+      groupSearchTimerRef.current = setTimeout(async () => {
+        try {
+          await searchUsersForGroup(text);
+        } finally {
+          setIsSearchingGroup(false);
+        }
+      }, DEBOUNCE_MS);
+    },
+    [searchUsersForGroup]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (dmSearchTimerRef.current) clearTimeout(dmSearchTimerRef.current);
+      if (groupSearchTimerRef.current) clearTimeout(groupSearchTimerRef.current);
+    };
+  }, []);
 
   const checkForExistingGroup = useCallback(
     async (users: ProfileResult[]) => {
@@ -1069,7 +979,11 @@ export default function ChatScreen({ navigation, route }: any) {
     }
   };
 
-  if (loading) {
+  // Block the screen only before the first fetch resolves. Refetches (focus,
+  // realtime, pull-to-refresh) keep the existing rows on screen and show a thin
+  // top bar instead of blanking the list.
+  const hasRows = conversations.length > 0 || pastConversations.length > 0;
+  if (loading && !hasRows && !hasLoadedOnce) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#8b5cf6" />
@@ -1213,7 +1127,7 @@ export default function ChatScreen({ navigation, route }: any) {
             value={dmSearchQuery}
             onChangeText={(text) => {
               setDmSearchQuery(text);
-              searchUsersForDM(text);
+              queueDmSearch(text);
             }}
             autoFocus={false}
             returnKeyType="search"
@@ -1246,7 +1160,11 @@ export default function ChatScreen({ navigation, route }: any) {
               </TouchableOpacity>
             )}
             ListEmptyComponent={
-              dmSearchQuery.trim().length >= 2 ? (
+              isSearchingDm ? (
+                <View style={styles.searchSpinner}>
+                  <ActivityIndicator size="small" color="#8b5cf6" />
+                </View>
+              ) : dmSearchQuery.trim().length >= 2 ? (
                 <Text style={styles.emptyText}>No users found</Text>
               ) : (
                 <Text style={styles.hintText}>Type a name to search</Text>
@@ -1336,7 +1254,7 @@ export default function ChatScreen({ navigation, route }: any) {
             value={groupSearchQuery}
             onChangeText={(text) => {
               setGroupSearchQuery(text);
-              searchUsersForGroup(text);
+              queueGroupSearch(text);
             }}
           />
           <FlatList
@@ -1346,7 +1264,11 @@ export default function ChatScreen({ navigation, route }: any) {
             style={{ minHeight: 120, maxHeight: 180 }}
             contentContainerStyle={{ paddingBottom: 20 }}
             ListEmptyComponent={
-              groupSearchQuery.trim().length >= 2 ? (
+              isSearchingGroup ? (
+                <View style={styles.searchSpinner}>
+                  <ActivityIndicator size="small" color="#8b5cf6" />
+                </View>
+              ) : groupSearchQuery.trim().length >= 2 ? (
                 <Text style={styles.emptyText}>No results</Text>
               ) : (
                 <Text style={styles.hintText}>Search to add people</Text>
@@ -1684,7 +1606,13 @@ export default function ChatScreen({ navigation, route }: any) {
         </TouchableOpacity>
       </View>
 
-      {conversations.length === 0 && pastConversations.length === 0 ? (
+      {loading && hasRows && !refreshing ? (
+        <View style={styles.refreshBar}>
+          <ActivityIndicator size="small" color="#8b5cf6" />
+        </View>
+      ) : null}
+
+      {hasLoadedOnce && !hasRows ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyIcon}>💬</Text>
           <Text style={styles.emptyTitle}>No Conversations</Text>
@@ -1812,6 +1740,14 @@ export default function ChatScreen({ navigation, route }: any) {
 }
 
 const styles = StyleSheet.create({
+  refreshBar: {
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  searchSpinner: {
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
   container: {
     flex: 1,
     backgroundColor: '#1a1a2e',

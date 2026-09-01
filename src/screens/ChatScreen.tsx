@@ -235,7 +235,7 @@ interface TeamChannelOption {
 
 export default function ChatScreen({ navigation, route }: any) {
   const { user } = useAuth();
-  const { teams, activeTeams, pastTeams } = useUserTeams();
+  const { teams, activeTeams, pastTeams, loading: teamsLoading } = useUserTeams();
   const allTeams = useMemo(() => [...activeTeams, ...pastTeams], [activeTeams, pastTeams]);
 
   const [conversations, setConversations] = useState<EnrichedConversation[]>([]);
@@ -288,6 +288,13 @@ export default function ChatScreen({ navigation, route }: any) {
       setPastConversations([]);
       setLoading(false);
       setHasLoadedOnce(true);
+      return;
+    }
+    // Wait for the teams hook: ensure_team_channel_membership must run before
+    // get_my_conversations, or a freshly-added member's team channel is missing
+    // from the very first result and the screen briefly claims "no conversations".
+    if (teamsLoading) {
+      setLoading(true);
       return;
     }
     setLoading(true);
@@ -405,7 +412,7 @@ export default function ChatScreen({ navigation, route }: any) {
     setLoading(false);
     setRefreshing(false);
     setHasLoadedOnce(true);
-  }, [user?.id, activeTeams, pastTeams, allTeams]);
+  }, [user?.id, teamsLoading, activeTeams, pastTeams, allTeams]);
 
   useEffect(() => {
     fetchConversations();
@@ -983,7 +990,8 @@ export default function ChatScreen({ navigation, route }: any) {
   // realtime, pull-to-refresh) keep the existing rows on screen and show a thin
   // top bar instead of blanking the list.
   const hasRows = conversations.length > 0 || pastConversations.length > 0;
-  if (loading && !hasRows && !hasLoadedOnce) {
+  const teamsLoaded = !teamsLoading;
+  if ((loading || teamsLoading) && !hasRows && !hasLoadedOnce) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#8b5cf6" />
@@ -1612,7 +1620,7 @@ export default function ChatScreen({ navigation, route }: any) {
         </View>
       ) : null}
 
-      {hasLoadedOnce && !hasRows ? (
+      {teamsLoaded && hasLoadedOnce && !hasRows ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyIcon}>💬</Text>
           <Text style={styles.emptyTitle}>No Conversations</Text>

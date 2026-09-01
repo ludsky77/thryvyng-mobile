@@ -69,35 +69,39 @@ export default function DMChatScreen({ route, navigation }: any) {
   const { user } = useAuth();
   const flatListRef = useRef<FlatList>(null);
   const prevMessagesLengthRef = useRef(0);
-  // Bottom-pinning: only auto-scroll when the reader is already at the bottom,
-  // so an incoming message never yanks someone reading history.
+  // Inverted list: offset 0 IS the newest message, so "at bottom" is a small
+  // offset rather than a computed distance. No timers, no layout hacks -- an
+  // inverted FlatList opens pinned to the newest row and stays put when the
+  // reader has scrolled into history.
   const isAtBottomRef = useRef(true);
-  const didInitialScrollRef = useRef(false);
+
   const handleScroll = useCallback((e: any) => {
-    const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
-    const distanceFromBottom =
-      contentSize.height - (contentOffset.y + layoutMeasurement.height);
-    isAtBottomRef.current = distanceFromBottom < 80;
+    const atBottom = e.nativeEvent.contentOffset.y < 80;
+    isAtBottomRef.current = atBottom;
+    setShowJumpToBottom((prev) => (prev === !atBottom ? prev : !atBottom));
+    if (atBottom) setMissedCount((c) => (c === 0 ? c : 0));
   }, []);
 
-  // The initial jump must wait for the list to actually lay out -- firing it on
-  // fetch-resolve scrolled a list that had no rows measured yet, so it landed
-  // nowhere. onContentSizeChange / onLayout are the first points where the
-  // content has real height.
-  const performInitialScroll = useCallback(() => {
-    if (didInitialScrollRef.current) return;
-    didInitialScrollRef.current = true;
-    if (__DEV__) {
-      console.log('[room] initial scrollToEnd');
-    }
-    flatListRef.current?.scrollToEnd({ animated: false });
+  const scrollToNewest = useCallback((animated = true) => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated });
   }, []);
 
+  const jumpToBottom = useCallback(() => {
+    isAtBottomRef.current = true;
+    setShowJumpToBottom(false);
+    setMissedCount(0);
+    scrollToNewest(true);
+  }, [scrollToNewest]);
 
   const [otherPerson, setOtherPerson] = useState<OtherPerson | null>(null);
   const [channelLoading, setChannelLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  // Mirror of isAtBottomRef for render, plus a count of messages that arrived
+  // while the reader was scrolled up.
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const [missedCount, setMissedCount] = useState(0);
+
   const [replyingTo, setReplyingTo] = useState<{
     messageId: string;
     content: string;
@@ -136,6 +140,8 @@ export default function DMChatScreen({ route, navigation }: any) {
     channelId,
     null
   );
+  // Newest first: index 0 renders at the bottom of an inverted list.
+  const invertedMessages = useMemo(() => [...messages].reverse(), [messages]);
 
   const fetchChannelInfo = useCallback(async () => {
     if (!channelId || !user?.id) {
@@ -213,31 +219,27 @@ export default function DMChatScreen({ route, navigation }: any) {
   useFocusEffect(useCallback(() => { markChannelRead(); }, [markChannelRead]));
   // Note: new-message real-time case is handled via onNewMessage callback in useMessages
 
-  // TODO: "jump to first unread" divider -- v1 always opens at the bottom even
-  // when the conversation has unread messages.
+  // TODO: "jump to first unread" divider -- v1 always opens at the newest
+  // message even when the conversation has unread history.
+  // No scrolling here: an inverted list already shows new rows at offset 0, and
+  // leaves the viewport alone when the reader is up in history. All this does is
+  // tally what they missed while scrolled away.
   useEffect(() => {
     if (messages.length === 0) return;
-
-    // Initial landing is owned by onContentSizeChange/onLayout; just record the
-    // baseline so the first real growth is not mistaken for new traffic.
-    if (!didInitialScrollRef.current) {
-      prevMessagesLengthRef.current = messages.length;
-      return;
-    }
-
     if (messages.length > prevMessagesLengthRef.current) {
+      const arrived = messages.length - prevMessagesLengthRef.current;
       prevMessagesLengthRef.current = messages.length;
-      if (!isAtBottomRef.current) return; // reader scrolled up: leave them alone
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      if (!isAtBottomRef.current) {
+        setMissedCount((c) => c + arrived);
+      }
     }
   }, [messages.length]);
 
   useEffect(() => {
-    didInitialScrollRef.current = false;
     isAtBottomRef.current = true;
     prevMessagesLengthRef.current = 0;
+    setShowJumpToBottom(false);
+    setMissedCount(0);
   }, [channelId]);
 
   const handleSendMessage = async (
@@ -268,7 +270,8 @@ export default function DMChatScreen({ route, navigation }: any) {
       });
       if (success) {
         setReplyingTo(null);
-        flatListRef.current?.scrollToEnd({ animated: true });
+        isAtBottomRef.current = true;
+        scrollToNewest(true);
         const celebrationType = getCelebrationType(content);
         if (celebrationType) {
           setCelebration({ type: celebrationType, visible: true });
@@ -317,7 +320,7 @@ export default function DMChatScreen({ route, navigation }: any) {
   };
 
   const scrollToMessageId = (messageId: string) => {
-    const index = messages.findIndex((m) => m.id === messageId);
+    const index = invertedMessages.findIndex((m) => m.id === messageId);
     if (index >= 0) {
       flatListRef.current?.scrollToIndex({ index, animated: true });
     }
@@ -494,36 +497,16 @@ export default function DMChatScreen({ route, navigation }: any) {
             <ActivityIndicator size="small" color="#10B981" />
           </View>
         ) : (
+          <View style={styles.listWrapper}>
           <FlatList
             ref={flatListRef}
-            data={messages}
+            inverted
+            data={invertedMessages}
             renderItem={renderItem}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.messagesList}
             onScroll={handleScroll}
             scrollEventThrottle={16}
-            onLayout={(e) => {
-              if (
-                !didInitialScrollRef.current &&
-                messages.length > 0 &&
-                e.nativeEvent.layout.height > 0
-              ) {
-                performInitialScroll();
-              }
-            }}
-            onContentSizeChange={(_w, contentHeight) => {
-              if (
-                !didInitialScrollRef.current &&
-                messages.length > 0 &&
-                contentHeight > 0
-              ) {
-                performInitialScroll();
-                return;
-              }
-              if (isAtBottomRef.current) {
-                flatListRef.current?.scrollToEnd({ animated: false });
-              }
-            }}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -532,6 +515,24 @@ export default function DMChatScreen({ route, navigation }: any) {
               />
             }
           />
+
+            {showJumpToBottom && (
+              <TouchableOpacity
+                style={styles.jumpToBottomButton}
+                onPress={jumpToBottom}
+                activeOpacity={0.85}
+              >
+                <Feather name="chevron-down" size={22} color="#FFFFFF" />
+                {missedCount > 0 && (
+                  <View style={styles.jumpToBottomBadge}>
+                    <Text style={styles.jumpToBottomBadgeText}>
+                      {missedCount > 99 ? '99+' : missedCount}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
         )}
 
         <ReactionPicker
@@ -560,6 +561,42 @@ export default function DMChatScreen({ route, navigation }: any) {
 }
 
 const styles = StyleSheet.create({
+  listWrapper: {
+    flex: 1,
+  },
+  jumpToBottomButton: {
+    position: 'absolute',
+    right: 16,
+    bottom: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#10B981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  jumpToBottomBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  jumpToBottomBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   container: {
     flex: 1,
     backgroundColor: '#0f172a',

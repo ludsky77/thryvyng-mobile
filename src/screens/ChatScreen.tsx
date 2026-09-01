@@ -25,6 +25,7 @@ import { supabase } from '../lib/supabase';
 import { formatRoleLabel, getRolePriority, getTimeAgo } from '../lib/chatHelpers';
 import { NotificationBell } from '../components/NotificationBell';
 import { useFocusEffect } from '@react-navigation/native';
+import { subscribeToMessageInserts } from '../lib/realtimeHub';
 import {
   countsTowardUnread,
   isUnreadMessage,
@@ -887,16 +888,15 @@ export default function ChatScreen({ navigation, route }: any) {
 
   useEffect(() => {
     if (!user?.id) return;
-    const channel = supabase
-      .channel('chat-updates')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'comm_messages' },
-        () => fetchConversations()
-      )
-      .subscribe();
+    // Shared hub channel; status is logged once by the hub itself.
+    const unsubscribe = subscribeToMessageInserts((row: any) => {
+      if (__DEV__) {
+        console.log('[ChatScreen] INSERT event', row?.id);
+      }
+      fetchConversations();
+    });
     return () => {
-      supabase.removeChannel(channel);
+      unsubscribe();
     };
   }, [user?.id, fetchConversations]);
 

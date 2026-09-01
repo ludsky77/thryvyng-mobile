@@ -1,13 +1,29 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  subscribeToMessageInserts,
+  subscribeToReactionChanges,
+} from '../lib/realtimeHub';
 import type { Message } from '../types';
 
 export function useMessages(channelId: string | null, onNewMessage?: () => void) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
+  // Two mounts can watch the same channel (React Navigation keeps the previous
+  // screen alive). A shared topic name meant one unmount tore down the other's
+  // subscription, so each mount gets its own.
+  const instanceIdRef = useRef<string | null>(null);
+  if (instanceIdRef.current === null) {
+    instanceIdRef.current = Math.random().toString(36).slice(2);
+  }
+  // Reaction events arrive for every message on the device. Keep the ids we are
+  // showing in a ref so the hub subscriber can scope them without resubscribing
+  // on every state change.
+  const messageIdsRef = useRef<Set<string>>(new Set());
+  messageIdsRef.current = new Set(messages.map((m) => m.id));
 
   const fetchMessages = useCallback(async () => {
     if (!channelId) {
@@ -34,7 +50,7 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
       // Enrich messages with sender profile
       const withSenderProfile = data.map((msg: any) => ({
         ...msg,
-        profile: msg.profile || { id: msg.user_id, full_name: 'Unknown', avatar_url: null }
+        profile: msg.profile ?? null
       }));
 
       // Collect all user_ids from reactions to fetch profiles
@@ -92,59 +108,90 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
   useEffect(() => {
     if (!channelId) return;
 
-    const channel = supabase
-      .channel(`messages:${channelId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'comm_messages',
-          filter: `channel_id=eq.${channelId}`
-        },
-        async (payload) => {
-          // Fetch full message with profile
-          const { data } = await supabase
-            .from('comm_messages')
-            .select(`
-              *,
-              profile:profiles(id, full_name, avatar_url),
-              reactions:comm_message_reactions(*),
-              comm_message_attachments(*)
-            `)
-            .eq('id', payload.new.id)
-            .single();
-          
-          if (data) {
-            const newMessage = {
-              ...data,
-              profile: data.profile || { id: data.user_id, full_name: 'Unknown', avatar_url: null }
-            } as unknown as Message;
-            // Deduplicate: poll (and other) messages may already be in state from refetch after create
-            setMessages(prev => {
-              if (prev.some(m => m.id === newMessage.id)) return prev;
-              onNewMessage?.();
-              return [...prev, newMessage];
-            });
-          }
+    // One shared channel per table; this mount just adds a callback.
+    const unsubscribeInserts = subscribeToMessageInserts(async (row: any) => {
+      // The hub is unfiltered and shared, so it sees every comm_messages
+      // INSERT. Log first so foreign events are visible, then scope before
+      // doing any work.
+      const isMine = row?.channel_id === channelId;
+      if (__DEV__) {
+        console.log(
+          '[useMessages] INSERT event',
+          row?.id,
+          row?.channel_id,
+          'mine=' + isMine
+        );
+      }
+      if (!isMine) return;
+      const insertedId = row?.id;
+      if (!insertedId) {
+        if (__DEV__) {
+          console.error('[useMessages] realtime INSERT has no row id', row);
         }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'comm_message_reactions',
-        },
-        () => {
-          // Refetch to update reactions
-          fetchMessages();
+        return;
+      }
+      // The initial fetch hides deleted rows; do the same here rather than
+      // letting one arrive live.
+      if (row.is_deleted) return;
+
+      // Fetch full message with profile
+      const { data, error } = await supabase
+        .from('comm_messages')
+        .select(`
+          *,
+          profile:profiles(id, full_name, avatar_url),
+          reactions:comm_message_reactions(*),
+          comm_message_attachments(*)
+        `)
+        .eq('id', insertedId)
+        .eq('is_deleted', false)
+        .single();
+
+      // RLS refusals, a row deleted mid-flight, and network failures all
+      // land here. Dropping the message would lose it until a manual
+      // refresh, so render the raw row instead -- screens resolve the
+      // sender's name through memberNames, not through this join.
+      let newMessage: Message;
+      if (error || !data) {
+        if (__DEV__) {
+          console.error('[useMessages] enrichment failed', error);
         }
-      )
-      .subscribe();
+        newMessage = {
+          ...(row as Record<string, unknown>),
+          profile: null,
+          reactions: [],
+          comm_message_attachments: [],
+        } as unknown as Message;
+      } else {
+        newMessage = {
+          ...data,
+          profile: data.profile ?? null,
+        } as unknown as Message;
+      }
+
+      // Deduplicate: poll (and other) messages may already be in state from refetch after create
+      setMessages(prev => {
+        if (prev.some(m => m.id === newMessage.id)) return prev;
+        onNewMessage?.();
+        if (__DEV__) {
+          console.log('[useMessages] appended', newMessage.id);
+        }
+        return [...prev, newMessage];
+      });
+    });
+
+    const unsubscribeReactions = subscribeToReactionChanges((row: any) => {
+      // Scope to messages we are actually showing when the payload names one;
+      // without a message_id fall back to the old always-refetch behaviour.
+      const messageId = row?.message_id;
+      if (messageId && !messageIdsRef.current.has(messageId)) return;
+      // Refetch to update reactions
+      fetchMessages();
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      unsubscribeInserts();
+      unsubscribeReactions();
     };
   }, [channelId, fetchMessages, onNewMessage]);
 

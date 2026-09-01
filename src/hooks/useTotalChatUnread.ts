@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import { subscribeToMessageInserts } from '../lib/realtimeHub';
 import { useAuth } from '../contexts/AuthContext';
 
 export const LOOKBACK_DAYS = 30;
@@ -160,13 +161,12 @@ export function useTotalChatUnread(): number {
   useEffect(() => {
     if (!user?.id) return;
 
+    // comm_messages rides the shared hub; the membership listener stays on its
+    // own channel because it is a different table and keeps a server-side filter.
+    const unsubscribeMessages = subscribeToMessageInserts(() => debouncedFetch());
+
     const channel = supabase
       .channel(`total-unread-${user.id}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'comm_messages' },
-        () => debouncedFetch()
-      )
       .on(
         'postgres_changes',
         {
@@ -180,6 +180,7 @@ export function useTotalChatUnread(): number {
       .subscribe();
 
     return () => {
+      unsubscribeMessages();
       supabase.removeChannel(channel);
     };
   }, [user?.id, debouncedFetch]);

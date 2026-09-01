@@ -12,13 +12,15 @@ const DEBOUNCE_MS = 3000; // Wait 3 seconds after last message before re-fetchin
  *
  * A message is unread when ALL of the following hold:
  *   - its channel is not archived      (enforced by the caller's channel query)
- *   - the channel is not muted         (countsTowardUnread)
  *   - it is not the reader's own       (enforced by the caller's .neq('user_id'))
  *   - it is not deleted                (enforced by the caller's .eq('is_deleted'))
  *   - it is strictly newer than the channel's unread floor (isUnreadMessage)
  *
  * The floor is last_read_at, falling back to the 30-day cutoff ONLY when
  * last_read_at is null.
+ *
+ * Mute is NOT part of this rule. A muted channel counts toward both in-app
+ * surfaces exactly like any other; mute suppresses push notifications only.
  */
 
 /** The 30-day floor, used only for channels the user has never read. */
@@ -48,7 +50,12 @@ export function isUnreadMessage(
   );
 }
 
-/** Muted channels are excluded from every unread surface. */
+/**
+ * Reserved for the notification layer; not applied to in-app badges.
+ * Mute affects push delivery only -- both the chat card count and the tab
+ * total include muted channels. Kept exported so the push path (and
+ * ChatScreen's muted-badge styling) has one place to ask.
+ */
 export function countsTowardUnread(membership: {
   is_muted?: boolean | null;
 }): boolean {
@@ -90,11 +97,11 @@ export function useTotalChatUnread(): number {
 
       if (!isMountedRef.current) return;
 
-      // Muted channels are excluded here as well as in ChatScreen's per-card
-      // count, so the tab total never advertises a badge the list does not show.
+      // Archived channels only. Muted channels are counted like any other --
+      // mute suppresses push notifications, not in-app badges.
       const activeChannelIds = new Set((activeChannels || []).map((c: any) => c.id));
-      const visibleMemberships = memberships.filter(
-        (m: any) => activeChannelIds.has(m.channel_id) && countsTowardUnread(m)
+      const visibleMemberships = memberships.filter((m: any) =>
+        activeChannelIds.has(m.channel_id)
       );
 
       if (!visibleMemberships.length) {

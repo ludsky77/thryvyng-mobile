@@ -270,8 +270,10 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           setCelebration({ type: celebrationType, visible: true });
         }
       }
+      return success;
     } catch (error) {
       console.error('Error sending message:', error);
+      return false;
     } finally {
       setSending(false);
     }

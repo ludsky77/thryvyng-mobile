@@ -234,8 +234,10 @@ export default function DMChatScreen({ route, navigation }: any) {
           .update({ updated_at: new Date().toISOString() })
           .eq('id', channelId);
       }
+      return success;
     } catch (error) {
       console.error('Error sending message:', error);
+      return false;
     } finally {
       setSending(false);
     }

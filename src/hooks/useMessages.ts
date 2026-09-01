@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -213,6 +212,66 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
     const hasContent = (content && content.trim()) || options?.attachment;
     if (!hasContent) return false;
 
+    // UPLOAD FIRST. A message row created before a failed upload was a message
+    // the sender saw as delivered and the recipient could never open, with no
+    // error and no retry -- so nothing durable is written until the bytes land.
+    let uploadedAttachment: {
+      file_url: string;
+      file_name: string;
+      file_type: string;
+      file_size: number;
+    } | null = null;
+
+    if (options?.attachment) {
+      const att = options.attachment;
+      try {
+        // fetch -> arrayBuffer streams once. The old base64 -> atob -> Uint8Array
+        // path held three copies of the file in memory at the same time.
+        const response = await fetch(att.uri);
+        const arrayBuffer = await response.arrayBuffer();
+
+        if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+          if (__DEV__) {
+            console.error('[useMessages] attachment read as empty', att.uri);
+          }
+          return false;
+        }
+
+        const safeName = att.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+        const filePath = `${channelId}/${user.id}/${Date.now()}_${safeName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('chat-attachments')
+          .upload(filePath, arrayBuffer, {
+            contentType: att.mimeType || 'application/octet-stream',
+            upsert: false,
+          });
+
+        if (uploadError) {
+          if (__DEV__) {
+            console.error('[useMessages] attachment upload failed', uploadError);
+          }
+          return false;
+        }
+
+        const { data: urlData } = supabase.storage
+          .from('chat-attachments')
+          .getPublicUrl(filePath);
+
+        uploadedAttachment = {
+          file_url: urlData.publicUrl,
+          file_name: att.name,
+          file_type: att.type,
+          file_size: att.size ?? arrayBuffer.byteLength,
+        };
+      } catch (err) {
+        if (__DEV__) {
+          console.error('[useMessages] attachment upload threw', err);
+        }
+        return false;
+      }
+    }
+
     const insertPayload: Record<string, unknown> = {
       channel_id: channelId,
       user_id: user.id,
@@ -231,7 +290,33 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
       .select('id, created_at')
       .single();
 
-    if (messageError || !messageData) return false;
+    if (messageError || !messageData) {
+      if (__DEV__) {
+        console.error('[useMessages] message insert failed', messageError);
+      }
+      return false;
+    }
+
+    // The file is already in storage; link it to the row that now exists.
+    let attachmentRows: Array<Record<string, unknown>> = [];
+    if (uploadedAttachment) {
+      const { error: attachmentError } = await supabase
+        .from('comm_message_attachments')
+        .insert({
+          message_id: messageData.id,
+          ...uploadedAttachment,
+        });
+      if (attachmentError) {
+        if (__DEV__) {
+          console.error(
+            '[useMessages] attachment row insert failed',
+            attachmentError
+          );
+        }
+      } else {
+        attachmentRows = [{ message_id: messageData.id, ...uploadedAttachment }];
+      }
+    }
 
     // OPTIMISTIC UI: Add message to local state immediately
     const optimisticMessage: Message = {
@@ -254,64 +339,14 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
         avatar_url: user.user_metadata?.avatar_url || null,
       },
       reactions: [],
-      comm_message_attachments: [],
-    } as Message;
+      comm_message_attachments: attachmentRows,
+    } as unknown as Message;
 
     // Add to state immediately (deduplication in subscription will handle if it arrives again)
     setMessages(prev => {
       if (prev.some(m => m.id === optimisticMessage.id)) return prev;
       return [...prev, optimisticMessage];
     });
-
-    if (options?.attachment && messageData) {
-      const att = options.attachment;
-      try {
-        const base64 = await FileSystem.readAsStringAsync(att.uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        const byteString = globalThis.atob(base64);
-        const arrayBuffer = new ArrayBuffer(byteString.length);
-        const uint8Array = new Uint8Array(arrayBuffer);
-        for (let i = 0; i < byteString.length; i++) {
-          uint8Array[i] = byteString.charCodeAt(i);
-        }
-
-        if (arrayBuffer.byteLength === 0) {
-          console.warn('Attachment file is empty, skipping upload');
-          return true;
-        }
-
-        const safeName = att.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-        const filePath = `${channelId}/${user.id}/${Date.now()}_${safeName}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('chat-attachments')
-          .upload(filePath, arrayBuffer, {
-            contentType: att.mimeType || 'image/jpeg',
-            upsert: false,
-          });
-
-        if (uploadError) {
-          console.warn('Attachment upload failed:', uploadError);
-          return true; // message was created
-        }
-
-        const { data: urlData } = supabase.storage
-          .from('chat-attachments')
-          .getPublicUrl(filePath);
-        const fileUrl = urlData.publicUrl;
-
-        await supabase.from('comm_message_attachments').insert({
-          message_id: messageData.id,
-          file_url: fileUrl,
-          file_name: att.name,
-          file_type: att.type,
-          file_size: att.size ?? 0,
-        });
-      } catch (err) {
-        console.warn('Attachment upload error:', err);
-      }
-    }
 
     return true;
   };

@@ -5,8 +5,16 @@ import {
   StyleSheet,
   Image,
   TouchableOpacity,
+  Share,
+  Alert,
 } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
+import { Video, ResizeMode } from 'expo-av';
+import {
+  AttachmentViewer,
+  useAttachmentViewer,
+  openExternally,
+} from './AttachmentViewer';
 
 export interface ReactionSummary {
   reaction: string;
@@ -18,6 +26,25 @@ interface MessageAttachmentShape {
   file_url: string;
   file_type: string;
   file_name: string;
+  file_size?: number | null;
+}
+
+const MAX_DOC_NAME_CHARS = 28;
+
+/** Keep the start and the extension visible: "quarterly_bud…report.pdf". */
+function truncateMiddle(name: string, max = MAX_DOC_NAME_CHARS): string {
+  if (name.length <= max) return name;
+  const keep = max - 1; // room for the ellipsis
+  const head = Math.ceil(keep / 2);
+  const tail = Math.floor(keep / 2);
+  return `${name.slice(0, head)}…${name.slice(name.length - tail)}`;
+}
+
+function formatFileSize(bytes?: number | null): string | null {
+  if (typeof bytes !== 'number' || bytes <= 0) return null;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${Math.max(1, Math.round(kb))} KB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
 }
 
 interface ChatBubbleProps {
@@ -65,6 +92,8 @@ export function ChatBubble({
   onShowReactionDetails,
   readReceipts,
 }: ChatBubbleProps) {
+  const attachmentViewer = useAttachmentViewer();
+
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
     return date
@@ -99,6 +128,15 @@ export function ChatBubble({
     return <Text style={styles.playerLabel}>({playerLabel}'s)</Text>;
   };
 
+  const shareAttachment = async (url: string) => {
+    try {
+      await Share.share({ url, message: url });
+    } catch (err) {
+      if (__DEV__) console.error('[ChatBubble] share failed', err);
+      Alert.alert('Could not share', 'Sharing this file failed.');
+    }
+  };
+
   const renderAttachment = () => {
     const attachment = message.comm_message_attachments?.[0];
     const url = attachment?.file_url ?? message.attachment_url ?? null;
@@ -108,15 +146,22 @@ export function ChatBubble({
       | 'document'
       | undefined;
     const name = attachment?.file_name ?? message.attachment_name ?? 'Document';
+    const sizeLabel = formatFileSize(attachment?.file_size);
 
     if (!url && !type) return null;
     const attachmentType = type ?? 'document';
+    // Without a URL there is nothing to open, play or share.
+    if (!url) return null;
 
     if (attachmentType === 'image') {
       return (
-        <TouchableOpacity style={styles.attachmentContainer}>
+        <TouchableOpacity
+          style={styles.attachmentContainer}
+          onPress={() => attachmentViewer.open({ url, type: 'image', name })}
+          onLongPress={() => shareAttachment(url)}
+        >
           <Image
-            source={{ uri: url! }}
+            source={{ uri: url }}
             style={styles.imageAttachment}
             resizeMode="cover"
           />
@@ -125,34 +170,73 @@ export function ChatBubble({
     }
     if (attachmentType === 'video') {
       return (
-        <TouchableOpacity style={styles.attachmentContainer}>
-          <View style={styles.videoPlaceholder}>
+        <TouchableOpacity
+          style={styles.attachmentContainer}
+          onPress={() => attachmentViewer.open({ url, type: 'video', name })}
+        >
+          <Video
+            source={{ uri: url }}
+            style={styles.imageAttachment}
+            resizeMode={ResizeMode.COVER}
+            shouldPlay={false}
+            isMuted
+            useNativeControls={false}
+          />
+          <View style={styles.videoOverlay} pointerEvents="none">
             <Feather name="play-circle" size={40} color="#FFFFFF" />
           </View>
         </TouchableOpacity>
       );
     }
     return (
-      <TouchableOpacity style={styles.documentAttachment}>
+      <TouchableOpacity
+        style={styles.documentAttachment}
+        onPress={() => openExternally(url)}
+      >
         <Feather
           name="file-text"
           size={24}
           color={isOwnMessage ? '#FFFFFF' : '#8B5CF6'}
         />
-        <Text
-          style={[styles.documentName, isOwnMessage && styles.ownDocumentName]}
-          numberOfLines={1}
+        <View style={styles.documentInfo}>
+          <Text
+            style={[styles.documentName, isOwnMessage && styles.ownDocumentName]}
+            numberOfLines={1}
+          >
+            {truncateMiddle(name)}
+          </Text>
+          {sizeLabel ? (
+            <Text
+              style={[
+                styles.documentSize,
+                isOwnMessage && styles.ownDocumentSize,
+              ]}
+            >
+              {sizeLabel}
+            </Text>
+          ) : null}
+        </View>
+        <TouchableOpacity
+          onPress={() => shareAttachment(url)}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          {name}
-        </Text>
-        <Feather
-          name="download"
-          size={18}
-          color={isOwnMessage ? '#FFFFFF' : '#8B5CF6'}
-        />
+          <Feather
+            name="download"
+            size={18}
+            color={isOwnMessage ? '#FFFFFF' : '#8B5CF6'}
+          />
+        </TouchableOpacity>
       </TouchableOpacity>
     );
   };
+
+  const viewer = attachmentViewer.visible ? (
+    <AttachmentViewer
+      visible={attachmentViewer.visible}
+      attachment={attachmentViewer.target}
+      onClose={attachmentViewer.close}
+    />
+  ) : null;
 
   return (
     <View
@@ -282,6 +366,7 @@ export function ChatBubble({
           </View>
         )}
       </View>
+      {viewer}
     </View>
   );
 }
@@ -438,6 +523,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
+  videoOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   attachmentContainer: {
     marginBottom: 8,
     borderRadius: 8,
@@ -465,13 +555,23 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     gap: 8,
   },
-  documentName: {
+  documentInfo: {
     flex: 1,
+  },
+  documentName: {
     color: '#8B5CF6',
     fontSize: 13,
   },
   ownDocumentName: {
     color: '#FFFFFF',
+  },
+  documentSize: {
+    color: '#9CA3AF',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  ownDocumentSize: {
+    color: 'rgba(255,255,255,0.7)',
   },
 
   reactionsContainer: {

@@ -8,6 +8,7 @@ import {
   Image,
   Text,
   Linking,
+  ActivityIndicator,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -27,7 +28,10 @@ export interface ReplyingToInfo {
 }
 
 interface ChatInputBarProps {
-  onSendMessage: (content: string, attachment?: AttachmentData) => void;
+  onSendMessage: (
+    content: string,
+    attachment?: AttachmentData
+  ) => void | boolean | Promise<void | boolean>;
   onPollPress?: () => void;
   placeholder?: string;
   replyingTo?: ReplyingToInfo | null;
@@ -36,6 +40,42 @@ interface ChatInputBarProps {
 }
 
 const TYPING_DEBOUNCE_MS = 2000;
+
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024; // 25 MB
+
+// Anything outside this list is refused before it reaches storage. An unknown
+// MIME type is allowed through -- the pickers omit it for camera captures, and
+// the server enforces the real rule.
+const ALLOWED_MIME_TYPES = new Set([
+  'video/mp4',
+  'video/quicktime',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain',
+]);
+
+function isAllowedMime(mimeType?: string): boolean {
+  if (!mimeType) return true; // unknown -> let the server decide
+  if (mimeType.startsWith('image/')) return true;
+  return ALLOWED_MIME_TYPES.has(mimeType);
+}
+
+/** Returns an error message when the asset must be refused, else null. */
+function validateAttachment(candidate: {
+  size?: number;
+  mimeType?: string;
+}): string | null {
+  if (typeof candidate.size === 'number' && candidate.size > MAX_ATTACHMENT_BYTES) {
+    return 'Files must be under 25 MB';
+  }
+  if (!isAllowedMime(candidate.mimeType)) {
+    return 'That file type is not supported. Try an image, video, PDF, Word, Excel, or text file.';
+  }
+  return null;
+}
 
 export function ChatInputBar({
   onSendMessage,
@@ -48,6 +88,7 @@ export function ChatInputBar({
   const [message, setMessage] = useState('');
   const [attachment, setAttachment] = useState<AttachmentData | null>(null);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
+  const [sending, setSending] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const notifyTyping = useCallback(
@@ -68,12 +109,31 @@ export function ChatInputBar({
     [onTypingChange]
   );
 
-  const handleSend = () => {
+  const handleSend = async () => {
+    if (sending) return;
     if (!message.trim() && !attachment) return;
     onTypingChange?.(false);
-    onSendMessage(message.trim(), attachment || undefined);
-    setMessage('');
-    setAttachment(null);
+
+    const draft = message.trim();
+    const pending = attachment || undefined;
+    setSending(true);
+    try {
+      // Screens that forward sendMessage's result let us keep the draft on
+      // failure. Ones that return undefined keep the previous fire-and-forget
+      // behaviour, so this is safe either way.
+      const result = await onSendMessage(draft, pending);
+      if (result === false) {
+        Alert.alert(
+          'Message not sent',
+          'Your attachment could not be uploaded. Please try again.'
+        );
+        return;
+      }
+      setMessage('');
+      setAttachment(null);
+    } finally {
+      setSending(false);
+    }
   };
 
   const pickImage = async () => {
@@ -102,11 +162,20 @@ export function ChatInputBar({
     if (!result.canceled && result.assets?.[0]) {
       const asset = result.assets[0];
       const isVideo = 'type' in asset && asset.type === 'video';
+      // ImagePicker calls it fileSize; DocumentPicker calls it size.
+      const size = 'fileSize' in asset ? (asset.fileSize as number | undefined) : undefined;
+      const mimeType = 'mimeType' in asset ? asset.mimeType : undefined;
+      const problem = validateAttachment({ size, mimeType });
+      if (problem) {
+        Alert.alert('Cannot attach', problem);
+        return;
+      }
       setAttachment({
         uri: asset.uri,
         type: isVideo ? 'video' : 'image',
         name: 'fileName' in asset && asset.fileName ? asset.fileName : 'image.jpg',
-        mimeType: 'mimeType' in asset ? asset.mimeType : undefined,
+        mimeType,
+        size,
       });
     }
   };
@@ -134,11 +203,19 @@ export function ChatInputBar({
 
     if (!result.canceled && result.assets?.[0]) {
       const asset = result.assets[0];
+      const size = 'fileSize' in asset ? (asset.fileSize as number | undefined) : undefined;
+      const mimeType = 'mimeType' in asset ? asset.mimeType : undefined;
+      const problem = validateAttachment({ size, mimeType });
+      if (problem) {
+        Alert.alert('Cannot attach', problem);
+        return;
+      }
       setAttachment({
         uri: asset.uri,
         type: 'image',
         name: 'photo.jpg',
-        mimeType: 'mimeType' in asset ? asset.mimeType : undefined,
+        mimeType,
+        size,
       });
     }
   };
@@ -153,6 +230,14 @@ export function ChatInputBar({
 
     if (!result.canceled && result.assets?.[0]) {
       const asset = result.assets[0];
+      const problem = validateAttachment({
+        size: asset.size ?? undefined,
+        mimeType: asset.mimeType ?? undefined,
+      });
+      if (problem) {
+        Alert.alert('Cannot attach', problem);
+        return;
+      }
       setAttachment({
         uri: asset.uri,
         type: 'document',
@@ -210,12 +295,19 @@ export function ChatInputBar({
               </Text>
             </View>
           )}
-          <TouchableOpacity
-            style={styles.removeAttachmentButton}
-            onPress={removeAttachment}
-          >
-            <Feather name="x" size={16} color="#FFFFFF" />
-          </TouchableOpacity>
+          {sending ? (
+            <View style={styles.uploadingRow}>
+              <ActivityIndicator size="small" color="#8B5CF6" />
+              <Text style={styles.uploadingText}>Uploading…</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.removeAttachmentButton}
+              onPress={removeAttachment}
+            >
+              <Feather name="x" size={16} color="#FFFFFF" />
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
@@ -290,12 +382,17 @@ export function ChatInputBar({
         <TouchableOpacity
           style={[
             styles.sendButton,
-            !message.trim() && !attachment && styles.sendButtonDisabled,
+            ((!message.trim() && !attachment) || sending) &&
+              styles.sendButtonDisabled,
           ]}
           onPress={handleSend}
-          disabled={!message.trim() && !attachment}
+          disabled={(!message.trim() && !attachment) || sending}
         >
-          <Feather name="send" size={20} color="#FFFFFF" />
+          {sending ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Feather name="send" size={20} color="#FFFFFF" />
+          )}
         </TouchableOpacity>
       </View>
     </View>
@@ -303,6 +400,16 @@ export function ChatInputBar({
 }
 
 const styles = StyleSheet.create({
+  uploadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 8,
+  },
+  uploadingText: {
+    color: '#8B5CF6',
+    fontSize: 12,
+  },
   container: {
     backgroundColor: '#1F2937',
     borderTopWidth: 1,

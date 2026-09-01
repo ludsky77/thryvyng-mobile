@@ -35,6 +35,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useChannelMembers } from '../hooks/useChannelMembers';
 import { useChatSenderLabels } from '../hooks/useChatSenderLabels';
+import { useTypingPresence } from '../hooks/useTypingPresence';
+import { TypingIndicator } from '../components/chat/TypingIndicator';
+import { setActiveChannelId } from '../services/notifications';
 import type { Message } from '../types';
 
 function getCelebrationType(
@@ -169,6 +172,14 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   // demoted them and hid the poll button. Undefined while labels load, so the
   // button appears once they resolve.
   const isStaffInChannel = labelKind.get(user?.id ?? '') === 'staff';
+  const { typingUsers, setTyping } = useTypingPresence(channelId);
+  // Prefer the membership-gated RPC name over the typist's self-reported one.
+  const typingNames = useMemo(
+    () =>
+      typingUsers.map((t) => memberNames.get(t.userId)?.name || t.name),
+    [typingUsers, memberNames]
+  );
+
 
   const messageIds = messages.map((m) => m.id);
   // Newest first: index 0 renders at the bottom of an inverted list.
@@ -213,7 +224,13 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   useFocusEffect(
     useCallback(() => {
       markChannelAsRead();
-    }, [markChannelAsRead])
+      // Suppress foreground banners for the room being read.
+      setActiveChannelId(channelId ?? null);
+      return () => {
+        setActiveChannelId(null);
+        setTyping(false);
+      };
+    }, [markChannelAsRead, channelId, setTyping])
   );
   // Note: new-message real-time case is handled via onNewMessage callback in useMessages
 
@@ -690,8 +707,11 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           )}
         </View>
 
+        <TypingIndicator users={typingNames} />
+
         <ChatInputBar
           onSendMessage={handleSendMessage}
+          onTypingChange={setTyping}
           onPollPress={canUserCreatePoll ? () => setPollModalVisible(true) : undefined}
           placeholder="Type a message..."
           replyingTo={

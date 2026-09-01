@@ -18,6 +18,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useMessages } from '../hooks/useMessages';
 import { useChatSenderLabels } from '../hooks/useChatSenderLabels';
+import { useTypingPresence } from '../hooks/useTypingPresence';
+import { TypingIndicator } from '../components/chat/TypingIndicator';
+import { setActiveChannelId } from '../services/notifications';
 import { formatRoleLabel, getRolePriority } from '../lib/chatHelpers';
 import { ChatBubble, type ReactionSummary } from '../components/chat/ChatBubble';
 import { ChatInputBar, type AttachmentData } from '../components/chat/ChatInputBar';
@@ -142,6 +145,14 @@ export default function DMChatScreen({ route, navigation }: any) {
   );
   // Newest first: index 0 renders at the bottom of an inverted list.
   const invertedMessages = useMemo(() => [...messages].reverse(), [messages]);
+  const { typingUsers, setTyping } = useTypingPresence(channelId);
+  // Prefer the membership-gated RPC name over the typist's self-reported one.
+  const typingNames = useMemo(
+    () =>
+      typingUsers.map((t) => memberNames.get(t.userId)?.name || t.name),
+    [typingUsers, memberNames]
+  );
+
 
   const fetchChannelInfo = useCallback(async () => {
     if (!channelId || !user?.id) {
@@ -216,7 +227,17 @@ export default function DMChatScreen({ route, navigation }: any) {
   }, [channelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 2. Mark read whenever screen regains focus
-  useFocusEffect(useCallback(() => { markChannelRead(); }, [markChannelRead]));
+  useFocusEffect(
+    useCallback(() => {
+      markChannelRead();
+      // Suppress foreground banners for the conversation being read.
+      setActiveChannelId(channelId ?? null);
+      return () => {
+        setActiveChannelId(null);
+        setTyping(false);
+      };
+    }, [markChannelRead, channelId, setTyping])
+  );
   // Note: new-message real-time case is handled via onNewMessage callback in useMessages
 
   // TODO: "jump to first unread" divider -- v1 always opens at the newest
@@ -545,8 +566,11 @@ export default function DMChatScreen({ route, navigation }: any) {
           onReply={startReply}
         />
 
+        <TypingIndicator users={typingNames} />
+
         <ChatInputBar
           onSendMessage={handleSendMessage}
+          onTypingChange={setTyping}
           placeholder="Type a message..."
           replyingTo={
             replyingTo

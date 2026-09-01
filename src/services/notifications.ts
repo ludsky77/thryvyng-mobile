@@ -7,13 +7,46 @@ import { supabase } from '../lib/supabase';
 // Check if we're in Expo Go (no native push support)
 const isExpoGo = Constants.appOwnership === 'expo';
 
+/**
+ * The channel the user is currently reading, or null.
+ *
+ * A push for the room already on screen should not banner or chime -- the
+ * message is right there. The badge still updates so the tab count stays right.
+ * Module-level rather than context so the notification handler, which runs
+ * outside React, can read it synchronously.
+ */
+let activeChannelId: string | null = null;
+
+export function setActiveChannelId(channelId: string | null): void {
+  activeChannelId = channelId;
+}
+
+export function getActiveChannelId(): string | null {
+  return activeChannelId;
+}
+
 // Configure how notifications appear when app is in foreground
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
+  handleNotification: async (notification) => {
+    const data = notification?.request?.content?.data as
+      | Record<string, any>
+      | undefined;
+    const channelId = data?.channel_id ?? null;
+
+    if (channelId && channelId === activeChannelId) {
+      return {
+        shouldShowAlert: false,
+        shouldPlaySound: false,
+        shouldSetBadge: true,
+      };
+    }
+
+    return {
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    };
+  },
 });
 
 export async function registerForPushNotifications(userId: string): Promise<string | null> {

@@ -125,7 +125,6 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   const [selectedMessageReactions, setSelectedMessageReactions] = useState<
     ReactionDetailItem[]
   >([]);
-  const [isStaffInChannel, setIsStaffInChannel] = useState(false);
   const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [channelTeamId, setChannelTeamId] = useState<string | null>(null);
 
@@ -159,6 +158,12 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     channelId,
     channelTeamId
   );
+  // Staff status comes from the same server-side label RPC the bubbles use.
+  // The old client-side team_staff .maybeSingle() errored for anyone holding
+  // two staff roles on one team (head_coach + team_manager), which silently
+  // demoted them and hid the poll button. Undefined while labels load, so the
+  // button appears once they resolve.
+  const isStaffInChannel = labelKind.get(user?.id ?? '') === 'staff';
 
   const messageIds = messages.map((m) => m.id);
 
@@ -183,16 +188,8 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           return;
         }
         setChannelTeamId(channelData.team_id);
-        const { data: staffData } = await supabase
-          .from('team_staff')
-          .select('id')
-          .eq('team_id', channelData.team_id)
-          .eq('user_id', user.id)
-          .maybeSingle();
-        setIsStaffInChannel(!!staffData);
       } catch (err) {
-        console.log('Error checking staff permission:', err);
-        setIsStaffInChannel(false);
+        console.log('Error resolving channel team:', err);
       } finally {
         setPermissionsLoaded(true);
       }
@@ -442,7 +439,7 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   };
 
   const canUserCreatePoll = useMemo(() => {
-    if (channelType === 'group_dm' || channelType === 'direct') {
+    if (channelType === 'group_dm' || channelType === 'dm') {
       return true;
     }
     return isStaffInChannel;

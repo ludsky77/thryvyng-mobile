@@ -69,6 +69,11 @@ function formatTimeDisplay(timeStr: string): string {
   return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
 }
 
+// The comm_polls table has no send_reminder / reminder_before_minutes columns
+// yet, so the UI is hidden rather than collecting a setting we silently drop.
+// Flip this to true in the same change that lands the migration.
+const POLL_REMINDERS_ENABLED = false;
+
 const REMINDER_BEFORE_MINUTES: Record<ReminderBefore, number> = {
   '1h': 60,
   '2h': 120,
@@ -205,22 +210,40 @@ export function CreatePollModal({
       const opts = getOptionsForSubmit();
       const endsAt = getClosesAt();
 
-      const poll = await createPoll(channelId, question.trim(), pollType, opts, {
-        isAnonymous,
-        showResultsLive,
-        endsAt,
-        displayStyle,
-        sendReminder: sendReminder || undefined,
-        reminderBeforeMinutes: sendReminder ? REMINDER_BEFORE_MINUTES[reminderBefore] : undefined,
-      });
+      const { poll, error } = await createPoll(
+        channelId,
+        question.trim(),
+        pollType,
+        opts,
+        {
+          isAnonymous,
+          showResultsLive,
+          endsAt,
+          displayStyle,
+          // Reminder fields are deliberately not sent -- see POLL_REMINDERS_ENABLED.
+          ...(POLL_REMINDERS_ENABLED
+            ? {
+                sendReminder: sendReminder || undefined,
+                reminderBeforeMinutes: sendReminder
+                  ? REMINDER_BEFORE_MINUTES[reminderBefore]
+                  : undefined,
+              }
+            : {}),
+        }
+      );
 
-      if (poll) {
+      if (poll && !error) {
         onSuccess?.();
         onClose();
+      } else if (poll && error) {
+        // Poll saved, chat card did not post. Close, but say what happened.
+        onSuccess?.();
+        onClose();
+        Alert.alert('Poll created', error, [{ text: 'OK' }]);
       } else {
         Alert.alert(
           'Error',
-          'Failed to create poll. Please check your connection and try again.',
+          error || 'Failed to create poll. Please check your connection and try again.',
           [{ text: 'OK' }]
         );
       }
@@ -512,7 +535,8 @@ export function CreatePollModal({
             )}
           </View>
 
-          {/* Reminders */}
+          {/* Reminders -- hidden until the reminder columns exist */}
+          {POLL_REMINDERS_ENABLED && (
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Reminders</Text>
             <View style={styles.toggleRow}>
@@ -550,6 +574,7 @@ export function CreatePollModal({
               </View>
             )}
           </View>
+          )}
 
           {/* Display Style Selector */}
           <View style={styles.displaySection}>

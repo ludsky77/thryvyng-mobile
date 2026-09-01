@@ -145,6 +145,16 @@ export function usePoll(pollId: string | null) {
   return { poll, loading, vote, removeVote, closePoll, refetch: fetchPoll };
 }
 
+/**
+ * createPoll reports partial failures instead of collapsing them to null:
+ * a rolled-back poll returns { poll: null, error }, while a poll that saved but
+ * failed to post its chat card returns { poll, error } so the caller can say so.
+ */
+export interface CreatePollResult {
+  poll: Poll | null;
+  error: string | null;
+}
+
 export function useCreatePoll() {
   const { user } = useAuth();
 
@@ -165,8 +175,10 @@ export function useCreatePoll() {
       /** When migration adds reminder_before_minutes column, persist (60, 120, or 1440) */
       reminderBeforeMinutes?: number;
     } = {}
-  ) => {
-    if (!user) return null;
+  ): Promise<CreatePollResult> => {
+    if (!user) {
+      return { poll: null, error: 'You must be signed in to create a poll.' };
+    }
 
     // Get team_id from channel if not provided
     let teamId = settings.teamId;
@@ -196,7 +208,10 @@ export function useCreatePoll() {
       .select()
       .single();
 
-    if (pollError || !poll) return null;
+    if (pollError || !poll) {
+      if (__DEV__) console.error('[useCreatePoll] poll insert failed', pollError);
+      return { poll: null, error: 'Could not create the poll. Please try again.' };
+    }
 
     const optionsToInsert = options.map((text, index) => ({
       poll_id: poll.id,
@@ -209,10 +224,29 @@ export function useCreatePoll() {
       .from('comm_poll_options')
       .insert(optionsToInsert);
 
-    if (optionsError) return null;
+    if (optionsError) {
+      if (__DEV__) console.error('[useCreatePoll] options insert failed', optionsError);
+      // Roll back the poll row we just created -- a poll with no options is
+      // unanswerable and would sit in the channel forever.
+      const { error: rollbackError } = await supabase
+        .from('comm_polls')
+        .delete()
+        .eq('id', poll.id);
+      if (rollbackError && __DEV__) {
+        console.error(
+          '[useCreatePoll] rollback of orphaned poll failed',
+          poll.id,
+          rollbackError
+        );
+      }
+      return {
+        poll: null,
+        error: 'Could not save the poll options. Please try again.',
+      };
+    }
 
     // Create the poll message with the poll_id linked
-    await supabase.from('comm_messages').insert({
+    const { error: messageError } = await supabase.from('comm_messages').insert({
       channel_id: channelId,
       user_id: user.id,
       content: `📊 Poll: ${question}`,
@@ -220,7 +254,18 @@ export function useCreatePoll() {
       poll_id: poll.id
     });
 
-    return poll;
+    if (messageError) {
+      if (__DEV__) console.error('[useCreatePoll] poll message insert failed', messageError);
+      // The poll itself is valid and reachable from the polls list, so this is
+      // not a rollback case -- but the channel will not show a card for it.
+      return {
+        poll,
+        error:
+          'Your poll was created, but it could not be posted to the chat. Open Polls to share it.',
+      };
+    }
+
+    return { poll, error: null };
   };
 
   return { createPoll };

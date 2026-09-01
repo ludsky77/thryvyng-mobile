@@ -34,6 +34,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useChannelMembers } from '../hooks/useChannelMembers';
+import { useChatSenderLabels } from '../hooks/useChatSenderLabels';
 import type { Message } from '../types';
 
 function getCelebrationType(
@@ -103,11 +104,6 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   const [isStaffInChannel, setIsStaffInChannel] = useState(false);
   const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [channelTeamId, setChannelTeamId] = useState<string | null>(null);
-  const [parentPlayerNames, setParentPlayerNames] = useState<
-    Map<string, string>
-  >(new Map());
-  const [memberNames, setMemberNames] = useState<Map<string, { name: string; avatar: string | null }>>(new Map());
-  const [staffUserIds, setStaffUserIds] = useState<Set<string>>(new Set());
 
   // Called on mount, on focus, and on each incoming message (via useMessages'
   // onNewMessage). A failed stamp leaves a stale unread badge, so it is logged
@@ -135,6 +131,10 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   } = useMessages(channelId, markChannelAsRead);
   const { members: channelMembers } =
     useChannelMembers(channelId);
+  const { memberNames, playerLabels, labelKind } = useChatSenderLabels(
+    channelId,
+    channelTeamId
+  );
 
   const messageIds = messages.map((m) => m.id);
 
@@ -175,126 +175,6 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     };
     checkStaffPermission();
   }, [channelId, user?.id]);
-
-  // Sender display names come from a SECURITY DEFINER RPC because RLS on profiles
-  // does not let a regular parent/player read another member's profile row —
-  // the nested profile join on comm_messages returns null and renders "Unknown".
-  const fetchChannelMemberNames = useCallback(async () => {
-    if (!channelId) return;
-    try {
-      const { data, error } = await supabase.rpc('get_channel_member_names', {
-        p_channel_id: channelId,
-      });
-      if (error) throw error;
-      const map = new Map<string, { name: string; avatar: string | null }>();
-      (data || []).forEach((row: any) => {
-        if (row?.user_id && row?.display_name) {
-          map.set(row.user_id, { name: row.display_name, avatar: row.avatar_url ?? null });
-        }
-      });
-      setMemberNames(map);
-    } catch (err) {
-      if (__DEV__) console.error('[TeamChatRoom] fetchChannelMemberNames error:', err);
-    }
-  }, [channelId]);
-
-  useEffect(() => {
-    if (!channelTeamId) {
-      setParentPlayerNames(new Map());
-      setStaffUserIds(new Set());
-      return;
-    }
-    const fetchParentPlayerNames = async () => {
-      if (messages.length === 0) return;
-      const senderIds = [...new Set(messages.map((m) => m.user_id))];
-      if (senderIds.length === 0) return;
-
-      try {
-        const { data: staffMembers } = await supabase
-          .from('team_staff')
-          .select('user_id')
-          .eq('team_id', channelTeamId)
-          .in('user_id', senderIds);
-
-        const staffSet = new Set(
-          staffMembers?.map((s: any) => s.user_id) || []
-        );
-        setStaffUserIds(staffSet);
-
-        const parentSenderIds = senderIds.filter((id) => !staffSet.has(id));
-        if (parentSenderIds.length === 0) {
-          setParentPlayerNames(new Map());
-          return;
-        }
-
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, email')
-          .in('id', parentSenderIds);
-
-        const emailToUserId = new Map<string, string>();
-        (profiles || []).forEach((p: any) => {
-          if (p.email) emailToUserId.set(p.email.toLowerCase(), p.id);
-        });
-        const parentEmails = Array.from(emailToUserId.keys());
-        if (parentEmails.length === 0) {
-          setParentPlayerNames(new Map());
-          return;
-        }
-
-        const { data: players } = await supabase
-          .from('players')
-          .select('id, first_name, parent_email, secondary_parent_email')
-          .eq('team_id', channelTeamId);
-
-        const parentMap = new Map<string, string>();
-        (players || []).forEach((p: any) => {
-          const primaryEmail = p.parent_email?.toLowerCase();
-          const secondaryEmail = p.secondary_parent_email?.toLowerCase();
-          const userId =
-            (primaryEmail && emailToUserId.get(primaryEmail)) ||
-            (secondaryEmail && emailToUserId.get(secondaryEmail));
-          if (!userId) return;
-          const name = p.first_name || '';
-          const existing = parentMap.get(userId);
-          if (existing) {
-            parentMap.set(userId, `${existing} & ${name}`);
-          } else {
-            parentMap.set(userId, name);
-          }
-        });
-
-        // NEW — player-self mapping: a player-role user's sender_id maps to their own first_name
-        const playerIds = (players || []).map((p: any) => p.id);
-        if (playerIds.length > 0) {
-          const { data: playerRoles } = await supabase
-            .from('user_roles')
-            .select('user_id, entity_id')
-            .eq('role', 'player')
-            .in('entity_id', playerIds);
-          (playerRoles || []).forEach((ur: any) => {
-            if (!ur.user_id) return;
-            const player = (players || []).find((p: any) => p.id === ur.entity_id);
-            if (player?.first_name) {
-              parentMap.set(ur.user_id, player.first_name);
-            }
-          });
-        }
-
-        setParentPlayerNames(parentMap);
-      } catch (err) {
-        console.error('Error fetching parent player names:', err);
-      }
-    };
-
-    fetchParentPlayerNames();
-  }, [channelTeamId, messages]);
-
-  // Member names change only when the channel changes — keep this out of the
-  // messages-dependent effect so it does not re-fire on every incoming message.
-  useEffect(() => {
-    fetchChannelMemberNames();
-  }, [fetchChannelMemberNames]);
 
   // 1. Mark read on mount
   useEffect(() => {
@@ -594,8 +474,9 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
 
     const isOwnMessage = item.user_id === user?.id;
     const reactionsSummary = getReactionsSummary(item.reactions, user?.id);
-    const isStaff = staffUserIds.has(item.user_id);
-    const playerLabel = !isStaff ? parentPlayerNames.get(item.user_id) : null;
+    const senderLabelKind = labelKind.get(item.user_id) ?? null;
+    const playerLabel =
+      senderLabelKind === 'staff' ? null : playerLabels.get(item.user_id);
 
     const replyTo =
       item.reply_to_id && (item.reply_to_content != null || item.reply_to_sender != null)
@@ -634,6 +515,7 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
             item.profile?.full_name
           }
           playerLabel={playerLabel ?? undefined}
+          labelKind={senderLabelKind}
           senderAvatar={
             memberNames.get(item.user_id)?.avatar ||
             (item as any).profiles?.avatar_url ||

@@ -36,6 +36,8 @@ interface ChatBubbleProps {
   senderAvatar?: string | null;
   senderRole?: string;
   playerLabel?: string;
+  /** How to render the suffix after senderName. See useChatSenderLabels. */
+  labelKind?: 'parent' | 'player' | 'staff' | null;
   showSenderInfo?: boolean;
   reactions?: ReactionSummary[];
   replyTo?: { content: string; senderName: string };
@@ -53,6 +55,7 @@ export function ChatBubble({
   senderAvatar,
   senderRole,
   playerLabel,
+  labelKind,
   showSenderInfo = true,
   reactions = [],
   replyTo,
@@ -82,6 +85,18 @@ export function ChatBubble({
       return <Feather name="shield" size={14} color="#8B5CF6" />;
     }
     return null;
+  };
+
+  // Suffix after the sender's name. Staff get the role icon above and no
+  // suffix; a parent gets their child's name, a player gets a plain marker.
+  // Falls back to the legacy possessive when only playerLabel is supplied.
+  const renderSenderSuffix = () => {
+    if (labelKind === 'staff') return null;
+    if (labelKind === 'player') {
+      return <Text style={styles.playerLabel}>(Player)</Text>;
+    }
+    if (!playerLabel) return null;
+    return <Text style={styles.playerLabel}>({playerLabel}'s)</Text>;
   };
 
   const renderAttachment = () => {
@@ -181,9 +196,7 @@ export function ChatBubble({
                 {senderName && (
                   <Text style={styles.senderName}>{senderName}</Text>
                 )}
-                {playerLabel && (
-                  <Text style={styles.playerLabel}>({playerLabel}'s)</Text>
-                )}
+                {renderSenderSuffix()}
               </View>
               {getRoleIcon()}
             </>

@@ -349,7 +349,25 @@ export default function ChatScreen({ navigation, route }: any) {
         unreadMsgsResult,
       ] = await Promise.all([
         otherUserIds.length > 0
-          ? supabase.from('profiles').select('id, full_name, avatar_url').in('id', otherUserIds)
+          ? // Membership-gated RPC; RLS on profiles hides other members' rows
+            // from a plain parent/player, which rendered DMs as "Unknown User".
+            supabase
+              .rpc('get_chat_profiles', { p_user_ids: otherUserIds })
+              .then(({ data, error }: any) => {
+                if (error) {
+                  if (__DEV__) {
+                    console.error('[ChatScreen] get_chat_profiles failed:', error);
+                  }
+                  return { data: [] };
+                }
+                return {
+                  data: (data || []).map((r: any) => ({
+                    id: r.user_id,
+                    full_name: r.display_name ?? null,
+                    avatar_url: r.avatar_url ?? null,
+                  })),
+                };
+              })
           : Promise.resolve({ data: [] }),
         otherUserIds.length > 0
           ? supabase.from('user_roles').select('user_id, role').in('user_id', otherUserIds)
@@ -616,13 +634,25 @@ export default function ChatScreen({ navigation, route }: any) {
         setDmSearchResults([]);
         return;
       }
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url')
-        .neq('id', user.id)
-        .ilike('full_name', `%${query}%`)
-        .limit(20);
-      const userIds = (profiles || []).map((p: any) => p.id);
+      // Membership-gated RPC: caps at 20, drops self, and only returns people
+      // who share a team with the caller. Under 2 characters it returns nothing,
+      // which lands here as an empty list -- the same as "no matches".
+      const { data: contacts, error } = await supabase.rpc('search_chat_contacts', {
+        p_query: query,
+      });
+      if (error) {
+        if (__DEV__) {
+          console.error('[ChatScreen] search_chat_contacts (DM) failed:', error);
+        }
+        setDmSearchResults([]);
+        return;
+      }
+      const profiles = (contacts || []).map((c: any) => ({
+        id: c.user_id,
+        full_name: c.display_name ?? null,
+        avatar_url: c.avatar_url ?? null,
+      }));
+      const userIds = profiles.map((p: any) => p.id);
       const roleMap = new Map<string, string>();
       if (userIds.length > 0) {
         const { data: roles } = await supabase
@@ -652,7 +682,7 @@ export default function ChatScreen({ navigation, route }: any) {
           }
         });
       }
-      const enriched = (profiles || []).map((p: any) => ({
+      const enriched = profiles.map((p: any) => ({
         ...p,
         role: roleMap.get(p.id),
         existingChannelId: existingDMs.get(p.id),
@@ -695,14 +725,24 @@ export default function ChatScreen({ navigation, route }: any) {
         setGroupSearchResults([]);
         return;
       }
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url')
-        .neq('id', user.id)
-        .ilike('full_name', `%${query}%`)
-        .limit(20);
-      const filtered =
-        (data || []).filter(
+      // Same membership-gated RPC as the DM picker -- see searchUsersForDM.
+      const { data: contacts, error } = await supabase.rpc('search_chat_contacts', {
+        p_query: query,
+      });
+      if (error) {
+        if (__DEV__) {
+          console.error('[ChatScreen] search_chat_contacts (group) failed:', error);
+        }
+        setGroupSearchResults([]);
+        return;
+      }
+      const filtered = (contacts || [])
+        .map((c: any) => ({
+          id: c.user_id,
+          full_name: c.display_name ?? null,
+          avatar_url: c.avatar_url ?? null,
+        }))
+        .filter(
           (p: any) => !selectedGroupUsers.some((s) => s.id === p.id)
         ) as ProfileResult[];
       setGroupSearchResults(filtered);
@@ -1206,7 +1246,7 @@ export default function ChatScreen({ navigation, route }: any) {
               </TouchableOpacity>
             )}
             ListEmptyComponent={
-              dmSearchQuery.length > 0 ? (
+              dmSearchQuery.trim().length >= 2 ? (
                 <Text style={styles.emptyText}>No users found</Text>
               ) : (
                 <Text style={styles.hintText}>Type a name to search</Text>
@@ -1306,7 +1346,7 @@ export default function ChatScreen({ navigation, route }: any) {
             style={{ minHeight: 120, maxHeight: 180 }}
             contentContainerStyle={{ paddingBottom: 20 }}
             ListEmptyComponent={
-              groupSearchQuery.length > 0 ? (
+              groupSearchQuery.trim().length >= 2 ? (
                 <Text style={styles.emptyText}>No results</Text>
               ) : (
                 <Text style={styles.hintText}>Search to add people</Text>

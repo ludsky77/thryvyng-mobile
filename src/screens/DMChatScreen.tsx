@@ -17,6 +17,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useMessages } from '../hooks/useMessages';
+import { useChatSenderLabels } from '../hooks/useChatSenderLabels';
 import { formatRoleLabel, getRolePriority } from '../lib/chatHelpers';
 import { ChatBubble, type ReactionSummary } from '../components/chat/ChatBubble';
 import { ChatInputBar, type AttachmentData } from '../components/chat/ChatInputBar';
@@ -105,6 +106,11 @@ export default function DMChatScreen({ route, navigation }: any) {
     toggleReaction,
     refetch,
   } = useMessages(channelId, markChannelRead);
+  // DMs carry no team, so the hook matches children without a team filter.
+  const { memberNames, playerLabels, labelKind } = useChatSenderLabels(
+    channelId,
+    null
+  );
 
   const fetchChannelInfo = useCallback(async () => {
     if (!channelId || !user?.id) {
@@ -280,6 +286,9 @@ export default function DMChatScreen({ route, navigation }: any) {
   const renderItem = ({ item }: { item: Message }) => {
     const isOwnMessage = item.user_id === user?.id;
     const reactionsSummary = getReactionsSummary(item.reactions, user?.id);
+    const senderLabelKind = labelKind.get(item.user_id) ?? null;
+    const playerLabel =
+      senderLabelKind === 'staff' ? null : playerLabels.get(item.user_id);
     const replyTo =
       item.reply_to_id && (item.reply_to_content != null || item.reply_to_sender != null)
         ? {
@@ -302,8 +311,14 @@ export default function DMChatScreen({ route, navigation }: any) {
             attachment_name: item.attachment_name ?? undefined,
           }}
           isOwnMessage={isOwnMessage}
-          senderName={item.profile?.full_name}
-          senderAvatar={item.profile?.avatar_url}
+          senderName={
+            memberNames.get(item.user_id)?.name || item.profile?.full_name
+          }
+          senderAvatar={
+            memberNames.get(item.user_id)?.avatar || item.profile?.avatar_url
+          }
+          playerLabel={playerLabel ?? undefined}
+          labelKind={senderLabelKind}
           showSenderInfo={false}
           reactions={reactionsSummary.length > 0 ? reactionsSummary : undefined}
           replyTo={replyTo}
@@ -318,6 +333,27 @@ export default function DMChatScreen({ route, navigation }: any) {
       </View>
     );
   };
+
+  // Header title: the RPC name wins over the directly-read profile, because RLS
+  // can leave the latter null for a parent/player reading another member.
+  // Suffix mirrors ChatBubble's rule -- parent gets the child, player gets a
+  // plain marker, staff and unknown get nothing.
+  const otherUserId = otherPerson?.id;
+  const otherDisplayName =
+    (otherUserId ? memberNames.get(otherUserId)?.name : undefined) ||
+    otherPerson?.full_name ||
+    null;
+  const otherLabelKind = otherUserId ? labelKind.get(otherUserId) ?? null : null;
+  const otherChildLabel = otherUserId ? playerLabels.get(otherUserId) : undefined;
+  const otherLabelSuffix =
+    otherLabelKind === 'parent' && otherChildLabel
+      ? ` (${otherChildLabel}'s)`
+      : otherLabelKind === 'player'
+        ? ' (Player)'
+        : '';
+  const headerDisplayTitle = otherDisplayName
+    ? `${otherDisplayName}${otherLabelSuffix}`
+    : 'Loading...';
 
   if (!channelId) {
     return (
@@ -375,7 +411,7 @@ export default function DMChatScreen({ route, navigation }: any) {
           </View>
           <View style={styles.headerText}>
             <Text style={styles.headerName} numberOfLines={1}>
-              {otherPerson?.full_name || 'Loading...'}
+              {headerDisplayTitle}
             </Text>
             {otherPerson?.role ? (
               <Text style={styles.headerRole}>
@@ -389,7 +425,9 @@ export default function DMChatScreen({ route, navigation }: any) {
           onPress={() =>
             navigation.navigate('ChatInfo', {
               channelId,
-              channelName: otherPerson?.full_name || 'Direct Message',
+              channelName: otherDisplayName
+                ? `${otherDisplayName}${otherLabelSuffix}`
+                : 'Direct Message',
               teamId: null,
               channelType: 'direct',
             })

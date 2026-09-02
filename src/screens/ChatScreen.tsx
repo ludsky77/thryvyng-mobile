@@ -675,25 +675,34 @@ export default function ChatScreen({ navigation, route }: any) {
         return;
       }
       const memberIds = [user.id, ...users.map((u) => u.id)].sort();
-      const { data: memberships } = await supabase
+      const { data: memberships, error: membershipsError } = await supabase
         .from('comm_channel_members')
         .select('channel_id')
         .eq('user_id', user.id);
+      if (membershipsError && __DEV__) {
+        console.warn('[ChatScreen] dup-check memberships read failed:', membershipsError);
+      }
       const channelIds = (memberships || []).map((m: any) => m.channel_id);
       if (channelIds.length === 0) {
         setExistingGroupMatch(null);
         return;
       }
-      const { data: groups } = await supabase
+      const { data: groups, error: groupsError } = await supabase
         .from('comm_channels')
         .select('id, name')
         .in('id', channelIds)
         .eq('channel_type', 'group_dm');
+      if (groupsError && __DEV__) {
+        console.warn('[ChatScreen] dup-check groups read failed:', groupsError);
+      }
       for (const g of groups || []) {
-        const { data: members } = await supabase
+        const { data: members, error: membersError } = await supabase
           .from('comm_channel_members')
           .select('user_id')
           .eq('channel_id', g.id);
+        if (membersError && __DEV__) {
+          console.warn('[ChatScreen] dup-check members read failed:', membersError);
+        }
         const groupIds = (members || []).map((m: any) => m.user_id).sort();
         if (
           groupIds.length === memberIds.length &&
@@ -744,11 +753,31 @@ export default function ChatScreen({ navigation, route }: any) {
       Alert.alert('Error', 'Could not create group');
       return;
     }
-    const memberInserts = [
-      user.id,
-      ...selectedGroupUsers.map((u) => u.id),
-    ].map((uid) => ({ channel_id: newChannel.id, user_id: uid }));
-    await supabase.from('comm_channel_members').insert(memberInserts);
+    // The creator is NOT inserted here: the DB trigger already adds them as
+    // admin, and UNIQUE (channel_id, user_id) would fail the whole batch.
+    const memberInserts = selectedGroupUsers
+      .filter((u) => u.id !== user.id)
+      .map((u) => ({
+        channel_id: newChannel.id,
+        user_id: u.id,
+        role: 'member',
+      }));
+    const { error: memberError } = await supabase
+      .from('comm_channel_members')
+      .insert(memberInserts);
+    if (memberError) {
+      // Roll the channel back so a failed create leaves no orphan behind.
+      const { error: rollbackError } = await supabase
+        .from('comm_channels')
+        .delete()
+        .eq('id', newChannel.id)
+        .select('id');
+      if (rollbackError && __DEV__) {
+        console.warn('[ChatScreen] group rollback failed:', rollbackError);
+      }
+      Alert.alert('Error', 'Could not create group');
+      return;
+    }
     setShowNewChatModal(false);
     setNewChatStep('choose');
     setGroupName('');

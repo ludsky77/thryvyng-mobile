@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  FlatList,
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,8 +18,8 @@ import { getEventTypeConfig } from '../types';
 import type { CalendarEvent } from '../types';
 import { EditEventModal } from '../components/calendar/EditEventModal';
 import { CantGoReasonModal } from '../components/calendar/CantGoReasonModal';
-import PlayerAvatar from '../components/PlayerAvatar';
 import { notifyTeamOfEvent } from '../services/eventNotifications';
+import PlayerAvatar from '../components/PlayerAvatar';
 import { GameEntryButton } from '../components/game-stats/GameEntryButton';
 import { isEventPast } from '../utils/calendar';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -61,17 +60,110 @@ function getEventTypeLabel(eventType: string): string {
   }
 }
 
-interface AttendanceRecord {
+/** Coach-marked attendance vocabulary. Never crosses into RSVP status. */
+type CoachStatus = 'present' | 'absent' | 'late' | 'excused';
+/** Resolved per-player status shown on the Details roster. */
+type DisplayStatus = 'going' | 'cant' | 'late' | 'excused' | 'no_reply';
+/** Who supplied the resolved status. */
+type StatusSource = 'coach' | 'parent' | 'player' | null;
+
+const COACH_TO_DISPLAY: Record<CoachStatus, DisplayStatus> = {
+  present: 'going',
+  absent: 'cant',
+  late: 'late',
+  excused: 'excused',
+};
+
+const STATUS_CHIP: Record<DisplayStatus, { label: string; color: string }> = {
+  going: { label: 'Going', color: '#22c55e' },
+  cant: { label: "Can't go", color: '#ef4444' },
+  late: { label: 'Late', color: '#f59e0b' },
+  excused: { label: 'Excused', color: '#6b7280' },
+  no_reply: { label: 'No reply', color: '#64748b' },
+};
+
+/** Fallbacks for when the responder's profile is not readable under RLS. */
+const SOURCE_LABEL: Record<Exclude<StatusSource, null>, string> = {
+  coach: 'coach-marked',
+  parent: 'by parent',
+  player: 'by player',
+};
+
+/** "Paula Quintero" -> "Paula Q."  Single-word names pass through. */
+function shortName(full: string | null | undefined): string | null {
+  if (!full) return null;
+  const parts = full.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return null;
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1].charAt(0).toUpperCase()}.`;
+}
+
+/** "TUE" -> "Tue". formatDateParts returns upper case for the date block. */
+function titleCase(s: string): string {
+  return s ? s.charAt(0) + s.slice(1).toLowerCase() : s;
+}
+
+/** "4:00 PM" + "5:30 PM" -> "4:00–5:30 PM"; keeps both when they differ. */
+function timeRangeLabel(start: string | null, end: string | null): string {
+  const a = formatTime(start);
+  if (!a) return '';
+  const b = formatTime(end);
+  if (!b) return a;
+  const ma = a.slice(-2);
+  return ma === b.slice(-2) ? `${a.slice(0, -3)}–${b}` : `${a}–${b}`;
+}
+
+/** Small line under the name on the Attendance tab, before any coach mark. */
+function rsvpHint(status: DisplayStatus, reason: string | null): string {
+  if (status === 'going') return 'said going';
+  if (status === 'cant') return reason ? `said can't — ${reason}` : "said can't";
+  if (status === 'late') return 'marked late';
+  if (status === 'excused') return 'marked excused';
+  return 'no reply';
+}
+
+function firstName(full: string | null | undefined): string | null {
+  if (!full) return null;
+  const first = full.trim().split(/\s+/)[0];
+  return first || null;
+}
+
+interface RosterPlayer {
+  id: string;
+  first_name: string;
+  last_name: string;
+  photo_url?: string | null;
+  jersey_number?: number | null;
+  parent_email?: string | null;
+  secondary_parent_email?: string | null;
+}
+
+interface AttendanceRow {
   id: string;
   player_id: string;
-  status: 'present' | 'absent' | 'late' | 'excused' | null;
-  player?: {
-    id: string;
-    first_name: string;
-    last_name: string;
-    photo_url?: string;
-    jersey_number?: number | null;
-  };
+  status: CoachStatus;
+  marked_by: string | null;
+}
+
+interface RosterEntry {
+  player: RosterPlayer;
+  status: DisplayStatus;
+  source: StatusSource;
+  /** Short name of whoever supplied the status, when their profile is readable. */
+  sourceName: string | null;
+  reason: string | null;
+  hasCoachMark: boolean;
+  /** Raw coach mark, so the ✓/✗ pair can show which one is active. */
+  coachStatus: CoachStatus | null;
+}
+
+/** An RSVP we could not pin to exactly one player on this team. */
+interface UnmappedRsvp {
+  key: string;
+  label: string;
+  status: DisplayStatus;
+  reason: string | null;
+  ambiguous: boolean;
 }
 
 export default function EventDetailScreen({ route, navigation }: any) {
@@ -82,15 +174,20 @@ export default function EventDetailScreen({ route, navigation }: any) {
   const [rsvpLoading, setRsvpLoading] = useState(false);
   const [cantGoModalVisible, setCantGoModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
-  const [activeTab, setActiveTab] = useState<'details' | 'attendance'>('details');
-  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
-  const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [eventRsvps, setEventRsvps] = useState<Array<{ player_id: string | null; user_id: string; status: string; decline_reason: string | null }>>([]);
   const [nonResponders, setNonResponders] = useState<string[]>([]);
   const [reminderSending, setReminderSending] = useState(false);
   const [reminderSent, setReminderSent] = useState(false);
   const [isStaffInTeam, setIsStaffInTeam] = useState(false);
   const [remindingTeam, setRemindingTeam] = useState(false);
+  const [players, setPlayers] = useState<RosterPlayer[]>([]);
+  const [attendanceRows, setAttendanceRows] = useState<AttendanceRow[]>([]);
+  const [playerRoleMap, setPlayerRoleMap] = useState<Map<string, string>>(new Map());
+  const [responderEmails, setResponderEmails] = useState<
+    Map<string, { email: string; name: string | null }>
+  >(new Map());
+  const [markingPlayerId, setMarkingPlayerId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'details' | 'attendance'>('details');
   const [lineup, setLineup] = useState<any | null>(null);
   const [language] = useState<'en' | 'es'>('en');
 
@@ -124,13 +221,14 @@ export default function EventDetailScreen({ route, navigation }: any) {
   const isManager = isStaffInTeam;
   const isStaff = isManager || (currentRole && ['club_admin', 'platform_admin'].includes(currentRole.role));
 
-  const fetchEvent = useCallback(async () => {
+  // silent = background refresh: keep whatever is on screen, never flip loading.
+  const fetchEvent = useCallback(async (silent = false) => {
     if (!eventId && !eventParam) return;
     
     const id = eventId || eventParam?.id;
     if (!id) return;
 
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const [eventRes, lineupRes] = await Promise.all([
         supabase
@@ -178,55 +276,101 @@ export default function EventDetailScreen({ route, navigation }: any) {
     } catch (err) {
       console.error('[EventDetail] Error fetching event:', err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [eventId, eventParam]);
 
-  const fetchAttendance = useCallback(async () => {
+  // Lifted from the Attendance tab: the Details roster needs the same three
+  // reads, so this now runs for both tabs off event id/team id.
+  const fetchRoster = useCallback(async () => {
     if (!event?.id || !event?.team_id) return;
-    
-    setAttendanceLoading(true);
+
     try {
-      const { data: players, error: playersError } = await supabase
+      const { data: playersData, error: playersError } = await supabase
         .from('players')
-        .select('id, first_name, last_name, photo_url, jersey_number')
+        .select(
+          'id, first_name, last_name, photo_url, jersey_number, parent_email, secondary_parent_email'
+        )
         .eq('team_id', event.team_id)
         .order('last_name');
 
       if (playersError) throw playersError;
+      const list = (playersData || []) as RosterPlayer[];
+      setPlayers(list);
 
-      let attendanceRecords: any[] = [];
-      try {
-        const { data, error } = await supabase
-          .from('event_attendance')
-          .select('*')
-          .eq('event_id', event.id);
-        
-        if (!error && data) {
-          attendanceRecords = data;
-        }
-      } catch {
-        console.log('[Attendance] No attendance table found');
+      const { data: attData, error: attError } = await supabase
+        .from('event_attendance')
+        .select('id, player_id, status, marked_by')
+        .eq('event_id', event.id);
+
+      if (attError && __DEV__) {
+        console.warn('[EventDetail] attendance read failed:', attError);
       }
+      const attRows = (attData || []) as AttendanceRow[];
+      setAttendanceRows(attRows);
 
-      const merged = (players || []).map((player) => {
-        const record = attendanceRecords.find((a: any) => a.player_id === player.id);
-        return {
-          id: record?.id || player.id,
-          player_id: player.id,
-          status: record?.status || null,
-          player,
-        };
-      });
-
-      setAttendance(merged);
+      // Player-role users are their own player: an exact user -> player identity
+      // that beats any email guess.
+      const playerIds = list.map((p) => p.id);
+      const roleMap = new Map<string, string>();
+      if (playerIds.length > 0) {
+        const { data: roles, error: rolesError } = await supabase
+          .from('user_roles')
+          .select('user_id, entity_id')
+          .eq('role', 'player')
+          .in('entity_id', playerIds);
+        if (rolesError && __DEV__) {
+          console.warn('[EventDetail] player-role read failed:', rolesError);
+        }
+        (roles || []).forEach((r: any) => {
+          if (r.user_id && r.entity_id) roleMap.set(r.user_id, r.entity_id);
+        });
+      }
+      setPlayerRoleMap(roleMap);
     } catch (err) {
-      console.error('[EventDetail] Error fetching attendance:', err);
-      setAttendance([]);
-    } finally {
-      setAttendanceLoading(false);
+      console.error('[EventDetail] Error fetching roster:', err);
+      setPlayers([]);
+      setAttendanceRows([]);
     }
   }, [event?.id, event?.team_id]);
+
+  // RSVP rows carry user_id but often no player_id. Emails are the only bridge
+  // back to a player row, so resolve responder emails once per RSVP set.
+  const fetchResponderEmails = useCallback(async () => {
+    const ids = [
+      ...new Set(
+        [
+          ...eventRsvps.map((r) => r.user_id),
+          ...attendanceRows.map((a) => a.marked_by),
+        ].filter(Boolean) as string[]
+      ),
+    ];
+    if (ids.length === 0) {
+      setResponderEmails(new Map());
+      return;
+    }
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, email, full_name')
+      .in('id', ids);
+    if (error) {
+      // RLS may hide other members' profiles from a parent; those RSVPs then
+      // render as un-mapped rows rather than being silently attached to a kid.
+      if (__DEV__) {
+        console.warn('[EventDetail] responder profiles read failed:', error);
+      }
+      setResponderEmails(new Map());
+      return;
+    }
+    const map = new Map<string, { email: string; name: string | null }>();
+    (data || []).forEach((p: any) => {
+      map.set(p.id, {
+        email: (p.email || '').toLowerCase(),
+        name: p.full_name ?? null,
+      });
+    });
+    setResponderEmails(map);
+  }, [eventRsvps, attendanceRows]);
 
   const fetchNonResponders = useCallback(async () => {
     if (!event?.team_id || !event?.id) return;
@@ -289,31 +433,27 @@ export default function EventDetailScreen({ route, navigation }: any) {
   }, [event?.id, event?.team_id]);
 
   useEffect(() => {
+    // A navigated-in event object is a paint hint, NOT a substitute for the
+    // fetch: it carries no RSVP rows. The old code took this branch and never
+    // called fetchEvent(), so eventRsvps stayed [] for the life of the screen
+    // and every roster player resolved to "no reply" -- even rows whose
+    // player_id pointed straight at them. Seed for an instant first paint,
+    // then always fetch (silently, so nothing blanks).
     if (eventParam) {
       setEvent(eventParam);
-      const id = eventParam.id;
-      supabase
-        .from('lineup_formations')
-        .select(
-          `id, name, formation_template, field_type, status, jersey_config, opponent_name, notes,
-          players:lineup_players(id, player_id, guest_name, jersey_number, position_code, position_x, position_y, is_starter, is_captain, sort_order,
-            player_profile:players(id, first_name, last_name)),
-          plays:lineup_plays(id, name, name_es, category, subcategory, animation_data, coaching_points, coaching_points_es)`
-        )
-        .eq('event_id', id)
-        .eq('status', 'published')
-        .maybeSingle()
-        .then(({ data }) => setLineup(data));
+      fetchEvent(true);
     } else {
       fetchEvent();
     }
   }, [eventParam, fetchEvent]);
 
   useEffect(() => {
-    if (activeTab === 'attendance' && event?.id) {
-      fetchAttendance();
-    }
-  }, [activeTab, event?.id, fetchAttendance]);
+    fetchRoster();
+  }, [fetchRoster]);
+
+  useEffect(() => {
+    fetchResponderEmails();
+  }, [fetchResponderEmails]);
 
   useEffect(() => {
     if (event?.id && event?.team_id && isStaff) {
@@ -324,7 +464,133 @@ export default function EventDetailScreen({ route, navigation }: any) {
   const typeConfig = event ? getEventTypeConfig(event.event_type) : getEventTypeConfig('other_event');
   const dateParts = event ? formatDateParts(event.event_date) : { day: '', date: '', month: '' };
 
-  const handleRsvp = async (status: 'yes' | 'no', declineReason?: string | null) => {
+  /**
+   * Resolve every RSVP to at most one player on this team.
+   * Priority: explicit rsvp.player_id -> the responder IS the player (user_roles)
+   * -> exactly one parent-email match. Two or more matches is ambiguous and is
+   * deliberately NOT guessed: it surfaces as one un-mapped row instead.
+   */
+  const resolvedRsvps = useMemo(() => {
+    const byPlayer = new Map<string, { rsvp: (typeof eventRsvps)[number]; source: StatusSource }>();
+    const unmapped: UnmappedRsvp[] = [];
+
+    for (const r of eventRsvps) {
+      const selfPlayerId = playerRoleMap.get(r.user_id);
+
+      if (r.player_id) {
+        byPlayer.set(r.player_id, {
+          rsvp: r,
+          source: selfPlayerId === r.player_id ? 'player' : 'parent',
+        });
+        continue;
+      }
+      if (selfPlayerId) {
+        byPlayer.set(selfPlayerId, { rsvp: r, source: 'player' });
+        continue;
+      }
+
+      const profile = responderEmails.get(r.user_id);
+      const email = profile?.email ?? '';
+      const matches = email
+        ? players.filter(
+            (p) =>
+              (p.parent_email || '').toLowerCase() === email ||
+              (p.secondary_parent_email || '').toLowerCase() === email
+          )
+        : [];
+
+      if (matches.length === 1) {
+        byPlayer.set(matches[0].id, { rsvp: r, source: 'parent' });
+      } else {
+        unmapped.push({
+          key: `${r.user_id}`,
+          label: profile?.name || 'Team member',
+          status: r.status === 'yes' ? 'going' : r.status === 'no' ? 'cant' : 'no_reply',
+          reason: r.status === 'no' ? r.decline_reason : null,
+          ambiguous: matches.length > 1,
+        });
+      }
+    }
+    return { byPlayer, unmapped };
+  }, [eventRsvps, players, playerRoleMap, responderEmails]);
+
+  /** Coach mark wins, then family RSVP, then no reply. */
+  const roster = useMemo<RosterEntry[]>(() => {
+    return players.map((player) => {
+      const mark = attendanceRows.find((a) => a.player_id === player.id);
+      if (mark) {
+        return {
+          player,
+          status: COACH_TO_DISPLAY[mark.status] ?? 'no_reply',
+          source: mark.marked_by ? 'coach' : null,
+          sourceName: mark.marked_by
+            ? firstName(responderEmails.get(mark.marked_by)?.name)
+            : null,
+          reason: null,
+          hasCoachMark: true,
+          coachStatus: mark.status,
+        };
+      }
+      const hit = resolvedRsvps.byPlayer.get(player.id);
+      if (hit) {
+        const status: DisplayStatus =
+          hit.rsvp.status === 'yes' ? 'going' : hit.rsvp.status === 'no' ? 'cant' : 'no_reply';
+        return {
+          player,
+          status,
+          source: hit.source,
+          sourceName: shortName(responderEmails.get(hit.rsvp.user_id)?.name),
+          reason: status === 'cant' ? hit.rsvp.decline_reason : null,
+          hasCoachMark: false,
+          coachStatus: null,
+        };
+      }
+      return {
+        player,
+        status: 'no_reply',
+        source: null,
+        sourceName: null,
+        reason: null,
+        hasCoachMark: false,
+        coachStatus: null,
+      };
+    });
+  }, [players, attendanceRows, resolvedRsvps, responderEmails]);
+
+  const headcounts = useMemo(() => {
+    // going / cant come from stated family intent; headcount is the union of
+    // family-going and coach-marked-present, deduped per player.
+    const going = eventRsvps.filter((r) => r.status === 'yes').length;
+    const cant = eventRsvps.filter((r) => r.status === 'no').length;
+    const noReply = roster.filter((r) => r.status === 'no_reply').length;
+    const headcount = roster.filter((r) => r.status === 'going').length;
+    return { going, cant, noReply, headcount };
+  }, [eventRsvps, roster]);
+
+  const myRsvp = useMemo(
+    () => eventRsvps.find((r) => r.user_id === user?.id) ?? null,
+    [eventRsvps, user?.id]
+  );
+
+  /** The one player this user speaks for, or null when staff / ambiguous. */
+  const myPlayerId = useMemo(() => {
+    if (!user?.id) return null;
+    const self = playerRoleMap.get(user.id);
+    if (self) return self;
+    const email = (user.email || '').toLowerCase();
+    if (!email) return null;
+    const matches = players.filter(
+      (p) =>
+        (p.parent_email || '').toLowerCase() === email ||
+        (p.secondary_parent_email || '').toLowerCase() === email
+    );
+    return matches.length === 1 ? matches[0].id : null;
+  }, [user?.id, user?.email, players, playerRoleMap]);
+
+  const handleRsvp = async (
+    status: 'yes' | 'no' | 'pending',
+    declineReason?: string | null
+  ) => {
     if (!user || !event) return;
     setRsvpLoading(true);
 
@@ -332,35 +598,76 @@ export default function EventDetailScreen({ route, navigation }: any) {
       const payload: Record<string, unknown> = {
         status,
         responded_at: new Date().toISOString(),
+        // Cleared on yes/pending so an undone "can't go" leaves no stale reason.
+        decline_reason: status === 'no' ? declineReason ?? null : null,
       };
-      if (status === 'no') {
-        payload.decline_reason = declineReason ?? null;
-      }
+      // Only when this user speaks for exactly one player on this team.
+      if (myPlayerId) payload.player_id = myPlayerId;
 
-      const { data: existing } = await supabase
+      // limit(1) rather than maybeSingle(): a duplicate row must not error the
+      // whole response out.
+      const { data: existingRows, error: lookupError } = await supabase
         .from('cal_event_rsvps')
         .select('id')
         .eq('event_id', event.id)
         .eq('user_id', user.id)
-        .maybeSingle();
+        .limit(1);
+
+      if (lookupError) {
+        if (__DEV__) console.warn('[EventDetail] rsvp lookup failed:', lookupError);
+        Alert.alert('Error', 'Failed to save response. Please try again.');
+        return;
+      }
+
+      const existing = existingRows?.[0];
 
       if (existing) {
-        await supabase
+        const { data, error } = await supabase
           .from('cal_event_rsvps')
           .update(payload)
-          .eq('id', existing.id);
+          .eq('id', existing.id)
+          .select('id');
+        // RLS filters a denied write out silently: no error, no rows.
+        if (error || !data || data.length === 0) {
+          if (__DEV__) console.warn('[EventDetail] rsvp update failed:', error);
+          Alert.alert('Error', 'Failed to save response. Please try again.');
+          return;
+        }
       } else {
-        await supabase.from('cal_event_rsvps').insert({
-          event_id: event.id,
-          user_id: user.id,
-          status,
-          responded_at: new Date().toISOString(),
-          ...(status === 'no' ? { decline_reason: declineReason ?? null } : {}),
-        });
+        const { data, error } = await supabase
+          .from('cal_event_rsvps')
+          .insert({
+            event_id: event.id,
+            user_id: user.id,
+            ...payload,
+          })
+          .select('id');
+        if (error || !data || data.length === 0) {
+          if (__DEV__) console.warn('[EventDetail] rsvp insert failed:', error);
+          Alert.alert('Error', 'Failed to save response. Please try again.');
+          return;
+        }
       }
 
       setCantGoModalVisible(false);
-      fetchEvent();
+
+      // Apply my row locally so the memos recompute instantly. The refetch
+      // below is a background reconcile -- it must not blank the roster.
+      setEventRsvps((prev) => {
+        const mine = {
+          player_id: (myPlayerId ?? null) as string | null,
+          user_id: user.id,
+          status,
+          decline_reason: status === 'no' ? declineReason ?? null : null,
+        };
+        const idx = prev.findIndex((r) => r.user_id === user.id);
+        if (idx === -1) return [...prev, mine];
+        const next = [...prev];
+        next[idx] = { ...next[idx], ...mine };
+        return next;
+      });
+
+      fetchEvent(true);
       fetchNonResponders();
       onRefetch?.();
     } catch (err) {
@@ -635,75 +942,61 @@ export default function EventDetailScreen({ route, navigation }: any) {
     openInMaps(event.location_address || '', event.location_name || undefined);
   };
 
-  const handleAttendanceUpdate = async (playerId: string, status: 'present' | 'absent' | 'late' | 'excused') => {
-    if (!event) return;
+  /**
+   * Coach headcount tool. Writes ONLY to event_attendance -- never to
+   * cal_event_rsvps, whose vocabulary (yes/no/maybe/pending) is the family's.
+   */
+  const markAttendance = async (playerId: string, status: CoachStatus) => {
+    if (!event || !user?.id || !isStaff) return;
 
+    setMarkingPlayerId(playerId);
     try {
-      setAttendance(prev => prev.map(item => 
-        item.player_id === playerId 
-          ? { ...item, status } 
-          : item
-      ));
-      
-      console.log('[Attendance] Updated locally for player:', playerId, 'status:', status);
-    } catch (err) {
-      console.error('[Attendance] Error:', err);
+      const { data, error } = await supabase
+        .from('event_attendance')
+        .upsert(
+          {
+            event_id: event.id,
+            player_id: playerId,
+            status,
+            marked_by: user.id,
+          },
+          { onConflict: 'event_id,player_id' }
+        )
+        .select('id');
+
+      // Staff-only RLS filters a denied write out silently: no error, no rows.
+      if (error || !data || data.length === 0) {
+        if (__DEV__) console.warn('[EventDetail] attendance upsert failed:', error);
+        Alert.alert('Error', 'Could not save attendance');
+        return;
+      }
+      fetchRoster();
+    } finally {
+      setMarkingPlayerId(null);
     }
   };
 
-  const renderAttendanceItem = ({ item }: { item: AttendanceRecord }) => {
-    const rsvp = eventRsvps.find((r) => r.player_id === item.player_id);
-    const showDeclineReason = rsvp?.status === 'no' && rsvp?.decline_reason;
-    return (
-    <View style={styles.attendanceRow}>
-      <View style={styles.attendancePlayer}>
-        <PlayerAvatar
-          photoUrl={item.player?.photo_url}
-          jerseyNumber={item.player?.jersey_number}
-          firstName={item.player?.first_name}
-          lastName={item.player?.last_name}
-          size={40}
-          teamColor={(event as { team?: { color?: string } })?.team?.color || '#5B7BB5'}
-        />
-        <View style={styles.attendancePlayerInfo}>
-          <Text style={styles.playerName}>
-            {item.player?.first_name} {item.player?.last_name}
-          </Text>
-          {showDeclineReason && (
-            <Text style={styles.declineReasonText} numberOfLines={2}>
-              {rsvp.decline_reason}
-            </Text>
-          )}
-        </View>
-      </View>
-      <View style={styles.attendanceButtons}>
-        {(['present', 'absent', 'late', 'excused'] as const).map((status) => (
-          <TouchableOpacity
-            key={status}
-            style={[
-              styles.attendanceBtn,
-              item.status === status && styles.attendanceBtnActive,
-              item.status === status && status === 'present' && { backgroundColor: '#22c55e' },
-              item.status === status && status === 'absent' && { backgroundColor: '#ef4444' },
-              item.status === status && status === 'late' && { backgroundColor: '#f59e0b' },
-              item.status === status && status === 'excused' && { backgroundColor: '#6b7280' },
-              event && isEventPast(event) && styles.attendanceBtnDisabled,
-            ]}
-            onPress={() => handleAttendanceUpdate(item.player_id, status)}
-            disabled={event ? isEventPast(event) : false}
-          >
-            <Text style={[
-              styles.attendanceBtnText,
-              item.status === status && styles.attendanceBtnTextActive,
-              event && isEventPast(event) && styles.attendanceBtnTextDisabled,
-            ]}>
-              {status === 'present' ? '✓' : status === 'absent' ? '✗' : status === 'late' ? '⏰' : '🎫'}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
-  );
+  const unmarkAttendance = async (playerId: string) => {
+    if (!event || !isStaff) return;
+
+    setMarkingPlayerId(playerId);
+    try {
+      const { data, error } = await supabase
+        .from('event_attendance')
+        .delete()
+        .eq('event_id', event.id)
+        .eq('player_id', playerId)
+        .select('id');
+
+      if (error || !data || data.length === 0) {
+        if (__DEV__) console.warn('[EventDetail] attendance delete failed:', error);
+        Alert.alert('Error', 'Could not remove the mark');
+        return;
+      }
+      fetchRoster();
+    } finally {
+      setMarkingPlayerId(null);
+    }
   };
 
   if (loading || !event) {
@@ -734,17 +1027,16 @@ export default function EventDetailScreen({ route, navigation }: any) {
         <View style={styles.headerRight} />
       </View>
 
-      {/* Tab Bar */}
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'details' && styles.tabActive]}
-          onPress={() => setActiveTab('details')}
-        >
-          <Text style={[styles.tabText, activeTab === 'details' && styles.tabTextActive]}>
-            Details
-          </Text>
-        </TouchableOpacity>
-        {isManager && (
+      {isStaff && (
+        <View style={styles.tabBar}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'details' && styles.tabActive]}
+            onPress={() => setActiveTab('details')}
+          >
+            <Text style={[styles.tabText, activeTab === 'details' && styles.tabTextActive]}>
+              Details
+            </Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'attendance' && styles.tabActive]}
             onPress={() => setActiveTab('attendance')}
@@ -753,11 +1045,114 @@ export default function EventDetailScreen({ route, navigation }: any) {
               Attendance
             </Text>
           </TouchableOpacity>
-        )}
-      </View>
+        </View>
+      )}
 
-      {activeTab === 'details' ? (
+      {isStaff && activeTab === 'attendance' ? (
         <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+          <Text style={styles.attContext}>
+            {`${titleCase(dateParts.day)}, ${titleCase(dateParts.month)} ${dateParts.date}`}
+            {` · ${typeConfig.label}`}
+            {event.is_all_day
+              ? ' · All Day'
+              : event.start_time
+                ? ` · ${timeRangeLabel(event.start_time, event.end_time)}`
+                : ''}
+          </Text>
+          <Text style={styles.attHeading}>Mark who showed up</Text>
+          {roster.length === 0 ? (
+            <Text style={styles.rosterEmptyText}>No players on this team</Text>
+          ) : (
+            roster.map((entry) => {
+              const busy = markingPlayerId === entry.player.id;
+              const chip = STATUS_CHIP[entry.status];
+              return (
+                <View key={entry.player.id} style={styles.attRow}>
+                  <PlayerAvatar
+                    photoUrl={entry.player.photo_url}
+                    jerseyNumber={entry.player.jersey_number}
+                    firstName={entry.player.first_name}
+                    lastName={entry.player.last_name}
+                    size={40}
+                    teamColor={(event as any).team?.color || '#5B7BB5'}
+                  />
+                  <View style={styles.attInfo}>
+                    <Text style={styles.attName} numberOfLines={1}>
+                      {entry.player.first_name} {entry.player.last_name}
+                    </Text>
+                    {entry.hasCoachMark ? (
+                      // A coach mark replaces the hint with what was recorded --
+                      // legacy late/excused rows still render here.
+                      <Text style={[styles.attHint, { color: chip.color }]}>
+                        {chip.label}
+                        {entry.sourceName ? ` · by Coach ${entry.sourceName}` : ''}
+                      </Text>
+                    ) : (
+                      <Text style={styles.attHint}>
+                        {rsvpHint(entry.status, entry.reason)}
+                      </Text>
+                    )}
+                  </View>
+
+                  {busy ? (
+                    <View style={styles.attControls}>
+                      <ActivityIndicator size="small" color="#8b5cf6" />
+                    </View>
+                  ) : (
+                    <View style={styles.attControls}>
+                      <TouchableOpacity
+                        style={[
+                          styles.attAbsentBtn,
+                          entry.coachStatus === 'absent' && styles.attAbsentBtnActive,
+                        ]}
+                        // Tapping the active mark clears it.
+                        onPress={() =>
+                          entry.coachStatus === 'absent'
+                            ? unmarkAttendance(entry.player.id)
+                            : markAttendance(entry.player.id, 'absent')
+                        }
+                        hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                      >
+                        <Text
+                          style={[
+                            styles.attBtnText,
+                            entry.coachStatus === 'absent' && styles.attBtnTextActive,
+                          ]}
+                        >
+                          ✗
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.attPresentBtn,
+                          entry.coachStatus === 'present' && styles.attPresentBtnActive,
+                        ]}
+                        onPress={() =>
+                          entry.coachStatus === 'present'
+                            ? unmarkAttendance(entry.player.id)
+                            : markAttendance(entry.player.id, 'present')
+                        }
+                        hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                      >
+                        <Text
+                          style={[
+                            styles.attPresentText,
+                            entry.coachStatus === 'present' && styles.attBtnTextActive,
+                          ]}
+                        >
+                          ✓
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              );
+            })
+          )}
+          <View style={styles.bottomPadding} />
+        </ScrollView>
+      ) : (
+      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
           {/* Main Event Card */}
           <View style={[
             styles.eventCard,
@@ -854,16 +1249,38 @@ export default function EventDetailScreen({ route, navigation }: any) {
                 </TouchableOpacity>
               )}
 
-              {/* Time */}
+              {/* ------------------------------------------------------------
+                  MAP PREVIEW PLACEHOLDER
+                  Reserved for the static/interactive map of location_address.
+                  Intentionally empty for now: no map dependency is installed
+                  and none is added by this change. Drop the map component in
+                  here; the surrounding layout already accounts for its height.
+                 ------------------------------------------------------------ */}
+              {event.location_address ? (
+                <View style={styles.mapPlaceholder} />
+              ) : null}
+
+              {/* Time -- arrival is the number that gets people there on time,
+                  so it leads and the start/end window sits under it. */}
               <View style={styles.infoRow}>
                 <Ionicons name="time-outline" size={18} color="#8b5cf6" />
                 <View style={styles.infoContent}>
                   {event.is_all_day ? (
                     <Text style={styles.infoTitle}>All Day</Text>
+                  ) : event.arrival_time ? (
+                    <>
+                      <Text style={styles.arriveTitle}>
+                        Arrive {formatTime(event.arrival_time)}
+                      </Text>
+                      <Text style={styles.infoSubtitle}>
+                        {formatTime(event.start_time)}
+                        {event.end_time ? ` to ${formatTime(event.end_time)}` : ''}
+                      </Text>
+                    </>
                   ) : (
                     <Text style={styles.infoTitle}>
                       {formatTime(event.start_time)}
-                      {event.end_time ? ` - ${formatTime(event.end_time)}` : ''}
+                      {event.end_time ? ` to ${formatTime(event.end_time)}` : ''}
                     </Text>
                   )}
                 </View>
@@ -912,19 +1329,160 @@ export default function EventDetailScreen({ route, navigation }: any) {
             </View>
           </View>
 
+          {/* Will you be there? -- same control and state as the season list. */}
+          {!isEventPast(event) && (
+            <View style={styles.willCard}>
+              <View style={styles.willRow}>
+                <Text style={styles.willLabel}>
+                  {myRsvp?.status === 'yes'
+                    ? "✓ You're going"
+                    : myRsvp?.status === 'no'
+                      ? '✗ Not going'
+                      : 'Will you be there?'}
+                </Text>
+                <View style={styles.willButtons}>
+                  <TouchableOpacity
+                    style={[
+                      styles.willBtn,
+                      myRsvp?.status === 'no' && styles.willBtnNoActive,
+                    ]}
+                    onPress={() => setCantGoModalVisible(true)}
+                    disabled={rsvpLoading}
+                  >
+                    <Text
+                      style={[
+                        styles.willBtnText,
+                        myRsvp?.status === 'no' && styles.willBtnTextActive,
+                      ]}
+                    >
+                      ✗
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.willBtn,
+                      myRsvp?.status === 'yes' && styles.willBtnYesActive,
+                    ]}
+                    // Tapping an active "going" undoes it back to pending.
+                    onPress={() =>
+                      myRsvp?.status === 'yes' ? handleRsvp('pending') : handleRsvp('yes')
+                    }
+                    disabled={rsvpLoading}
+                  >
+                    <Text
+                      style={[
+                        styles.willBtnText,
+                        myRsvp?.status === 'yes' && styles.willBtnTextActive,
+                      ]}
+                    >
+                      ✓
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              {myRsvp?.status === 'no' && myRsvp.decline_reason ? (
+                <Text style={styles.myReasonText}>“{myRsvp.decline_reason}”</Text>
+              ) : null}
+            </View>
+          )}
+
           {/* Responses Card */}
           <View style={styles.responsesCard}>
             <Text style={styles.responsesTitle}>📊 Responses</Text>
             <View style={styles.responsesRow}>
               <View style={styles.responseItem}>
-                <Text style={styles.responseCount}>{event.rsvp_counts?.yes || 0}</Text>
+                <Text style={styles.responseCount}>{headcounts.going}</Text>
                 <Text style={styles.responseLabel}>Going</Text>
               </View>
               <View style={styles.responseItem}>
-                <Text style={styles.responseCount}>{event.rsvp_counts?.no || 0}</Text>
-                <Text style={styles.responseLabel}>Can't Go</Text>
+                <Text style={styles.responseCount}>{headcounts.cant}</Text>
+                <Text style={styles.responseLabel}>Can't</Text>
+              </View>
+              <View style={styles.responseItem}>
+                <Text style={styles.responseCount}>{headcounts.noReply}</Text>
+                <Text style={styles.responseLabel}>No reply</Text>
+              </View>
+              <View style={[styles.responseItem, styles.headcountItem]}>
+                <Text style={[styles.responseCount, styles.headcountCount]}>
+                  {headcounts.headcount}
+                </Text>
+                <Text style={styles.responseLabel}>Headcount</Text>
               </View>
             </View>
+
+            {roster.length === 0 ? (
+              <Text style={styles.rosterEmptyText}>No players on this team</Text>
+            ) : (
+              roster.map((entry) => {
+                const chip = STATUS_CHIP[entry.status];
+                return (
+                  <View key={entry.player.id} style={styles.rosterRow}>
+                    <View style={styles.rosterInfo}>
+                      <Text style={styles.rosterName} numberOfLines={1}>
+                        {entry.player.first_name} {entry.player.last_name}
+                      </Text>
+                      {entry.reason ? (
+                        <Text style={styles.rosterReason} numberOfLines={2}>
+                          “{entry.reason}”
+                        </Text>
+                      ) : null}
+                      {entry.source ? (
+                        <Text style={styles.rosterSource}>
+                          {entry.sourceName
+                            ? entry.source === 'coach'
+                              ? `by Coach ${entry.sourceName}`
+                              : `by ${entry.sourceName}`
+                            : SOURCE_LABEL[entry.source]}
+                        </Text>
+                      ) : null}
+                    </View>
+
+                    <View
+                      style={[
+                        styles.statusChip,
+                        { borderColor: chip.color, backgroundColor: chip.color + '22' },
+                      ]}
+                    >
+                      <Text style={[styles.statusChipText, { color: chip.color }]}>
+                        {chip.label}
+                      </Text>
+                    </View>
+
+                  </View>
+                );
+              })
+            )}
+
+            {resolvedRsvps.unmapped.map((u) => {
+              const chip = STATUS_CHIP[u.status];
+              return (
+                <View key={u.key} style={styles.rosterRow}>
+                  <View style={styles.rosterInfo}>
+                    <Text style={styles.rosterName} numberOfLines={1}>
+                      {u.label}
+                    </Text>
+                    {u.reason ? (
+                      <Text style={styles.rosterReason} numberOfLines={2}>
+                        “{u.reason}”
+                      </Text>
+                    ) : null}
+                    <Text style={styles.rosterSource}>
+                      {u.ambiguous ? 'multiple players — not matched' : 'not matched to a player'}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.statusChip,
+                      { borderColor: chip.color, backgroundColor: chip.color + '22' },
+                    ]}
+                  >
+                    <Text style={[styles.statusChipText, { color: chip.color }]}>
+                      {chip.label}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
           </View>
 
           {/* Game entry - for game events */}
@@ -981,22 +1539,6 @@ export default function EventDetailScreen({ route, navigation }: any) {
             </View>
           ) : (
             <>
-              <View style={styles.rsvpButtons}>
-                <TouchableOpacity
-                  style={[styles.rsvpButton, styles.rsvpGoing]}
-                  onPress={() => handleRsvp('yes')}
-                  disabled={rsvpLoading}
-                >
-                  <Text style={styles.rsvpButtonText}>✓ Going</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.rsvpButton, styles.rsvpNo]}
-                  onPress={() => setCantGoModalVisible(true)}
-                  disabled={rsvpLoading}
-                >
-                  <Text style={styles.rsvpButtonText}>✗ Can't Go</Text>
-                </TouchableOpacity>
-              </View>
               <CantGoReasonModal
                 visible={cantGoModalVisible}
                 onClose={() => setCantGoModalVisible(false)}
@@ -1057,55 +1599,8 @@ export default function EventDetailScreen({ route, navigation }: any) {
             </>
           )}
 
-          <View style={styles.bottomPadding} />
-        </ScrollView>
-      ) : (
-        /* Attendance Tab */
-        <View style={styles.attendanceContainer}>
-          {isEventPast(event) && (
-            <View style={styles.pastEventBanner}>
-              <Text style={styles.pastEventBannerText}>
-                ⏱️ This event has passed. Attendance cannot be modified.
-              </Text>
-            </View>
-          )}
-          <View style={styles.attendanceLegend}>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: '#22c55e' }]} />
-              <Text style={styles.legendText}>Present</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: '#ef4444' }]} />
-              <Text style={styles.legendText}>Absent</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: '#f59e0b' }]} />
-              <Text style={styles.legendText}>Late</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: '#6b7280' }]} />
-              <Text style={styles.legendText}>Excused</Text>
-            </View>
-          </View>
-
-          {attendanceLoading ? (
-            <View style={styles.centered}>
-              <ActivityIndicator size="large" color="#8b5cf6" />
-            </View>
-          ) : attendance.length === 0 ? (
-            <View style={styles.centered}>
-              <Text style={styles.emptyText}>No players on this team</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={attendance}
-              renderItem={renderAttendanceItem}
-              keyExtractor={(item) => item.player_id}
-              contentContainerStyle={styles.attendanceList}
-              showsVerticalScrollIndicator={false}
-            />
-          )}
-        </View>
+        <View style={styles.bottomPadding} />
+      </ScrollView>
       )}
 
       {/* Edit Event Modal */}
@@ -1171,30 +1666,6 @@ const styles = StyleSheet.create({
   },
 
   // Tabs
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: '#1e293b',
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#334155',
-  },
-  tab: {
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    marginRight: 8,
-  },
-  tabActive: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#8b5cf6',
-  },
-  tabText: {
-    color: '#64748b',
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  tabTextActive: {
-    color: '#8b5cf6',
-  },
 
   // Main Card
   scroll: {
@@ -1393,6 +1864,225 @@ const styles = StyleSheet.create({
   },
 
   // Responses
+  headcountItem: {
+    borderLeftWidth: 1,
+    borderLeftColor: '#334155',
+  },
+  headcountCount: {
+    color: '#8b5cf6',
+  },
+  rosterEmptyText: {
+    color: '#64748b',
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+  rosterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#1e293b',
+    gap: 8,
+  },
+  rosterInfo: {
+    flex: 1,
+  },
+  rosterName: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  rosterReason: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  rosterSource: {
+    color: '#64748b',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  statusChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  statusChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  mapPlaceholder: {
+    height: 0,
+  },
+  arriveTitle: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  tabBar: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    borderBottomColor: '#8b5cf6',
+  },
+  tabText: {
+    color: '#64748b',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  tabTextActive: {
+    color: '#fff',
+  },
+  willCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  willRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  willLabel: {
+    color: '#e2e8f0',
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
+  willButtons: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  willBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#334155',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  willBtnYesActive: {
+    backgroundColor: '#22c55e',
+    borderColor: '#22c55e',
+  },
+  willBtnNoActive: {
+    backgroundColor: '#ef4444',
+    borderColor: '#ef4444',
+  },
+  willBtnText: {
+    color: '#94a3b8',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  willBtnTextActive: {
+    color: '#fff',
+  },
+  attContext: {
+    color: '#64748b',
+    fontSize: 12,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+  },
+  attHeading: {
+    color: '#94a3b8',
+    fontSize: 13,
+    fontWeight: '600',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 4,
+  },
+  attRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
+    gap: 12,
+  },
+  attInfo: {
+    flex: 1,
+  },
+  attName: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  attHint: {
+    color: '#64748b',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  attControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 76,
+    justifyContent: 'flex-end',
+  },
+  attPresentBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1,
+    borderColor: '#334155',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attPresentBtnActive: {
+    backgroundColor: '#22c55e',
+    borderColor: '#22c55e',
+  },
+  attAbsentBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#334155',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attAbsentBtnActive: {
+    backgroundColor: '#ef4444',
+    borderColor: '#ef4444',
+  },
+  attPresentText: {
+    color: '#94a3b8',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  attBtnText: {
+    color: '#94a3b8',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  attBtnTextActive: {
+    color: '#fff',
+  },
+  myReasonText: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 8,
+    marginHorizontal: 16,
+  },
   responsesCard: {
     backgroundColor: '#1e293b',
     marginHorizontal: 16,
@@ -1618,58 +2308,6 @@ const styles = StyleSheet.create({
   },
 
   // Attendance
-  attendanceContainer: {
-    flex: 1,
-  },
-  attendanceLegend: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    gap: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e293b',
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 6,
-  },
-  legendText: {
-    color: '#94a3b8',
-    fontSize: 12,
-  },
-  attendanceList: {
-    padding: 16,
-  },
-  attendanceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#1e293b',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 8,
-  },
-  attendancePlayer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  attendancePlayerInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  declineReasonText: {
-    color: '#64748b',
-    fontSize: 12,
-    fontStyle: 'italic',
-    marginTop: 2,
-  },
   playerAvatar: {
     width: 36,
     height: 36,
@@ -1683,54 +2321,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
-  },
-  playerName: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  attendanceButtons: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  attendanceBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: '#334155',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  attendanceBtnActive: {
-    // Color set inline
-  },
-  attendanceBtnText: {
-    fontSize: 14,
-  },
-  attendanceBtnTextActive: {
-    color: '#fff',
-  },
-  attendanceBtnDisabled: {
-    opacity: 0.4,
-  },
-  attendanceBtnTextDisabled: {
-    color: '#6B7280',
-  },
-  pastEventBanner: {
-    backgroundColor: 'rgba(107, 114, 128, 0.3)',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginBottom: 12,
-    borderRadius: 8,
-  },
-  pastEventBannerText: {
-    color: '#9CA3AF',
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  emptyText: {
-    color: '#64748b',
-    fontSize: 14,
   },
 
   bottomPadding: {

@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Modal,
+  Alert,
 } from 'react-native';
 import {
   addMonths,
@@ -116,6 +117,8 @@ export default function CalendarScreen({ route, navigation }: any) {
   const [cantGoEventId, setCantGoEventId] = useState<string | null>(null);
   const [showPreviousEvents, setShowPreviousEvents] = useState(false);
   const [rsvpSubmitting, setRsvpSubmitting] = useState(false);
+  // team_id -> the single player this user speaks for on that team.
+  const [myPlayerByTeam, setMyPlayerByTeam] = useState<Map<string, string>>(new Map());
   const [events, setEvents] = useState<
     (CalendarEvent & { team?: UserTeam; rsvp_counts?: any; user_rsvp?: any })[]
   >([]);
@@ -198,17 +201,51 @@ export default function CalendarScreen({ route, navigation }: any) {
       const eventIds = (eventsData || []).map((e: CalendarEvent) => e.id);
       const rsvpsByEvent: Record<string, any[]> = {};
 
+      // ONE aggregate read for every visible card -- counts AND my own row come
+      // out of the same result set, reduced client-side. Never per-card.
       if (eventIds.length > 0) {
-        const { data: rsvpsData } = await supabase
+        const { data: rsvpsData, error: rsvpsError } = await supabase
           .from('cal_event_rsvps')
-          .select('*')
+          .select('event_id, status, user_id, decline_reason')
           .in('event_id', eventIds);
+
+        if (rsvpsError) {
+          if (__DEV__) console.warn('[Calendar] rsvp counts read failed:', rsvpsError);
+          Alert.alert('Error', 'Could not load RSVP counts');
+        }
 
         (rsvpsData || []).forEach((r: any) => {
           if (!rsvpsByEvent[r.event_id]) rsvpsByEvent[r.event_id] = [];
           rsvpsByEvent[r.event_id].push(r);
         });
       }
+
+      // ONE read for the whole visible range: which players on these teams this
+      // user speaks for. Exactly one on a team => that team's events carry
+      // player_id on my RSVP; zero or several => null, same as staff.
+      const kidsByTeam = new Map<string, string[]>();
+      const email = (user?.email || '').toLowerCase();
+      if (email) {
+        const { data: kids, error: kidsError } = await supabase
+          .from('players')
+          .select('id, team_id')
+          .in('team_id', teamIds)
+          .or(`parent_email.eq.${email},secondary_parent_email.eq.${email}`);
+        if (kidsError && __DEV__) {
+          console.warn('[Calendar] my-players read failed:', kidsError);
+        }
+        (kids || []).forEach((k: any) => {
+          if (!k.team_id) return;
+          kidsByTeam.set(k.team_id, [...(kidsByTeam.get(k.team_id) || []), k.id]);
+        });
+      }
+      setMyPlayerByTeam(
+        new Map(
+          [...kidsByTeam.entries()]
+            .filter(([, ids]) => ids.length === 1)
+            .map(([teamId, ids]) => [teamId, ids[0]])
+        )
+      );
 
       const enrichedEvents = (eventsData || []).map((event: any) => {
         const team = allTeams.find((t) => t.id === event.team_id);
@@ -254,46 +291,92 @@ export default function CalendarScreen({ route, navigation }: any) {
     fetchEvents();
   };
 
+  // The ONE cal_event_rsvps write path on this screen. Never touches
+  // event_attendance -- coach marks are the Attendance tab's business.
   const handleRsvp = async (
     eventId: string,
-    status: 'yes' | 'no',
+    status: 'yes' | 'no' | 'pending',
     declineReason?: string | null
   ) => {
     if (!user) return;
 
     setRsvpSubmitting(true);
     try {
-      const updatePayload: Record<string, unknown> = {
+      const target = events.find((e) => e.id === eventId);
+      const myPlayerId = target?.team_id
+        ? myPlayerByTeam.get(target.team_id) ?? null
+        : null;
+
+      const payload: Record<string, unknown> = {
         status,
         responded_at: new Date().toISOString(),
+        decline_reason: status === 'no' ? declineReason ?? null : null,
       };
-      if (status === 'no' && declineReason !== undefined) {
-        updatePayload.decline_reason = declineReason || null;
-      }
+      if (myPlayerId) payload.player_id = myPlayerId;
 
-      const { data: existing } = await supabase
+      // limit(1), not maybeSingle(): a duplicate row must not error the answer out.
+      const { data: existingRows, error: lookupError } = await supabase
         .from('cal_event_rsvps')
         .select('id')
         .eq('event_id', eventId)
         .eq('user_id', user.id)
-        .maybeSingle();
+        .limit(1);
 
-      if (existing) {
-        await supabase
-          .from('cal_event_rsvps')
-          .update(updatePayload)
-          .eq('id', existing.id);
-      } else {
-        await supabase.from('cal_event_rsvps').insert({
-          event_id: eventId,
-          user_id: user.id,
-          status,
-          responded_at: new Date().toISOString(),
-          ...(status === 'no' ? { decline_reason: declineReason ?? null } : {}),
-        });
+      if (lookupError) {
+        if (__DEV__) console.warn('[Calendar] rsvp lookup failed:', lookupError);
+        Alert.alert('Error', 'Could not save your response');
+        return;
       }
 
-      fetchEvents();
+      const existing = existingRows?.[0];
+
+      if (existing) {
+        const { data, error } = await supabase
+          .from('cal_event_rsvps')
+          .update(payload)
+          .eq('id', existing.id)
+          .select('id');
+        // RLS filters a denied write out silently: no error, no rows.
+        if (error || !data || data.length === 0) {
+          if (__DEV__) console.warn('[Calendar] rsvp update failed:', error);
+          Alert.alert('Error', 'Could not save your response');
+          return;
+        }
+      } else {
+        const { data, error } = await supabase
+          .from('cal_event_rsvps')
+          .insert({ event_id: eventId, user_id: user.id, ...payload })
+          .select('id');
+        if (error || !data || data.length === 0) {
+          if (__DEV__) console.warn('[Calendar] rsvp insert failed:', error);
+          Alert.alert('Error', 'Could not save your response');
+          return;
+        }
+      }
+
+      // Apply locally so the strip flips instantly and the list never blanks.
+      setEvents((prev) =>
+        prev.map((e) => {
+          if (e.id !== eventId) return e;
+          const wasYes = e.user_rsvp?.status === 'yes';
+          const wasNo = e.user_rsvp?.status === 'no';
+          const counts = { ...(e.rsvp_counts || { yes: 0, no: 0, maybe: 0, pending: 0 }) };
+          if (wasYes) counts.yes = Math.max(0, (counts.yes || 0) - 1);
+          if (wasNo) counts.no = Math.max(0, (counts.no || 0) - 1);
+          if (status === 'yes') counts.yes = (counts.yes || 0) + 1;
+          if (status === 'no') counts.no = (counts.no || 0) + 1;
+          return {
+            ...e,
+            rsvp_counts: counts,
+            user_rsvp: {
+              ...(e.user_rsvp || {}),
+              user_id: user.id,
+              status,
+              decline_reason: status === 'no' ? declineReason ?? null : null,
+            },
+          };
+        })
+      );
     } finally {
       setRsvpSubmitting(false);
     }
@@ -744,8 +827,8 @@ export default function CalendarScreen({ route, navigation }: any) {
                     EVENT_TYPE_EDGE[event.event_type || ''] ||
                     EVENT_TYPE_EDGE['other'];
                   return (
+                    <View key={event.id} style={styles.eventCardWrap}>
                     <TouchableOpacity
-                      key={event.id}
                       style={[
                         styles.eventCard,
                         {
@@ -828,8 +911,24 @@ export default function CalendarScreen({ route, navigation }: any) {
                         >
                           {event.title}
                         </Text>
+                        {(() => {
+                          const cfg = getEventTypeConfig(event.event_type);
+                          return (
+                            <View style={[styles.cardTypeBadge, { backgroundColor: cfg.color + '33' }]}>
+                              <Text style={[styles.cardTypeBadgeText, { color: cfg.color }]}>
+                                {cfg.label.toUpperCase()}
+                              </Text>
+                            </View>
+                          );
+                        })()}
                         <Text style={styles.eventTime}>
                           {formatEventTimeRange(event)}
+                          {!event.is_all_day && event.arrival_time
+                            ? ` (arrive ${format(
+                                parseISO(`2000-01-01T${event.arrival_time}`),
+                                'h:mm a'
+                              )})`
+                            : ''}
                         </Text>
                         {(event.location_name || event.location_address) && (
                           <TouchableOpacity
@@ -841,59 +940,84 @@ export default function CalendarScreen({ route, navigation }: any) {
                             </Text>
                           </TouchableOpacity>
                         )}
-                        {((event.rsvp_counts?.yes ?? 0) > 0 || (event.rsvp_counts?.no ?? 0) > 0) && (
-                          <View style={styles.attendancePreview}>
-                            <Text style={styles.attendanceGoing}>
-                              ✓ {event.rsvp_counts?.yes ?? 0}
-                            </Text>
-                            <Text style={styles.attendanceDivider}>·</Text>
-                            <Text style={styles.attendanceNotGoing}>
-                              ✗ {event.rsvp_counts?.no ?? 0}
-                            </Text>
-                          </View>
-                        )}
+                        {/* Counts come from the single aggregate read above. */}
+                        <View style={styles.attendancePreview}>
+                          <Text style={styles.attendanceGoing}>
+                            ✓ {event.rsvp_counts?.yes ?? 0}
+                          </Text>
+                          <Text style={styles.attendanceDivider}>·</Text>
+                          <Text style={styles.attendanceNotGoing}>
+                            ✗ {event.rsvp_counts?.no ?? 0}
+                          </Text>
+                          <Text style={styles.attendanceDivider}>·</Text>
+                          <Text style={styles.attendanceNoReply}>
+                            ? {event.rsvp_counts?.pending ?? 0}
+                          </Text>
+                        </View>
                       </View>
 
-                      {/* RSVP buttons - only for future events */}
-                      <View style={styles.rsvpSection}>
-                        {eventPast ? (
+                      {eventPast ? (
+                        <View style={styles.rsvpSection}>
                           <View style={styles.pastEventBadge}>
                             <Text style={styles.pastEventText}>Past</Text>
                           </View>
-                        ) : event.user_rsvp && event.user_rsvp.status !== 'maybe' ? (
-                          <View
-                            style={[
-                              styles.rsvpBadge,
-                              event.user_rsvp.status === 'yes' && styles.rsvpYes,
-                              event.user_rsvp.status === 'no' && styles.rsvpNo,
-                            ]}
-                          >
-                            <Text style={styles.rsvpBadgeText}>
-                              {event.user_rsvp.status === 'yes'
-                                ? '✓ Going'
-                                : '✗ Can\'t Go'}
-                            </Text>
-                          </View>
-                        ) : (
-                          <View style={styles.rsvpButtons}>
-                            <TouchableOpacity
-                              style={[styles.rsvpBtn, styles.rsvpBtnYes]}
-                              onPress={() => handleRsvp(event.id, 'yes')}
-                              disabled={rsvpSubmitting}
-                            >
-                              <Text style={styles.rsvpBtnText}>✓</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={[styles.rsvpBtn, styles.rsvpBtnNo]}
-                              onPress={() => setCantGoEventId(event.id)}
-                              disabled={rsvpSubmitting}
-                            >
-                              <Text style={styles.rsvpBtnText}>✗</Text>
-                            </TouchableOpacity>
-                          </View>
-                        )}
-                      </View>
+                        </View>
+                      ) : null}
                     </TouchableOpacity>
+                    {/* Bottom strip: outside the card's touchable so tapping a
+                        button answers instead of opening the event. */}
+                    {!eventPast && (
+                      <View style={styles.willStrip}>
+                        <Text style={styles.willStripLabel}>
+                          {event.user_rsvp?.status === 'yes'
+                            ? "✓ You're going"
+                            : event.user_rsvp?.status === 'no'
+                              ? '✗ Not going'
+                              : 'Will you be there?'}
+                        </Text>
+                        <View style={styles.willStripButtons}>
+                          <TouchableOpacity
+                            style={[
+                              styles.willStripBtn,
+                              event.user_rsvp?.status === 'no' && styles.willStripBtnNoActive,
+                            ]}
+                            onPress={() => setCantGoEventId(event.id)}
+                            disabled={rsvpSubmitting}
+                          >
+                            <Text
+                              style={[
+                                styles.willStripBtnText,
+                                event.user_rsvp?.status === 'no' && styles.willStripBtnTextActive,
+                              ]}
+                            >
+                              ✗
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[
+                              styles.willStripBtn,
+                              event.user_rsvp?.status === 'yes' && styles.willStripBtnYesActive,
+                            ]}
+                            onPress={() =>
+                              event.user_rsvp?.status === 'yes'
+                                ? handleRsvp(event.id, 'pending')
+                                : handleRsvp(event.id, 'yes')
+                            }
+                            disabled={rsvpSubmitting}
+                          >
+                            <Text
+                              style={[
+                                styles.willStripBtnText,
+                                event.user_rsvp?.status === 'yes' && styles.willStripBtnTextActive,
+                              ]}
+                            >
+                              ✓
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
+                    </View>
                   );
                 })}
               </View>
@@ -1444,6 +1568,73 @@ const styles = StyleSheet.create({
   eventLocation: {
     color: '#8b5cf6',
     fontSize: 12,
+  },
+  eventCardWrap: {
+    marginBottom: 10,
+  },
+  cardTypeBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  cardTypeBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  attendanceNoReply: {
+    color: '#64748b',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  willStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#16213e',
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginTop: -8,
+  },
+  willStripLabel: {
+    color: '#94a3b8',
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+  },
+  willStripButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  willStripBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: '#334155',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  willStripBtnYesActive: {
+    backgroundColor: '#22c55e',
+    borderColor: '#22c55e',
+  },
+  willStripBtnNoActive: {
+    backgroundColor: '#ef4444',
+    borderColor: '#ef4444',
+  },
+  willStripBtnText: {
+    color: '#94a3b8',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  willStripBtnTextActive: {
+    color: '#fff',
   },
   attendancePreview: {
     flexDirection: 'row',

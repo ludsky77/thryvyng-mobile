@@ -86,6 +86,7 @@ export function EditEventModal({
   const [eventType, setEventType] = useState<EventType>('practice');
   const [eventDate, setEventDate] = useState(new Date());
   const [startTime, setStartTime] = useState(new Date());
+  const [arrivalTime, setArrivalTime] = useState(new Date());
   const [endTime, setEndTime] = useState(new Date());
   const [isAllDay, setIsAllDay] = useState(false);
   const [locationName, setLocationName] = useState('');
@@ -95,10 +96,15 @@ export function EditEventModal({
   const [uniform, setUniform] = useState('');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [errors, setErrors] = useState<{ title?: string }>({});
+  const [errors, setErrors] = useState<{
+    title?: string;
+    arrivalTime?: string;
+    endTime?: string;
+  }>({});
 
   const [dateExpanded, setDateExpanded] = useState(false);
   const [startTimeExpanded, setStartTimeExpanded] = useState(false);
+  const [arrivalTimeExpanded, setArrivalTimeExpanded] = useState(false);
   const [endTimeExpanded, setEndTimeExpanded] = useState(false);
 
   // Pre-populate form when event changes
@@ -108,6 +114,7 @@ export function EditEventModal({
       setEventType((event.event_type as EventType) || 'practice');
       setEventDate(new Date(event.event_date + 'T12:00:00'));
       setStartTime(parseTime(event.start_time));
+      setArrivalTime(parseTime(event.arrival_time));
       setEndTime(parseTime(event.end_time));
       setIsAllDay(event.is_all_day || false);
       setLocationName(event.location_name || '');
@@ -118,6 +125,7 @@ export function EditEventModal({
       setNotes(event.notes || '');
       setDateExpanded(false);
       setStartTimeExpanded(false);
+      setArrivalTimeExpanded(false);
       setEndTimeExpanded(false);
       setErrors({});
     }
@@ -126,11 +134,26 @@ export function EditEventModal({
   const isGameOrScrimmage = eventType === 'game' || eventType === 'scrimmage';
 
   const validate = (): boolean => {
-    const next: { title?: string } = {};
+    const next: { title?: string; arrivalTime?: string; endTime?: string } = {};
     const finalTitle = isGameOrScrimmage ? opponent : title;
     if (!finalTitle.trim()) {
       next.title = isGameOrScrimmage ? 'Opponent is required' : 'Title is required';
     }
+
+    // No past-date check here on purpose: past events are legitimately edited
+    // to correct attendance and results.
+    if (!isAllDay) {
+      const startMins = startTime.getHours() * 60 + startTime.getMinutes();
+      const endMins = endTime.getHours() * 60 + endTime.getMinutes();
+      const arrivalMins = arrivalTime.getHours() * 60 + arrivalTime.getMinutes();
+      if (endMins <= startMins) {
+        next.endTime = 'End time must be after start time';
+      }
+      if (arrivalMins > startMins) {
+        next.arrivalTime = 'Arrival must be before start time';
+      }
+    }
+
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -147,6 +170,7 @@ export function EditEventModal({
         event_type: eventType,
         event_date: formatDate(eventDate),
         start_time: isAllDay ? null : formatTime(startTime),
+        arrival_time: isAllDay ? null : formatTime(arrivalTime),
         end_time: isAllDay ? null : formatTime(endTime),
         is_all_day: isAllDay,
         location_name: locationName.trim() || null,
@@ -169,6 +193,7 @@ export function EditEventModal({
       const changedFields: string[] = [];
       if (event.event_date !== updatePayload.event_date) changedFields.push('event_date');
       if (event.start_time !== updatePayload.start_time) changedFields.push('start_time');
+      if ((event.arrival_time ?? null) !== updatePayload.arrival_time) changedFields.push('arrival_time');
       if (event.end_time !== updatePayload.end_time) changedFields.push('end_time');
       if ((event.location_name ?? null) !== updatePayload.location_name) changedFields.push('location_name');
       if ((event.location_address ?? null) !== updatePayload.location_address) changedFields.push('location_address');
@@ -405,6 +430,35 @@ export function EditEventModal({
                   onPress={() => {
                     Keyboard.dismiss();
                     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setArrivalTimeExpanded(!arrivalTimeExpanded);
+                  }}
+                  disabled={submitting}
+                >
+                  <Text style={styles.subLabel}>Arrival Time</Text>
+                  <Text style={styles.subValue}>{formatTime(arrivalTime)}</Text>
+                  <Text style={styles.chevron}>{arrivalTimeExpanded ? '▲' : '▼'}</Text>
+                </TouchableOpacity>
+                {arrivalTimeExpanded && (
+                  <DateTimePicker
+                    value={arrivalTime}
+                    mode="time"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(_, d) => {
+                      if (d) setArrivalTime(d);
+                    }}
+                    textColor={colors.text}
+                    themeVariant="dark"
+                  />
+                )}
+                {errors.arrivalTime ? (
+                  <Text style={styles.errorText}>{errors.arrivalTime}</Text>
+                ) : null}
+
+                <TouchableOpacity
+                  style={styles.subCollapsible}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                     setEndTimeExpanded(!endTimeExpanded);
                   }}
                   disabled={submitting}
@@ -425,6 +479,9 @@ export function EditEventModal({
                     themeVariant="dark"
                   />
                 )}
+                {errors.endTime ? (
+                  <Text style={styles.errorText}>{errors.endTime}</Text>
+                ) : null}
               </>
             )}
 

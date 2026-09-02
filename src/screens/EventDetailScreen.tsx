@@ -90,6 +90,7 @@ export default function EventDetailScreen({ route, navigation }: any) {
   const [reminderSending, setReminderSending] = useState(false);
   const [reminderSent, setReminderSent] = useState(false);
   const [isStaffInTeam, setIsStaffInTeam] = useState(false);
+  const [remindingTeam, setRemindingTeam] = useState(false);
   const [lineup, setLineup] = useState<any | null>(null);
   const [language] = useState<'en' | 'es'>('en');
 
@@ -99,13 +100,23 @@ export default function EventDetailScreen({ route, navigation }: any) {
         setIsStaffInTeam(false);
         return;
       }
-      const { data } = await supabase
+      // Existence check, not a row fetch: a user can hold several team_staff
+      // rows on one team (e.g. Head Coach + Team Manager), and maybeSingle()
+      // errors on 2+ rows -- which silently stripped staff UI from exactly the
+      // most senior staff.
+      const { count, error } = await supabase
         .from('team_staff')
-        .select('id')
+        .select('id', { count: 'exact', head: true })
         .eq('team_id', event.team_id)
-        .eq('user_id', user.id)
-        .maybeSingle();
-      setIsStaffInTeam(!!data);
+        .eq('user_id', user.id);
+      if (error) {
+        if (__DEV__) {
+          console.warn('[EventDetail] staff check failed:', error);
+        }
+        setIsStaffInTeam(false);
+        return;
+      }
+      setIsStaffInTeam((count ?? 0) > 0);
     };
     checkStaffPermission();
   }, [event?.team_id, user?.id]);
@@ -402,6 +413,35 @@ export default function EventDetailScreen({ route, navigation }: any) {
     } finally {
       setReminderSending(false);
     }
+  };
+
+  // Whole-team reminder about the event itself. Distinct from handleSendReminder
+  // above, which nudges only the members who have not RSVP'd yet.
+  const handleRemindTeam = () => {
+    if (!event || remindingTeam) return;
+
+    Alert.alert(
+      'Remind Team',
+      'Send a reminder push to the team?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send',
+          onPress: async () => {
+            setRemindingTeam(true);
+            try {
+              await notifyTeamOfEvent({
+                eventId: event.id,
+                action: 'reminder',
+              });
+              Alert.alert('Reminder sent');
+            } finally {
+              setRemindingTeam(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleCancelEvent = async () => {
@@ -994,6 +1034,26 @@ export default function EventDetailScreen({ route, navigation }: any) {
                   )}
                 </TouchableOpacity>
               )}
+
+              {isStaff && (
+                <TouchableOpacity
+                  style={[
+                    styles.remindTeamButton,
+                    remindingTeam && styles.reminderButtonDisabled,
+                  ]}
+                  onPress={handleRemindTeam}
+                  disabled={remindingTeam}
+                >
+                  {remindingTeam ? (
+                    <ActivityIndicator size="small" color="#8b5cf6" />
+                  ) : (
+                    <>
+                      <Feather name="bell" size={18} color="#8b5cf6" />
+                      <Text style={styles.remindTeamButtonText}>Remind Team</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
             </>
           )}
 
@@ -1517,6 +1577,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
+  remindTeamButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#8b5cf6',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginTop: 10,
+    marginHorizontal: 16,
+    gap: 8,
+  },
+  remindTeamButtonText: {
+    color: '#8b5cf6',
+    fontSize: 15,
+    fontWeight: '600',
+  },
   reminderButton: {
     flexDirection: 'row',
     alignItems: 'center',

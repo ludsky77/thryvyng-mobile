@@ -178,6 +178,7 @@ export function useCalendarEvents(
     title: string;
     event_type: string;
     start_time?: string | null;
+    arrival_time?: string | null;
     end_time?: string | null;
     is_all_day?: boolean;
     location_name?: string | null;

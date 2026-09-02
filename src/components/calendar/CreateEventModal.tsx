@@ -215,7 +215,12 @@ export function CreateEventModal({
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
   const [endRepeatDate, setEndRepeatDate] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
-  const [errors, setErrors] = useState<{ title?: string }>({});
+  const [errors, setErrors] = useState<{
+    title?: string;
+    eventDate?: string;
+    arrivalTime?: string;
+    endTime?: string;
+  }>({});
   const [dateExpanded, setDateExpanded] = useState(true);
   const [startTimeExpanded, setStartTimeExpanded] = useState(false);
   const [arrivalTimeExpanded, setArrivalTimeExpanded] = useState(false);
@@ -281,11 +286,41 @@ export function CreateEventModal({
   const isGameOrScrimmage = eventType === 'game' || eventType === 'scrimmage';
 
   const validate = (): boolean => {
-    const next: { title?: string } = {};
+    const next: {
+      title?: string;
+      eventDate?: string;
+      arrivalTime?: string;
+      endTime?: string;
+    } = {};
     const finalTitle = isGameOrScrimmage ? opponent : title;
     if (!finalTitle.trim()) {
       next.title = isGameOrScrimmage ? 'Opponent is required' : 'Title is required';
     }
+
+    // The date picker's minimumDate can be stale (modal left open past midnight,
+    // or the date set before today rolled over), so re-check at submit.
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const chosen = new Date(eventDate);
+    chosen.setHours(0, 0, 0, 0);
+    if (chosen.getTime() < today.getTime()) {
+      next.eventDate = 'Date cannot be in the past';
+    }
+
+    // Times are wall-clock only; compare minutes-since-midnight so a picker that
+    // carries a different calendar day cannot skew the comparison.
+    if (!isAllDay) {
+      const startMins = startTime.getHours() * 60 + startTime.getMinutes();
+      const endMins = endTime.getHours() * 60 + endTime.getMinutes();
+      const arrivalMins = arrivalTime.getHours() * 60 + arrivalTime.getMinutes();
+      if (endMins <= startMins) {
+        next.endTime = 'End time must be after start time';
+      }
+      if (arrivalMins > startMins) {
+        next.arrivalTime = 'Arrival must be before start time';
+      }
+    }
+
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -337,6 +372,15 @@ export function CreateEventModal({
           recurrence_pattern: selectedDays.join(','),
         });
         if (result) {
+          // One push for the whole series, not one per occurrence: the series
+          // shares a recurrence_group_id, so the first row identifies it.
+          const firstId = (result as { id?: string }[] | null)?.[0]?.id;
+          if (firstId) {
+            notifyTeamOfEvent({
+              eventId: firstId,
+              action: 'created',
+            });
+          }
           onSuccess?.();
           onClose();
         } else {
@@ -598,6 +642,9 @@ export function CreateEventModal({
                 themeVariant="dark"
               />
             )}
+            {errors.eventDate ? (
+              <Text style={styles.errorText}>{errors.eventDate}</Text>
+            ) : null}
 
             {!isAllDay && (
               <>
@@ -650,6 +697,9 @@ export function CreateEventModal({
                     themeVariant="dark"
                   />
                 )}
+                {errors.arrivalTime ? (
+                  <Text style={styles.errorText}>{errors.arrivalTime}</Text>
+                ) : null}
 
                 <TouchableOpacity
                   style={styles.subCollapsible}
@@ -676,6 +726,9 @@ export function CreateEventModal({
                 themeVariant="dark"
                   />
                 )}
+                {errors.endTime ? (
+                  <Text style={styles.errorText}>{errors.endTime}</Text>
+                ) : null}
               </>
             )}
 

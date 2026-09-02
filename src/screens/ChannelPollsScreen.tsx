@@ -80,14 +80,25 @@ export default function ChannelPollsScreen() {
       if (channelData?.team_id) {
         setChannelTeamId(channelData.team_id);
 
-        const { data: staffData } = await supabase
+        // Existence check, not a row fetch: a user can hold several team_staff
+        // rows on one team (e.g. Head Coach + Team Manager), and maybeSingle()
+        // errors on 2+ rows -- which silently stripped poll management from
+        // exactly the most senior staff.
+        const { count, error } = await supabase
           .from('team_staff')
-          .select('id')
+          .select('id', { count: 'exact', head: true })
           .eq('team_id', channelData.team_id)
-          .eq('user_id', user.id)
-          .maybeSingle();
+          .eq('user_id', user.id);
 
-        setIsStaffInChannel(!!staffData);
+        if (error) {
+          if (__DEV__) {
+            console.warn('[ChannelPolls] staff check failed:', error);
+          }
+          setIsStaffInChannel(false);
+          return;
+        }
+
+        setIsStaffInChannel((count ?? 0) > 0);
       }
     };
 

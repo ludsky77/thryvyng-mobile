@@ -395,7 +395,10 @@ export default function CalendarScreen({ route, navigation }: any) {
     setCreateForTeamId(null);
   };
 
-  if (teamsLoading) {
+  // First load only. useFocusEffect refetches teams on every focus; blanking a
+  // calendar we can already draw is what made the tab flash a spinner each time.
+  const hasAnyTeam = teams.length > 0 || pastTeams.length > 0;
+  if (teamsLoading && !hasAnyTeam) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#8b5cf6" />
@@ -418,6 +421,11 @@ export default function CalendarScreen({ route, navigation }: any) {
 
   return (
     <View style={styles.container}>
+      {teamsLoading && hasAnyTeam ? (
+        <View style={styles.refreshBar}>
+          <ActivityIndicator size="small" color="#8b5cf6" />
+        </View>
+      ) : null}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Calendar</Text>
         <View style={styles.headerActions}>
@@ -1127,6 +1135,11 @@ export default function CalendarScreen({ route, navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#1a1a2e',
+  },
+  refreshBar: {
+    paddingVertical: 4,
+    alignItems: 'center',
     backgroundColor: '#1a1a2e',
   },
   loadingContainer: {

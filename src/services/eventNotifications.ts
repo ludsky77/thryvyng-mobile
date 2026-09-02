@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 
-type EventAction = 'created' | 'updated' | 'cancelled' | 'uncancelled';
+type EventAction = 'created' | 'updated' | 'cancelled' | 'uncancelled' | 'reminder';
 
 interface NotifyEventParams {
   eventId: string;

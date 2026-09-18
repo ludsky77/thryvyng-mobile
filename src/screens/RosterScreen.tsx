@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import PlayerAvatar from '../components/PlayerAvatar';
+import RemovePlayerFromTeamModal from '../components/RemovePlayerFromTeamModal';
 import { mapJoinError } from '../lib/joinErrors';
 
 const TEAM_COLOR_PALETTE = [
@@ -72,7 +73,7 @@ interface Player {
 
 export default function RosterScreen({ route, navigation }: any) {
   const team_id = route.params?.team_id ?? route.params?.teamId;
-  const { user } = useAuth();
+  const { user, currentRole, roles } = useAuth();
   const [team, setTeam] = useState<Team | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,6 +91,7 @@ export default function RosterScreen({ route, navigation }: any) {
   const [shareContact, setShareContact] = useState(false);
   const [shareSaving, setShareSaving] = useState(false);
   const [shareError, setShareError] = useState('');
+  const [removalPlayer, setRemovalPlayer] = useState<Player | null>(null);
 
   useEffect(() => {
     const checkStaffPermission = async () => {
@@ -109,6 +111,21 @@ export default function RosterScreen({ route, navigation }: any) {
   }, [team_id, user?.id]);
 
   const canManage = isStaffInTeam;
+
+  /**
+   * Admin for removal purposes: platform_admin (global), or club_admin scoped to
+   * this team's club. Same role source EventDetailScreen uses for its staff
+   * check, widened to the full role list the way ChatInfoScreen does so a user
+   * who happens to have another role selected is not wrongly denied.
+   */
+  const isAdminForClub = useMemo(() => {
+    const candidates = [currentRole, ...(roles || [])].filter(Boolean) as any[];
+    return candidates.some(
+      (r) =>
+        r.role === 'platform_admin' ||
+        (r.role === 'club_admin' && !!team?.club_id && r.entity_id === team.club_id)
+    );
+  }, [currentRole, roles, team?.club_id]);
 
   const fetchData = useCallback(async () => {
     if (!team_id) {
@@ -510,6 +527,17 @@ export default function RosterScreen({ route, navigation }: any) {
                 >
                   <Text style={styles.evaluateButtonText}>📝</Text>
                 </TouchableOpacity>
+                {canManage ? (
+                  <TouchableOpacity
+                    style={styles.rowKebabButton}
+                    onPress={() => setRemovalPlayer(player)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`More actions for ${player.first_name} ${player.last_name}`}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={styles.rowKebabIcon}>⋮</Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             );
           })
@@ -729,6 +757,25 @@ export default function RosterScreen({ route, navigation }: any) {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* Remove-from-team flow. Staff-only: the only entry point is the
+          canManage-gated kebab on each roster row. */}
+      {removalPlayer ? (
+        <RemovePlayerFromTeamModal
+          visible={!!removalPlayer}
+          onClose={() => setRemovalPlayer(null)}
+          playerId={removalPlayer.id}
+          playerName={`${removalPlayer.first_name} ${removalPlayer.last_name}`}
+          teamName={team?.name || 'this team'}
+          isAdmin={isAdminForClub}
+          onRemoved={() => {
+            const removedName = `${removalPlayer.first_name} ${removalPlayer.last_name}`;
+            setRemovalPlayer(null);
+            Alert.alert('Player removed', `${removedName} was removed from the roster.`);
+            fetchData();
+          }}
+        />
+      ) : null}
     </View>
   );
 }
@@ -998,6 +1045,17 @@ const styles = StyleSheet.create({
   },
   evaluateButtonText: {
     fontSize: 18,
+  },
+  rowKebabButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  rowKebabIcon: {
+    color: '#9CA3AF',
+    fontSize: 20,
+    fontWeight: '600',
   },
   emptyContainer: {
     flex: 1,

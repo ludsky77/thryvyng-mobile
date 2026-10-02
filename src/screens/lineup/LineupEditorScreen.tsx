@@ -470,12 +470,155 @@ export default function LineupEditorScreen() {
     );
   };
 
+  /**
+   * One lineup_players row as this screen writes it. Mirrors the prod table
+   * (verified 2026-10-02) so an unknown key can never reach the insert:
+   *   formation_id uuid · player_id uuid · guest_name text · jersey_number int4
+   *   position_code text · position_x/position_y float8
+   *   is_starter/is_captain bool · sort_order int4
+   * `id` and `created_at` are DB-generated and deliberately never sent.
+   */
+  type LineupPlayerRow = {
+    formation_id: string;
+    player_id: string | null;
+    guest_name: string | null;
+    jersey_number: number | null;
+    position_code: string;
+    position_x: number;
+    position_y: number;
+    is_starter: boolean;
+    is_captain: boolean;
+    sort_order: number;
+  };
+
+  /**
+   * jersey_number is INTEGER in prod. Anything that is not a finite number --
+   * a '?' or '—' placeholder leaked out of a render path, a NaN from parseInt,
+   * an empty TextInput string -- becomes null instead of being handed to
+   * Postgres as an invalid integer literal (22P02), which would fail the whole
+   * batch and take every other row down with it.
+   */
+  const toIntOrNull = (v: unknown): number | null => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? Math.trunc(n) : null;
+  };
+
+  /** error.message plus error.code, so a report names the real failure. */
+  const describeError = (e: { message?: string; code?: string } | null): string => {
+    if (!e) return 'Unknown error';
+    return (e.message || 'Unknown error') + (e.code ? ' (' + e.code + ')' : '');
+  };
+
+  /** Surface a failed write. Never touches the on-screen lineup state. */
+  const reportSaveFailure = (what: string, e: { message?: string; code?: string }) => {
+    if (__DEV__) console.warn('[LineupEditor] ' + what, e);
+    Alert.alert('Save failed', what + '.\n\n' + describeError(e));
+  };
+
+  /**
+   * Build every lineup_players row for this formation: starters from the
+   * position map, then the rest of the roster on the bench, then bench entries
+   * that are not roster rows.
+   *
+   * Guarantees per row: formation_id present, jersey_number integer|null,
+   * booleans are real booleans, and at least one identity (player_id OR
+   * guest_name) -- a row with neither names nobody and is dropped. A given
+   * player_id is written at most once across starters and bench.
+   */
+  const buildInsertRows = (): LineupPlayerRow[] => {
+    if (!lineupId) return [];
+    const rows: LineupPlayerRow[] = [];
+    const usedPlayerIds = new Set<string>();
+    let sortOrder = 0;
+
+    basePositions.forEach((pos, i) => {
+      const a = assignments.get(i);
+      if (!a) return;
+      if (!a.playerId && !a.guestName) return;
+      if (a.playerId) {
+        if (usedPlayerIds.has(a.playerId)) return;
+        usedPlayerIds.add(a.playerId);
+      }
+      const override = positionOverrides.get(i);
+      rows.push({
+        formation_id: lineupId,
+        player_id: a.playerId ?? null,
+        guest_name: a.playerId ? null : a.guestName ?? null,
+        jersey_number: toIntOrNull(a.jerseyNumber),
+        position_code: pos.code,
+        position_x: override ? override.x : pos.x,
+        position_y: override ? override.y : pos.y,
+        is_starter: true,
+        is_captain: a.isCaptain === true,
+        sort_order: sortOrder++,
+      });
+    });
+
+    // Everyone on the team who is not starting sits on the bench.
+    roster.forEach((p) => {
+      if (usedPlayerIds.has(p.id)) return;
+      usedPlayerIds.add(p.id);
+      rows.push({
+        formation_id: lineupId,
+        player_id: p.id,
+        guest_name: null,
+        jersey_number: toIntOrNull(p.jersey_number),
+        position_code: 'BENCH',
+        position_x: 0,
+        position_y: 0,
+        is_starter: false,
+        is_captain: false,
+        sort_order: sortOrder++,
+      });
+    });
+
+    // Routed on player_id FIRST: a bench entry carrying a player_id is a roster
+    // player and is written as one, never demoted to a guest_name.
+    benchPlayers.forEach((b) => {
+      if (b.playerId) {
+        if (usedPlayerIds.has(b.playerId)) return;
+        usedPlayerIds.add(b.playerId);
+      } else if (!b.guestName) {
+        return;
+      }
+      rows.push({
+        formation_id: lineupId,
+        player_id: b.playerId ?? null,
+        guest_name: b.playerId ? null : b.guestName ?? null,
+        jersey_number: toIntOrNull(b.jerseyNumber),
+        position_code: 'BENCH',
+        position_x: 0,
+        position_y: 0,
+        is_starter: false,
+        is_captain: false,
+        sort_order: sortOrder++,
+      });
+    });
+
+    return rows;
+  };
+
+  /**
+   * Save the lineup.
+   *
+   * Supabase reports failure as a RETURNED error, never a throw, so try/catch
+   * alone sees nothing: every write below is checked explicitly. The old code
+   * checked none of the four and alerted "Saved" unconditionally -- prod lineup
+   * 30a301a6 "Vs Future FC" carries an updated_at bump with ZERO
+   * lineup_players rows because of it.
+   *
+   * There is no client-side transaction, so the destructive step is guarded by
+   * a snapshot: SELECT current rows -> DELETE -> INSERT, and on a failed INSERT
+   * the snapshot is re-inserted. Best effort, not atomic; if the restore also
+   * fails, both errors are reported.
+   */
   const handleSave = async () => {
     if (!lineupId || !lineup || saving) return;
     const previousStatus = lineup.status;
     setSaving(true);
     try {
-      const updateResult = await supabase
+      const { error: updateError } = await supabase
         .from('lineup_formations')
         .update({
           name: name.trim(),
@@ -488,68 +631,97 @@ export default function LineupEditorScreen() {
           updated_at: new Date().toISOString(),
         })
         .eq('id', lineupId);
-
-      const deleteResult = await supabase.from('lineup_players').delete().eq('formation_id', lineupId);
-
-      const inserts: any[] = [];
-      let so = 0;
-      const insertedPlayerIds = new Set<string>();
-
-      basePositions.forEach((pos, i) => {
-        const a = assignments.get(i);
-        if (a) {
-          if (a.playerId) insertedPlayerIds.add(a.playerId);
-          const override = positionOverrides.get(i);
-          inserts.push({
-            formation_id: lineupId,
-            player_id: a.playerId,
-            guest_name: a.guestName,
-            jersey_number: a.jerseyNumber,
-            position_code: pos.code,
-            position_x: override ? override.x : pos.x,
-            position_y: override ? override.y : pos.y,
-            is_starter: true,
-            is_captain: a.isCaptain,
-            sort_order: so++,
-          });
-        }
-      });
-
-      roster.filter((p) => !insertedPlayerIds.has(p.id)).forEach((p) => {
-        insertedPlayerIds.add(p.id);
-        inserts.push({
-          formation_id: lineupId,
-          player_id: p.id,
-          guest_name: null,
-          jersey_number: p.jersey_number,
-          position_code: 'BENCH',
-          position_x: 0,
-          position_y: 0,
-          is_starter: false,
-          is_captain: false,
-          sort_order: so++,
-        });
-      });
-
-      benchPlayers.filter((b) => b.guestName).forEach((b) => {
-        inserts.push({
-          formation_id: lineupId,
-          player_id: null,
-          guest_name: b.guestName,
-          jersey_number: b.jerseyNumber,
-          position_code: 'BENCH',
-          position_x: 0,
-          position_y: 0,
-          is_starter: false,
-          is_captain: false,
-          sort_order: so++,
-        });
-      });
-
-      if (inserts.length > 0) {
-        await supabase.from('lineup_players').insert(inserts);
+      if (updateError) {
+        reportSaveFailure('Could not save the lineup details', updateError);
+        return;
       }
 
+      const rows = buildInsertRows();
+
+      // Snapshot BEFORE destroying anything: this is what makes the delete
+      // recoverable when the insert fails.
+      const { data: snapshot, error: snapshotError } = await supabase
+        .from('lineup_players')
+        .select('*')
+        .eq('formation_id', lineupId);
+      if (snapshotError) {
+        reportSaveFailure('Could not read the current lineup', snapshotError);
+        return;
+      }
+
+      if (__DEV__) {
+        console.warn(
+          '[LineupEditor] save payload: rows=' +
+            rows.length +
+            ' snapshot=' +
+            (snapshot?.length ?? 0) +
+            ' first2=' +
+            JSON.stringify(rows.slice(0, 2))
+        );
+      }
+
+      const { error: deleteError } = await supabase
+        .from('lineup_players')
+        .delete()
+        .eq('formation_id', lineupId);
+      if (deleteError) {
+        reportSaveFailure('Could not clear the previous lineup', deleteError);
+        return;
+      }
+
+      if (rows.length > 0) {
+        const { error: insertError } = await supabase.from('lineup_players').insert(rows);
+        if (insertError) {
+          if (__DEV__) {
+            console.warn(
+              '[LineupEditor] players insert FAILED',
+              insertError,
+              JSON.stringify(rows.slice(0, 2))
+            );
+          }
+          // Put the snapshot back, rebuilt column by column rather than spread:
+          // id and created_at must regenerate, and an explicit shape also keeps
+          // any future generated column from being carried back in.
+          const restoreRows: LineupPlayerRow[] = (snapshot ?? []).map((r) => ({
+            formation_id: lineupId,
+            player_id: r.player_id ?? null,
+            guest_name: r.guest_name ?? null,
+            jersey_number: toIntOrNull(r.jersey_number),
+            position_code: r.position_code,
+            position_x: r.position_x ?? 0,
+            position_y: r.position_y ?? 0,
+            is_starter: r.is_starter === true,
+            is_captain: r.is_captain === true,
+            sort_order: r.sort_order ?? 0,
+          }));
+          let restoreError: { message?: string; code?: string } | null = null;
+          if (restoreRows.length > 0) {
+            const { error: reInsertError } = await supabase
+              .from('lineup_players')
+              .insert(restoreRows);
+            restoreError = reInsertError;
+          }
+          if (restoreError) {
+            if (__DEV__) console.warn('[LineupEditor] restore FAILED', restoreError);
+            Alert.alert(
+              'Save failed — lineup NOT restored',
+              'The save failed and the previous lineup could not be put back. Stay on this screen: the players shown are still your work.\n\n' +
+                'Save error: ' +
+                describeError(insertError) +
+                '\nRestore error: ' +
+                describeError(restoreError)
+            );
+          } else {
+            Alert.alert(
+              'Save failed — previous lineup restored',
+              'Nothing was changed on the server.\n\n' + describeError(insertError)
+            );
+          }
+          return;
+        }
+      }
+
+      // Past this point the save is real.
       setLineup((p) => (p ? { ...p, status, name: name.trim(), notes, jersey_config: { ...jerseyConfig, visual: visualConfig } } : null));
       if (previousStatus !== 'published' && status === 'published') {
         try {
@@ -564,7 +736,11 @@ export default function LineupEditorScreen() {
           });
         } catch { /* share notification non-critical */ }
       }
-      Alert.alert('Saved', 'Lineup updated successfully');
+      if (rows.length === 0) {
+        Alert.alert('Saved', 'Lineup details saved. No players are assigned yet, so the roster is empty.');
+      } else {
+        Alert.alert('Saved', 'Lineup updated successfully');
+      }
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Failed to save');
     } finally {

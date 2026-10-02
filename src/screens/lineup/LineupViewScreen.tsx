@@ -207,14 +207,17 @@ export default function LineupViewScreen() {
             displayMode={displayMode}
             onPositionTap={() => {}}
             selectedPositionIndex={null}
-            visualConfig={
-              (lineup.jersey_config as any)?.visual || {
-                jerseySize: 100,
-                jerseyOutline: 3,
-                fieldLines: 50,
-                nameSize: 100,
-              }
-            }
+            // Merged over the defaults rather than replaced, so a lineup saved
+            // before a setting existed reads that setting's default instead of
+            // undefined. showNumbers defaults true.
+            visualConfig={{
+              jerseySize: 100,
+              jerseyOutline: 3,
+              fieldLines: 50,
+              nameSize: 100,
+              showNumbers: true,
+              ...(((lineup.jersey_config as any)?.visual as object) ?? {}),
+            }}
           />
         </View>
 

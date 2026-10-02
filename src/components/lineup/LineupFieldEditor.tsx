@@ -1,5 +1,12 @@
-import React, { memo, useRef, useState, useMemo } from 'react';
-import { View, TouchableOpacity, StyleSheet, Dimensions, PanResponder } from 'react-native';
+import React, { memo, useRef, useState, useMemo, useCallback } from 'react';
+import {
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  Dimensions,
+  PanResponder,
+  type LayoutChangeEvent,
+} from 'react-native';
 import Svg, {
   Rect,
   Circle,
@@ -21,8 +28,8 @@ function DraggableOverlay({
   xPx,
   yPx,
   hitSizePx,
-  fieldWidth,
-  fieldHeight,
+  sx,
+  sy,
   onTap,
   onDragMove,
   onDragEnd,
@@ -32,16 +39,15 @@ function DraggableOverlay({
   xPx: number;
   yPx: number;
   hitSizePx: number;
-  fieldWidth: number;
-  fieldHeight: number;
+  /** px per viewBox unit, per axis, from the measured pitch box. */
+  sx: number;
+  sy: number;
   onTap: () => void;
   onDragMove: (x: number, y: number) => void;
   onDragEnd: (x: number, y: number) => void;
   onDragStateChange: (isDragging: boolean) => void;
 }) {
   const startRef = useRef({ time: 0, pageX: 0, pageY: 0, isDrag: false });
-  const pxToX = (px: number) => Math.max(2, Math.min(98, (px / fieldWidth) * 100));
-  const pxToY = (px: number) => Math.max(2, Math.min(98, (px / fieldHeight) * 100));
 
   const pan = useMemo(
     () =>
@@ -67,7 +73,7 @@ function DraggableOverlay({
             onDragStateChange(true);
           }
           if (startRef.current.isDrag) {
-            onDragMove(pxToX(xPx + dx), pxToY(yPx + dy));
+            onDragMove(pxToPctX(xPx + dx, sx), pxToPctY(yPx + dy, sy));
           }
         },
         onPanResponderRelease: (evt) => {
@@ -75,27 +81,71 @@ function DraggableOverlay({
           if (isDrag) {
             const dx = evt.nativeEvent.pageX - pageX;
             const dy = evt.nativeEvent.pageY - pageY;
-            onDragEnd(pxToX(xPx + dx), pxToY(yPx + dy));
+            onDragEnd(pxToPctX(xPx + dx, sx), pxToPctY(yPx + dy, sy));
           } else {
             onTap();
           }
           onDragStateChange(false);
         },
       }),
-    [index, xPx, yPx, fieldWidth, fieldHeight, onTap, onDragMove, onDragEnd, onDragStateChange]
+    [index, xPx, yPx, sx, sy, onTap, onDragMove, onDragEnd, onDragStateChange]
   );
 
   return <View style={[styles.hitArea, { width: hitSizePx, height: hitSizePx, left: xPx - hitSizePx / 2, top: yPx - hitSizePx / 2 }]} {...pan.panHandlers} />;
 }
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const FIELD_WIDTH = SCREEN_WIDTH;
-const FIELD_HEIGHT = Math.round(SCREEN_HEIGHT * 0.6);
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const VIEWBOX_W = 100;
 const VIEWBOX_H = 140;
 const VIEWBOX_PAD_TOP = 8;
 const VIEWBOX_PAD_BOTTOM = 8;
 const VB = { w: VIEWBOX_W, h: VIEWBOX_H, minY: -VIEWBOX_PAD_TOP, totalH: VIEWBOX_H + VIEWBOX_PAD_TOP + VIEWBOX_PAD_BOTTOM };
+
+/**
+ * Height the pitch takes when the parent gives it no definite height -- i.e.
+ * inside a ScrollView, as LineupViewScreen does. Derived from the width so the
+ * whole viewBox (both goals included) is visible without being cropped.
+ */
+const INTRINSIC_HEIGHT = Math.round((SCREEN_WIDTH * VB.totalH) / VB.w);
+
+/**
+ * ONE transform shared by the painted jerseys and the touch layer, carrying a
+ * SEPARATE scale per axis -- px per viewBox unit -- taken from the MEASURED box.
+ *
+ * In `fill` mode the pitch is stretched to the box exactly
+ * (preserveAspectRatio="none"), so sx and sy differ and the aspect is not
+ * preserved: no letterbox bars, no cropped goals, no dead space. Keeping the
+ * two axes independent is what lets taps and drags stay exact under a stretch --
+ * each axis inverts against its own scale.
+ *
+ * Without `fill` the two scales are equal, which is the aspect-preserving case
+ * LineupViewScreen still uses inside its ScrollView.
+ */
+const scaleX = (x: number) => x;
+const scaleY = (y: number) => (y / 100) * VIEWBOX_H;
+/** pct of pitch (0-100) -> px inside the pitch box, per axis. */
+const pctToPxX = (x: number, sx: number) => scaleX(x) * sx;
+const pctToPxY = (y: number, sy: number) => (scaleY(y) - VB.minY) * sy;
+/** px inside the pitch box -> pct: the exact per-axis inverse of pctToPx*. */
+const clampPct = (v: number) => Math.max(2, Math.min(98, v));
+const pxToPctX = (px: number, sx: number) => clampPct(px / sx);
+const pxToPctY = (py: number, sy: number) =>
+  clampPct(((py / sy + VB.minY) / VIEWBOX_H) * 100);
+
+/**
+ * Size the pitch to the measured box.
+ *   stretch  -> fills the box exactly; sx and sy independent.
+ *   !stretch -> largest box-fitting pitch that keeps the viewBox aspect.
+ */
+function fitPitch(boxW: number, boxH: number, stretch: boolean) {
+  const w = boxW > 1 ? boxW : SCREEN_WIDTH;
+  const h = boxH > 1 ? boxH : INTRINSIC_HEIGHT;
+  if (stretch) {
+    return { sx: w / VB.w, sy: h / VB.totalH, width: w, height: h };
+  }
+  const s = Math.min(w / VB.w, h / VB.totalH);
+  return { sx: s, sy: s, width: VB.w * s, height: VB.totalH * s };
+}
 
 const JERSEY_PATH = 'M8,0 L16,0 L20,4 L24,0 L32,0 L40,8 L34,14 L30,10 L30,36 L10,36 L10,10 L6,14 L0,8 Z';
 const JERSEY_WIDTH = 12;
@@ -127,6 +177,9 @@ export interface VisualConfig {
   jerseyOutline?: number;
   fieldLines?: number;
   nameSize?: number;
+  /** Print the squad number on the jersey. Default true; absent means true so
+   *  lineups saved before this setting existed keep showing numbers. */
+  showNumbers?: boolean;
 }
 
 interface LineupFieldEditorProps {
@@ -138,6 +191,12 @@ interface LineupFieldEditorProps {
   onPositionTap: (index: number) => void;
   onPositionDragEnd?: (index: number, x: number, y: number) => void;
   selectedPositionIndex: number | null;
+  /**
+   * Fill the parent's height instead of taking an intrinsic width-derived one.
+   * The editor passes this because its wrapper is flex:1 above a fixed bench
+   * strip; a caller inside a ScrollView must not, since flex:1 there is 0.
+   */
+  fill?: boolean;
 }
 
 export const LineupFieldEditor = memo(function LineupFieldEditor({
@@ -149,29 +208,77 @@ export const LineupFieldEditor = memo(function LineupFieldEditor({
   onPositionTap,
   onPositionDragEnd,
   selectedPositionIndex,
+  fill = false,
 }: LineupFieldEditorProps) {
   const teamColor = jerseyConfig.team_color || '#8b5cf6';
   const gkColor = jerseyConfig.gk_color || '#ef4444';
-  const hitSizePx = Math.max((14 / 100) * FIELD_WIDTH, (14 / VB.totalH) * FIELD_HEIGHT, 50);
+
+  // The box the parent actually gave us. When `fill` is set the height is the
+  // parent's to decide, so it starts at 0 and the pitch waits one frame for
+  // onLayout rather than flashing at the intrinsic size and then shrinking.
+  const [box, setBox] = useState({ w: SCREEN_WIDTH, h: fill ? 0 : INTRINSIC_HEIGHT });
+  const measured = box.h > 1;
+  const handleLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setBox((prev) =>
+      Math.abs(prev.w - width) < 0.5 && Math.abs(prev.h - height) < 0.5
+        ? prev
+        : { w: width, h: height }
+    );
+  }, []);
+
+  const { sx, sy, width: pitchW, height: pitchH } = useMemo(
+    () => fitPitch(box.w, box.h, fill),
+    [box.w, box.h, fill]
+  );
+  /**
+   * The pitch SVG stretches (preserveAspectRatio="none"), so one viewBox unit is
+   * sx px across but sy px down. That is wanted for the pitch lines and NOT for
+   * the players: a shirt drawn in plain viewBox units came out sx/sy wider than
+   * tall, and slot circles came out oval.
+   *
+   * Every glyph is therefore drawn inside a group counter-scaled by (gx, gy),
+   * which cancels the stretch exactly:
+   *     width  px = u * gx * sx = u * su
+   *     height px = u * gy * sy = u * su
+   * so glyphs render at one uniform scale `su` whatever the pitch is doing.
+   * Positions stay per-axis -- only the artwork is made square again.
+   */
+  const su = Math.min(sx, sy);
+  const gx = su / sx;
+  const gy = su / sy;
+  // Tap targets follow the drawn size, so they use the same uniform scale.
+  const hitSizePx = Math.max(14 * su, 50);
   const fieldLinesOpacity = (visualConfig?.fieldLines ?? 50) / 100;
   const jerseyScale = (visualConfig?.jerseySize ?? 100) / 100;
   const jerseyStroke = (visualConfig?.jerseyOutline ?? 3) / 10;
   const nameSizeMult = (visualConfig?.nameSize ?? 100) / 100;
   const showNames = (visualConfig?.nameSize ?? 100) > 0;
+  // Absent means true: lineups saved before this setting existed keep numbers.
+  const showNumbers = visualConfig?.showNumbers !== false;
+  // Gaps below the jersey, scaled with jerseySize so the stack holds together
+  // at 105% and above instead of the name creeping up onto the shirt.
+  const nameGap = 3.4 * jerseyScale;
+  const codeGap = 3.6 * jerseyScale;
 
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null);
 
-  const scaleY = (y: number) => (y / 100) * VIEWBOX_H;
-  const scaleX = (x: number) => x;
-  const yToPx = (y: number) => (y / 100) * FIELD_HEIGHT;
-  const xToPx = (x: number) => (x / 100) * FIELD_WIDTH;
-  const pxToX = (px: number) => Math.max(2, Math.min(98, (px / FIELD_WIDTH) * 100));
-  const pxToY = (px: number) => Math.max(2, Math.min(98, (px / FIELD_HEIGHT) * 100));
-
   return (
-    <View style={styles.container}>
-      <Svg width={FIELD_WIDTH} height={FIELD_HEIGHT} viewBox={`0 ${VB.minY} ${VB.w} ${VB.totalH}`} preserveAspectRatio="xMidYMid meet">
+    <View
+      style={[styles.container, fill ? styles.containerFill : { height: INTRINSIC_HEIGHT }]}
+      onLayout={handleLayout}
+    >
+      {/* Sized to the viewBox aspect exactly, so nothing is letterboxed inside
+          it and the touch overlays share the pitch's own coordinate origin. */}
+      {measured && (
+      <View style={{ width: pitchW, height: pitchH }}>
+      <Svg
+        width={pitchW}
+        height={pitchH}
+        viewBox={`0 ${VB.minY} ${VB.w} ${VB.totalH}`}
+        preserveAspectRatio={fill ? 'none' : 'xMidYMid meet'}
+      >
         <Defs>
           <Pattern id="stripes" width={VIEWBOX_W} height={24} patternUnits="userSpaceOnUse">
             <Rect x={0} y={0} width={VIEWBOX_W} height={12} fill="#2d8a31" />
@@ -218,39 +325,48 @@ export const LineupFieldEditor = memo(function LineupFieldEditor({
           const isDimmed = draggingIndex !== null && draggingIndex !== i;
           const scaleMult = isDragging ? 1.15 : 1;
 
+          // Position per-axis (stretched pitch), artwork at a uniform scale.
+          const glyph = `translate(${x}, ${y}) scale(${gx}, ${gy})`;
+          const ghost = `translate(${scaleX(pos.x)}, ${scaleY(pos.y)}) scale(${gx}, ${gy})`;
+
           return (
             <G key={`pos-${i}`} opacity={isDimmed ? 0.6 : 1}>
+              {isDragging && (
+                <G transform={ghost}>
+                  <Circle cx={0} cy={0} r={6} fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth={0.5} strokeDasharray="2,2" />
+                </G>
+              )}
+              <G transform={glyph}>
               {pos.assignedPlayer ? (
                 <>
-                  {isSelected && !isDragging && <Circle cx={x} cy={y} r={7} fill="none" stroke="rgba(6,182,212,0.8)" strokeWidth={0.8} />}
-                  {isDragging && <Circle cx={scaleX(pos.x)} cy={scaleY(pos.y)} r={6} fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth={0.5} strokeDasharray="2,2" />}
+                  {isSelected && !isDragging && <Circle cx={0} cy={0} r={7} fill="none" stroke="rgba(6,182,212,0.8)" strokeWidth={0.8} />}
                   {displayMode === 'photo' && pos.assignedPlayer.photo_url ? (
                     <>
                       <Defs>
                         <ClipPath id={`clip-player-${i}`}>
-                          <Circle cx={x} cy={y} r={6 * jerseyScale * scaleMult} />
+                          <Circle cx={0} cy={0} r={6 * jerseyScale * scaleMult} />
                         </ClipPath>
                       </Defs>
                       <G clipPath={`url(#clip-player-${i})`}>
                         <SvgImage
                           href={{ uri: pos.assignedPlayer.photo_url }}
-                          x={x - 6 * jerseyScale * scaleMult}
-                          y={y - 6 * jerseyScale * scaleMult}
+                          x={-6 * jerseyScale * scaleMult}
+                          y={-6 * jerseyScale * scaleMult}
                           width={12 * jerseyScale * scaleMult}
                           height={12 * jerseyScale * scaleMult}
                           preserveAspectRatio="xMidYMid slice"
                         />
                       </G>
                       <Circle
-                        cx={x}
-                        cy={y}
+                        cx={0}
+                        cy={0}
                         r={6 * jerseyScale * scaleMult}
                         fill="none"
                         stroke="#fff"
                         strokeWidth={Math.max(0.15, jerseyStroke * 0.45)}
                       />
                       {pos.assignedPlayer.isCaptain && (
-                        <G transform={`translate(${x - 5}, ${y - 4})`}>
+                        <G transform="translate(-5, -4)">
                           <Circle cx={0} cy={0} r={2.5} fill="#fbbf24" />
                           <SvgText x={0} y={1} fill="#1f2937" fontSize={2} textAnchor="middle" fontWeight="bold">
                             C
@@ -259,8 +375,8 @@ export const LineupFieldEditor = memo(function LineupFieldEditor({
                       )}
                       {showNames && (pos.assignedPlayer.lastName || pos.assignedPlayer.fullName) && (
                         <SvgText
-                          x={x}
-                          y={y + 6 * jerseyScale * scaleMult + 2}
+                          x={0}
+                          y={6 * jerseyScale * scaleMult + nameGap}
                           fill="#fff"
                           fontSize={Math.max(0.5, 3.5 * nameSizeMult)}
                           textAnchor="middle"
@@ -269,7 +385,13 @@ export const LineupFieldEditor = memo(function LineupFieldEditor({
                           {pos.assignedPlayer.lastName || pos.assignedPlayer.fullName.split(' ').pop() || ''}
                         </SvgText>
                       )}
-                      <SvgText x={x} y={y + 6 * jerseyScale * scaleMult + 5.5} fill="#64748b" fontSize={2.5} textAnchor="middle">
+                      <SvgText
+                        x={0}
+                        y={6 * jerseyScale * scaleMult + nameGap + codeGap}
+                        fill="#64748b"
+                        fontSize={2.5}
+                        textAnchor="middle"
+                      >
                         {pos.code}
                       </SvgText>
                     </>
@@ -280,13 +402,15 @@ export const LineupFieldEditor = memo(function LineupFieldEditor({
                         fill={isGK ? gkColor : teamColor}
                         stroke="#fff"
                         strokeWidth={Math.max(0.1, jerseyStroke)}
-                        transform={`translate(${x}, ${y}) scale(${JERSEY_SCALE * jerseyScale * scaleMult}) translate(-20, -18)`}
+                        transform={`scale(${JERSEY_SCALE * jerseyScale * scaleMult}) translate(-20, -18)`}
                       />
-                      <SvgText x={x} y={y + 2} fill="#fff" fontSize={5} textAnchor="middle" fontWeight="bold">
-                        {pos.assignedPlayer.jerseyNumber ?? '?'}
-                      </SvgText>
+                      {showNumbers && pos.assignedPlayer.jerseyNumber != null && (
+                        <SvgText x={0} y={2} fill="#fff" fontSize={5} textAnchor="middle" fontWeight="bold">
+                          {pos.assignedPlayer.jerseyNumber}
+                        </SvgText>
+                      )}
                       {pos.assignedPlayer.isCaptain && (
-                        <G transform={`translate(${x - 5}, ${y - 4})`}>
+                        <G transform="translate(-5, -4)">
                           <Circle cx={0} cy={0} r={2.5} fill="#fbbf24" />
                           <SvgText x={0} y={1} fill="#1f2937" fontSize={2} textAnchor="middle" fontWeight="bold">
                             C
@@ -295,8 +419,8 @@ export const LineupFieldEditor = memo(function LineupFieldEditor({
                       )}
                       {showNames && (pos.assignedPlayer.lastName || pos.assignedPlayer.fullName) && (
                         <SvgText
-                          x={x}
-                          y={y + (JERSEY_HEIGHT * jerseyScale) / 2 + 2}
+                          x={0}
+                          y={(JERSEY_HEIGHT * jerseyScale * scaleMult) / 2 + nameGap}
                           fill="#fff"
                           fontSize={Math.max(0.5, 3.5 * nameSizeMult)}
                           textAnchor="middle"
@@ -305,7 +429,13 @@ export const LineupFieldEditor = memo(function LineupFieldEditor({
                           {pos.assignedPlayer.lastName || pos.assignedPlayer.fullName.split(' ').pop() || ''}
                         </SvgText>
                       )}
-                      <SvgText x={x} y={y + (JERSEY_HEIGHT * jerseyScale) / 2 + 5.5} fill="#64748b" fontSize={2.5} textAnchor="middle">
+                      <SvgText
+                        x={0}
+                        y={(JERSEY_HEIGHT * jerseyScale * scaleMult) / 2 + nameGap + codeGap}
+                        fill="#64748b"
+                        fontSize={2.5}
+                        textAnchor="middle"
+                      >
                         {pos.code}
                       </SvgText>
                     </>
@@ -313,21 +443,22 @@ export const LineupFieldEditor = memo(function LineupFieldEditor({
                 </>
               ) : (
                 <>
-                  {isSelected && <Circle cx={x} cy={y} r={7} fill="none" stroke="rgba(6,182,212,0.8)" strokeWidth={0.8} />}
-                  <Circle cx={x} cy={y} r={5} fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.6)" strokeWidth={0.5} strokeDasharray="2,2" />
-                  <SvgText x={x} y={y + 0.8} fill="#fff" fontSize={3} textAnchor="middle" fontWeight="bold">
+                  {isSelected && <Circle cx={0} cy={0} r={7} fill="none" stroke="rgba(6,182,212,0.8)" strokeWidth={0.8} />}
+                  <Circle cx={0} cy={0} r={5} fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.6)" strokeWidth={0.5} strokeDasharray="2,2" />
+                  <SvgText x={0} y={0.8} fill="#fff" fontSize={3} textAnchor="middle" fontWeight="bold">
                     {pos.code}
                   </SvgText>
                 </>
               )}
+              </G>
             </G>
           );
         })}
       </Svg>
 
       {positions.map((pos, i) => {
-        const xPx = xToPx(pos.x);
-        const yPx = yToPx(pos.y);
+        const xPx = pctToPxX(pos.x, sx);
+        const yPx = pctToPxY(pos.y, sy);
         const hasAssigned = !!pos.assignedPlayer;
 
         if (hasAssigned && onPositionDragEnd) {
@@ -338,8 +469,8 @@ export const LineupFieldEditor = memo(function LineupFieldEditor({
               xPx={xPx}
               yPx={yPx}
               hitSizePx={hitSizePx}
-              fieldWidth={FIELD_WIDTH}
-              fieldHeight={FIELD_HEIGHT}
+              sx={sx}
+              sy={sy}
               onTap={() => onPositionTap(i)}
               onDragMove={(x, y) => setDragPosition({ x, y })}
               onDragEnd={(x, y) => {
@@ -366,11 +497,15 @@ export const LineupFieldEditor = memo(function LineupFieldEditor({
           />
         );
       })}
+      </View>
+      )}
     </View>
   );
 });
 
 const styles = StyleSheet.create({
-  container: { width: FIELD_WIDTH, height: FIELD_HEIGHT },
+  // Centres the pitch box; height comes from `fill` (parent) or INTRINSIC_HEIGHT.
+  container: { width: '100%', alignItems: 'center', justifyContent: 'center' },
+  containerFill: { flex: 1 },
   hitArea: { position: 'absolute', backgroundColor: 'transparent' },
 });

@@ -11,9 +11,14 @@ import {
   FlatList,
   Modal,
   Dimensions,
+  KeyboardAvoidingView,
+  Keyboard,
+  Platform,
+  Pressable,
+  Switch,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import Svg, { Path } from 'react-native-svg';
@@ -24,6 +29,21 @@ import { getFormationPositions } from '../../data/formationPositions';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const JERSEY_COLORS = ['#8b5cf6', '#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#06b6d4', '#ffffff', '#1f2937'];
+
+/**
+ * Defaults for jersey_config.visual. One object so the initial state, the
+ * load-time fallback and the Reset button cannot drift apart.
+ * showNumbers defaults true, and a saved config without the key reads as true,
+ * so lineups from before the toggle existed keep their numbers.
+ */
+const DEFAULT_VISUAL_CONFIG = {
+  jerseySize: 100,
+  jerseyOutline: 3,
+  fieldLines: 50,
+  nameSize: 100,
+  showNumbers: true,
+};
+type VisualConfigState = typeof DEFAULT_VISUAL_CONFIG;
 
 interface Player {
   id: string;
@@ -77,6 +97,9 @@ interface Assignment {
   guestName: string | null;
   jerseyNumber: number | null;
   isCaptain: boolean;
+  /** Name from the player_profile join, kept so a bench row can render itself
+   *  even when that player is no longer on the team roster. */
+  playerName?: string | null;
 }
 
 function MiniJerseyIcon({ color, size = 28 }: { color: string; size?: number }) {
@@ -102,6 +125,7 @@ const FORMATIONS: Record<string, string[]> = {
 export default function LineupEditorScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute();
+  const insets = useSafeAreaInsets();
   const params = (route.params as { lineupId?: string; teamId?: string }) || {};
   const { lineupId, teamId } = params;
 
@@ -132,7 +156,7 @@ export default function LineupEditorScreen() {
   const [visualSettingsVisible, setVisualSettingsVisible] = useState(false);
   const [formationPickerVisible, setFormationPickerVisible] = useState(false);
   const [fieldTypePickerVisible, setFieldTypePickerVisible] = useState(false);
-  const [visualConfig, setVisualConfig] = useState({ jerseySize: 100, jerseyOutline: 3, fieldLines: 50, nameSize: 100 });
+  const [visualConfig, setVisualConfig] = useState<VisualConfigState>(DEFAULT_VISUAL_CONFIG);
   const [positionOverrides, setPositionOverrides] = useState<Map<number, { x: number; y: number }>>(new Map());
   const { profile: authProfile } = useAuth();
 
@@ -160,9 +184,10 @@ export default function LineupEditorScreen() {
       setEventId(lf.event_id);
       setStatus(lf.status === 'published' ? 'published' : 'draft');
       setJerseyConfig(lf.jersey_config || {});
-      setVisualConfig((lf.jersey_config as any)?.visual || { jerseySize: 100, jerseyOutline: 3, fieldLines: 50, nameSize: 100 });
+      // Merge over the defaults: a saved config predating a setting keeps the
+      // default for it instead of landing as undefined.
+      setVisualConfig({ ...DEFAULT_VISUAL_CONFIG, ...((lf.jersey_config as any)?.visual ?? {}) });
 
-      console.log('Fetching roster for teamId:', teamIdFromLineup);
       const [rosterRes, eventsRes] = await Promise.all([
         supabase
           .from('players')
@@ -179,7 +204,6 @@ export default function LineupEditorScreen() {
           .limit(20),
       ]);
 
-      console.log('Roster result:', rosterRes.data?.length ?? 0, 'players, error:', rosterRes.error);
       setRoster((rosterRes.data || []) as Player[]);
       setEvents((eventsRes.data || []) as any[]);
 
@@ -197,6 +221,9 @@ export default function LineupEditorScreen() {
           guestName: lp.guest_name,
           jerseyNumber: lp.jersey_number ?? profile?.jersey_number ?? null,
           isCaptain: lp.is_captain,
+          playerName: profile
+            ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || null
+            : null,
         };
         if (!lp.is_starter) {
           bench.push({ ...a, positionIndex: -1 });
@@ -282,13 +309,71 @@ export default function LineupEditorScreen() {
     return sortByLastName(filtered);
   }, [availablePlayers, pickerSearch]);
 
-  const benchTiles = useMemo(() => {
-    const unassignedRoster = roster.filter((p) => !assignedIds.has(p.id));
-    type BenchTile = { type: 'roster'; player: Player } | { type: 'guest'; guestName: string; jerseyNumber: number | null; guestIdx: number };
-    const tiles: BenchTile[] = [
-      ...unassignedRoster.map((p) => ({ type: 'roster' as const, player: p })),
-      ...benchPlayers.map((b, i) => ({ type: 'guest' as const, guestName: b.guestName || '', jerseyNumber: b.jerseyNumber, guestIdx: i })),
-    ];
+  /**
+   * One bench tile. Routed on player_id FIRST: the old version typed every
+   * benchPlayers entry as a guest, so each saved roster bench row (player_id
+   * set, guest_name NULL) rendered as a nameless tile -- and double-counted
+   * against the same player's roster tile. Dedupe follows LineupViewScreen's
+   * rule: one entry per (player_id || guest_name).
+   */
+  type BenchTile = {
+    key: string;
+    player: Player | null;
+    guestName: string | null;
+    displayName: string;
+    jerseyNumber: number | null;
+    /** Index into benchPlayers, when the tile came from there. */
+    benchIdx: number | null;
+  };
+
+  const benchTiles = useMemo<BenchTile[]>(() => {
+    const tiles: BenchTile[] = [];
+    const seen = new Set<string>();
+    const push = (t: BenchTile) => {
+      if (seen.has(t.key)) return;
+      seen.add(t.key);
+      tiles.push(t);
+    };
+
+    // Roster players who are not in the starting XI.
+    roster.forEach((p) => {
+      if (assignedIds.has(p.id)) return;
+      push({
+        key: `p:${p.id}`,
+        player: p,
+        guestName: null,
+        displayName: getPlayerDisplayName(p),
+        jerseyNumber: p.jersey_number,
+        benchIdx: null,
+      });
+    });
+
+    // Saved bench rows: a player_id makes it a roster player, never a guest.
+    benchPlayers.forEach((b, i) => {
+      if (b.playerId) {
+        if (assignedIds.has(b.playerId)) return;
+        const p = roster.find((r) => r.id === b.playerId) ?? null;
+        push({
+          key: `p:${b.playerId}`,
+          player: p,
+          guestName: null,
+          displayName: p ? getPlayerDisplayName(p) : b.playerName || 'Player',
+          jerseyNumber: b.jerseyNumber ?? p?.jersey_number ?? null,
+          benchIdx: i,
+        });
+        return;
+      }
+      if (!b.guestName) return;
+      push({
+        key: `g:${i}:${b.guestName}`,
+        player: null,
+        guestName: b.guestName,
+        displayName: b.guestName,
+        jerseyNumber: b.jerseyNumber,
+        benchIdx: i,
+      });
+    });
+
     return tiles;
   }, [roster, assignedIds, benchPlayers]);
 
@@ -332,7 +417,7 @@ export default function LineupEditorScreen() {
             ? { text: 'Set as Captain (max reached)' as const, onPress: () => Alert.alert('Maximum Captains', 'You can assign up to 4 captains per lineup.') }
             : { text: 'Set as Captain' as const, onPress: () => setAssignments((prev) => { const n = new Map(prev); const cur = n.get(index); if (cur) n.set(index, { ...cur, isCaptain: true }); return n; }) };
       Alert.alert(
-        `${name} #${a.jerseyNumber ?? '?'}`,
+        a.jerseyNumber != null ? `${name} #${a.jerseyNumber}` : name,
         '',
         [
           { text: 'Cancel', style: 'cancel' },
@@ -385,6 +470,14 @@ export default function LineupEditorScreen() {
       setSelectedPosition(index);
       setPickerVisible(true);
     }
+  };
+
+  /** Single close path for the picker: backdrop, X and Android back all use it. */
+  const closePicker = () => {
+    Keyboard.dismiss();
+    setPickerVisible(false);
+    setSelectedPosition(null);
+    setPickerSearch('');
   };
 
   const assignPlayer = (player: Player) => {
@@ -445,25 +538,27 @@ export default function LineupEditorScreen() {
   const benchTileAction = (idx: number) => {
     const tile = benchTiles[idx];
     if (!tile) return;
-    const name = tile.type === 'roster' ? getPlayerDisplayName(tile.player) : tile.guestName || 'Guest';
-    const num = tile.type === 'roster' ? tile.player.jersey_number : tile.jerseyNumber;
+    const rosterPlayer = tile.player;
+    const benchIdx = tile.benchIdx;
     Alert.alert(
-      `${name} #${num ?? '?'}`,
+      tile.jerseyNumber != null ? `${tile.displayName} #${tile.jerseyNumber}` : tile.displayName,
       '',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Assign to Position',
           onPress: () => {
-            if (tile.type === 'roster') setAssigningFromBench({ type: 'roster', player: tile.player });
-            else setAssigningFromBench({ type: 'guest', idx: tile.guestIdx });
+            // A roster row goes through the roster path; anything else goes
+            // through the bench path, which preserves a player_id if it has one.
+            if (rosterPlayer) setAssigningFromBench({ type: 'roster', player: rosterPlayer });
+            else if (benchIdx !== null) setAssigningFromBench({ type: 'guest', idx: benchIdx });
           },
         },
-        ...(tile.type === 'guest'
+        ...(tile.guestName && benchIdx !== null
           ? [{
               text: 'Remove from Squad' as const,
               style: 'destructive' as const,
-              onPress: () => setBenchPlayers((prev) => prev.filter((_, i) => i !== tile.guestIdx)),
+              onPress: () => setBenchPlayers((prev) => prev.filter((_, i) => i !== benchIdx)),
             }]
           : []),
       ]
@@ -889,6 +984,7 @@ export default function LineupEditorScreen() {
 
       <View style={styles.fieldWrapper}>
         <LineupFieldEditor
+          fill
           fieldType={lineup.field_type}
           positions={positions}
           jerseyConfig={jerseyConfig}
@@ -905,7 +1001,7 @@ export default function LineupEditorScreen() {
 
       {pickerVisible && (
         <View style={styles.overlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => { setPickerVisible(false); setSelectedPosition(null); }} />
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={closePicker} />
         </View>
       )}
 
@@ -916,15 +1012,17 @@ export default function LineupEditorScreen() {
             <Text style={styles.benchEmpty}>All players assigned</Text>
           ) : (
             benchTiles.map((t, idx) => {
-              const disp = t.type === 'roster' ? getPlayerDisplayName(t.player) : t.guestName;
-              const initials = disp ? disp.split(' ').map((x) => x[0]).join('').slice(0, 2).toUpperCase() : '?';
-              const num = t.type === 'roster' ? t.player.jersey_number : t.jerseyNumber;
+              const initials = t.displayName
+                ? t.displayName.split(' ').map((x) => x[0]).join('').slice(0, 2).toUpperCase()
+                : '';
               const teamColor = jerseyConfig.team_color || '#8b5cf6';
               return (
-                <TouchableOpacity key={t.type === 'roster' ? t.player.id : `g-${idx}`} style={styles.benchTile} onPress={() => benchTileAction(idx)}>
-                  <View style={styles.benchTileJersey}><MiniJerseyIcon color={teamColor} size={28} /></View>
-                  <Text style={styles.benchTileNum}>{num ?? '?'}</Text>
-                  <Text style={styles.benchTileInit}>{initials}</Text>
+                <TouchableOpacity key={t.key} style={styles.benchTile} onPress={() => benchTileAction(idx)}>
+                  <View style={styles.benchTileJersey}><MiniJerseyIcon color={teamColor} size={23} /></View>
+                  {/* Blank, never '?', when the player has no squad number. The
+                      row is always rendered so every tile is the same height. */}
+                  <Text style={styles.benchTileNum}>{t.jerseyNumber != null ? t.jerseyNumber : ''}</Text>
+                  <Text style={styles.benchTileInit} numberOfLines={1}>{initials}</Text>
                 </TouchableOpacity>
               );
             })
@@ -932,39 +1030,69 @@ export default function LineupEditorScreen() {
         </ScrollView>
       </View>
 
-      <Modal visible={pickerVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.bottomSheet}>
-            <View style={styles.bottomSheetHeader}>
-              <Text style={styles.bottomSheetTitle}>Select player for {selectedCode}</Text>
-              <TouchableOpacity onPress={() => { setPickerVisible(false); setSelectedPosition(null); }}>
-                <Feather name="x" size={24} color="#fff" />
-              </TouchableOpacity>
-            </View>
-            <TextInput
-              style={styles.searchInput}
-              value={pickerSearch}
-              onChangeText={setPickerSearch}
-              placeholder="Search..."
-              placeholderTextColor="#64748b"
-            />
-            {filteredPickerPlayers.length === 0 ? (
-              <Text style={styles.emptyText}>
-                {roster.length === 0 ? 'No players found for this team' : availablePlayers.length === 0 ? 'All players assigned' : 'No players match search'}
-              </Text>
-            ) : (
-              <FlatList
-                data={filteredPickerPlayers}
-                keyExtractor={(p) => p.id}
-                renderItem={({ item }) => (
-                  <TouchableOpacity style={styles.playerRow} onPress={() => assignPlayer(item)}>
-                    <View style={styles.playerNumBox}><Text style={styles.playerNum}>{item.jersey_number ?? '—'}</Text></View>
-                    <Text style={styles.playerName}>{getPlayerDisplayName(item)}</Text>
-                  </TouchableOpacity>
-                )}
+      {/* Top-anchored so the keyboard shrinks the sheet from below instead of
+          covering it: the search field and the results stay visible. Was a
+          bottom sheet capped at 60% height, which the keyboard sat on top of. */}
+      <Modal
+        visible={pickerVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closePicker}
+      >
+        <View style={styles.pickerOverlay}>
+          {/* The dim strip above the sheet dismisses the keyboard and closes. */}
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            accessibilityRole="button"
+            accessibilityLabel="Close player picker"
+            onPress={closePicker}
+          />
+          <KeyboardAvoidingView
+            style={[styles.pickerKeyboardView, { paddingTop: insets.top + 12 }]}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            pointerEvents="box-none"
+          >
+            <View style={styles.pickerSheet}>
+              <View style={styles.bottomSheetHeader}>
+                <Text style={styles.bottomSheetTitle}>Select player for {selectedCode}</Text>
+                <TouchableOpacity
+                  onPress={closePicker}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <Feather name="x" size={24} color="#fff" />
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                style={styles.searchInput}
+                value={pickerSearch}
+                onChangeText={setPickerSearch}
+                placeholder="Search..."
+                placeholderTextColor="#64748b"
               />
-            )}
-          </View>
+              {filteredPickerPlayers.length === 0 ? (
+                <Text style={styles.emptyText}>
+                  {roster.length === 0 ? 'No players found for this team' : availablePlayers.length === 0 ? 'All players assigned' : 'No players match search'}
+                </Text>
+              ) : (
+                <FlatList
+                  data={filteredPickerPlayers}
+                  style={styles.pickerList}
+                  keyExtractor={(p) => p.id}
+                  keyboardShouldPersistTaps="handled"
+                  renderItem={({ item }) => (
+                    <TouchableOpacity style={styles.playerRow} onPress={() => assignPlayer(item)}>
+                      <View style={styles.playerNumBox}>
+                        <Text style={styles.playerNum}>{item.jersey_number ?? '—'}</Text>
+                      </View>
+                      <Text style={styles.playerName}>{getPlayerDisplayName(item)}</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              )}
+            </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -1111,7 +1239,20 @@ export default function LineupEditorScreen() {
                     text: 'Delete',
                     style: 'destructive',
                     onPress: async () => {
-                      if (lineupId) await supabase.from('lineup_formations').delete().eq('id', lineupId);
+                      if (lineupId) {
+                        const { error: deleteLineupError } = await supabase
+                          .from('lineup_formations')
+                          .delete()
+                          .eq('id', lineupId);
+                        if (deleteLineupError) {
+                          if (__DEV__) console.warn('[LineupEditor] delete failed', deleteLineupError);
+                          Alert.alert(
+                            'Delete failed',
+                            'The lineup was not deleted.\n\n' + describeError(deleteLineupError)
+                          );
+                          return;
+                        }
+                      }
                       navigation.goBack();
                     },
                   },
@@ -1181,6 +1322,21 @@ export default function LineupEditorScreen() {
               </View>
             </View>
 
+            <View style={styles.visualToggleRow}>
+              <View style={styles.visualToggleText}>
+                <Text style={styles.visualSliderLabel}>Show Numbers</Text>
+                <Text style={styles.visualToggleHint}>
+                  Players without a squad number show no number either way.
+                </Text>
+              </View>
+              <Switch
+                value={visualConfig.showNumbers}
+                onValueChange={(v) => setVisualConfig((c) => ({ ...c, showNumbers: v }))}
+                trackColor={{ false: '#334155', true: '#8b5cf6' }}
+                thumbColor="#fff"
+              />
+            </View>
+
             <TouchableOpacity style={styles.visualResetBtn} onPress={() => setVisualConfig(DEFAULT_VISUAL_CONFIG)}>
               <Text style={styles.modalBtnText}>Reset to Defaults</Text>
             </TouchableOpacity>
@@ -1194,10 +1350,22 @@ export default function LineupEditorScreen() {
   );
 }
 
-const BOTTOM_TAB_PADDING = 88;
+/**
+ * No tab-bar reserve here, deliberately.
+ *
+ * MainTabs' tabBarStyle (AppNavigator.tsx:185) never sets position:'absolute',
+ * and @react-navigation/bottom-tabs v7 only overlays the bar when it does --
+ * otherwise BottomTabView renders it as a flex sibling below the screen
+ * container. So this screen's content area ALREADY ends at the tab bar's top
+ * edge, and the bar's own `height: 80 + insets.bottom` already clears the home
+ * indicator. Reserving either here would double-count and show up as dead space
+ * under the bench; the original `paddingBottom: 88` was exactly that bug.
+ */
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f172a', paddingBottom: BOTTOM_TAB_PADDING },
+  // No paddingBottom here: the tab-bar spacer lives on benchStrip instead, so
+  // the strip's background runs behind the bar and its tiles sit above it.
+  container: { flex: 1, backgroundColor: '#0f172a' },
   header: {
     backgroundColor: '#1e293b',
     borderBottomWidth: 1,
@@ -1237,33 +1405,58 @@ const styles = StyleSheet.create({
   assignBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 10, backgroundColor: '#06b6d420', gap: 12 },
   assignBannerText: { color: '#06b6d4', fontSize: 14, fontWeight: '600' },
   assignBannerCancel: { color: '#06b6d4', fontSize: 14, textDecorationLine: 'underline' },
-  fieldWrapper: { width: SCREEN_WIDTH },
+  // flex:1 and NO clipping: LineupFieldEditor measures this box and sizes the
+  // pitch to fit inside it, so there is nothing to trim. The bench strip below
+  // keeps its fixed, fully-visible height and the field takes all the rest --
+  // no dead space under the bench, no cropped goals.
+  fieldWrapper: { width: SCREEN_WIDTH, flex: 1 },
+  // Compact: title + one tile row + 8px padding. No minHeight and no tab-bar
+  // reserve -- the navigator already ends this screen at the tab bar's top edge
+  // (see the note on TAB_BAR above), so anything added here is dead space.
   benchStrip: {
-    minHeight: 100,
     backgroundColor: '#1e293b',
-    paddingVertical: 12,
+    paddingVertical: 6,
     paddingHorizontal: 12,
     borderTopWidth: 1,
     borderTopColor: '#334155',
   },
-  benchLabel: { fontSize: 11, color: '#94a3b8', fontWeight: '600', marginBottom: 8 },
+  benchLabel: { fontSize: 10, color: '#94a3b8', fontWeight: '600', marginBottom: 4 },
   benchScroll: { paddingRight: 16 },
   benchEmpty: { color: '#64748b', fontSize: 14 },
+  // Height is content-driven: the old fixed 70 held ~73px of jersey + number +
+  // initials, so the initials row was clipped off the bottom of every tile.
+  // ~18% slimmer than before (tile 78 -> 64px tall): jersey icon, number and
+  // initials all step down together so the tile keeps its proportions, and the
+  // height freed goes straight to the pitch, which is flex above this strip.
   benchTile: {
-    width: 56,
-    height: 70,
+    width: 50,
+    minHeight: 58,
     backgroundColor: '#334155',
-    borderRadius: 10,
+    borderRadius: 9,
     borderWidth: 1,
     borderColor: '#475569',
-    marginRight: 10,
+    marginRight: 8,
     alignItems: 'center',
-    paddingTop: 6,
+    justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 3,
   },
-  benchTileJersey: { marginBottom: 2 },
-  benchTileNum: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  benchTileInit: { fontSize: 11, color: '#94a3b8', marginTop: 2 },
+  benchTileJersey: { marginBottom: 1 },
+  benchTileNum: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  benchTileInit: { fontSize: 10, color: '#94a3b8', marginTop: 1 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  // Top-anchored picker: overlay aligns to the top, the keyboard-avoiding view
+  // leaves a tappable strip under the notch, and the sheet fills what is left.
+  pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-start' },
+  pickerKeyboardView: { flex: 1 },
+  pickerSheet: {
+    flex: 1,
+    backgroundColor: '#1e293b',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: 'hidden',
+  },
+  pickerList: { flex: 1 },
   bottomSheet: {
     backgroundColor: '#1e293b',
     borderTopLeftRadius: 16,
@@ -1308,5 +1501,8 @@ const styles = StyleSheet.create({
   visualSliderValue: { fontSize: 14, color: '#fff', fontWeight: '700' },
   visualSliderCaps: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
   visualSliderCap: { fontSize: 11, color: '#64748b' },
+  visualToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, gap: 12 },
+  visualToggleText: { flex: 1 },
+  visualToggleHint: { fontSize: 11, color: '#64748b', marginTop: 4 },
   visualResetBtn: { backgroundColor: '#334155', paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 8, marginBottom: 8 },
 });

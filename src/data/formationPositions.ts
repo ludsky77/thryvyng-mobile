@@ -27,8 +27,43 @@ export function getFormationPositions(
   return getDefaultPositions(formation, fieldType);
 }
 
+/**
+ * Outermost player of a 3+ man line, as a % of pitch width.
+ * 20 rather than 15: the jersey glyph is wider than the slot circle it replaces,
+ * so at 15 the outer back-four shirts overhung the touchline.
+ */
+const SPREAD_EDGE = 20;
+/**
+ * A two-man line is inset further: two strikers belong in the channels, not out
+ * by the touchlines, so they sit at 32/68.
+ */
+const SPREAD_EDGE_PAIR = 32;
+
+const GK_Y = 92;
+/** Deepest and highest outfield lines. The three outfield layers are spread
+ *  evenly between them; GK stays put. FWD_Y was 27, which left the top quarter
+ *  of the pitch empty while the other three lines bunched at the back. */
+const DEF_Y = 76;
+const FWD_Y = 18;
+
+/**
+ * Even horizontal spread for one line of n players: both ends sit the same
+ * distance from their touchline and the rest are evenly spaced between.
+ *
+ * Replaces `15 + 70 * (i + 1) / (n + 1)`, which divided by n+1 and so pulled
+ * the outermost players inward -- a 3-man forward line spanned only 32.5..67.5,
+ * 35% of the pitch, and every line in every formation was bunched centrally.
+ * n=1 -> 50; n=2 -> 32/68; n>=3 -> 20..80 evenly spaced (4 -> 20/40/60/80).
+ */
+function spreadX(i: number, n: number): number {
+  if (n <= 1) return 50;
+  const left = n === 2 ? SPREAD_EDGE_PAIR : SPREAD_EDGE;
+  const right = 100 - left;
+  return left + ((right - left) * i) / (n - 1);
+}
+
 function getDefaultPositions(formation: string, fieldType: string): FormationPosition[] {
-  const gk: FormationPosition = { code: 'GK', x: 50, y: 92, role: 'goalkeeper' };
+  const gk: FormationPosition = { code: 'GK', x: 50, y: GK_Y, role: 'goalkeeper' };
   const codes = parseFormationCodes(formation, fieldType);
   const byLayer = new Map<number, string[]>();
   for (const code of codes) {
@@ -37,16 +72,19 @@ function getDefaultPositions(formation: string, fieldType: string): FormationPos
     byLayer.get(layer)!.push(code);
   }
   const positions: FormationPosition[] = [gk];
-  const layerY: Record<number, number> = { 1: 78, 2: 58, 3: 27 };
+  const layerY: Record<number, number> = {
+    1: DEF_Y,
+    2: DEF_Y + (FWD_Y - DEF_Y) / 2,
+    3: FWD_Y,
+  };
   for (const layer of [1, 2, 3]) {
     const codesInLayer = byLayer.get(layer) || [];
     const n = codesInLayer.length;
     const yBase = layerY[layer];
     for (let i = 0; i < n; i++) {
-      const x = n === 1 ? 50 : 15 + (70 * (i + 1)) / (n + 1);
       positions.push({
         code: codesInLayer[i],
-        x,
+        x: spreadX(i, n),
         y: yBase,
         role: getRoleForCode(codesInLayer[i]),
       });

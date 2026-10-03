@@ -239,12 +239,22 @@ export function useCalendarEvents(
   const updateRsvp = async (eventId: string, status: RSVPStatus) => {
     if (!user) return false;
 
-    const { data: existing } = await supabase
+    // limit(1), not maybeSingle(): a duplicate row must not error the whole
+    // response out -- the two sibling RSVP write paths (EventDetailScreen,
+    // CalendarScreen) were hardened the same way.
+    const { data: existingRows, error: lookupError } = await supabase
       .from(RSVPS_TABLE)
       .select('id')
       .eq('event_id', eventId)
       .eq('user_id', user.id)
-      .maybeSingle();
+      .limit(1);
+
+    if (lookupError) {
+      console.error('updateRsvp lookup error:', lookupError.message);
+      return false;
+    }
+
+    const existing = existingRows?.[0];
 
     if (existing) {
       const { error } = await supabase

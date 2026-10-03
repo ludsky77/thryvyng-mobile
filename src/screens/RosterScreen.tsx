@@ -99,13 +99,21 @@ export default function RosterScreen({ route, navigation }: any) {
         setIsStaffInTeam(false);
         return;
       }
-      const { data } = await supabase
+      // Existence check, not a row fetch: a user can hold several team_staff
+      // rows on one team (e.g. Head Coach + Team Manager), and maybeSingle()
+      // errors on 2+ rows -- which silently stripped roster admin from exactly
+      // the most senior staff.
+      const { count, error } = await supabase
         .from('team_staff')
-        .select('id')
+        .select('id', { count: 'exact', head: true })
         .eq('team_id', team_id)
-        .eq('user_id', user.id)
-        .maybeSingle();
-      setIsStaffInTeam(!!data);
+        .eq('user_id', user.id);
+      if (error) {
+        if (__DEV__) console.warn('[Roster] staff check failed:', error);
+        setIsStaffInTeam(false);
+        return;
+      }
+      setIsStaffInTeam((count ?? 0) > 0);
     };
     checkStaffPermission();
   }, [team_id, user?.id]);

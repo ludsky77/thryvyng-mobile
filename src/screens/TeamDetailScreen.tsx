@@ -88,13 +88,24 @@ export default function TeamDetailScreen({ route, navigation }: any) {
 
   useEffect(() => {
     if (!teamId || !user?.id) { setIsStaffInTeam(false); return; }
-    supabase
-      .from('team_staff')
-      .select('id')
-      .eq('team_id', teamId)
-      .eq('user_id', user.id)
-      .maybeSingle()
-      .then(({ data }) => setIsStaffInTeam(!!data));
+    // Existence check, not a row fetch: a user can hold several team_staff rows
+    // on one team (e.g. Head Coach + Team Manager), and maybeSingle() errors on
+    // 2+ rows -- which silently stripped staff UI from exactly the most senior
+    // staff. The error was previously not even destructured.
+    const checkStaffPermission = async () => {
+      const { count, error } = await supabase
+        .from('team_staff')
+        .select('id', { count: 'exact', head: true })
+        .eq('team_id', teamId)
+        .eq('user_id', user.id);
+      if (error) {
+        if (__DEV__) console.warn('[TeamDetail] staff check failed:', error);
+        setIsStaffInTeam(false);
+        return;
+      }
+      setIsStaffInTeam((count ?? 0) > 0);
+    };
+    checkStaffPermission();
   }, [teamId, user?.id]);
 
   const fetchData = useCallback(async () => {

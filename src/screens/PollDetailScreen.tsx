@@ -158,13 +158,20 @@ export default function PollDetailScreen() {
             .maybeSingle();
 
           if (chan?.team_id) {
-            const { data: staffRow } = await supabase
+            // Existence check, not a row fetch: a user can hold several
+            // team_staff rows on one team (e.g. Head Coach + Team Manager), and
+            // maybeSingle() errors on 2+ rows -- which silently stripped poll
+            // management from exactly the most senior staff.
+            const { count: staffCount, error: staffError } = await supabase
               .from('team_staff')
-              .select('id')
+              .select('id', { count: 'exact', head: true })
               .eq('team_id', chan.team_id)
-              .eq('user_id', user.id)
-              .maybeSingle();
-            if (staffRow) staffFound = true;
+              .eq('user_id', user.id);
+            if (staffError) {
+              if (__DEV__) console.warn('[PollDetail] staff check failed:', staffError);
+            } else if ((staffCount ?? 0) > 0) {
+              staffFound = true;
+            }
           }
         }
 

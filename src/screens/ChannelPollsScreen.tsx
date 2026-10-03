@@ -236,26 +236,50 @@ export default function ChannelPollsScreen() {
       const payload: { option_id: string; comment?: string } = { option_id: optionId };
       if (comment != null && comment !== '') payload.comment = comment;
 
-      const { data: existingVote } = await supabase
+      // limit(1), not maybeSingle(): comm_poll_votes carries a rank column and
+      // poll types include 'multiple'/'ranked', so one user legitimately holds
+      // several vote rows for one poll. maybeSingle() errored on 2+ rows,
+      // existingVote came back null, and this took the insert branch -- adding
+      // yet another duplicate vote instead of updating.
+      const { data: existingVotes, error: lookupError } = await supabase
         .from('comm_poll_votes')
         .select('id')
         .eq('poll_id', pollId)
         .eq('user_id', user.id)
-        .maybeSingle();
+        .limit(1);
 
-      if (existingVote) {
-        await supabase
+      // A failed lookup must not fall through to insert: that is how duplicates
+      // were created in the first place.
+      if (lookupError) {
+        console.error('Error checking existing vote:', lookupError.message);
+        return;
+      }
+
+      if (existingVotes && existingVotes.length > 0) {
+        // Updated by (poll_id, user_id) rather than by the one row's id: this
+        // screen casts a single choice, so every row this user holds on the poll
+        // must converge on it -- updating one and leaving the rest would leave
+        // contradictory votes behind.
+        const { error: updateError } = await supabase
           .from('comm_poll_votes')
           .update(payload)
           .eq('poll_id', pollId)
           .eq('user_id', user.id);
+        if (updateError) {
+          console.error('Error updating vote:', updateError.message);
+          return;
+        }
       } else {
-        await supabase.from('comm_poll_votes').insert({
+        const { error: insertError } = await supabase.from('comm_poll_votes').insert({
           poll_id: pollId,
           option_id: optionId,
           user_id: user.id,
           ...(payload.comment ? { comment: payload.comment } : {}),
         });
+        if (insertError) {
+          console.error('Error inserting vote:', insertError.message);
+          return;
+        }
       }
 
       setVoteComments((prev) => {

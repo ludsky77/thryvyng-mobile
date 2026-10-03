@@ -879,11 +879,20 @@ export default function ChatScreen({ navigation, route }: any) {
 
   const fetchClubTeams = useCallback(async () => {
     if (!user?.id) return;
-    const { data: clubStaff } = await supabase
+    // limit(1), not maybeSingle(): a user can hold club_staff rows at more than
+    // one club, and maybeSingle() errored on 2+ rows -- which silently stripped
+    // club broadcast from exactly the multi-club staff.
+    const { data: clubStaffRows, error: clubStaffError } = await supabase
       .from('club_staff')
       .select('club_id')
       .eq('user_id', user.id)
-      .maybeSingle();
+      .limit(1);
+    if (clubStaffError) {
+      if (__DEV__) console.warn('[Chat] club_staff lookup failed:', clubStaffError);
+      setClubTeams([]);
+      return;
+    }
+    const clubStaff = clubStaffRows?.[0];
     if (!clubStaff?.club_id) {
       setClubTeams([]);
       return;

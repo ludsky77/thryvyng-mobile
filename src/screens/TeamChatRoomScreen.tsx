@@ -428,8 +428,15 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           (actionsModalMessage.attachment_name
             ? `📎 ${actionsModalMessage.attachment_name}`
             : 'Attachment'),
+        // Same resolution order as the bubble renders (memberNames from the
+        // gated RPC first, the profiles join only as fallback). Reading the join
+        // alone made this modal show 'Unknown' on the very screen whose bubble
+        // had the name -- and it is persisted into reply_to_sender.
         senderName:
-          actionsModalMessage.profile?.full_name ?? 'Unknown',
+          memberNames.get(actionsModalMessage.user_id)?.name ||
+          (actionsModalMessage as any).profiles?.full_name ||
+          actionsModalMessage.profile?.full_name ||
+          'Unknown',
       });
     }
     setActionsModalVisible(false);
@@ -444,8 +451,12 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           (reactionPickerMessage.attachment_name
             ? `📎 ${reactionPickerMessage.attachment_name}`
             : 'Attachment'),
+        // memberNames first, join as fallback -- see startReplyFromActions.
         senderName:
-          reactionPickerMessage.profile?.full_name ?? 'Unknown',
+          memberNames.get(reactionPickerMessage.user_id)?.name ||
+          (reactionPickerMessage as any).profiles?.full_name ||
+          reactionPickerMessage.profile?.full_name ||
+          'Unknown',
       });
     }
     setReactionPickerMessage(null);

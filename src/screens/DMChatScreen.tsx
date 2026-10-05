@@ -332,8 +332,14 @@ export default function DMChatScreen({ route, navigation }: any) {
           (reactionPickerMessage.attachment_name
             ? `📎 ${reactionPickerMessage.attachment_name}`
             : 'Attachment'),
+        // Same resolution order as the bubble renders (memberNames from the
+        // gated RPC first, the profiles join only as fallback). Reading the join
+        // alone made this modal show 'Unknown' on the very screen whose bubble
+        // had the name -- and it is persisted into reply_to_sender.
         senderName:
-          reactionPickerMessage.profile?.full_name ?? 'Unknown',
+          memberNames.get(reactionPickerMessage.user_id)?.name ||
+          reactionPickerMessage.profile?.full_name ||
+          'Unknown',
       });
     }
     setReactionPickerMessage(null);

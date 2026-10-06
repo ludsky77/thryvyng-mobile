@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { fetchTeamMemberNames } from '../lib/memberNames';
 import { openInMaps } from '../lib/maps';
 import { getEventTypeConfig } from '../types';
 import type { CalendarEvent } from '../types';
@@ -334,8 +335,15 @@ export default function EventDetailScreen({ route, navigation }: any) {
     }
   }, [event?.id, event?.team_id]);
 
-  // RSVP rows carry user_id but often no player_id. Emails are the only bridge
-  // back to a player row, so resolve responder emails once per RSVP set.
+  // RSVP rows carry user_id but often no player_id. Two different things are
+  // needed per responder and they now come from two different places:
+  //   * the display NAME, from the team-gated RPC. A direct `profiles` read
+  //     returned only the viewer's own row under RLS, which is why every other
+  //     responder rendered as 'Team member'.
+  //   * the EMAIL, which is not shown anywhere -- it is only the matching key
+  //     against players.parent_email. The RPC deliberately exposes no email, so
+  //     the narrowed `profiles` read below stays purely as that bridge, and a
+  //     failure there no longer costs us the names.
   const fetchResponderEmails = useCallback(async () => {
     const ids = [
       ...new Set(
@@ -349,28 +357,34 @@ export default function EventDetailScreen({ route, navigation }: any) {
       setResponderEmails(new Map());
       return;
     }
+    const memberNames = await fetchTeamMemberNames(event?.team_id);
+
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, email, full_name')
+      .select('id, email')
       .in('id', ids);
     if (error) {
-      // RLS may hide other members' profiles from a parent; those RSVPs then
-      // render as un-mapped rows rather than being silently attached to a kid.
+      // RLS may hide other members' profiles from a parent, so the email
+      // bridge can come back empty; those RSVPs then render as un-mapped rows
+      // rather than being silently attached to a kid. Names are unaffected.
       if (__DEV__) {
-        console.warn('[EventDetail] responder profiles read failed:', error);
+        console.warn('[EventDetail] responder email bridge read failed:', error);
       }
-      setResponderEmails(new Map());
-      return;
     }
+    const emailById = new Map<string, string>();
+    (data || []).forEach((row: any) => {
+      emailById.set(row.id, (row.email || '').toLowerCase());
+    });
+
     const map = new Map<string, { email: string; name: string | null }>();
-    (data || []).forEach((p: any) => {
-      map.set(p.id, {
-        email: (p.email || '').toLowerCase(),
-        name: p.full_name ?? null,
+    ids.forEach((id) => {
+      map.set(id, {
+        email: emailById.get(id) ?? '',
+        name: memberNames.get(id)?.name ?? null,
       });
     });
     setResponderEmails(map);
-  }, [eventRsvps, attendanceRows]);
+  }, [eventRsvps, attendanceRows, event?.team_id]);
 
   const fetchNonResponders = useCallback(async () => {
     if (!event?.team_id || !event?.id) return;

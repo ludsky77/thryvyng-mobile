@@ -12,6 +12,10 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  fetchTeamMemberNamesForTeams,
+  UNRESOLVED_NAME,
+} from '../lib/memberNames';
 
 type StaffFilter = 'all' | 'head_coaches' | 'all_coaches' | 'managers';
 
@@ -71,19 +75,15 @@ export default function StaffMessageScreen() {
         return;
       }
 
-      const userIds = [...new Set(staffData.map((s: any) => s.user_id))];
-
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, full_name')
-        .in('id', userIds);
-
-      const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+      // Staff names used to come from a direct `profiles` read, blocked by RLS
+      // for a non-staff viewer. This list spans a whole club, and the RPC is
+      // gated one team at a time, so ask per team and merge.
+      const memberNames = await fetchTeamMemberNamesForTeams(teamIds);
 
       const staffList: StaffMember[] = staffData.map((s: any) => ({
         id: s.id,
         user_id: s.user_id,
-        full_name: profileMap.get(s.user_id)?.full_name || 'Unknown',
+        full_name: memberNames.get(s.user_id)?.name || UNRESOLVED_NAME,
         role: s.staff_role || '',
         team_name: teamMap.get(s.team_id) || '',
       }));

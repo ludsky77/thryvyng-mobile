@@ -283,3 +283,114 @@ Observations only — no fix proposed here.
    seeded from an email local-part.
 6. The realtime-INSERT path ([useMessages.ts:142](../../src/hooks/useMessages.ts#L142)) never enriches reactions,
    so live reactions lack names even where the initial fetch succeeds.
+
+---
+
+## B3 swap results — Oct 6 2026
+
+**Scope executed:** the 14 direct-`profiles` identity sites from Table A, minus
+[AuthContext.tsx:139](../../src/contexts/AuthContext.tsx#L139) (own-row read, skipped by instruction) and
+[DMChatScreen.tsx:181](../../src/screens/DMChatScreen.tsx#L181) (partial, judge already in place, skipped by
+instruction), plus [useChannelMembers.ts:34](../../src/hooks/useChannelMembers.ts#L34).
+
+**What replaced them:** `get_team_member_names(p_team_id)` — SECURITY DEFINER,
+team-gated via `get_user_team_ids`, its own name chain ending in
+"«Child»'s parent", and **no email fallback**. All call sites go through one
+resolver, [src/lib/memberNames.ts](../../src/lib/memberNames.ts), so the RPC
+contract is stated once:
+
+| Export | Use |
+|---|---|
+| `fetchTeamMemberNames(teamId)` | one team |
+| `fetchTeamMemberNamesForTeams(ids)` | club-wide lists; the RPC is gated one team at a time |
+| `fetchChannelTeamId(channelId)` | `comm_channels.team_id`; null for DM / club channels |
+| `fetchChannelTeamMemberNames(channelId)` | channel-scoped callers |
+| `UNRESOLVED_NAME` = `'Unknown'` | the name-lookup-failure string, deliberately **not** `'Anonymous'` |
+
+It copies the properties of the working channel-scoped path (Table B): keyed by
+auth uid, one fetch per team rather than per row, a returned `error` checked
+explicitly rather than relied on to throw, falsy names dropped from the map, and
+any failure degraded to an empty map.
+
+### Per-site table
+
+| # | Site (line after swap) | Old read | Now RPC-sourced | `'Anonymous'` classification |
+|---|---|---|---|---|
+| 9 | [useMessages.ts:66](../../src/hooks/useMessages.ts#L66) | `.from('profiles').select('id, full_name, avatar_url').in('id', reactorIds)` | **yes** — `fetchChannelTeamMemberNames(channelId)` | n/a — site renders `'Unknown'` ([ReactionDetailsModal.tsx:74](../../src/components/chat/ReactionDetailsModal.tsx#L74)), a failure string, unchanged |
+| 13 | [usePolls.ts:41](../../src/hooks/usePolls.ts#L41) | embed `profiles:profiles!user_id(id, full_name, avatar_url)` | **yes** — poll's own `team_id`, else channel's | n/a — [PollCard.tsx:94](../../src/components/chat/PollCard.tsx#L94) renders `'Unknown'` (failure), unchanged. Voters are no longer dropped when the name fails. |
+| 15 | [PollDetailScreen.tsx:154](../../src/screens/PollDetailScreen.tsx#L154) | embed `profiles:profiles!user_id(...)` inside the `comm_polls` select | **yes** — `fetchChannelTeamMemberNames(channel_id)` | **split.** [:379](../../src/screens/PollDetailScreen.tsx#L379) was `'Anonymous'` for a **failure** → now `UNRESOLVED_NAME`. The **by-design** badge at [:424](../../src/screens/PollDetailScreen.tsx#L424) keeps `'Anonymous'`, untouched. |
+| 17 | [useBoardVoteView.ts:64](../../src/hooks/useBoardVoteView.ts#L64) | embed `profile:profiles(id, full_name)` | **yes** — `fetchChannelTeamMemberNames(channelId)` | n/a — `'Unknown'` (failure) → `UNRESOLVED_NAME`, same word |
+| 18 | [ChannelPollsScreen.tsx:147](../../src/screens/ChannelPollsScreen.tsx#L147) | `.from('profiles').select('id, full_name').in('id', creatorIds)` | **yes** — `fetchChannelTeamMemberNames(channelId)` | n/a — creator `'Unknown'` (failure), unchanged |
+| 19 | [EventDetailScreen.tsx:347](../../src/screens/EventDetailScreen.tsx#L347) | `.from('profiles').select('id, email, full_name').in('id', ids)` | **name: yes** — `fetchTeamMemberNames(event.team_id)`. **Email: still a direct read**, narrowed to `select('id, email')` | n/a — fallback is `'Team member'` ([:521](../../src/screens/EventDetailScreen.tsx#L521)), a failure string, unchanged |
+| 22 | [useChannelMembers.ts:34](../../src/hooks/useChannelMembers.ts#L34) + [:38](../../src/hooks/useChannelMembers.ts#L38) | embed `profile:profiles(full_name)` | **yes** — `fetchChannelTeamMemberNames(channelId)` | n/a — hook returns `null`, no fallback string |
+| 23 | [ChatInfoScreen.tsx:179](../../src/screens/ChatInfoScreen.tsx#L179) | `.from('profiles').select('id, full_name, avatar_url').in('id', userIds)` | **yes** — `teamId` param, else channel's team | n/a — `'Unknown'` (failure) → `UNRESOLVED_NAME` |
+| 27 | [DirectMessagesScreen.tsx:132](../../src/screens/DirectMessagesScreen.tsx#L132) | `.from('profiles').select('id, full_name, avatar_url')` | **no — BLOCKED, untouched** | n/a — `'Unknown'` (failure), unchanged |
+| 29 | [StaffMessageScreen.tsx:80](../../src/screens/StaffMessageScreen.tsx#L80) | `.from('profiles').select('id, full_name').in('id', userIds)` | **yes** — `fetchTeamMemberNamesForTeams(teamIds)` | n/a — `'Unknown'` (failure) → `UNRESOLVED_NAME` |
+| 30 | [TeamStaffScreen.tsx:75](../../src/screens/TeamStaffScreen.tsx#L75) | embed `profiles(id, full_name, email, avatar_url)` | **name: yes** — `fetchTeamMemberNames(actualTeamId)`. Embed **narrowed to `(id, email, avatar_url)`** | n/a — `'Unknown'` (failure), unchanged |
+| 31 | [TeamDetailScreen.tsx:127](../../src/screens/TeamDetailScreen.tsx#L127) | embed `profiles(full_name, email)` | **name: yes** — `fetchTeamMemberNames(teamId)`. Embed **narrowed to `profiles(email)`** | n/a — `'Unknown'` (failure), unchanged |
+| 28 | [DMChatScreen.tsx:181](../../src/screens/DMChatScreen.tsx#L181) | — | **skipped by instruction** | — |
+| 40 | [AuthContext.tsx:139](../../src/contexts/AuthContext.tsx#L139) | — | **skipped by instruction** (own row; RLS always allows it) | — |
+
+**Counts: 10 fully swapped · 2 name-swapped with the email read retained (#19, #30, #31 — see below; #19 counts once in each column) · 1 blocked · 2 skipped by instruction.**
+Exactly: fully swapped 8 (#9, #13, #15, #17, #18, #22, #23, #29); name-swapped with a
+narrowed email read 3 (#19, #30, #31); blocked 1 (#27); skipped 2 (#28, #40).
+
+### The `'Anonymous'` split
+
+Only one site used the word for a resolution failure, and it is the one Table A
+item 4 flagged. After the swap:
+
+- **failure** → `UNRESOLVED_NAME` (`'Unknown'`), the string the rest of the
+  codebase already uses for a failed lookup. No new fallback string was added.
+- **anonymous by design** → `'Anonymous'`, unchanged at
+  [PollDetailScreen.tsx:424](../../src/screens/PollDetailScreen.tsx#L424) and
+  [PollCard.tsx:408](../../src/components/chat/PollCard.tsx#L408).
+
+A grep for `'Anonymous'` now returns only those two by-design badges (plus
+comments). Anonymous-poll behaviour was not touched.
+
+### Sites where the direct `profiles` read survives, and why
+
+These are **not** name reads. In each case the RPC deliberately exposes no
+email, and removing the read would have deleted working behaviour for a staff
+viewer rather than fixing a name.
+
+| Site | Surviving read | What it is for |
+|---|---|---|
+| [EventDetailScreen.tsx:363](../../src/screens/EventDetailScreen.tsx#L363) | `.select('id, email')` | the **player-matching key** — compared against `players.parent_email` / `secondary_parent_email` (the tier-3 email bridge). Never displayed. Names are now independent of it, so an RLS failure here costs the match, not the name. |
+| [TeamStaffScreen.tsx:82](../../src/screens/TeamStaffScreen.tsx#L82) | `profiles(id, email, avatar_url)` | **contact info the screen renders** — `📧 {email}` at [:244](../../src/screens/TeamStaffScreen.tsx#L244) and the `mailto:` action at [:134](../../src/screens/TeamStaffScreen.tsx#L134) |
+| [TeamDetailScreen.tsx:129](../../src/screens/TeamDetailScreen.tsx#L129) | `profiles(email)` | **contact info the screen renders** — `· {email}` beside the role at [:264](../../src/screens/TeamDetailScreen.tsx#L264) |
+
+Also untouched and out of this scope: the **sender**-profile joins at
+[useMessages.ts:40](../../src/hooks/useMessages.ts#L40) and [:143](../../src/hooks/useMessages.ts#L143).
+Those are the documented "RPC first, join as fallback" tail of Table B step 8
+(sites #3/#4), not one of the 14.
+
+### Blocked site
+
+**#27 [DirectMessagesScreen.tsx:132](../../src/screens/DirectMessagesScreen.tsx#L132) — left as-is.**
+The screen lists every DM the viewer has, across every team. DM channels carry
+`team_id = null`, so there is no team id to gate `get_team_member_names` with,
+and no single team would cover the list even if there were. A team-scoped RPC
+cannot resolve this site.
+
+The fix already exists and is a **different** RPC: `get_my_conversations`
+returns `other_user_name` and is used for exactly this purpose at
+[ChatScreen.tsx:320](../../src/screens/ChatScreen.tsx#L320) (Table A #26, RLS-safe).
+Switching DirectMessagesScreen onto it is a separate ticket.
+
+### RPC signature — prod-verified
+
+```
+get_team_member_names(p_team_id)
+  RETURNS TABLE(user_id uuid, display_name text, avatar_url text)
+```
+
+The resolver reads exactly those three columns. There is no `full_name` column,
+so no second name key is carried.
+
+Note the signature is verified against prod, not against this repo: no RPC or
+policy SQL lives here (`supabase/migrations/` still holds only
+`20250224000000_notify_lineup_published.sql`), so a future change to the
+function will not show up in a diff. If `display_name` ever stops arriving,
+every swapped site degrades to its failure string rather than breaking.

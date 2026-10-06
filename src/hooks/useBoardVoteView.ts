@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  fetchChannelTeamMemberNames,
+  UNRESOLVED_NAME,
+} from '../lib/memberNames';
 
 export interface BoardVoteParticipant {
   id: string;
@@ -57,16 +61,17 @@ export function useBoardVoteView(
     setError(null);
 
     try {
-      // 1. Fetch channel members with profiles
+      // 1. Fetch channel members. The `profile:profiles(id, full_name)` embed
+      // this used to carry was blocked by RLS for a regular viewer, so every
+      // participant rendered as 'Unknown'; names come from the team-gated RPC.
       const { data: membersData, error: membersError } = await supabase
         .from('comm_channel_members')
-        .select(`
-          user_id,
-          profile:profiles(id, full_name)
-        `)
+        .select('user_id')
         .eq('channel_id', channelId);
 
       if (membersError) throw membersError;
+
+      const memberNames = await fetchChannelTeamMemberNames(channelId);
 
       // 2. Fetch poll votes with option text and comment
       const { data: votesData, error: votesError } = await supabase
@@ -110,8 +115,7 @@ export function useBoardVoteView(
       const merged: BoardVoteParticipant[] = (membersData || []).map(
         (m: any) => {
           const userId = m.user_id;
-          const profile = Array.isArray(m.profile) ? m.profile[0] : m.profile;
-          const name = profile?.full_name ?? 'Unknown';
+          const name = memberNames.get(userId)?.name ?? UNRESOLVED_NAME;
           const voteInfo = voteMap.get(userId);
           const hasVote = !!voteInfo;
           const hasView = viewedUserIds.has(userId);

@@ -14,6 +14,11 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  fetchChannelTeamMemberNames,
+  fetchTeamMemberNames,
+  UNRESOLVED_NAME,
+} from '../lib/memberNames';
 
 interface Member {
   id: string;
@@ -171,12 +176,13 @@ export default function ChatInfoScreen() {
 
     const userIds = memberRows.map((m: any) => m.user_id);
 
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('id, full_name, avatar_url')
-      .in('id', userIds);
-
-    const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+    // Reading `profiles` directly returned only the viewer's own row under RLS,
+    // so every other member of the channel rendered as 'Unknown'. The
+    // team-gated RPC resolves for anyone on the team; `teamId` is not always a
+    // route param, so fall back to the channel's own team.
+    const profileMap = teamId
+      ? await fetchTeamMemberNames(teamId)
+      : await fetchChannelTeamMemberNames(channelId);
 
     let staffMap = new Map<string, string>();
     let playerUserIds = new Set<string>();
@@ -213,7 +219,7 @@ export default function ChatInfoScreen() {
     }
 
     const membersList: Member[] = userIds.map((userId) => {
-      const profile = profileMap.get(userId);
+      const resolved = profileMap.get(userId);
       const staffRole = staffMap.get(userId);
       const isPlayer = playerUserIds.has(userId);
 
@@ -242,8 +248,8 @@ export default function ChatInfoScreen() {
       return {
         id: userId,
         user_id: userId,
-        full_name: profile?.full_name || 'Unknown',
-        avatar_url: profile?.avatar_url ?? null,
+        full_name: resolved?.name || UNRESOLVED_NAME,
+        avatar_url: resolved?.avatar ?? null,
         role,
         role_label,
       };

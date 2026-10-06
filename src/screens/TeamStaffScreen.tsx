@@ -12,6 +12,7 @@ import {
   Alert,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
+import { fetchTeamMemberNames } from '../lib/memberNames';
 
 interface Profile {
   id: string;
@@ -66,6 +67,11 @@ export default function TeamStaffScreen({ route, navigation }: any) {
 
       setTeam(teamData as any);
 
+      // `full_name` used to ride along on this embed, which RLS blocked for a
+      // non-staff viewer -- every coach rendered as 'Unknown'. The name now
+      // comes from the team-gated RPC. The embed is kept, narrowed to the
+      // contact columns the screen renders (email drives the mailto action);
+      // the RPC exposes no email, and email is never used as a name.
       const { data: staffData, error } = await supabase
         .from('user_roles')
         .select(`
@@ -75,7 +81,6 @@ export default function TeamStaffScreen({ route, navigation }: any) {
           entity_id,
           profiles (
             id,
-            full_name,
             email,
             avatar_url
           )
@@ -85,10 +90,20 @@ export default function TeamStaffScreen({ route, navigation }: any) {
 
       if (error) throw error;
 
-      const staffList = (staffData || []).map((m: any) => ({
-        ...m,
-        profiles: Array.isArray(m.profiles) ? m.profiles[0] : m.profiles,
-      }));
+      const memberNames = await fetchTeamMemberNames(actualTeamId);
+
+      const staffList = (staffData || []).map((m: any) => {
+        const contact = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+        return {
+          ...m,
+          profiles: {
+            id: m.user_id,
+            full_name: memberNames.get(m.user_id)?.name ?? null,
+            email: contact?.email ?? null,
+            avatar_url: contact?.avatar_url ?? null,
+          },
+        };
+      });
 
       setStaff(staffList);
     } catch (err) {

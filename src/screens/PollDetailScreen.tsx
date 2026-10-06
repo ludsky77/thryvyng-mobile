@@ -13,6 +13,11 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  fetchChannelTeamMemberNames,
+  UNRESOLVED_NAME,
+  type MemberNameMap,
+} from '../lib/memberNames';
 
 const STAFF_ROLES = [
   'head_coach',
@@ -93,7 +98,6 @@ interface RawVote {
   option_id: string;
   user_id: string;
   rank: number | null;
-  profiles: { id: string; full_name: string | null; avatar_url: string | null } | null;
 }
 
 interface RawPoll {
@@ -124,6 +128,7 @@ export default function PollDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [poll, setPoll] = useState<RawPoll | null>(null);
   const [isStaff, setIsStaff] = useState(false);
+  const [memberNames, setMemberNames] = useState<MemberNameMap>(new Map());
   const [activeTab, setActiveTab] = useState<'byOption' | 'byVoter'>('byOption');
 
   const loadData = useCallback(async () => {
@@ -138,13 +143,22 @@ export default function PollDetailScreen() {
         .select(`
           id, question, poll_type, is_anonymous, is_active, ends_at, created_by, channel_id,
           comm_poll_options(id, option_text, sort_order),
-          comm_poll_votes(id, option_id, user_id, rank, profiles:profiles!user_id(id, full_name, avatar_url))
+          comm_poll_votes(id, option_id, user_id, rank)
         `)
         .eq('id', pollId)
         .single();
 
       if (err || !data) throw new Error('Poll not found');
       setPoll(data as unknown as RawPoll);
+
+      // Voter names used to ride along on the vote rows as a
+      // `profiles:profiles!user_id(...)` embed, which RLS blocked for a
+      // regular viewer -- the voter then rendered as 'Anonymous' even on a
+      // poll that was never anonymous. The team-gated RPC resolves for anyone
+      // on the team.
+      setMemberNames(
+        await fetchChannelTeamMemberNames((data as any).channel_id)
+      );
 
       if (user?.id) {
         const channelId = (data as any).channel_id;
@@ -219,14 +233,19 @@ export default function PollDetailScreen() {
     return options
       .map((opt) => {
         const optVotes = votes.filter((v) => v.option_id === opt.id);
-        const voters = optVotes
-          .map((v) => v.profiles)
-          .filter(Boolean) as { id: string; full_name: string | null; avatar_url: string | null }[];
+        const voters = optVotes.map((v) => {
+          const resolved = memberNames.get(v.user_id);
+          return {
+            id: v.user_id,
+            full_name: resolved?.name ?? null,
+            avatar_url: resolved?.avatar ?? null,
+          };
+        });
         const pct = totalVotes > 0 ? Math.round((optVotes.length / totalVotes) * 100) : 0;
         return { ...opt, vote_count: optVotes.length, pct, voters };
       })
       .sort((a, b) => b.vote_count - a.vote_count);
-  }, [poll, totalVotes]);
+  }, [poll, totalVotes, memberNames]);
 
   // Voters grouped by user, sorted alphabetically
   const voterEntries = useMemo(() => {
@@ -246,8 +265,13 @@ export default function PollDetailScreen() {
     votes.forEach((v) => {
       if (!v.user_id) return;
       if (!byUser.has(v.user_id)) {
+        const resolved = memberNames.get(v.user_id);
         byUser.set(v.user_id, {
-          profile: v.profiles ?? { id: v.user_id, full_name: null, avatar_url: null },
+          profile: {
+            id: v.user_id,
+            full_name: resolved?.name ?? null,
+            avatar_url: resolved?.avatar ?? null,
+          },
           votes: [],
         });
       }
@@ -270,7 +294,7 @@ export default function PollDetailScreen() {
       .sort((a, b) =>
         (a.profile.full_name ?? '').localeCompare(b.profile.full_name ?? '')
       );
-  }, [poll, showVoterDetails]);
+  }, [poll, showVoterDetails, memberNames]);
 
   if (loading) {
     return (
@@ -346,7 +370,14 @@ export default function PollDetailScreen() {
     <View style={styles.voterCard}>
       <Avatar url={item.profile.avatar_url} name={item.profile.full_name} size={40} />
       <View style={styles.voterInfo}>
-        <Text style={styles.voterName}>{item.profile.full_name ?? 'Anonymous'}</Text>
+        {/* A name that failed to resolve is NOT the same thing as an
+            anonymous poll. This row only renders when showVoterDetails is
+            true, i.e. the viewer is allowed to see who voted, so 'Anonymous'
+            here always meant a lookup failure. The anonymous-poll guarantee
+            keeps its own word, in the badge below. */}
+        <Text style={styles.voterName}>
+          {item.profile.full_name ?? UNRESOLVED_NAME}
+        </Text>
         <Text style={styles.voterVote} numberOfLines={2}>
           {item.voteLabel}
         </Text>

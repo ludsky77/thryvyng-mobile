@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
+import { fetchTeamMemberNames } from '../lib/memberNames';
 import { useAuth } from '../contexts/AuthContext';
 
 const TEAM_COLOR_PALETTE = [
@@ -112,17 +113,22 @@ export default function TeamDetailScreen({ route, navigation }: any) {
     if (!teamId) { setLoading(false); return; }
     setLoading(true);
     try {
-      const [teamRes, playersRes, staffRes] = await Promise.all([
+      const [teamRes, playersRes, staffRes, memberNames] = await Promise.all([
         supabase.from('teams').select('id, name, color').eq('id', teamId).single(),
         supabase
           .from('players')
           .select('id, first_name, last_name, jersey_number, photo_url')
           .eq('team_id', teamId)
           .order('last_name', { ascending: true }),
+        // `full_name` used to ride along on this embed, which RLS blocked for a
+        // non-staff viewer -- every staff row rendered as 'Unknown'. The name
+        // now comes from the team-gated RPC; the embed is narrowed to the email
+        // this screen renders as contact info beside the role.
         supabase
           .from('team_staff')
-          .select('id, role, profiles(full_name, email)')
+          .select('id, role, user_id, profiles(email)')
           .eq('team_id', teamId),
+        fetchTeamMemberNames(teamId),
       ]);
 
       if (teamRes.data) {
@@ -132,10 +138,16 @@ export default function TeamDetailScreen({ route, navigation }: any) {
 
       setPlayers((playersRes.data || []) as Player[]);
 
-      const staffRows = (staffRes.data || []).map((s: any) => ({
-        ...s,
-        profiles: Array.isArray(s.profiles) ? s.profiles[0] ?? null : s.profiles,
-      }));
+      const staffRows = (staffRes.data || []).map((s: any) => {
+        const contact = Array.isArray(s.profiles) ? s.profiles[0] ?? null : s.profiles;
+        return {
+          ...s,
+          profiles: {
+            full_name: memberNames.get(s.user_id)?.name ?? null,
+            email: contact?.email ?? null,
+          },
+        };
+      });
       setStaff(staffRows as StaffMember[]);
     } catch (err) {
       console.error('TeamDetailScreen fetch error:', err);

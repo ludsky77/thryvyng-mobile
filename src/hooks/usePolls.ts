@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  fetchChannelTeamMemberNames,
+  fetchTeamMemberNames,
+} from '../lib/memberNames';
 import type { Poll, PollOption, VoterProfile } from '../types';
 
 export function usePoll(pollId: string | null) {
@@ -29,16 +33,30 @@ export function usePoll(pollId: string | null) {
 
     const { data: votes } = await supabase
       .from('comm_poll_votes')
-      .select('id, poll_id, option_id, user_id, rank, comment, profiles:profiles!user_id(id, full_name, avatar_url)')
+      .select('id, poll_id, option_id, user_id, rank, comment')
       .eq('poll_id', pollId);
 
     const userVotes = votes?.filter(v => v.user_id === user?.id) || [];
 
+    // Voter names came from a `profiles:profiles!user_id(...)` embed that RLS
+    // blocked for a regular viewer; the voter was then dropped from the list
+    // by the filter below, so the list silently shrank. The team-gated RPC
+    // resolves for anyone on the team, and every voter is now kept whether or
+    // not a name came back.
+    const memberNames = (pollData as any).team_id
+      ? await fetchTeamMemberNames((pollData as any).team_id)
+      : await fetchChannelTeamMemberNames((pollData as any).channel_id);
+
     const optionsWithCounts = pollData.options?.map((opt: PollOption) => {
       const optVotes = votes?.filter(v => v.option_id === opt.id) || [];
-      const voters = optVotes
-        .map((v: any) => v.profiles)
-        .filter(Boolean) as VoterProfile[];
+      const voters: VoterProfile[] = optVotes.map((v: any) => {
+        const resolved = memberNames.get(v.user_id);
+        return {
+          id: v.user_id,
+          full_name: resolved?.name ?? null,
+          avatar_url: resolved?.avatar ?? null,
+        };
+      });
       return {
         ...opt,
         vote_count: optVotes.length,

@@ -16,6 +16,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import { BoardVoteContainer } from '../components/polls/BoardVoteContainer';
+import { fetchChannelTeamMemberNames } from '../lib/memberNames';
 
 interface Poll {
   id: string;
@@ -140,15 +141,16 @@ export default function ChannelPollsScreen() {
           (pollsData || []).map((p: any) => p.created_by).filter(Boolean)
         ),
       ];
+      // Creator names used to come from a direct `profiles` read, which RLS
+      // blocked for a regular viewer -- every poll was created by 'Unknown'.
+      // The team-gated RPC resolves for anyone on the team.
       let profileMap = new Map<string, string>();
       if (creatorIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, full_name')
-          .in('id', creatorIds);
-        profileMap = new Map(
-          (profiles || []).map((p: any) => [p.id, p.full_name || 'Unknown'])
-        );
+        const memberNames = await fetchChannelTeamMemberNames(channelId);
+        creatorIds.forEach((creatorId: any) => {
+          const resolved = memberNames.get(creatorId);
+          if (resolved?.name) profileMap.set(creatorId, resolved.name);
+        });
       }
       let votedPollIds = new Set<string>();
       let votedOptionsMap = new Map<string, string>();

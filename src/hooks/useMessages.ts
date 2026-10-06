@@ -5,6 +5,7 @@ import {
   subscribeToMessageInserts,
   subscribeToReactionChanges,
 } from '../lib/realtimeHub';
+import { fetchChannelTeamMemberNames } from '../lib/memberNames';
 import type { Message } from '../types';
 
 export function useMessages(channelId: string | null, onNewMessage?: () => void) {
@@ -61,22 +62,23 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
         });
       });
 
-      // Fetch profiles for reaction users
+      // Resolve reactor names. Reading `profiles` directly returned nothing for
+      // a regular parent/player viewer -- RLS hides other members' rows -- so
+      // every reactor rendered as 'Unknown'. The team-gated RPC resolves for
+      // any viewer on the team; a DM or club channel has no team, so the map
+      // comes back empty and the reaction keeps a null profile.
       let profilesMap: Record<string, { full_name: string | null; avatar_url: string | null }> = {};
       if (reactionUserIds.size > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, full_name, avatar_url')
-          .in('id', Array.from(reactionUserIds));
-        if (profiles) {
-          profilesMap = profiles.reduce(
-            (acc, p) => {
-              acc[p.id] = { full_name: p.full_name ?? null, avatar_url: p.avatar_url ?? null };
-              return acc;
-            },
-            {} as Record<string, { full_name: string | null; avatar_url: string | null }>
-          );
-        }
+        const memberNames = await fetchChannelTeamMemberNames(channelId);
+        reactionUserIds.forEach((reactorId) => {
+          const resolved = memberNames.get(reactorId);
+          if (resolved) {
+            profilesMap[reactorId] = {
+              full_name: resolved.name,
+              avatar_url: resolved.avatar,
+            };
+          }
+        });
       }
 
       // Enrich each message's reactions with profile data

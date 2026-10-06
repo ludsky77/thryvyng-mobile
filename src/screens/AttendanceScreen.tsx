@@ -72,6 +72,14 @@ export default function AttendanceScreen({ route, navigation }: any) {
   const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  /** True once a mark has been cycled and not yet saved. Drives the exit guard. */
+  const [dirty, setDirty] = useState(false);
+
+  /** error.message plus error.code, so a report names the real failure. */
+  const describeError = (e: { message?: string; code?: string } | null): string => {
+    if (!e) return 'Unknown error';
+    return (e.message || 'Unknown error') + (e.code ? ' (' + e.code + ')' : '');
+  };
 
   const fetchData = useCallback(async () => {
     if (!event_id) {
@@ -122,6 +130,8 @@ export default function AttendanceScreen({ route, navigation }: any) {
           : 'maybe';
       });
       setAttendance(initial);
+      // Freshly loaded from the server, so nothing is pending.
+      setDirty(false);
     } catch (err) {
       console.error('Error fetching attendance data:', err);
     } finally {
@@ -138,6 +148,7 @@ export default function AttendanceScreen({ route, navigation }: any) {
     const idx = STATUS_OPTIONS.findIndex((o) => o.value === current);
     const next = STATUS_OPTIONS[(idx + 1) % STATUS_OPTIONS.length].value;
     setAttendance((prev) => ({ ...prev, [playerId]: next }));
+    setDirty(true);
   };
 
   const getStatusHint = (playerId: string): string => {
@@ -157,38 +168,108 @@ export default function AttendanceScreen({ route, navigation }: any) {
     setSaving(true);
 
     try {
+      // Supabase reports failure as a RETURNED error, never a throw, so the
+      // try/catch below never sees a rejected row. The old code checked neither
+      // write and alerted 'Saved' unconditionally -- a coach read "Attendance
+      // has been saved." while every row had been refused. Same failure the
+      // lineup save had before 23e05ec.
+      const failed: { name: string; error: { message?: string; code?: string } }[] = [];
+
       for (const player of players) {
         const status = attendance[player.id] ?? 'maybe';
         const existing = rsvps.find((r) => r.player_id === player.id);
+        const playerName =
+          (player.first_name + ' ' + player.last_name).trim() || 'Unnamed player';
 
         if (existing) {
-          await supabase
+          const { error: updateError } = await supabase
             .from('cal_event_rsvps')
             .update({
               status,
               responded_at: new Date().toISOString(),
             })
             .eq('id', existing.id);
+          if (updateError) failed.push({ name: playerName, error: updateError });
         } else {
-          await supabase.from('cal_event_rsvps').insert({
+          const { error: insertError } = await supabase.from('cal_event_rsvps').insert({
             event_id,
             player_id: player.id,
             user_id: user.id,
             status,
             responded_at: new Date().toISOString(),
           });
+          if (insertError) failed.push({ name: playerName, error: insertError });
         }
       }
 
-      Alert.alert('Saved', 'Attendance has been saved.');
-      fetchData();
+      if (failed.length === 0) {
+        setDirty(false);
+        Alert.alert('Saved', 'Attendance has been saved.');
+        fetchData();
+        return;
+      }
+
+      if (__DEV__) {
+        console.warn(
+          '[Attendance] save failed for ' + failed.length + ' of ' + players.length,
+          failed
+        );
+      }
+
+      // Never refetch after a failure: that would overwrite the marks still on
+      // screen with server state and clear `dirty`, losing the coach's work and
+      // disarming the exit guard. The sheet stays dirty and the marks stay put.
+      if (failed.length === players.length) {
+        Alert.alert(
+          'Save failed',
+          'Nothing was saved. Your marks are still on screen.\n\n' +
+            describeError(failed[0].error)
+        );
+      } else {
+        Alert.alert(
+          'Partly saved',
+          failed.length +
+            ' of ' +
+            players.length +
+            ' players could not be saved: ' +
+            failed.map((f) => f.name).join(', ') +
+            '.\n\nThe others were saved. Reload this screen before trying again, so the ' +
+            'saved rows are not written twice.\n\n' +
+            describeError(failed[0].error)
+        );
+      }
     } catch (err) {
       console.error('Error saving attendance:', err);
-      Alert.alert('Error', 'Could not save attendance.');
+      Alert.alert('Save failed', 'Could not save attendance.\n\n' + describeError(err as any));
     } finally {
       setSaving(false);
     }
   };
+
+  /**
+   * Native header back, Android hardware back and swipe-back all route through
+   * 'beforeRemove', so one listener covers every exit. First use of it in this
+   * repo; the dialog copy follows SurveyResponseScreen's Stay/Discard idiom.
+   */
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
+      if (!dirty) return;
+      e.preventDefault();
+      Alert.alert(
+        'Discard attendance?',
+        'Your marks will not be saved if you leave now.',
+        [
+          { text: 'Stay', style: 'cancel' },
+          {
+            text: 'Discard',
+            style: 'destructive',
+            onPress: () => navigation.dispatch(e.data.action),
+          },
+        ]
+      );
+    });
+    return unsubscribe;
+  }, [navigation, dirty]);
 
   const presentCount = players.filter((p) => (attendance[p.id] ?? 'maybe') === 'yes').length;
 

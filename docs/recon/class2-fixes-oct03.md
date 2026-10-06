@@ -42,3 +42,8 @@ Source unknown — needs whoever cited it to name the table, or re-derive at 4f 
 ## Addendum Oct 5 — 4e link 2 (client-only)
 - TeamChatRoomScreen:436,456 + DMChatScreen:340 — reply sender name now memberNames-first (was profile?.full_name ?? Unknown); also stops Unknown persisting into reply_to_sender
 - Found: DMChatScreen:298 setCelebration undefined (TS2304, pre-existing) — ticketed
+
+## Addendum Oct 6 — Step A attendance truthful save
+- AttendanceScreen: both writes error-checked (Saved only when failed[]=0; partial names players), beforeRemove unsaved guard added (commit this)
+- Folded into queued item (a): unchecked reads :101/:111 (failed rsvps read -> insert branch -> duplicate RSVPs) + partial-failure blind-retry duplicate hazard — same root cause, fix together with dedupe+constraint
+- ux-smoothness-sweep findings #1 #2 = RESOLVED

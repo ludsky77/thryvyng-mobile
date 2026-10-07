@@ -20,7 +20,8 @@ import { supabase } from '../../lib/supabase';
 import type { EventType, CalendarEvent } from '../../types';
 import { EVENT_TYPES } from '../../types';
 import { CollapsibleSection } from '../CollapsibleSection';
-import { notifyTeamOfEvent } from '../../services/eventNotifications';
+import { confirmAndNotifyTeam } from '../../lib/eventChangeNotify';
+import { diffEventFields } from '../../lib/eventChangeSummary';
 
 if (
   Platform.OS === 'android' &&
@@ -189,24 +190,25 @@ export function EditEventModal({
 
       if (error) throw error;
 
-      // Track which fields changed and notify
-      const changedFields: string[] = [];
-      if (event.event_date !== updatePayload.event_date) changedFields.push('event_date');
-      if (event.start_time !== updatePayload.start_time) changedFields.push('start_time');
-      if ((event.arrival_time ?? null) !== updatePayload.arrival_time) changedFields.push('arrival_time');
-      if (event.end_time !== updatePayload.end_time) changedFields.push('end_time');
-      if ((event.location_name ?? null) !== updatePayload.location_name) changedFields.push('location_name');
-      if ((event.location_address ?? null) !== updatePayload.location_address) changedFields.push('location_address');
-
-      if (changedFields.length > 0) {
-        notifyTeamOfEvent({
-          eventId: event.id,
-          action: 'updated',
-          changedFields,
-        });
-      }
+      // Which editable fields actually changed. diffEventFields normalises
+      // times to HH:MM before comparing -- the form writes "18:30" while
+      // PostgREST returns "18:30:00", so the previous raw !== comparison
+      // reported start/arrival/end time as changed on EVERY save and the team
+      // was told "New time" even for a notes-only edit.
+      const changedFields = diffEventFields(event, updatePayload);
 
       onSuccess();
+
+      // Ask only after the save has committed, and only if something really
+      // changed (a no-op save shows no dialog). Awaited so the exchange
+      // finishes, but confirmAndNotifyTeam never throws -- a push failure
+      // cannot affect the save, which is already done.
+      await confirmAndNotifyTeam({
+        event: updatePayload,
+        eventId: event.id,
+        action: 'updated',
+        changedFields,
+      });
     } catch (err) {
       console.error('Error updating event:', err);
       Alert.alert('Error', 'Failed to update event. Please try again.');

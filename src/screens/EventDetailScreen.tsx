@@ -24,6 +24,7 @@ import type { CalendarEvent } from '../types';
 import { EditEventModal } from '../components/calendar/EditEventModal';
 import { CantGoReasonModal } from '../components/calendar/CantGoReasonModal';
 import { notifyTeamOfEvent } from '../services/eventNotifications';
+import { confirmAndNotifyTeam } from '../lib/eventChangeNotify';
 import PlayerAvatar from '../components/PlayerAvatar';
 import { GameEntryButton } from '../components/game-stats/GameEntryButton';
 import { isEventPast } from '../utils/calendar';
@@ -822,14 +823,18 @@ export default function EventDetailScreen({ route, navigation }: any) {
 
               if (error) throw error;
 
-              // Notify team of cancellation
-              notifyTeamOfEvent({
-                eventId: event.id,
-                action: 'cancelled',
-              });
               console.log('[Cancel] Event cancelled:', event.id);
               fetchEvent();
               onRefetch?.();
+
+              // Ask before telling the team -- this used to fire on every
+              // cancellation with no prompt. The cancel itself is already
+              // committed above and is unaffected by the answer.
+              await confirmAndNotifyTeam({
+                event,
+                eventId: event.id,
+                action: 'cancelled',
+              });
             } catch (err: any) {
               console.error('[Cancel] Error:', err);
               Alert.alert('Error', 'Failed to cancel event. Please try again.');
@@ -873,6 +878,19 @@ export default function EventDetailScreen({ route, navigation }: any) {
   const deleteSingleEvent = async () => {
     if (!event) return;
     try {
+      // ⚠️ ORDER IS LOAD-BEARING: ask and send BEFORE deleting.
+      // notify-team-event fetches the event row and returns 404 if it is
+      // gone, and it has no 'deleted' action at all, so a post-delete
+      // notification is impossible. The helper announces this as 'cancelled'
+      // (what the team receives reads "Event Cancelled") while the dialog
+      // says "deleted". Awaited so the push is out before the row goes; a
+      // failed or declined push still falls through to the delete.
+      await confirmAndNotifyTeam({
+        event,
+        eventId: event.id,
+        action: 'deleted',
+      });
+
       console.log('[Delete] Deleting single event:', event.id);
       
       const { error: rsvpError } = await supabase

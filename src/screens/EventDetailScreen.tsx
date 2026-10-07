@@ -24,7 +24,7 @@ import type { CalendarEvent } from '../types';
 import { EditEventModal } from '../components/calendar/EditEventModal';
 import { CantGoReasonModal } from '../components/calendar/CantGoReasonModal';
 import { notifyTeamOfEvent } from '../services/eventNotifications';
-import { confirmAndNotifyTeam } from '../lib/eventChangeNotify';
+import { confirmAndNotifyTeam, confirmAndNotifyTeamSeries } from '../lib/eventChangeNotify';
 import PlayerAvatar from '../components/PlayerAvatar';
 import { GameEntryButton } from '../components/game-stats/GameEntryButton';
 import { isEventPast } from '../utils/calendar';
@@ -945,6 +945,23 @@ export default function EventDetailScreen({ route, navigation }: any) {
 
       if (futureEvents && futureEvents.length > 0) {
         const eventIds = futureEvents.map((e) => e.id);
+
+        // ⚠️ ORDER IS LOAD-BEARING: ask and send BEFORE deleting, same as
+        // deleteSingleEvent. notify-team-event re-reads the event row and
+        // 404s if it is gone, and it resolves recipients off that row's
+        // team_id -- so once these rows are deleted no series push is
+        // possible at all. Awaited so the push is out before the rows go; a
+        // declined or failed push still falls through to the delete below.
+        //
+        // series_count is eventIds.length -- the SAME array the delete runs
+        // on, not a re-query -- so the number the team is told and the rows
+        // actually removed cannot disagree.
+        await confirmAndNotifyTeamSeries({
+          event,
+          eventId: event.id,
+          seriesCount: eventIds.length,
+          seriesFrom: event.event_date,
+        });
 
         const { error: rsvpError } = await supabase
           .from('cal_event_rsvps')

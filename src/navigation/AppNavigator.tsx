@@ -904,6 +904,21 @@ export default function AppNavigator() {
       const eventId = data.event_id ?? data.reference_id;
       if (eventId) {
         nav.navigate('EventDetail', { eventId, onRefetch: () => {} });
+      } else {
+        // No event id: a series cancellation clears it server-side, because
+        // the row it pointed at is being deleted and EventDetail would open
+        // dead. Land on the calendar instead of doing nothing.
+        //
+        // Explicit nested target, not a bare navigate('Calendar'): Calendar
+        // is registered only inside CalendarStack, so the root navigator
+        // cannot resolve it by name. Same shape as the chat branch above.
+        //
+        // Readiness needs nothing extra -- this sits inside
+        // routeNotification, which already returned early if
+        // navigationRef.current was null, and a tap that arrives before the
+        // navigator exists is stashed in pendingNotificationRef and replayed
+        // after loading finishes.
+        nav.navigate('Main', { screen: 'CalendarTab', params: { screen: 'Calendar' } });
       }
     } else if (type === 'lineup_published') {
       if (data.event_id) {

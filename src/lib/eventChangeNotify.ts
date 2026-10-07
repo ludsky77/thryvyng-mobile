@@ -30,6 +30,7 @@ import { supabase } from './supabase';
 import {
   type EventChangeAction,
   type EventSnapshot,
+  normalizeText,
   summarizeForDialog,
 } from './eventChangeSummary';
 
@@ -131,6 +132,112 @@ export async function confirmAndNotifyTeam({
   if (!wantsToNotify) return;
 
   const ok = await sendTeamChangeNotification({ eventId, action, changedFields });
+
+  if (!ok) {
+    Alert.alert(
+      "Couldn't notify the team",
+      'The change went through, but the notification could not be sent. You can let the team know another way.',
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// SERIES CANCELLATION ("This & Future Events")
+//
+// Kept as its own send/confirm pair rather than widening the three functions
+// above, because those are the already-shipped single-event path (caa2787)
+// and this needs a different action, two extra payload fields and different
+// dialog copy. Nothing above is modified.
+// ──────────────────────────────────────────────────────────────────────────
+
+/**
+ * "this and 7 future events will be cancelled".
+ *
+ * `seriesCount` is the TOTAL number of rows the delete removes -- the visible
+ * event PLUS its future occurrences -- because that is what the edge function
+ * prints ("and all remaining dates (8 events)"). The dialog, though, talks
+ * about the visible event separately ("this and 7 future"), so the number
+ * shown here is seriesCount - 1. Keeping the payload as the total and doing
+ * the subtraction only for display means the dialog and the push can never
+ * describe different sets of events.
+ */
+export function describeSeriesCancellation(seriesCount: number): string {
+  const future = Number.isInteger(seriesCount) ? seriesCount - 1 : 0;
+  if (future <= 0) return 'this event will be cancelled';
+  return `this and ${future} future event${future === 1 ? '' : 's'} will be cancelled`;
+}
+
+/** "Practice — this and 7 future events will be cancelled". */
+export function summarizeSeriesForDialog(event: EventSnapshot, seriesCount: number): string {
+  const suffix = describeSeriesCancellation(seriesCount);
+  const title = normalizeText(event.title);
+  // No title: say the same true thing without printing "undefined — ...".
+  if (!title) return `${suffix.charAt(0).toUpperCase()}${suffix.slice(1)}`;
+  return `${title} — ${suffix}`;
+}
+
+interface SeriesSendParams {
+  /** The VISIBLE event's id -- the row the edge function re-reads. */
+  eventId: string;
+  /** Total rows the delete removes, counted from the delete's own criteria. */
+  seriesCount: number;
+  /** The visible event's event_date, YYYY-MM-DD. */
+  seriesFrom: string;
+}
+
+/**
+ * Fire the series push. Returns true on success, false on failure; never
+ * throws, so the delete it precedes can never be blocked by a push problem.
+ */
+export async function sendSeriesCancelNotification({
+  eventId,
+  seriesCount,
+  seriesFrom,
+}: SeriesSendParams): Promise<boolean> {
+  try {
+    const { error } = await supabase.functions.invoke('notify-team-event', {
+      body: {
+        event_id: eventId,
+        action: 'cancelled_series',
+        series_count: seriesCount,
+        series_from: seriesFrom,
+      },
+    });
+
+    if (error) {
+      console.error('[EventChangeNotify] cancelled_series error:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[EventChangeNotify] cancelled_series exception:', err);
+    return false;
+  }
+}
+
+interface ConfirmSeriesParams extends SeriesSendParams {
+  /** Used only to build the dialog line. */
+  event: EventSnapshot;
+}
+
+/**
+ * Ask, then send if asked for. Resolves when the whole exchange is done, so
+ * the caller can `await` this and be sure the push went out while the series
+ * rows still existed.
+ *
+ * Never throws: a declined or failed push falls through to the delete, which
+ * is the same contract the single-event path has.
+ */
+export async function confirmAndNotifyTeamSeries({
+  event,
+  eventId,
+  seriesCount,
+  seriesFrom,
+}: ConfirmSeriesParams): Promise<void> {
+  const wantsToNotify = await askNotifyTeam(summarizeSeriesForDialog(event, seriesCount));
+  if (!wantsToNotify) return;
+
+  const ok = await sendSeriesCancelNotification({ eventId, seriesCount, seriesFrom });
 
   if (!ok) {
     Alert.alert(

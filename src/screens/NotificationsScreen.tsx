@@ -184,6 +184,16 @@ export default function NotificationsScreen({ navigation }: any) {
       const eventId = data?.event_id ?? data?.reference_id;
       if (eventId) {
         navigation.navigate('EventDetail', { eventId, onRefetch: () => {} });
+      } else {
+        // No event id: a series cancellation clears it server-side, because
+        // the row it pointed at is being deleted and EventDetail would open
+        // dead. Land on the calendar instead of doing nothing.
+        //
+        // Explicit nested target for the same reason the staff_request
+        // branch below uses one: this screen is registered in four different
+        // stacks, and Calendar lives only in CalendarStack, so a bare
+        // navigate('Calendar') resolves from none of them.
+        navigation.navigate('Main', { screen: 'CalendarTab', params: { screen: 'Calendar' } });
       }
       return;
     }

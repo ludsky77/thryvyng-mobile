@@ -95,3 +95,502 @@ carries all three. `getStatusHint` ([:143](../../src/screens/AttendanceScreen.ts
 **Not cosmetic, do not absorb into 4f:** #1 is a correctness bug (write-error checking), and
 [useChannelMembers.ts:34](../../src/hooks/useChannelMembers.ts#L34) needs server work. **INFERRED:** all RLS claims inherit the Oct-02
 caveat — no policy SQL exists in this repo, so "RLS-blocked" is from call-site comments, not verified.
+
+---
+
+## ㊶a — emoji-reaction tap feels slow (spec restored Oct 6 2026)
+
+**Status of the id.** [class2-fixes-oct03.md §Queued (b)](class2-fixes-oct03.md)
+recorded ㊶a as *"not found in any recon doc … source unknown"*. The spec was
+lost, not the item. It is written down here so it cannot go missing again.
+
+**Spec.** Tapping an emoji reaction waits for the DB round trip before painting.
+Fix: optimistic update — paint on tap, reconcile on response, roll back on
+error. Match the optimistic pattern already used in chat.
+
+**Where it was.** [useMessages.ts](../../src/hooks/useMessages.ts) —
+`toggleReaction` → `addReaction` / `removeReaction`, a bare insert/delete with
+no local state change. Nothing moved on screen until the write returned **and**
+`subscribeToReactionChanges` fired a refetch.
+
+**Second half of the cause, found while fixing.** The reconcile refetch called
+`fetchMessages()`, which sets `loading = true`, and both chat screens render a
+full-thread spinner while loading ([TeamChatRoomScreen.tsx:625](../../src/screens/TeamChatRoomScreen.tsx#L625)).
+So every reaction tap blanked the entire conversation to a spinner and
+repainted. That, more than the round trip, is what "slow" was. An optimistic
+paint alone would have been wiped by the spinner a moment later.
+
+**The optimistic path as built.**
+
+| Step | What |
+|---|---|
+| 1 PAINT | `paintReaction(messageId, emoji, !userReacted)` flips the reaction in local state on the tap frame. The temp row carries `id: 'optimistic-reaction:<messageId>:<emoji>'`, the real `user_id` and `emoji`, so `getReactionsSummary` and `ReactionDetailsModal` both read it unchanged. **No email fallback** in the self-profile — `user_metadata.full_name`, else `'You'`. |
+| 2 PERSIST | `removeReaction` / `addReaction`; Supabase returns `{ error }`, so the result is checked, never caught. |
+| 3 ROLLBACK | on refusal, `paintReaction(..., userReacted)` — the same call with the flag inverted — then `fetchMessages({ silent: true })` to resync in case something else changed in flight. |
+| 4 RECONCILE | on success, the hub's `fetchMessages({ silent: true })` replaces the temp row with the server's. No spinner, no flicker. |
+
+**Supporting changes.** `fetchMessages` takes `{ silent?: boolean }` and skips
+`setLoading(true)` when set; the reaction subscription uses it. The redundant
+`await refetch()` in `handleReactionSelect`
+([TeamChatRoomScreen.tsx:343](../../src/screens/TeamChatRoomScreen.tsx#L343))
+was removed — it was a non-silent refetch that undid the paint on the picker
+path only; the bubble-tap path never had it. `DMChatScreen.handleReactionSelect`
+already had no refetch and needed no change.
+
+**Pattern matched:** the optimistic send in the same hook, and the optimistic
+flip at [RosterScreen.tsx:300](../../src/screens/RosterScreen.tsx#L300)
+("*Optimistic flip, then persist. The server is still the authority — a rejected
+call reverts the switch*").
+
+---
+
+## C batch wave 2 — specs restored Oct 6 2026
+
+Four ids whose specs lived only in planning-room records. Written down here so
+they survive. Each row: the spec as restored, then what the code actually did.
+
+### ㉜ — group-chat creation: keyboard blocks the flow
+
+**Spec.** In the group-chat creation flow the keyboard overlaps/blocks the view.
+Dismiss or avoid the keyboard so the flow's controls stay visible.
+
+**Audit.** The New Chat modal already mounts a `KeyboardAvoidingView`
+([ChatScreen.tsx:1794](../../src/screens/ChatScreen.tsx#L1794)) and the group
+step's result list already sets `keyboardShouldPersistTaps="handled"`, so the
+usual two suspects were clean. Two things were not:
+
+1. The member-search list carried **`minHeight: 120`**. With the keyboard up the
+   modal has roughly 55% of the screen for header + name field + chips + list +
+   the Create button; a floor under the list kept it at full size and pushed
+   **"Create Group" off the bottom** of the fixed-height container.
+2. **No `keyboardDismissMode` anywhere in the file.** The only way to dismiss
+   the keyboard was tapping the overlay — which is wired to `closeModal`
+   ([:1791](../../src/screens/ChatScreen.tsx#L1791)) and **discards the
+   half-filled group**.
+
+**Fixed:** dropped the `minHeight` and added `keyboardDismissMode="on-drag"` on
+that list ([ChatScreen.tsx:1329](../../src/screens/ChatScreen.tsx#L1329)).
+
+**Root cause NOT fixed, deliberately.** `styles.keyboardAvoidingView` pins
+`height: '95%'` **and** `maxHeight: '95%'`
+([:2085-2089](../../src/screens/ChatScreen.tsx#L2085)). A KAV with
+`behavior="padding"` pads *inside* a fixed height, so the container never moves
+— it only squeezes its children. Relaxing that height would change the layout of
+**every** step of this modal (choose / dm / team / group / club), which is wider
+than this item. Flagged for a dedicated pass.
+
+### ㉞ — chat → calendar spinner flash
+
+**Spec.** Navigating chat → calendar shows a spinner flash. Remove the flash
+(cache/skip the transient loading state) without changing data freshness.
+
+**Audit.** The *teams* gate had already been fixed this way —
+[CalendarScreen.tsx:484](../../src/screens/CalendarScreen.tsx#L484) reads
+`teamsLoading && !hasAnyTeam`, with a comment naming the flash. The *events*
+body had not: it gated on bare `loading`, and `fetchEvents` sets
+`loading = true` on **every** focus refetch, so an already-drawn calendar was
+replaced by a full-screen spinner each time you arrived.
+
+**Fixed:** `loading && events.length === 0`
+([CalendarScreen.tsx:620](../../src/screens/CalendarScreen.tsx#L620)) — first
+load only, same shape as the teams gate directly above it. The refetch still
+runs on every focus; freshness is untouched, it just no longer blanks.
+
+### ㉟ — chat day separators misplaced
+
+**Spec.** Day separators sit between the wrong days. Audit the grouping logic,
+state the real bug, fix so separators land on correct day boundaries,
+timezone-safe.
+
+**Audit finding — the grouping logic was NOT the bug.** `isNewDay`
+([TeamChatRoomScreen.tsx:489](../../src/screens/TeamChatRoomScreen.tsx#L489))
+compares the current row against `invertedMessages[index + 1]`, the next *older*
+row, and the separator renders as the first child of the cell. Traced against
+`[M1 Mon, M2 Mon, M3 Tue]`: inverted to `[M3, M2, M1]`, i=0 emits "Tue" above
+M3, i=1 emits nothing, i=2 emits "Mon" above M1 — reading top to bottom,
+`[Mon] M1 M2 [Tue] M3`. **Correct.** Both comparison sides already used local
+time, so there was no timezone skew either.
+
+**The real bug is the data the grouping is handed.**
+[useMessages.ts:57-58](../../src/hooks/useMessages.ts#L57-L58) ran
+`.order('created_at', { ascending: true }).limit(100)`. Postgres applies ORDER
+**before** LIMIT, so that returns **the oldest 100 messages in the channel**, not
+the most recent. Any thread past 100 messages opened on ancient history; the
+separators were correct labels on the wrong hundred rows, which is exactly what
+"separators are on the wrong days" looks like from the user's seat.
+
+**Fixed:** `ascending: false` + `limit(100)`, then `[...data].reverse()` back to
+ascending for rendering — the newest 100, same filters, same freshness.
+`isNewDay` additionally now routes both sides through an explicit local
+`YYYY-MM-DD` key that returns `''` for an unparseable timestamp, so a bad row
+groups with its neighbours instead of rendering an `Invalid Date` separator.
+
+**Found, not fixed:** [DMChatScreen](../../src/screens/DMChatScreen.tsx) renders
+**no day separators at all** (zero occurrences). That is missing, not misplaced,
+and adding them is a feature, not this item.
+
+### ㊱ — links in chat messages are not tappable
+
+**Spec.** Linkify URLs in message text, open in the browser. Preview cards
+explicitly out of scope.
+
+**Audit.** [ChatBubble.tsx](../../src/components/chat/ChatBubble.tsx) rendered
+`{message.content}` as one flat `<Text>` — no link handling anywhere in the
+component.
+
+**Fixed:** `renderMessageText()` splits the body on a capturing URL pattern and
+returns the plain string untouched when there is no link, so the common case
+costs nothing. Matches `http(s)://` and bare `www.`; a bare `www.` link gets an
+`https://` scheme because `Linking` needs one. Trailing punctuation is peeled
+back out of the href (`"see https://x.io/a."` links `https://x.io/a` and leaves
+the full stop as text). A failed open shows an alert rather than silently doing
+nothing. **No dependency added** — hand-rolled, `Linking` is from react-native.
+Links are underlined; white on own messages (the purple bubble fails contrast
+against blue) and `#93C5FD` on others. **No preview cards.**
+
+---
+
+## C batch wave 3 — attendance / details redesign (specs restored Oct 6 2026)
+
+All three land in [EventDetailScreen.tsx](../../src/screens/EventDetailScreen.tsx).
+㊴ subsumes ㉝: the colliding counters were a symptom of the same duplication.
+
+### ㊳ — Attendance tab visuals
+
+**Spec.**
+1. The event date/time line becomes a small coloured banner in the app's purple
+   accent family with a calendar icon — `"Tue, Oct 7 · Practice · 6:30–8:00 PM"`.
+2. Per-row status TEXT (`"said going"`) is replaced by a visual badge: green
+   check for going, red X for can't go, muted "No reply" pill otherwise.
+3. **The product has NO "Maybe" status.** Never render a Maybe state or column.
+   Legacy rows carrying other status values render in the muted/no-reply style —
+   no label is invented for a value we do not recognise.
+4. `by «Parent»` attribution and decline-reason quotes stay as they are.
+
+**Before.** A grey one-line `attContext` string, and a hint line per row from
+`rsvpHint()` — `"said going"` / `"said can't — <reason>"` / `"marked late"` /
+`"no reply"` — with a coach mark overwriting it as `"<label> · by Coach <name>"`.
+
+**After.** `attBanner` (purple-tinted fill + border, `Ionicons name="calendar"`).
+`rsvpHint()` is gone, replaced by `statusBadge()`, which returns one of three
+kinds. `late` / `excused` keep their recorded labels but render muted rather
+than getting a colour of their own; anything unrecognised falls back to
+"No reply". The row now reads: avatar · name + reason quote + attribution ·
+family badge · coach ✗/✓ buttons. The badge answers "what did the family say",
+the buttons answer "who actually showed up" — two questions, two controls.
+
+### ㊴ — Details tab de-dupe (resolves ㉝'s colliding counters)
+
+**Spec.** Details keeps ONLY event info, the "Will you be there?" RSVP action,
+and a compact headcount strip (Going / Can't go / No reply). The full per-player
+RSVP list is removed; the per-player list and all coach marking live only on the
+Attendance tab. Headcount counts ALL RSVPs, not only player-matched ones, so the
+strip can never disagree with the list, and unmatched responders still count.
+
+**Before.** Details carried a 4-tile strip — Going / Can't / No reply /
+**Headcount** — followed by a full read-only roster list *and* a second list of
+unmatched responders. The Attendance tab rendered the same roster again, with
+controls. 72 lines of duplicated list.
+
+**After.** The strip is 3 tiles and the lists are gone from Details. The
+**Headcount tile is deleted outright** — it was the collision: `Going` counted
+raw RSVP rows while `Headcount` counted roster entries that had resolved to a
+player, so a viewer who cannot resolve their peers saw the reported
+**"Going 6 / Headcount 1"** ([identity-resolution-oct02.md § Symptom 3](identity-resolution-oct02.md)).
+Two numbers over two different populations, side by side.
+
+**Headcount source — stated.** Every number now comes from the RSVP rows:
+
+| Tile | Source |
+|---|---|
+| Going | `eventRsvps.filter(status === 'yes').length` — all rows, matched or not |
+| Can't go | `eventRsvps.filter(status === 'no').length` |
+| No reply | rows that are neither yes nor no (legacy `pending`/`maybe`/null) **+** roster players no RSVP resolved to (`players.length − resolvedRsvps.byPlayer.size`) |
+
+Every RSVP row lands in exactly one bucket. A responder nobody could match to a
+player still answered, so they count.
+
+**Consequence worth knowing:** when matching fails, the buckets can sum above
+the roster size — 6 responders + 9 unmatched players on a 10-player team. That
+is a visible signal that resolution is failing, which is strictly better than
+the old silent undercount, but it is not a tidy total. Noted, not hidden.
+
+**Fetches — verified, none droppable.** The spec allowed dropping a fetch if the
+removed list made it unnecessary. It does not:
+
+| Data | Still read by |
+|---|---|
+| `players` | the No-reply tile, and the Attendance roster |
+| `attendanceRows` / `playerRoleMap` | `roster`, Attendance tab |
+| `responderEmails` | tier-3 matching → `resolvedRsvps.byPlayer` → the No-reply tile |
+| `nonResponders` | the "Remind N to RSVP" button, still on Details |
+
+Both tabs are branches of the same component over the same state, so nothing
+became orphaned. **Tier-1/2/3 player matching is untouched**, as is the retained
+email bridge.
+
+**Left behind deliberately:** the style keys the removed lists used
+(`rosterRow`, `rosterInfo`, `rosterName`, `rosterReason`, `rosterSource`,
+`statusChip`, `statusChipText`, `headcountItem`, `headcountCount`) are now
+unreferenced. Dead style objects are inert; removing nine of them is churn with
+a non-zero chance of catching a live key by mistake. Flagged for a sweep.
+
+---
+
+## C2 — calendar card polish (design "Option A") + dead-action removal · Oct 6 2026
+
+### 1 — Calendar event cards
+
+Both cards live **inline in [CalendarScreen.tsx](../../src/screens/CalendarScreen.tsx)**,
+rendered twice (the grouped list at `:674` and the agenda list at `:841`), so
+every change below was applied in both places.
+
+> **Found:** [src/components/calendar/EventCard.tsx](../../src/components/calendar/EventCard.tsx)
+> is **dead code** — nothing imports it. It was not edited; a card changed there
+> would have shipped nothing. Flagged for deletion in a separate pass.
+
+**(a) Date block + left edge, coloured by event type.**
+
+*Before:* the date block was filled with the **team** colour
+(`event.team?.color || '#5B7BB5'`), and a separate `EVENT_TYPE_EDGE` map drove
+the left edge with colours that were the inverse of Option A — game `#0d9488`
+(teal), scrimmage `#d97706`, everything else `#64748b` (slate), and **practice
+`transparent` with `borderLeftWidth: 0`**, so practice had no edge at all.
+
+*After:* one `eventAccent(type)` helper drives **both** the block fill and the
+left edge, so they always match. Values are the app's existing `EVENT_TYPES`
+tokens from [src/types/index.ts](../../src/types/index.ts) — no new colours
+invented:
+
+| Type | Accent | Token source |
+|---|---|---|
+| game | `#f97316` warm orange | the palette's `scrimmage` orange |
+| practice | `#22c55e` green | the palette's `practice` green |
+| everything else | `#a855f7` neutral purple | the palette's `other_event` purple |
+
+Past events still grey out (`#4B5563`) on both block and edge. The
+`practice → 0` width special case is gone; every type now carries a 4pt edge.
+The GAME/PRACTICE label stays inside the block, unchanged.
+
+**Deviation worth knowing:** this puts `scrimmage` on purple, even though the
+palette gives it an orange of its own. "Other types = neutral purple" was the
+approved rule and it is followed literally. Say the word to group scrimmage with
+game instead — it is one line.
+
+**Team identity:** the block no longer encodes the team. The team badge and
+colour dot in the details column already carry it, so nothing was lost, but it
+is a real change in the All-Teams view.
+
+**(b) RSVP counts row.** `✓ n · ✗ n · ? n` went `fontSize: 12 → 14`, with the
+divider bumped to match so the row sits on one baseline. Weight was **already**
+`'600'`, so only the size moved — the "medium weight" half of the spec was
+already satisfied.
+
+> **Not changed, flagged:** the three counts are coloured `#C4B5FD` / `#A78BFA` /
+> `#64748b` — two purples and a grey for ✓/✗/?. Legible, but the colours carry
+> no going/can't-go semantics. Outside a size-and-weight ticket.
+
+**(c) Location line as a maps link.** *Before:* already wrapped in a
+`TouchableOpacity` calling `openInMaps()` — so the behaviour existed, and
+[src/lib/maps.ts](../../src/lib/maps.ts) already does it with `Linking` only:
+`comgooglemaps://` then `http://maps.apple.com/?q=` on iOS, `geo:0,0?q=` then a
+web fallback on Android. **No SDK, no API key, no preview image.** What was
+missing was the affordance: `#8b5cf6` text with no underline did not read as
+tappable.
+
+*After:* `textDecorationLine: 'underline'` + `fontWeight: '600'` on
+`eventLocation`, and an 8pt `hitSlop` on both cards' touchables.
+
+### 2 — Message actions modal: "View Profile" removed
+
+**Provenance — pre-existing, not from today's waves.** `git blame` puts the
+action, and the `handleViewProfile` that feeds it, at commit **`443958b`**
+("feat: Add Board Room voting visualization for polls", Lud Sanz, **2026-03-04**)
+— seven months before today's C batch. Today's waves touched
+`MessageActionsModal.tsx` once, to add the `senderName` prop for sweep item #6;
+no wave went near this action.
+
+**Why it was dead.** It called
+`navigation.navigate('UserProfile', { userId })`
+([TeamChatRoomScreen.tsx:414](../../src/screens/TeamChatRoomScreen.tsx#L414)).
+`AppNavigator` registers 162 screen names; `UserProfile` is not one of them —
+the only profile routes are `Profile`, `ProfileTab`, `EditProfile` and
+`PlayerProfile`. Tapping it errored.
+
+**Removed:** the action item only. Mute, Block, Copy, Reply, Edit, Delete and
+Read-history are untouched. The `onViewProfile` prop and the
+`handleViewProfile` handler are **deliberately left in place** so no caller
+breaks, with a comment at the removal site saying to register a real route
+before rendering an action for it again. They are now unreachable.
+
+---
+
+## C3 — device-review corrections + card tap zones · Oct 6 2026
+
+### 1 — Calendar card colours reverted to the prior palette
+
+C2 set game warm-orange and practice green. Device review rejected both.
+
+| Type | C2 | C3 (now) | Token source |
+|---|---|---|---|
+| game | `#f97316` orange | **`#0d9488`** green/teal | the hue this screen used pre-C2 |
+| scrimmage | `#a855f7` purple | **`#0d9488`** green/teal | grouped with games — competitive play |
+| practice | `#22c55e` green | **`#5B7BB5`** Soft Blue | named in the team-colour pickers ([RosterScreen.tsx:23](../../src/screens/RosterScreen.tsx#L23), [TeamDetailScreen.tsx:18](../../src/screens/TeamDetailScreen.tsx#L18)) |
+| other / unknown | `#a855f7` purple | `#a855f7` purple | unchanged |
+
+**Flag, as asked:** the palette *does* argue against putting scrimmage with
+games. `EVENT_TYPES` in [src/types/index.ts](../../src/types/index.ts) gives
+scrimmage its own orange `#f97316`. Grouping it with games on green was the
+explicit instruction and it wins here, but that token now goes unused on this
+card.
+
+C2's **structure is kept intact**: one `eventAccent()` drives both the date
+block fill and the matching 4pt left edge, the GAME/PRACTICE label stays inside
+the block, past events still grey to `#4B5563`, and the enlarged RSVP counts
+(14pt) are untouched.
+
+### 2 — Calendar card tap zones
+
+**(a) Whole card → event detail.** Already true and unchanged: in both render
+sites the entire card is one `TouchableOpacity` wrapping date block, details and
+the RSVP/past column.
+
+> **Pre-existing second exception, flagged not changed:** on the agenda card the
+> `willStrip` (the inline ✓/✗ answer buttons) sits *outside* the card's
+> touchable by design — its own comment says *"outside the card's touchable so
+> tapping a button answers instead of opening the event."* The empty space
+> between those buttons is therefore inert rather than navigating. Pulling the
+> strip inside would put event-navigation under the RSVP buttons, so it was left
+> alone.
+
+**(b) Venue line → Maps, and it stops there.** The venue row is its own nested
+`TouchableOpacity` calling `openInMaps()`. React Native already gives the
+innermost view the touch responder, so the card's `onPress` does not fire
+underneath; `e.stopPropagation?.()` was added on top of that as belt and braces,
+not because the nesting alone was leaking.
+
+**(c) Underline removed.** Device review: too cluttered. The affordance is now
+accent colour + an `Ionicons name="location"` pin on the left + a small
+`chevron-forward` on the right, in a new `eventLocationRow` flex row. The venue
+text itself is clean — no decoration — and truncates to one line. The old `📍`
+emoji is gone in favour of the real icon.
+
+### 3 — Event detail address block
+
+**(a) Tap → Maps.** Unchanged, still `handleOpenMaps`.
+
+**(b) Long-press → copy.** New. `handleCopyAddress` copies
+`location_address`, falling back to `location_name` when the event has no street
+address, since the address is what is useful pasted elsewhere. `delayLongPress`
+is 350ms so the two gestures do not compete. The hint line now reads
+*"Tap to open in Maps · hold to copy"*, and on success swaps to a green
+*"✓ Address copied"* that clears itself after 1.8s via a cleaned-up timer, so it
+behaves as a toast rather than a permanent label. A clipboard failure falls back
+to an alert carrying the text.
+
+**Clipboard source — named.** **`expo-clipboard`** (`~8.0.8`), already in
+`package.json` and present in `node_modules`. **No new dependency.** It is also
+the house pattern: `import * as Clipboard from 'expo-clipboard'` is used in
+WelcomeScreen, JoinTeamScreen, InviteCoParentModal and PlayerDashboard. The repo
+*also* carries `@react-native-clipboard/clipboard` (`^1.16.3`), used once in
+CalendarSyncModal — two clipboard libraries for one job, worth consolidating in
+a later pass.
+
+### 4 — Conversation card titles always bold
+
+`styles.conversationName` went `fontWeight: '500'` → **`'700'`**, so every card
+title is bold whether read or unread. `conversationNameUnread` keeps only its
+brighter `#fff`; its now-redundant `fontWeight: '700'` was dropped. The unread
+badge remains the unread signal, as specified.
+
+---
+
+## C3b — colour consistency everywhere + the Maps tap · Oct 6 2026
+
+### 1 — Colour sweep: one source of truth
+
+New module **[src/lib/eventColors.ts](../../src/lib/eventColors.ts)** exports
+`eventAccent(type)` and `eventAccentFor(type, past)`. Every event surface now
+calls it. (Scope note: a shared module is a new file, but "one source of truth,
+no view exempt" cannot be met with the helper living inside CalendarScreen.)
+
+**Why views disagreed:** the list card used an event-type map while
+Day/Week/Month **each painted the TEAM colour**, and the detail screen did too —
+so one game was green on the list and blue everywhere else. Type badges took a
+*third* set of hues from `EVENT_TYPES` (game = cyan `#06B6D4`).
+
+| # | Site | Was | Now |
+|---|---|---|---|
+| 1 | [CalendarScreen.tsx](../../src/screens/CalendarScreen.tsx) local `EVENT_TYPE_ACCENT` + `eventAccent` | local copy | **moved** to `src/lib/eventColors.ts` |
+| 2 | CalendarScreen `:53` `EVENT_TYPE_LABEL_COLORS` | **dead map, 0 call sites**, hues contradicting everything | **removed** |
+| 3 | CalendarScreen date block + 4pt edge (both render sites) | `eventAccent` | unchanged ✓ |
+| 4 | CalendarScreen `cardTypeBadge` | `getEventTypeConfig().color` — cyan on a green card | `eventAccent()` |
+| 5 | [WeekView.tsx:224](../../src/components/calendar/WeekView.tsx#L224) event block | `team?.color \|\| '#5B7BB5'` | `eventAccentFor()` |
+| 6 | [MonthView.tsx:110](../../src/components/calendar/MonthView.tsx#L110) event chip | `team?.color \|\| '#5B7BB5'` | `eventAccentFor()` |
+| 7 | [DayView.tsx:207](../../src/components/calendar/DayView.tsx#L207) event block | `team?.color \|\| '#5B7BB5'` | `eventAccentFor()` |
+| 8 | [EventDetailScreen.tsx](../../src/screens/EventDetailScreen.tsx) date block | `team?.color \|\| '#5B7BB5'` — **the reported game-is-blue** | `eventAccent()` |
+| 9 | EventDetailScreen `typeBadge` | `typeConfig.color` — cyan | `eventAccent()` |
+
+**Listed and deliberately NOT routed — these encode TEAM, not event type:**
+team dots (CalendarScreen `:746`, `:935`, EventDetailScreen `:1291`), the team
+legend and team selector (`:1211`, `:1266`), `PlayerAvatar teamColor`
+(EventDetailScreen `:1161`), and the team swatch in CalendarSyncModal `:185`.
+They answer "whose team", a different axis. `EVENT_TYPES` keeps supplying labels
+and icons; only its *colours* stopped driving event surfaces.
+
+**Listed, not edited, flagged:** [EventCard.tsx](../../src/components/calendar/EventCard.tsx)
+has its own `getEventTypeConfig` colour but **nothing imports the component** —
+dead code, already flagged in C2. `CreateEventModal` / `EditEventModal` carry an
+`EVENT_TYPE_ICONS` colour set for the type *picker*; those are form swatches,
+not calendar chips, so they were left. They will now disagree with the card the
+event produces — worth a follow-up ticket.
+
+### 2 — Maps tap opened nothing on iOS
+
+**Root cause, two faults compounding.**
+
+1. The iOS branch gated on `canOpenURL('comgooglemaps://?q=…')`. iOS only
+   answers that probe for schemes listed in `LSApplicationQueriesSchemes`, and
+   **`app.json` declares none** — `expo.ios.infoPlist` holds only
+   `ITSAppUsesNonExemptEncryption`, `NSCameraUsageDescription` and
+   `NSPhotoLibraryUsageDescription`. The probe could never succeed, and for an
+   undeclared scheme RN/iOS can *reject* rather than resolve `false`.
+2. **Nothing caught it.** `grep -c 'try\|catch' src/lib/maps.ts` → **0**, and
+   every call site invokes it bare (`onPress={() => openInMaps(...)}`), so a
+   rejection became an unhandled promise rejection: the tap did nothing, with no
+   error. The Apple Maps fallback sat on the `else` branch and was never
+   reached.
+
+**Proof the handler itself fires:** on the detail screen `onPress={handleOpenMaps}`
+and `onLongPress={handleCopyAddress}` are on the *same* `TouchableOpacity`, and
+the long-press copy works on device. A touchable that receives long-press
+receives press. So the fault was inside `openInMaps`, not in the tap wiring —
+which also explains why *both* the list card and the detail screen failed
+identically.
+
+**Fix.** The probe is gone from the happy path. Apple Maps is always present on
+iOS so it is the default; Android gets the `geo:` intent; both fall through to a
+plain `https://` Google Maps URL. Each candidate runs in its own try/catch, so
+one failure advances to the next instead of aborting, and exhausting the list
+raises `Alert.alert('Could not open Maps', …)`. The function can no longer
+reject, so bare call sites are safe.
+
+**No `LSApplicationQueriesSchemes` added:** nothing probes a custom scheme any
+more, so the entry would be dead config. It becomes a prerequisite again only if
+a Google-Maps-first preference is wanted back on iOS.
+
+**Confirmable only on device:** which of the two faults fired — a rejected probe
+versus a resolved-`false` probe followed by a failing `openURL` — cannot be
+settled from source. Both are closed by the rewrite. That Apple Maps actually
+launches on the simulator also needs a device/simulator run; only URL syntax and
+branch order were verified here.
+
+### 3 — Conversation card bold: verdict
+
+**Correct already, no change made.** All three render paths — Recent
+([ChatScreen.tsx:1711](../../src/screens/ChatScreen.tsx#L1711)), Past (`:1736`)
+and By Team (`:1774`) — render the single `ConversationItem` (`:88`), whose
+title reads `styles.conversationName`, now `fontWeight: '700'`. Neither
+override touches weight: `conversationNamePast` sets only `fontSize: 14`,
+`conversationNameUnread` only `color: '#fff'`. So the title is bold on every
+path, read and unread, and the badge remains the unread signal.

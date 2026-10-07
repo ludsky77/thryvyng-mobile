@@ -8,6 +8,12 @@ import {
 import { fetchChannelTeamMemberNames } from '../lib/memberNames';
 import type { Message } from '../types';
 
+/**
+ * Marks a reaction row that exists only on this device while its write is in
+ * flight. The reconcile refetch replaces it with the server's row.
+ */
+const OPTIMISTIC_REACTION_ID = 'optimistic-reaction';
+
 export function useMessages(channelId: string | null, onNewMessage?: () => void) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -25,14 +31,20 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
   const messageIdsRef = useRef<Set<string>>(new Set());
   messageIdsRef.current = new Set(messages.map((m) => m.id));
 
-  const fetchMessages = useCallback(async () => {
+  /**
+   * `silent` refetches without flipping `loading`. The screens render a
+   * full-thread spinner while `loading` is true, so the reaction subscription's
+   * reconcile pass used to replace the whole conversation with a spinner on
+   * every emoji tap -- which is most of what "reactions feel slow" was.
+   */
+  const fetchMessages = useCallback(async (options?: { silent?: boolean }) => {
     if (!channelId) {
       setMessages([]);
       setLoading(false);
       return;
     }
-    
-    setLoading(true);
+
+    if (!options?.silent) setLoading(true);
     const { data, error } = await supabase
       .from('comm_messages')
       .select(`
@@ -43,12 +55,17 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
       `)
       .eq('channel_id', channelId)
       .eq('is_deleted', false)
-      .order('created_at', { ascending: true })
+      // ORDER runs before LIMIT, so ascending + limit(100) returned the OLDEST
+      // 100 messages in the channel -- any thread past 100 opened on ancient
+      // history and every day separator carried an old date. Take the NEWEST
+      // 100 and flip back to ascending for rendering.
+      .order('created_at', { ascending: false })
       .limit(100);
 
     if (!error && data) {
+      const rows = [...data].reverse();
       // Enrich messages with sender profile
-      const withSenderProfile = data.map((msg: any) => ({
+      const withSenderProfile = rows.map((msg: any) => ({
         ...msg,
         profile: msg.profile ?? null
       }));
@@ -186,8 +203,9 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
       // without a message_id fall back to the old always-refetch behaviour.
       const messageId = row?.message_id;
       if (messageId && !messageIdsRef.current.has(messageId)) return;
-      // Refetch to update reactions
-      fetchMessages();
+      // Reconcile reactions against the server. Silent: an optimistic reaction
+      // is already on screen and must not be wiped by a loading spinner.
+      fetchMessages({ silent: true });
     });
 
     return () => {
@@ -353,6 +371,52 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
     return true;
   };
 
+  /**
+   * Paint one reaction locally. `present` true adds the current user's
+   * reaction, false removes it. Used for the optimistic paint and, with the
+   * argument inverted, for the rollback.
+   */
+  const paintReaction = useCallback(
+    (messageId: string, emoji: string, present: boolean) => {
+      if (!user) return;
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== messageId) return m;
+          const reactions = ((m as any).reactions ?? []) as any[];
+          const isMine = (r: any) => r?.user_id === user.id && r?.emoji === emoji;
+
+          if (!present) {
+            return { ...m, reactions: reactions.filter((r) => !isMine(r)) } as Message;
+          }
+          if (reactions.some(isMine)) return m;
+
+          // No email fallback here -- a raw email must never become a name.
+          const selfProfile = {
+            id: user.id,
+            full_name: user.user_metadata?.full_name || 'You',
+            avatar_url: user.user_metadata?.avatar_url || null,
+          };
+          return {
+            ...m,
+            reactions: [
+              ...reactions,
+              {
+                id: `${OPTIMISTIC_REACTION_ID}:${messageId}:${emoji}`,
+                message_id: messageId,
+                user_id: user.id,
+                emoji,
+                created_at: new Date().toISOString(),
+                profile: selfProfile,
+                profiles: selfProfile,
+              },
+            ],
+          } as Message;
+        })
+      );
+    },
+    [user]
+  );
+
   const addReaction = async (messageId: string, emoji: string) => {
     if (!user) return false;
     const { error } = await supabase.from('comm_message_reactions').insert({
@@ -377,6 +441,21 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
     return !error;
   };
 
+  /**
+   * Optimistic reaction toggle.
+   *
+   * A tap used to paint nothing until the INSERT/DELETE round trip returned AND
+   * the realtime hub fired a refetch, so the emoji appeared a beat late behind a
+   * spinner. Now the bubble updates on the tap frame and the server reconciles
+   * behind it. Same shape as the optimistic send above and the flip at
+   * RosterScreen.tsx:300 -- local state first, the server still the authority.
+   *
+   *   1. PAINT     flip the reaction locally, immediately
+   *   2. PERSIST   write it
+   *   3. ROLLBACK  on refusal, flip back and resync
+   *   4. RECONCILE on success, the hub's silent refetch swaps the temporary row
+   *                for the real one
+   */
   const toggleReaction = async (messageId: string, emoji: string) => {
     if (!user) return false;
     const message = messages.find((m) => m.id === messageId);
@@ -384,8 +463,31 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
     const userReacted = reactions.some(
       (r) => r.user_id === user.id && r.emoji === emoji
     );
-    if (userReacted) return removeReaction(messageId, emoji);
-    return addReaction(messageId, emoji);
+
+    // 1. PAINT
+    paintReaction(messageId, emoji, !userReacted);
+
+    // 2. PERSIST
+    const ok = userReacted
+      ? await removeReaction(messageId, emoji)
+      : await addReaction(messageId, emoji);
+
+    // 3. ROLLBACK -- put the bubble back, then resync in case anything else
+    //    changed while the write was in flight.
+    if (!ok) {
+      if (__DEV__) {
+        console.warn('[useMessages] reaction write refused, rolled back', {
+          messageId,
+          emoji,
+        });
+      }
+      paintReaction(messageId, emoji, userReacted);
+      fetchMessages({ silent: true });
+      return false;
+    }
+
+    // 4. RECONCILE happens via subscribeToReactionChanges -> silent refetch.
+    return true;
   };
 
   return {

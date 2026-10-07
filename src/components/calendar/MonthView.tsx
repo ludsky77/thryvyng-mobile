@@ -18,6 +18,7 @@ import {
 } from 'date-fns';
 import type { CalendarEvent } from '../../types';
 import { isEventPast } from '../../utils/calendar';
+import { eventAccentFor } from '../../lib/eventColors';
 
 type CalendarEventWithTeam = CalendarEvent & { team?: { color?: string } };
 
@@ -107,9 +108,8 @@ export function MonthView({
                 style={[
                   styles.eventChip,
                   {
-                    backgroundColor: past
-                      ? '#4B5563'
-                      : (event as CalendarEventWithTeam).team?.color || '#5B7BB5',
+                    // Was the TEAM colour -- games rendered blue here.
+                    backgroundColor: eventAccentFor(event.event_type, past),
                     opacity: past ? 0.5 : 1,
                   },
                 ]}

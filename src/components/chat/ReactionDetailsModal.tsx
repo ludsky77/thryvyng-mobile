@@ -28,12 +28,19 @@ interface ReactionDetailsModalProps {
   visible: boolean;
   onClose: () => void;
   reactions: ReactionDetailItem[];
+  /**
+   * Resolves a reactor's auth uid through the parent's `memberNames`. Each
+   * item already carries `user_id`, and the only render site holds the map, so
+   * without this the list showed 'Unknown' beside a correctly named bubble.
+   */
+  nameFor?: (userId: string) => string | null | undefined;
 }
 
 export function ReactionDetailsModal({
   visible,
   onClose,
   reactions,
+  nameFor,
 }: ReactionDetailsModalProps) {
   const grouped = reactions.reduce((acc, r) => {
     const emoji = r.emoji ?? r.reaction ?? '';
@@ -46,7 +53,12 @@ export function ReactionDetailsModal({
   const entries = Object.entries(grouped);
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
       <TouchableOpacity
         style={styles.overlay}
         activeOpacity={1}
@@ -71,6 +83,7 @@ export function ReactionDetailsModal({
                 </View>
                 {users.map((user, index) => {
                   const userName =
+                    nameFor?.(user.user_id) ||
                     user.profiles?.full_name ||
                     user.profile?.full_name ||
                     'Unknown';

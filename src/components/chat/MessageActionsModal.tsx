@@ -24,6 +24,12 @@ interface MessageActionsModalProps {
   } | null;
   currentUserId: string;
   isStaff: boolean;
+  /**
+   * Resolved sender name from the parent's `memberNames`. The modal is only
+   * ever rendered from a screen that already holds it, so without this the
+   * Mute/Block copy read 'User' while the bubble behind it showed the name.
+   */
+  senderName?: string | null;
   onEdit?: (messageId: string) => void;
   onDelete?: (messageId: string) => void;
   onReply?: () => void;
@@ -40,6 +46,7 @@ export function MessageActionsModal({
   message,
   currentUserId,
   isStaff,
+  senderName: senderNameProp,
   onEdit,
   onDelete,
   onReply,
@@ -62,7 +69,8 @@ export function MessageActionsModal({
 
   const canDelete = isOwnMessage || isStaff;
   const canViewReadHistory = isOwnMessage || isStaff;
-  const senderName = message?.profile?.full_name || 'User';
+  // memberNames first, join as fallback -- the same order the bubble uses.
+  const senderName = senderNameProp || message?.profile?.full_name || 'User';
 
   const handleCopy = async () => {
     if (message?.content) {
@@ -246,19 +254,11 @@ export function MessageActionsModal({
             </TouchableOpacity>
           )}
 
-          {/* View Profile - Others' messages */}
-          {!isOwnMessage && onViewProfile && (
-            <TouchableOpacity
-              style={styles.actionItem}
-              onPress={() => {
-                onViewProfile(message.user_id);
-                onClose();
-              }}
-            >
-              <Feather name="user" size={20} color="#10B981" />
-              <Text style={styles.actionText}>View Profile</Text>
-            </TouchableOpacity>
-          )}
+          {/* "View Profile" was removed here. It called
+              navigation.navigate('UserProfile', …) and no such route is
+              registered in AppNavigator -- tapping it errored. The
+              `onViewProfile` prop is kept so callers do not break; wire a real
+              route before rendering an action for it again. */}
         </View>
       </TouchableOpacity>
     </Modal>

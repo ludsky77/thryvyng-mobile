@@ -32,6 +32,15 @@ interface EnrichedConversation {
   displayType: 'dm' | 'group' | 'team';
   displayName: string;
   displaySubtitle: string;
+  /**
+   * What the conversation CARD shows, which is not the same as `displayName` /
+   * `displaySubtitle`. Those two stay as they were because the by-team section
+   * grouping, the section search and the TeamChatRoom nav params all read them.
+   * The card used to lead with the channel name, which is literally "Team Chat"
+   * on every team channel; it now leads with who/what the conversation is with.
+   */
+  cardTitle: string;
+  cardMeta: string;
   displayAvatar: string | null;
   displayInitial: string;
   lastMessage: string | null;
@@ -162,7 +171,7 @@ function ConversationItem({
             ]}
             numberOfLines={1}
           >
-            {conversation.displayName}
+            {conversation.cardTitle || conversation.displayName}
           </Text>
           {!muted && (
             <Text style={styles.conversationTime}>
@@ -175,12 +184,12 @@ function ConversationItem({
           <Text style={styles.archivedSubtitle} numberOfLines={1}>
             Archived
           </Text>
-        ) : conversation.displaySubtitle ? (
+        ) : conversation.cardMeta ? (
           <Text
             style={[styles.conversationSubtitle, { color: borderColor }]}
             numberOfLines={1}
           >
-            {conversation.displaySubtitle}
+            {conversation.cardMeta}
           </Text>
         ) : null}
 
@@ -341,6 +350,9 @@ export default function ChatScreen({ navigation, route }: any) {
             displayType: 'dm',
             displayName: otherName,
             displaySubtitle: '',
+            // DM card: the other person's name, no type label.
+            cardTitle: otherName,
+            cardMeta: '',
             displayAvatar: row.other_user_avatar || null,
             displayInitial: otherName.charAt(0)?.toUpperCase() || '?',
             lastMessage: row.last_message_content || null,
@@ -357,6 +369,9 @@ export default function ChatScreen({ navigation, route }: any) {
             displayType: 'group',
             displayName: row.name || 'Group Chat',
             displaySubtitle: `${row.member_count || 0} members`,
+            // Group card: the group's own name, member count stays secondary.
+            cardTitle: row.name || 'Group Chat',
+            cardMeta: `${row.member_count || 0} members`,
             displayAvatar: null,
             displayInitial: '👥',
             lastMessage: row.last_message_content || null,
@@ -373,6 +388,14 @@ export default function ChatScreen({ navigation, route }: any) {
           displayType: 'team',
           displayName: row.name || 'Team Chat',
           displaySubtitle: row.team_name || team?.name || '',
+          // Team card: the TEAM is the headline. The channel name ("Team Chat"
+          // on nearly every row) drops to the secondary line, and is omitted
+          // when it would just repeat the team name.
+          cardTitle: row.team_name || team?.name || row.name || 'Team Chat',
+          cardMeta:
+            row.team_name || team?.name
+              ? row.name || 'Team Chat'
+              : '',
           displayAvatar: null,
           displayInitial: '#',
           lastMessage: row.last_message_content || null,
@@ -1307,7 +1330,15 @@ export default function ChatScreen({ navigation, route }: any) {
             data={groupSearchResults}
             keyExtractor={(item) => item.id}
             keyboardShouldPersistTaps="handled"
-            style={{ minHeight: 120, maxHeight: 180 }}
+            // Dragging the member list dismisses the keyboard. Tapping the
+            // overlay is NOT an option here -- it closes the whole modal and
+            // discards the half-filled group.
+            keyboardDismissMode="on-drag"
+            // No minHeight: with the keyboard up the modal has ~55% of the
+            // screen for header + name field + chips + this list + the Create
+            // button. A floor of 120 here kept the list at full size and pushed
+            // "Create Group" off the bottom of the fixed-height container.
+            style={{ maxHeight: 180 }}
             contentContainerStyle={{ paddingBottom: 20 }}
             ListEmptyComponent={
               isSearchingGroup ? (
@@ -1971,16 +2002,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  // Bold on every card, read or unread -- the unread badge is the unread
+  // signal, so the title does not also have to carry it.
   conversationName: {
     color: '#cbd5e1',
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '700',
     flex: 1,
     marginRight: 8,
   },
   conversationNameUnread: {
     color: '#fff',
-    fontWeight: '700',
   },
   conversationTime: {
     color: '#6B7280',

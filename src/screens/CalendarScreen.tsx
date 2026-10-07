@@ -32,6 +32,7 @@ import { CreateEventModal } from '../components/calendar/CreateEventModal';
 import { CantGoReasonModal } from '../components/calendar/CantGoReasonModal';
 import { supabase } from '../lib/supabase';
 import { getEventTypeConfig } from '../types';
+import { eventAccent, eventAccentFor } from '../lib/eventColors';
 import type { CalendarEvent } from '../types';
 import { NotificationBell } from '../components/NotificationBell';
 import CalendarSyncModal from '../components/calendar/CalendarSyncModal';
@@ -50,24 +51,6 @@ const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
 
 const ALL_TEAMS_ID = 'ALL_TEAMS';
 
-const EVENT_TYPE_LABEL_COLORS: Record<string, string> = {
-  practice: '#10b981',
-  game: '#ef4444',
-  scrimmage: '#f59e0b',
-  other_event: '#8b5cf6',
-  club_event: '#3b82f6',
-};
-
-const EVENT_TYPE_EDGE: Record<string, string> = {
-  game: '#0d9488',
-  scrimmage: '#d97706',
-  tournament: '#eab308',
-  practice: 'transparent',
-  meeting: '#64748b',
-  other: '#64748b',
-  other_event: '#64748b',
-  club_event: '#64748b',
-};
 
 function formatEventTimeRange(event: { start_time?: string | null; end_time?: string | null; is_all_day?: boolean }): string {
   if (event.is_all_day) return 'All Day';
@@ -617,7 +600,11 @@ export default function CalendarScreen({ route, navigation }: any) {
             <View
               style={{ flex: 1, paddingBottom: contentPaddingBottom }}
             >
-              {loading ? (
+              {/* First load only, matching the teams gate above. Every focus
+                  refetches, and blanking a calendar we can already draw is what
+                  flashed a spinner when arriving from chat. Freshness is
+                  unchanged -- the refetch still runs, it just does not blank. */}
+              {loading && events.length === 0 ? (
                 <View style={styles.loadingContainer}>
                   <ActivityIndicator size="large" color="#8b5cf6" />
                 </View>
@@ -658,19 +645,17 @@ export default function CalendarScreen({ route, navigation }: any) {
                             event.event_date + 'T12:00:00'
                           );
                           const eventPast = isEventPast(event);
-                          const edgeColor =
-                            EVENT_TYPE_EDGE[event.event_type || ''] ||
-                            EVENT_TYPE_EDGE['other'];
+                          const accent = eventAccent(event.event_type);
                           return (
                             <TouchableOpacity
                               key={event.id}
                               style={[
                                 styles.eventCard,
                                 {
-                                  borderLeftWidth:
-                                    event.event_type === 'practice' ? 0 : 4,
-                                  borderLeftColor:
-                                    edgeColor || 'transparent',
+                                  // Every type now carries an accent, so
+                                  // practice is no longer the odd one out.
+                                  borderLeftWidth: 4,
+                                  borderLeftColor: eventPast ? '#4B5563' : accent,
                                   borderTopLeftRadius: 8,
                                   borderBottomLeftRadius: 8,
                                 },
@@ -687,10 +672,13 @@ export default function CalendarScreen({ route, navigation }: any) {
                               <View
                                 style={[
                                   styles.eventDateBlock,
+                                  // Full-colour block, by event type. Team
+                                  // identity still reads from the team badge
+                                  // and dot in the details column.
                                   {
                                     backgroundColor: eventPast
                                       ? '#4B5563'
-                                      : event.team?.color || '#5B7BB5',
+                                      : accent,
                                   },
                                 ]}
                               >
@@ -749,12 +737,37 @@ export default function CalendarScreen({ route, navigation }: any) {
                                 </Text>
                                 {(event.location_name || event.location_address) && (
                                   <TouchableOpacity
-                                    onPress={() => openInMaps(event.location_address || '', event.location_name)}
+                                    // Its own tap zone: the venue opens Maps,
+                                    // the rest of the card opens the event.
+                                    // stopPropagation keeps the card's onPress
+                                    // from firing underneath this one.
+                                    onPress={(e) => {
+                                      e.stopPropagation?.();
+                                      openInMaps(
+                                        event.location_address || '',
+                                        event.location_name
+                                      );
+                                    }}
                                     activeOpacity={0.7}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    style={styles.eventLocationRow}
                                   >
-                                    <Text style={styles.eventLocation}>
-                                      📍 {event.location_name || event.location_address}
+                                    <Ionicons
+                                      name="location"
+                                      size={13}
+                                      color="#8b5cf6"
+                                    />
+                                    <Text
+                                      style={styles.eventLocation}
+                                      numberOfLines={1}
+                                    >
+                                      {event.location_name || event.location_address}
                                     </Text>
+                                    <Ionicons
+                                      name="chevron-forward"
+                                      size={13}
+                                      color="#8b5cf6"
+                                    />
                                   </TouchableOpacity>
                                 )}
                                 {((event.rsvp_counts?.yes ?? 0) > 0 || (event.rsvp_counts?.no ?? 0) > 0) && (
@@ -823,18 +836,15 @@ export default function CalendarScreen({ route, navigation }: any) {
                     event.event_date + 'T12:00:00'
                   );
                   const eventPast = isEventPast(event);
-                  const edgeColor =
-                    EVENT_TYPE_EDGE[event.event_type || ''] ||
-                    EVENT_TYPE_EDGE['other'];
+                  const accent = eventAccent(event.event_type);
                   return (
                     <View key={event.id} style={styles.eventCardWrap}>
                     <TouchableOpacity
                       style={[
                         styles.eventCard,
                         {
-                          borderLeftWidth:
-                            event.event_type === 'practice' ? 0 : 4,
-                          borderLeftColor: edgeColor || 'transparent',
+                          borderLeftWidth: 4,
+                          borderLeftColor: eventPast ? '#4B5563' : accent,
                           borderTopLeftRadius: 8,
                           borderBottomLeftRadius: 8,
                         },
@@ -848,14 +858,14 @@ export default function CalendarScreen({ route, navigation }: any) {
                         })
                       }
                     >
-                      {/* Date block - team color background */}
+                      {/* Date block - full colour, by event type */}
                       <View
                         style={[
                           styles.eventDateBlock,
                           {
                             backgroundColor: eventPast
                               ? '#4B5563'
-                              : event.team?.color || '#5B7BB5',
+                              : accent,
                           },
                         ]}
                       >
@@ -913,9 +923,13 @@ export default function CalendarScreen({ route, navigation }: any) {
                         </Text>
                         {(() => {
                           const cfg = getEventTypeConfig(event.event_type);
+                          // Label from EVENT_TYPES, colour from eventAccent --
+                          // the badge used to take cyan from EVENT_TYPES while
+                          // the block beside it was green.
+                          const badgeColor = eventAccent(event.event_type);
                           return (
-                            <View style={[styles.cardTypeBadge, { backgroundColor: cfg.color + '33' }]}>
-                              <Text style={[styles.cardTypeBadgeText, { color: cfg.color }]}>
+                            <View style={[styles.cardTypeBadge, { backgroundColor: badgeColor + '33' }]}>
+                              <Text style={[styles.cardTypeBadgeText, { color: badgeColor }]}>
                                 {cfg.label.toUpperCase()}
                               </Text>
                             </View>
@@ -932,12 +946,26 @@ export default function CalendarScreen({ route, navigation }: any) {
                         </Text>
                         {(event.location_name || event.location_address) && (
                           <TouchableOpacity
-                            onPress={() => openInMaps(event.location_address || '', event.location_name)}
+                            onPress={(e) => {
+                              e.stopPropagation?.();
+                              openInMaps(
+                                event.location_address || '',
+                                event.location_name
+                              );
+                            }}
                             activeOpacity={0.7}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            style={styles.eventLocationRow}
                           >
-                            <Text style={styles.eventLocation}>
-                              📍 {event.location_name || event.location_address}
+                            <Ionicons name="location" size={13} color="#8b5cf6" />
+                            <Text style={styles.eventLocation} numberOfLines={1}>
+                              {event.location_name || event.location_address}
                             </Text>
+                            <Ionicons
+                              name="chevron-forward"
+                              size={13}
+                              color="#8b5cf6"
+                            />
                           </TouchableOpacity>
                         )}
                         {/* Counts come from the single aggregate read above. */}
@@ -1565,9 +1593,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 2,
   },
+  // No underline (device review: too cluttered). The affordance is the accent
+  // colour plus the pin and chevron flanking it; the venue text stays clean.
+  eventLocationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    marginTop: 2,
+  },
   eventLocation: {
     color: '#8b5cf6',
     fontSize: 12,
+    fontWeight: '600',
+    flexShrink: 1,
   },
   eventCardWrap: {
     marginBottom: 10,
@@ -1587,7 +1626,7 @@ const styles = StyleSheet.create({
   },
   attendanceNoReply: {
     color: '#64748b',
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
   },
   willStrip: {
@@ -1641,18 +1680,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 6,
   },
+  // One step up from 12 so the counts read at a glance without dominating the
+  // card. Weight was already '600'; only the size moved.
   attendanceGoing: {
     color: '#C4B5FD',
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
   },
   attendanceDivider: {
     color: '#6B7280',
+    fontSize: 14,
     marginHorizontal: 6,
   },
   attendanceNotGoing: {
     color: '#A78BFA',
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
   },
   rsvpSection: {

@@ -343,8 +343,11 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   const handleReactionSelect = async (emoji: string) => {
     if (!reactionPickerMessage?.id) return;
     try {
+      // No refetch here: toggleReaction paints optimistically and the realtime
+      // hub reconciles silently. The explicit refetch flipped `loading` and
+      // replaced the whole thread with a spinner, undoing the optimistic paint
+      // on the picker path only -- the bubble-tap path never did this.
       await toggleReaction(reactionPickerMessage.id, emoji);
-      await refetch();
     } catch (error) {
       console.error('Failed to add reaction:', error);
     } finally {
@@ -483,11 +486,25 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     setRefreshing(false);
   };
 
+  /**
+   * Calendar day in the DEVICE's timezone, as YYYY-MM-DD. Both sides of every
+   * comparison go through this, so a message sent at 23:00 and one sent at
+   * 01:00 the next morning land on different days for the reader, which is what
+   * a day separator is for. An unparseable timestamp returns '' and groups with
+   * its neighbours rather than forcing a separator with an Invalid Date label.
+   */
+  const localDayKey = (value: string | null | undefined) => {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    const month = `${d.getMonth() + 1}`.padStart(2, '0');
+    const day = `${d.getDate()}`.padStart(2, '0');
+    return `${d.getFullYear()}-${month}-${day}`;
+  };
+
   const isNewDay = (currentMsg: Message, prevMsg: Message | undefined) => {
     if (!prevMsg) return true;
-    const currentDate = new Date(currentMsg.created_at).toDateString();
-    const prevDate = new Date(prevMsg.created_at).toDateString();
-    return currentDate !== prevDate;
+    return localDayKey(currentMsg.created_at) !== localDayKey(prevMsg.created_at);
   };
 
   const formatDateSeparator = (dateString: string) => {
@@ -776,6 +793,7 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
         visible={showReactionDetails}
         onClose={() => setShowReactionDetails(false)}
         reactions={selectedMessageReactions}
+        nameFor={(userId) => memberNames.get(userId)?.name}
       />
 
       <MessageActionsModal
@@ -787,6 +805,11 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
         message={actionsModalMessage}
         currentUserId={user?.id || ''}
         isStaff={isStaffInChannel}
+        senderName={
+          actionsModalMessage
+            ? memberNames.get(actionsModalMessage.user_id)?.name
+            : undefined
+        }
         onEdit={handleEditMessage}
         onDelete={handleDeleteMessage}
         onReply={startReplyFromActions}

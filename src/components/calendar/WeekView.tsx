@@ -9,6 +9,7 @@ import {
 import { format, isToday } from 'date-fns';
 import type { CalendarEvent } from '../../types';
 import { isEventPast } from '../../utils/calendar';
+import { eventAccentFor } from '../../lib/eventColors';
 
 type CalendarEventWithTeam = CalendarEvent & { team?: { color?: string } };
 
@@ -221,10 +222,12 @@ export function WeekView({
                               styles.eventCard,
                               totalInGroup > 1 && styles.eventCardSideBySide,
                               {
-                                backgroundColor: past
-                                  ? '#4B5563'
-                                  : (event as CalendarEventWithTeam).team?.color ||
-                                    '#5B7BB5',
+                                // Was the TEAM colour, which painted games
+                                // blue here while the list card showed green.
+                                backgroundColor: eventAccentFor(
+                                  event.event_type,
+                                  past
+                                ),
                                 opacity: past ? 0.5 : 1,
                                 flex: totalInGroup > 1 ? 1 : undefined,
                               },

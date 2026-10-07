@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Share,
   Alert,
+  Linking,
 } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { Video, ResizeMode } from 'expo-av';
@@ -15,6 +16,59 @@ import {
   useAttachmentViewer,
   openExternally,
 } from './AttachmentViewer';
+
+/**
+ * Splits message text into plain runs and URL runs. Capturing group so
+ * String.split keeps the matches. Deliberately permissive on the body and
+ * strict on the tail -- trailing punctuation is peeled off below, because
+ * "see https://x.com/a." almost never means the full stop is part of the link.
+ */
+const URL_SPLIT = /((?:https?:\/\/|www\.)[^\s]+)/gi;
+const URL_TEST = /^(?:https?:\/\/|www\.)/i;
+const TRAILING_PUNCTUATION = /[.,!?;:'")\]}]+$/;
+
+function openUrl(href: string) {
+  Linking.openURL(href).catch(() => {
+    Alert.alert('Could not open link', href);
+  });
+}
+
+/**
+ * Message text with tappable URLs. Returns a plain string when the text holds
+ * no link, so the common case allocates nothing extra.
+ */
+function renderMessageText(
+  text: string,
+  linkStyle: object
+): React.ReactNode {
+  if (!URL_TEST.test(text) && !/(https?:\/\/|www\.)/i.test(text)) return text;
+
+  const parts = text.split(URL_SPLIT);
+  return parts.map((part, i) => {
+    if (!part) return null;
+    if (!URL_TEST.test(part)) return part;
+
+    const trailing = part.match(TRAILING_PUNCTUATION)?.[0] ?? '';
+    const url = trailing ? part.slice(0, -trailing.length) : part;
+    if (!url) return part;
+
+    // A bare www. link has no scheme, and Linking needs one.
+    const href = /^www\./i.test(url) ? `https://${url}` : url;
+
+    return (
+      <Text key={`lnk-${i}`}>
+        <Text
+          style={linkStyle}
+          onPress={() => openUrl(href)}
+          suppressHighlighting={false}
+        >
+          {url}
+        </Text>
+        {trailing}
+      </Text>
+    );
+  });
+}
 
 export interface ReactionSummary {
   reaction: string;
@@ -334,7 +388,10 @@ export function ChatBubble({
                     : styles.otherMessageText,
                 ]}
               >
-                {message.content}
+                {renderMessageText(
+                  message.content,
+                  isOwnMessage ? styles.linkTextOwn : styles.linkTextOther
+                )}
               </Text>
             ) : null}
             {isOwnMessage && readReceipts != null && readReceipts}
@@ -494,6 +551,16 @@ const styles = StyleSheet.create({
   },
   otherMessageText: {
     color: '#F3F4F6',
+  },
+  // Underlined rather than recoloured on own messages: the bubble is already
+  // purple, so a blue link on it fails contrast.
+  linkTextOwn: {
+    color: '#FFFFFF',
+    textDecorationLine: 'underline',
+  },
+  linkTextOther: {
+    color: '#93C5FD',
+    textDecorationLine: 'underline',
   },
 
   replyPreview: {

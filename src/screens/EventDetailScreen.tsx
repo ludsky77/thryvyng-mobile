@@ -15,7 +15,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { fetchTeamMemberNames } from '../lib/memberNames';
 import { openInMaps } from '../lib/maps';
+// expo-clipboard is already a project dependency and is how the rest of the app
+// copies text (WelcomeScreen, JoinTeamScreen, InviteCoParentModal). No new dep.
+import * as Clipboard from 'expo-clipboard';
 import { getEventTypeConfig } from '../types';
+import { eventAccent } from '../lib/eventColors';
 import type { CalendarEvent } from '../types';
 import { EditEventModal } from '../components/calendar/EditEventModal';
 import { CantGoReasonModal } from '../components/calendar/CantGoReasonModal';
@@ -114,13 +118,21 @@ function timeRangeLabel(start: string | null, end: string | null): string {
   return ma === b.slice(-2) ? `${a.slice(0, -3)}–${b}` : `${a}–${b}`;
 }
 
-/** Small line under the name on the Attendance tab, before any coach mark. */
-function rsvpHint(status: DisplayStatus, reason: string | null): string {
-  if (status === 'going') return 'said going';
-  if (status === 'cant') return reason ? `said can't — ${reason}` : "said can't";
-  if (status === 'late') return 'marked late';
-  if (status === 'excused') return 'marked excused';
-  return 'no reply';
+/**
+ * How a row's status is drawn on the Attendance tab.
+ *
+ * The product has exactly two stated answers plus silence -- there is NO
+ * 'maybe'. `late` and `excused` are legacy coach marks that still exist on old
+ * rows; they keep their recorded label but render in the muted style rather
+ * than getting a colour of their own, and nothing invents a label for a value
+ * we do not recognise.
+ */
+type BadgeKind = 'going' | 'cant' | 'muted';
+
+function statusBadge(status: DisplayStatus): { kind: BadgeKind; label: string } {
+  if (status === 'going') return { kind: 'going', label: 'Going' };
+  if (status === 'cant') return { kind: 'cant', label: "Can't go" };
+  return { kind: 'muted', label: STATUS_CHIP[status]?.label ?? 'No reply' };
 }
 
 function firstName(full: string | null | undefined): string | null {
@@ -174,6 +186,8 @@ export default function EventDetailScreen({ route, navigation }: any) {
   const [loading, setLoading] = useState(!eventParam && !!eventId);
   const [rsvpLoading, setRsvpLoading] = useState(false);
   const [cantGoModalVisible, setCantGoModalVisible] = useState(false);
+  /** Brief "Address copied" confirmation under the location block. */
+  const [addressCopied, setAddressCopied] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [eventRsvps, setEventRsvps] = useState<Array<{ player_id: string | null; user_id: string; status: string; decline_reason: string | null }>>([]);
   const [nonResponders, setNonResponders] = useState<string[]>([]);
@@ -571,15 +585,34 @@ export default function EventDetailScreen({ route, navigation }: any) {
     });
   }, [players, attendanceRows, resolvedRsvps, responderEmails]);
 
+  /**
+   * The headcount strip. Every number comes from the RSVP rows themselves, not
+   * from the player-matched roster.
+   *
+   * The old strip mixed two sources: Going counted raw RSVP rows while
+   * Headcount counted roster entries that had resolved to a player. For a
+   * viewer who cannot resolve their peers those two disagree badly -- the
+   * reported "Going 6 / Headcount 1". Counting one way removes the collision,
+   * and a responder nobody could match to a player is still a person who
+   * answered, so they count here.
+   *
+   * Every RSVP row lands in exactly one bucket, and roster players nobody
+   * answered for land in No reply.
+   */
   const headcounts = useMemo(() => {
-    // going / cant come from stated family intent; headcount is the union of
-    // family-going and coach-marked-present, deduped per player.
     const going = eventRsvps.filter((r) => r.status === 'yes').length;
     const cant = eventRsvps.filter((r) => r.status === 'no').length;
-    const noReply = roster.filter((r) => r.status === 'no_reply').length;
-    const headcount = roster.filter((r) => r.status === 'going').length;
-    return { going, cant, noReply, headcount };
-  }, [eventRsvps, roster]);
+    // Anything that is neither yes nor no is an unanswered row: legacy
+    // 'pending' / 'maybe' / null. The product has no Maybe, so it is silence.
+    const unansweredRows = Math.max(0, eventRsvps.length - going - cant);
+    // Roster players no RSVP row resolved to. byPlayer is keyed by player id,
+    // so its size is the number of players already spoken for.
+    const playersWithNoRsvp = Math.max(
+      0,
+      players.length - resolvedRsvps.byPlayer.size
+    );
+    return { going, cant, noReply: unansweredRows + playersWithNoRsvp };
+  }, [eventRsvps, players, resolvedRsvps]);
 
   const myRsvp = useMemo(
     () => eventRsvps.find((r) => r.user_id === user?.id) ?? null,
@@ -957,6 +990,32 @@ export default function EventDetailScreen({ route, navigation }: any) {
   };
 
   /**
+   * Long-press the location block to copy it. Tap still opens Maps -- the two
+   * gestures do not compete. Prefers the street address, since that is what is
+   * useful in another app; falls back to the venue name when there is no
+   * address on the event.
+   */
+  // Clear the confirmation on its own so it reads as a transient toast rather
+  // than a permanent label. Cleanup covers unmounting mid-timer.
+  useEffect(() => {
+    if (!addressCopied) return;
+    const t = setTimeout(() => setAddressCopied(false), 1800);
+    return () => clearTimeout(t);
+  }, [addressCopied]);
+
+  const handleCopyAddress = async () => {
+    const text = event?.location_address || event?.location_name || '';
+    if (!text) return;
+    try {
+      await Clipboard.setStringAsync(text);
+      setAddressCopied(true);
+    } catch (err) {
+      if (__DEV__) console.warn('[EventDetail] clipboard write failed:', err);
+      Alert.alert('Could not copy', text);
+    }
+  };
+
+  /**
    * Coach headcount tool. Writes ONLY to event_attendance -- never to
    * cal_event_rsvps, whose vocabulary (yes/no/maybe/pending) is the family's.
    */
@@ -1064,22 +1123,34 @@ export default function EventDetailScreen({ route, navigation }: any) {
 
       {isStaff && activeTab === 'attendance' ? (
         <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-          <Text style={styles.attContext}>
-            {`${titleCase(dateParts.day)}, ${titleCase(dateParts.month)} ${dateParts.date}`}
-            {` · ${typeConfig.label}`}
-            {event.is_all_day
-              ? ' · All Day'
-              : event.start_time
-                ? ` · ${timeRangeLabel(event.start_time, event.end_time)}`
-                : ''}
-          </Text>
+          <View style={styles.attBanner}>
+            <Ionicons name="calendar" size={14} color="#a78bfa" />
+            <Text style={styles.attBannerText} numberOfLines={1}>
+              {`${titleCase(dateParts.day)}, ${titleCase(dateParts.month)} ${dateParts.date}`}
+              {` · ${typeConfig.label}`}
+              {event.is_all_day
+                ? ' · All Day'
+                : event.start_time
+                  ? ` · ${timeRangeLabel(event.start_time, event.end_time)}`
+                  : ''}
+            </Text>
+          </View>
           <Text style={styles.attHeading}>Mark who showed up</Text>
           {roster.length === 0 ? (
             <Text style={styles.rosterEmptyText}>No players on this team</Text>
           ) : (
             roster.map((entry) => {
               const busy = markingPlayerId === entry.player.id;
-              const chip = STATUS_CHIP[entry.status];
+              const badge = statusBadge(entry.status);
+              // Attribution reads the same as it always has: who supplied this
+              // status, by name when we could resolve one.
+              const attribution = entry.source
+                ? entry.sourceName
+                  ? entry.source === 'coach'
+                    ? `by Coach ${entry.sourceName}`
+                    : `by ${entry.sourceName}`
+                  : SOURCE_LABEL[entry.source]
+                : null;
               return (
                 <View key={entry.player.id} style={styles.attRow}>
                   <PlayerAvatar
@@ -1094,17 +1165,32 @@ export default function EventDetailScreen({ route, navigation }: any) {
                     <Text style={styles.attName} numberOfLines={1}>
                       {entry.player.first_name} {entry.player.last_name}
                     </Text>
-                    {entry.hasCoachMark ? (
-                      // A coach mark replaces the hint with what was recorded --
-                      // legacy late/excused rows still render here.
-                      <Text style={[styles.attHint, { color: chip.color }]}>
-                        {chip.label}
-                        {entry.sourceName ? ` · by Coach ${entry.sourceName}` : ''}
+                    {entry.reason ? (
+                      <Text style={styles.attReason} numberOfLines={2}>
+                        “{entry.reason}”
                       </Text>
+                    ) : null}
+                    {attribution ? (
+                      <Text style={styles.attHint}>{attribution}</Text>
+                    ) : null}
+                  </View>
+
+                  {/* What the family said. The buttons to the right are what the
+                      coach marks -- two different questions, so two controls. */}
+                  <View
+                    style={[
+                      styles.attBadge,
+                      badge.kind === 'going' && styles.attBadgeGoing,
+                      badge.kind === 'cant' && styles.attBadgeCant,
+                      badge.kind === 'muted' && styles.attBadgeMuted,
+                    ]}
+                  >
+                    {badge.kind === 'going' ? (
+                      <Ionicons name="checkmark" size={14} color="#22c55e" />
+                    ) : badge.kind === 'cant' ? (
+                      <Ionicons name="close" size={14} color="#ef4444" />
                     ) : (
-                      <Text style={styles.attHint}>
-                        {rsvpHint(entry.status, entry.reason)}
-                      </Text>
+                      <Text style={styles.attBadgeMutedText}>{badge.label}</Text>
                     )}
                   </View>
 
@@ -1176,7 +1262,9 @@ export default function EventDetailScreen({ route, navigation }: any) {
             <View
               style={[
                 styles.dateSection,
-                { backgroundColor: (event as any).team?.color || '#5B7BB5' },
+                // Was the TEAM colour, so a game's date block rendered blue
+                // here while the list card rendered it green.
+                { backgroundColor: eventAccent(event.event_type) },
               ]}
             >
               <Text style={styles.eventTypeLabel}>
@@ -1221,8 +1309,8 @@ export default function EventDetailScreen({ route, navigation }: any) {
 
               {/* Badges */}
               <View style={styles.badgesRow}>
-                <View style={[styles.typeBadge, { backgroundColor: typeConfig.color + '33' }]}>
-                  <Text style={[styles.typeBadgeText, { color: typeConfig.color }]}>
+                <View style={[styles.typeBadge, { backgroundColor: eventAccent(event.event_type) + '33' }]}>
+                  <Text style={[styles.typeBadgeText, { color: eventAccent(event.event_type) }]}>
                     {typeConfig.icon} {typeConfig.label.toUpperCase()}
                   </Text>
                 </View>
@@ -1249,7 +1337,12 @@ export default function EventDetailScreen({ route, navigation }: any) {
 
               {/* Location */}
               {(event.location_name || event.location_address) && (
-                <TouchableOpacity style={styles.infoRow} onPress={handleOpenMaps}>
+                <TouchableOpacity
+                  style={styles.infoRow}
+                  onPress={handleOpenMaps}
+                  onLongPress={handleCopyAddress}
+                  delayLongPress={350}
+                >
                   <Ionicons name="location-outline" size={18} color="#8b5cf6" />
                   <View style={styles.infoContent}>
                     {event.location_name && (
@@ -1258,7 +1351,13 @@ export default function EventDetailScreen({ route, navigation }: any) {
                     {event.location_address && (
                       <Text style={styles.infoSubtitle}>{event.location_address}</Text>
                     )}
-                    <Text style={styles.tapHint}>Tap to open in Maps</Text>
+                    {addressCopied ? (
+                      <Text style={styles.copiedHint}>✓ Address copied</Text>
+                    ) : (
+                      <Text style={styles.tapHint}>
+                        Tap to open in Maps · hold to copy
+                      </Text>
+                    )}
                   </View>
                 </TouchableOpacity>
               )}
@@ -1400,7 +1499,11 @@ export default function EventDetailScreen({ route, navigation }: any) {
             </View>
           )}
 
-          {/* Responses Card */}
+          {/* Headcount strip. Counts only -- the per-player list and all coach
+              marking live on the Attendance tab, so the two cannot disagree.
+              The separate "Headcount" tile is gone: it counted a different
+              population from "Going" beside it, which is the collision this
+              replaces. */}
           <View style={styles.responsesCard}>
             <Text style={styles.responsesTitle}>📊 Responses</Text>
             <View style={styles.responsesRow}>
@@ -1410,93 +1513,18 @@ export default function EventDetailScreen({ route, navigation }: any) {
               </View>
               <View style={styles.responseItem}>
                 <Text style={styles.responseCount}>{headcounts.cant}</Text>
-                <Text style={styles.responseLabel}>Can't</Text>
+                <Text style={styles.responseLabel}>Can't go</Text>
               </View>
               <View style={styles.responseItem}>
                 <Text style={styles.responseCount}>{headcounts.noReply}</Text>
                 <Text style={styles.responseLabel}>No reply</Text>
               </View>
-              <View style={[styles.responseItem, styles.headcountItem]}>
-                <Text style={[styles.responseCount, styles.headcountCount]}>
-                  {headcounts.headcount}
-                </Text>
-                <Text style={styles.responseLabel}>Headcount</Text>
-              </View>
             </View>
 
-            {roster.length === 0 ? (
-              <Text style={styles.rosterEmptyText}>No players on this team</Text>
-            ) : (
-              roster.map((entry) => {
-                const chip = STATUS_CHIP[entry.status];
-                return (
-                  <View key={entry.player.id} style={styles.rosterRow}>
-                    <View style={styles.rosterInfo}>
-                      <Text style={styles.rosterName} numberOfLines={1}>
-                        {entry.player.first_name} {entry.player.last_name}
-                      </Text>
-                      {entry.reason ? (
-                        <Text style={styles.rosterReason} numberOfLines={2}>
-                          “{entry.reason}”
-                        </Text>
-                      ) : null}
-                      {entry.source ? (
-                        <Text style={styles.rosterSource}>
-                          {entry.sourceName
-                            ? entry.source === 'coach'
-                              ? `by Coach ${entry.sourceName}`
-                              : `by ${entry.sourceName}`
-                            : SOURCE_LABEL[entry.source]}
-                        </Text>
-                      ) : null}
-                    </View>
-
-                    <View
-                      style={[
-                        styles.statusChip,
-                        { borderColor: chip.color, backgroundColor: chip.color + '22' },
-                      ]}
-                    >
-                      <Text style={[styles.statusChipText, { color: chip.color }]}>
-                        {chip.label}
-                      </Text>
-                    </View>
-
-                  </View>
-                );
-              })
-            )}
-
-            {resolvedRsvps.unmapped.map((u) => {
-              const chip = STATUS_CHIP[u.status];
-              return (
-                <View key={u.key} style={styles.rosterRow}>
-                  <View style={styles.rosterInfo}>
-                    <Text style={styles.rosterName} numberOfLines={1}>
-                      {u.label}
-                    </Text>
-                    {u.reason ? (
-                      <Text style={styles.rosterReason} numberOfLines={2}>
-                        “{u.reason}”
-                      </Text>
-                    ) : null}
-                    <Text style={styles.rosterSource}>
-                      {u.ambiguous ? 'multiple players — not matched' : 'not matched to a player'}
-                    </Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.statusChip,
-                      { borderColor: chip.color, backgroundColor: chip.color + '22' },
-                    ]}
-                  >
-                    <Text style={[styles.statusChipText, { color: chip.color }]}>
-                      {chip.label}
-                    </Text>
-                  </View>
-                </View>
-              );
-            })}
+            {/* The per-player list used to be duplicated here. It now lives
+                only on the Attendance tab, where the coach can actually act on
+                it -- two copies of the same roster, one of them read-only, was
+                the de-dupe this removes. */}
           </View>
 
           {/* Game entry - for game events */}
@@ -1865,6 +1893,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
+  copiedHint: {
+    color: '#22c55e',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+  },
   venueBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: 10,
@@ -2007,11 +2041,57 @@ const styles = StyleSheet.create({
   willBtnTextActive: {
     color: '#fff',
   },
-  attContext: {
-    color: '#64748b',
+  // Purple accent family, matching the icon/accent colour used across the app.
+  attBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: 'rgba(139, 92, 246, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.35)',
+  },
+  attBannerText: {
+    flex: 1,
+    color: '#c4b5fd',
     fontSize: 12,
-    paddingHorizontal: 16,
-    paddingTop: 14,
+    fontWeight: '600',
+  },
+  attReason: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  attBadge: {
+    minWidth: 26,
+    height: 26,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attBadgeGoing: {
+    borderColor: '#22c55e',
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+  },
+  attBadgeCant: {
+    borderColor: '#ef4444',
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+  },
+  attBadgeMuted: {
+    borderColor: '#334155',
+    backgroundColor: 'rgba(100, 116, 139, 0.15)',
+  },
+  attBadgeMutedText: {
+    color: '#94a3b8',
+    fontSize: 11,
+    fontWeight: '700',
   },
   attHeading: {
     color: '#94a3b8',

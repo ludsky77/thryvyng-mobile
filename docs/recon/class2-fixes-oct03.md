@@ -39,6 +39,11 @@ before today. Needs one-off dedupe + unique constraint. Schema + data deletion =
 numbering, [lineup-master-oct02.md](lineup-master-oct02.md) tables stop at 4, and no lettered sub-items exist in any of the three.
 Source unknown — needs whoever cited it to name the table, or re-derive at 4f prep.
 
+> **RESOLVED Oct 6 2026.** The spec was recovered and is now written down in
+> [ux-smoothness-sweep-oct05.md § ㊶a](ux-smoothness-sweep-oct05.md): emoji-reaction
+> tap waited for the DB round trip before painting; fixed with an optimistic
+> paint → reconcile → rollback in `useMessages.toggleReaction`. No longer open.
+
 ## Addendum Oct 5 — 4e link 2 (client-only)
 - TeamChatRoomScreen:436,456 + DMChatScreen:340 — reply sender name now memberNames-first (was profile?.full_name ?? Unknown); also stops Unknown persisting into reply_to_sender
 - Found: DMChatScreen:298 setCelebration undefined (TS2304, pre-existing) — ticketed

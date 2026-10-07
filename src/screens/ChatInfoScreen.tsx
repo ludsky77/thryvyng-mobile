@@ -462,17 +462,10 @@ export default function ChatInfoScreen() {
                 <Text style={styles.quickTileLabel}>Polls</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.quickTile} onPress={handleFilesPress}>
-                <Feather name="file" size={24} color="#8b5cf6" />
-                <Text style={styles.quickTileCount}>{filesCount}</Text>
-                <Text style={styles.quickTileLabel}>Files</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.quickTile} onPress={handleLinksPress}>
-                <Feather name="link" size={24} color="#8b5cf6" />
-                <Text style={styles.quickTileCount}>{linksCount}</Text>
-                <Text style={styles.quickTileLabel}>Links</Text>
-              </TouchableOpacity>
+              {/* Files and Links tiles are hidden: they advertised real counts
+                  but navigated to placeholder stubs ("Files list coming soon").
+                  The counts are still fetched and the handlers still exist --
+                  restore these two tiles when the screens are built. */}
             </View>
 
             <View style={styles.settingsSection}>

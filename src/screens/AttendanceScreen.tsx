@@ -60,7 +60,11 @@ function formatDate(dateStr: string): string {
 const STATUS_OPTIONS: { value: AttendanceStatus; label: string; icon: string; color: string }[] = [
   { value: 'yes', label: 'Present', icon: '✓', color: '#22c55e' },
   { value: 'no', label: 'Absent', icon: '✗', color: '#ef4444' },
-  { value: 'maybe', label: 'Unknown', icon: '?', color: '#6b7280' },
+  // 'maybe' is also the default for a player with no RSVP, so labelling it
+  // 'Unknown' made a deliberate maybe and a never-responded read identically --
+  // and collided with the identity-resolution 'Unknown' token. getStatusHint
+  // still distinguishes "No response" in the row subtitle.
+  { value: 'maybe', label: 'Maybe', icon: '?', color: '#6b7280' },
 ];
 
 export default function AttendanceScreen({ route, navigation }: any) {

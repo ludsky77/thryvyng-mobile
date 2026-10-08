@@ -14,8 +14,11 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { DateTimeSheet } from '../common/DateTimeSheet';
 import { useCreatePoll } from '../../hooks/usePolls';
+
+/** Which custom-deadline field's overlay sheet is open, if any. */
+type SheetField = 'customDate' | 'customTime';
 
 const MAX_QUESTION_LENGTH = 500;
 const MIN_OPTIONS = 2;
@@ -59,6 +62,13 @@ function timeStringToDate(date: Date, timeStr: string): Date {
   const [h, m] = timeStr.split(':').map(Number);
   const d = new Date(date);
   d.setHours(h, m, 0, 0);
+  return d;
+}
+
+/** Today at 00:00 local -- the deadline date floor. Was an inline IIFE. */
+function todayAtMidnight(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
   return d;
 }
 
@@ -108,8 +118,14 @@ export function CreatePollModal({
   const [displayStyle, setDisplayStyle] = useState<'standard' | 'board_room'>('standard');
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ question?: string; options?: string }>({});
-  const [customDateExpanded, setCustomDateExpanded] = useState(false);
-  const [customTimeExpanded, setCustomTimeExpanded] = useState(false);
+  // One nullable field replaces the two *Expanded booleans the inline pattern
+  // needed.
+  const [sheetField, setSheetField] = useState<SheetField | null>(null);
+
+  const openSheet = (field: SheetField) => {
+    Keyboard.dismiss();
+    setSheetField(field);
+  };
 
   const getClosesAt = (): Date | null => {
     const now = new Date();
@@ -158,8 +174,7 @@ export function CreatePollModal({
       setSendReminder(false);
       setReminderBefore('1h');
       setDisplayStyle('standard');
-      setCustomDateExpanded(false);
-      setCustomTimeExpanded(false);
+      setSheetField(null);
       setErrors({});
     }
   }, [visible]);
@@ -459,10 +474,7 @@ export function CreatePollModal({
               <View style={styles.customDateTimeBlock}>
                 <TouchableOpacity
                   style={styles.customPickerRow}
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    setCustomDateExpanded(!customDateExpanded);
-                  }}
+                  onPress={() => openSheet('customDate')}
                   disabled={submitting}
                 >
                   <Text style={styles.customPickerLabel}>Date</Text>
@@ -475,33 +487,13 @@ export function CreatePollModal({
                     })}
                   </Text>
                   <Text style={styles.chevron}>
-                    {customDateExpanded ? '▲' : '▼'}
+                    {sheetField === 'customDate' ? '▲' : '▼'}
                   </Text>
                 </TouchableOpacity>
-                {customDateExpanded && (
-                  <DateTimePicker
-                    value={customDate}
-                    mode="date"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    minimumDate={(() => {
-                      const today = new Date();
-                      today.setHours(0, 0, 0, 0);
-                      return today;
-                    })()}
-                    onChange={(_, d) => {
-                      if (d) setCustomDate(d);
-                    }}
-                    textColor="#fff"
-                    themeVariant="dark"
-                  />
-                )}
 
                 <TouchableOpacity
                   style={styles.customPickerRow}
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    setCustomTimeExpanded(!customTimeExpanded);
-                  }}
+                  onPress={() => openSheet('customTime')}
                   disabled={submitting}
                 >
                   <Text style={styles.customPickerLabel}>Time</Text>
@@ -509,28 +501,9 @@ export function CreatePollModal({
                     {formatTimeDisplay(customTime)}
                   </Text>
                   <Text style={styles.chevron}>
-                    {customTimeExpanded ? '▲' : '▼'}
+                    {sheetField === 'customTime' ? '▲' : '▼'}
                   </Text>
                 </TouchableOpacity>
-                {customTimeExpanded && (
-                  <DateTimePicker
-                    value={customDateTime}
-                    mode="time"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    minuteInterval={30}
-                    onChange={(_, d) => {
-                      if (d) {
-                        const h = d.getHours();
-                        const m = d.getMinutes();
-                        setCustomTime(
-                          `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-                        );
-                      }
-                    }}
-                    textColor="#fff"
-                    themeVariant="dark"
-                  />
-                )}
               </View>
             )}
           </View>
@@ -621,6 +594,48 @@ export function CreatePollModal({
 
           <View style={styles.bottomSpacer} />
         </ScrollView>
+
+        {/* Overlay, NOT a nested <Modal> -- see DateTimeSheet's header comment.
+            customTime stays a "HH:mm" string and customDate stays a Date: the
+            sheet speaks Date, so the two converters below sit at the call site
+            and nothing about the stored shape or the poll payload changes. */}
+        {sheetField === 'customDate' ? (
+          <DateTimeSheet
+            visible
+            fieldKey="customDate"
+            label="Deadline Date"
+            value={customDate}
+            mode="date"
+            minimumDate={todayAtMidnight()}
+            onCancel={() => setSheetField(null)}
+            onDone={(d) => {
+              setCustomDate(d);
+              setSheetField(null);
+            }}
+          />
+        ) : null}
+
+        {sheetField === 'customTime' ? (
+          <DateTimeSheet
+            visible
+            fieldKey="customTime"
+            label="Deadline Time"
+            // Date -> the picker; the committed date carries the wheel's day.
+            value={customDateTime}
+            mode="time"
+            minuteInterval={30}
+            onCancel={() => setSheetField(null)}
+            onDone={(d) => {
+              // Date -> "HH:mm" string, exactly as the inline onChange did.
+              setCustomTime(
+                `${String(d.getHours()).padStart(2, '0')}:${String(
+                  d.getMinutes()
+                ).padStart(2, '0')}`
+              );
+              setSheetField(null);
+            }}
+          />
+        ) : null}
       </KeyboardAvoidingView>
     </Modal>
   );

@@ -12,10 +12,9 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
-  LayoutAnimation,
   UIManager,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { DateTimeSheet } from '../common/DateTimeSheet';
 import { supabase } from '../../lib/supabase';
 import type { EventType, CalendarEvent } from '../../types';
 import { EVENT_TYPES } from '../../types';
@@ -64,6 +63,18 @@ function formatTime(d: Date): string {
 
 type HomeAway = 'home' | 'away' | 'neutral';
 
+/** Which field's overlay sheet is open, if any. */
+type SheetField = 'date' | 'start' | 'arrival' | 'end';
+
+/** Uniform shape for the open sheet's props, so every branch is assignable. */
+type SheetConfig = {
+  label: string;
+  value: Date;
+  mode: 'date' | 'time';
+  doneLabel?: string;
+  onDone: (value: Date) => void;
+};
+
 interface EditEventModalProps {
   visible: boolean;
   event: CalendarEvent | null;
@@ -103,10 +114,15 @@ export function EditEventModal({
     endTime?: string;
   }>({});
 
-  const [dateExpanded, setDateExpanded] = useState(false);
-  const [startTimeExpanded, setStartTimeExpanded] = useState(false);
-  const [arrivalTimeExpanded, setArrivalTimeExpanded] = useState(false);
-  const [endTimeExpanded, setEndTimeExpanded] = useState(false);
+  // One nullable field replaces the four *Expanded booleans the inline pattern
+  // needed; clearing it is a single assignment, which keeps the open-reset
+  // below exhaustive.
+  const [sheetField, setSheetField] = useState<SheetField | null>(null);
+
+  const openSheet = (field: SheetField) => {
+    Keyboard.dismiss();
+    setSheetField(field);
+  };
 
   // Pre-populate form when event changes
   useEffect(() => {
@@ -124,10 +140,7 @@ export function EditEventModal({
       setVenue((event.home_away as HomeAway) || '');
       setUniform(event.uniform || '');
       setNotes(event.notes || '');
-      setDateExpanded(false);
-      setStartTimeExpanded(false);
-      setArrivalTimeExpanded(false);
-      setEndTimeExpanded(false);
+      setSheetField(null);
       setErrors({});
     }
   }, [visible, event]);
@@ -222,6 +235,65 @@ export function EditEventModal({
   };
 
   const isValid = (isGameOrScrimmage ? opponent.trim() : title.trim()).length > 0;
+
+  /**
+   * Props for whichever field's sheet is open. Each onDone is the ONE place
+   * that field's form state changes.
+   *
+   * NO CASCADE HERE, deliberately. The edit form has never re-derived arrival
+   * or end from start (only the create form did), and silently adding that
+   * would rewrite times on an existing event that the team has already been
+   * notified about. Start's Done just commits start and advances to End.
+   */
+  const sheetConfig: SheetConfig | null = (() => {
+    switch (sheetField) {
+      case 'date':
+        // No minimumDate, same as the inline picker it replaces: past events
+        // are legitimately edited (see validate()).
+        return {
+          label: 'Date',
+          value: eventDate,
+          mode: 'date' as const,
+          onDone: (d: Date) => {
+            setEventDate(d);
+            setSheetField(null);
+          },
+        };
+      case 'start':
+        return {
+          label: 'Start Time',
+          value: startTime,
+          mode: 'time' as const,
+          doneLabel: 'Next: End',
+          onDone: (d: Date) => {
+            setStartTime(d);
+            setSheetField('end');
+          },
+        };
+      case 'arrival':
+        return {
+          label: 'Arrival Time',
+          value: arrivalTime,
+          mode: 'time' as const,
+          onDone: (d: Date) => {
+            setArrivalTime(d);
+            setSheetField(null);
+          },
+        };
+      case 'end':
+        return {
+          label: 'End Time',
+          value: endTime,
+          mode: 'time' as const,
+          onDone: (d: Date) => {
+            setEndTime(d);
+            setSheetField(null);
+          },
+        };
+      default:
+        return null;
+    }
+  })();
 
   if (!event) return null;
 
@@ -375,112 +447,48 @@ export function EditEventModal({
           >
             <TouchableOpacity
               style={styles.subCollapsible}
-              onPress={() => {
-                Keyboard.dismiss();
-                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                setDateExpanded(!dateExpanded);
-              }}
+              onPress={() => openSheet('date')}
               disabled={submitting}
             >
               <Text style={styles.subLabel}>Date</Text>
               <Text style={styles.subValue}>{eventDate.toLocaleDateString()}</Text>
-              <Text style={styles.chevron}>{dateExpanded ? '▲' : '▼'}</Text>
+              <Text style={styles.chevron}>{sheetField === 'date' ? '▲' : '▼'}</Text>
             </TouchableOpacity>
-            {dateExpanded && (
-              <DateTimePicker
-                value={eventDate}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={(_, d) => {
-                  if (d) setEventDate(d);
-                }}
-                textColor={colors.text}
-                themeVariant="dark"
-              />
-            )}
 
             {!isAllDay && (
               <>
                 <TouchableOpacity
                   style={styles.subCollapsible}
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                    setStartTimeExpanded(!startTimeExpanded);
-                  }}
+                  onPress={() => openSheet('start')}
                   disabled={submitting}
                 >
                   <Text style={styles.subLabel}>Start Time</Text>
                   <Text style={styles.subValue}>{formatTime(startTime)}</Text>
-                  <Text style={styles.chevron}>{startTimeExpanded ? '▲' : '▼'}</Text>
+                  <Text style={styles.chevron}>{sheetField === 'start' ? '▲' : '▼'}</Text>
                 </TouchableOpacity>
-                {startTimeExpanded && (
-                  <DateTimePicker
-                    value={startTime}
-                    mode="time"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={(_, d) => {
-                      if (d) setStartTime(d);
-                    }}
-                    textColor={colors.text}
-                    themeVariant="dark"
-                  />
-                )}
 
                 <TouchableOpacity
                   style={styles.subCollapsible}
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                    setArrivalTimeExpanded(!arrivalTimeExpanded);
-                  }}
+                  onPress={() => openSheet('arrival')}
                   disabled={submitting}
                 >
                   <Text style={styles.subLabel}>Arrival Time</Text>
                   <Text style={styles.subValue}>{formatTime(arrivalTime)}</Text>
-                  <Text style={styles.chevron}>{arrivalTimeExpanded ? '▲' : '▼'}</Text>
+                  <Text style={styles.chevron}>{sheetField === 'arrival' ? '▲' : '▼'}</Text>
                 </TouchableOpacity>
-                {arrivalTimeExpanded && (
-                  <DateTimePicker
-                    value={arrivalTime}
-                    mode="time"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={(_, d) => {
-                      if (d) setArrivalTime(d);
-                    }}
-                    textColor={colors.text}
-                    themeVariant="dark"
-                  />
-                )}
                 {errors.arrivalTime ? (
                   <Text style={styles.errorText}>{errors.arrivalTime}</Text>
                 ) : null}
 
                 <TouchableOpacity
                   style={styles.subCollapsible}
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                    setEndTimeExpanded(!endTimeExpanded);
-                  }}
+                  onPress={() => openSheet('end')}
                   disabled={submitting}
                 >
                   <Text style={styles.subLabel}>End Time</Text>
                   <Text style={styles.subValue}>{formatTime(endTime)}</Text>
-                  <Text style={styles.chevron}>{endTimeExpanded ? '▲' : '▼'}</Text>
+                  <Text style={styles.chevron}>{sheetField === 'end' ? '▲' : '▼'}</Text>
                 </TouchableOpacity>
-                {endTimeExpanded && (
-                  <DateTimePicker
-                    value={endTime}
-                    mode="time"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={(_, d) => {
-                      if (d) setEndTime(d);
-                    }}
-                    textColor={colors.text}
-                    themeVariant="dark"
-                  />
-                )}
                 {errors.endTime ? (
                   <Text style={styles.errorText}>{errors.endTime}</Text>
                 ) : null}
@@ -586,6 +594,24 @@ export function EditEventModal({
 
           <View style={styles.bottomSpacer} />
         </ScrollView>
+
+        {/* Overlay, NOT a nested <Modal> -- see DateTimeSheet's header comment. */}
+        {sheetConfig ? (
+          <DateTimeSheet
+            // Keyed so advancing Start -> End REMOUNTS the sheet: the draft is
+            // then initialised from the new field's value, instead of showing
+            // the previous field's value for a frame while an effect re-seeds it.
+            key={sheetField ?? ''}
+            visible
+            fieldKey={sheetField ?? ''}
+            label={sheetConfig.label}
+            value={sheetConfig.value}
+            mode={sheetConfig.mode}
+            doneLabel={sheetConfig.doneLabel}
+            onCancel={() => setSheetField(null)}
+            onDone={sheetConfig.onDone}
+          />
+        ) : null}
       </KeyboardAvoidingView>
     </Modal>
   );

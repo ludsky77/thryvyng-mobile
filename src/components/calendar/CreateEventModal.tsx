@@ -12,11 +12,10 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
-  LayoutAnimation,
   UIManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { DateTimeSheet } from '../common/DateTimeSheet';
 import type { EventType } from '../../types';
 import { EVENT_TYPES } from '../../types';
 import { CollapsibleSection } from '../CollapsibleSection';
@@ -99,17 +98,60 @@ function getDefaultStartTime(): Date {
   return d;
 }
 
-function getDefaultArrivalTime(start: Date): Date {
+/**
+ * How far arrival sits before start, and end after start, per event type.
+ *
+ * This used to be ONE flat rule (-45 / +90) hardcoded in two places: the mount
+ * defaults and handleStartTimeChange. Lu's spec makes it per type, so it lives
+ * in one table that both derivations read.
+ *
+ * Only Game and Practice are specified. 'scrimmage' takes the Game row because
+ * it is treated as game-shaped everywhere else in this file (isGameOrScrimmage).
+ * 'other_event' and 'club_event' are unspecified, so they keep the previous
+ * flat -45 / +90 -- no behaviour change where the spec is silent.
+ */
+const START_OFFSETS_BY_TYPE: Partial<
+  Record<EventType, { arrivalBefore: number; endAfter: number }>
+> = {
+  game: { arrivalBefore: 45, endAfter: 90 },
+  scrimmage: { arrivalBefore: 45, endAfter: 90 },
+  practice: { arrivalBefore: 10, endAfter: 75 },
+};
+
+const DEFAULT_START_OFFSETS = { arrivalBefore: 45, endAfter: 90 };
+
+function startOffsetsFor(eventType: EventType) {
+  return START_OFFSETS_BY_TYPE[eventType] ?? DEFAULT_START_OFFSETS;
+}
+
+function getDefaultArrivalTime(start: Date, eventType: EventType): Date {
   const d = new Date(start);
-  d.setMinutes(d.getMinutes() - 45);
+  d.setMinutes(d.getMinutes() - startOffsetsFor(eventType).arrivalBefore);
   return d;
 }
 
-function getDefaultEndTime(start: Date): Date {
+function getDefaultEndTime(start: Date, eventType: EventType): Date {
   const d = new Date(start);
-  d.setMinutes(d.getMinutes() + 90);
+  d.setMinutes(d.getMinutes() + startOffsetsFor(eventType).endAfter);
   return d;
 }
+
+/** Which field's overlay sheet is open, if any. */
+type SheetField = 'date' | 'start' | 'arrival' | 'end' | 'endRepeat';
+
+/** Uniform shape for the open sheet's props, so every branch is assignable. */
+type SheetConfig = {
+  label: string;
+  value: Date;
+  mode: 'date' | 'time';
+  minimumDate?: Date;
+  maximumDate?: Date;
+  doneLabel?: string;
+  onDone: (value: Date) => void;
+};
+
+/** The event type a fresh form opens on -- also what the close-reset restores. */
+const INITIAL_EVENT_TYPE: EventType = 'practice';
 
 type HomeAway = 'home' | 'away' | 'neutral';
 
@@ -200,11 +242,15 @@ export function CreateEventModal({
   onSuccess,
 }: CreateEventModalProps) {
   const [title, setTitle] = useState('');
-  const [eventType, setEventType] = useState<EventType>('practice');
+  const [eventType, setEventType] = useState<EventType>(INITIAL_EVENT_TYPE);
   const [eventDate, setEventDate] = useState(new Date());
   const [startTime, setStartTime] = useState(getDefaultStartTime);
-  const [arrivalTime, setArrivalTime] = useState(() => getDefaultArrivalTime(getDefaultStartTime()));
-  const [endTime, setEndTime] = useState(() => getDefaultEndTime(getDefaultStartTime()));
+  const [arrivalTime, setArrivalTime] = useState(() =>
+    getDefaultArrivalTime(getDefaultStartTime(), INITIAL_EVENT_TYPE)
+  );
+  const [endTime, setEndTime] = useState(() =>
+    getDefaultEndTime(getDefaultStartTime(), INITIAL_EVENT_TYPE)
+  );
   const [isAllDay, setIsAllDay] = useState(false);
   const [locationName, setLocationName] = useState('');
   const [locationAddress, setLocationAddress] = useState('');
@@ -221,22 +267,30 @@ export function CreateEventModal({
     arrivalTime?: string;
     endTime?: string;
   }>({});
-  const [dateExpanded, setDateExpanded] = useState(true);
-  const [startTimeExpanded, setStartTimeExpanded] = useState(false);
-  const [arrivalTimeExpanded, setArrivalTimeExpanded] = useState(false);
-  const [endTimeExpanded, setEndTimeExpanded] = useState(false);
-  const [endRepeatExpanded, setEndRepeatExpanded] = useState(false);
+  // One nullable field replaces the five *Expanded booleans the inline pattern
+  // needed. Only one sheet can be open at a time, and clearing it is a single
+  // assignment -- which is also what makes the close-reset below exhaustive.
+  const [sheetField, setSheetField] = useState<SheetField | null>(null);
 
-  const handleStartTimeChange = (_event: unknown, selectedDate?: Date) => {
-    if (selectedDate) {
-      setStartTime(selectedDate);
-      const newArrival = new Date(selectedDate);
-      newArrival.setMinutes(newArrival.getMinutes() - 45);
-      setArrivalTime(newArrival);
-      const newEnd = new Date(selectedDate);
-      newEnd.setMinutes(newEnd.getMinutes() + 90);
-      setEndTime(newEnd);
-    }
+  const openSheet = (field: SheetField) => {
+    Keyboard.dismiss();
+    setSheetField(field);
+  };
+
+  /**
+   * Commit a start time and re-derive arrival and end from it.
+   *
+   * Fires EXACTLY ONCE, when the sheet's Done is tapped. The old inline picker
+   * ran this on every wheel settle, so a user scrolling from 4pm to 7pm
+   * clobbered arrival and end at every intermediate hour.
+   *
+   * Still unconditional on Done, as before: the user can override arrival or
+   * end afterwards, and re-committing start intentionally re-derives them.
+   */
+  const commitStartTime = (selected: Date) => {
+    setStartTime(selected);
+    setArrivalTime(getDefaultArrivalTime(selected, eventType));
+    setEndTime(getDefaultEndTime(selected, eventType));
   };
 
   useEffect(() => {
@@ -260,11 +314,11 @@ export function CreateEventModal({
     if (!visible) {
       const start = getDefaultStartTime();
       setTitle('');
-      setEventType('practice');
+      setEventType(INITIAL_EVENT_TYPE);
       setEventDate(new Date());
       setStartTime(start);
-      setArrivalTime(getDefaultArrivalTime(start));
-      setEndTime(getDefaultEndTime(start));
+      setArrivalTime(getDefaultArrivalTime(start, INITIAL_EVENT_TYPE));
+      setEndTime(getDefaultEndTime(start, INITIAL_EVENT_TYPE));
       setIsAllDay(false);
       setLocationName('');
       setLocationAddress('');
@@ -274,11 +328,7 @@ export function CreateEventModal({
       setNotes('');
       setSelectedDays([]);
       setEndRepeatDate('');
-      setDateExpanded(true);
-      setStartTimeExpanded(false);
-      setArrivalTimeExpanded(false);
-      setEndTimeExpanded(false);
-      setEndRepeatExpanded(false);
+      setSheetField(null);
       setErrors({});
     }
   }, [visible]);
@@ -443,6 +493,80 @@ export function CreateEventModal({
   const isValid =
     (isGameOrScrimmage ? opponent.trim() : title.trim()).length > 0;
   const creating = submitting;
+
+  /**
+   * Props for whichever field's sheet is open.
+   *
+   * Each onDone is the ONE place that field's form state changes. Constraint
+   * props (minimumDate / maximumDate) and the string<->Date conversion for
+   * endRepeat are carried over unchanged from the old inline pickers, so the
+   * submit payload is byte-for-byte what it was.
+   *
+   * Sequence: Start's Done advances to End rather than closing, so the common
+   * "set start, confirm the derived end" pass is one gesture. Every other
+   * field's Done closes the sheet.
+   */
+  const sheetConfig: SheetConfig | null = (() => {
+    switch (sheetField) {
+      case 'date':
+        return {
+          label: 'Date',
+          value: eventDate,
+          mode: 'date' as const,
+          minimumDate: new Date(),
+          onDone: (d: Date) => {
+            setEventDate(d);
+            setSheetField(null);
+          },
+        };
+      case 'start':
+        return {
+          label: 'Start Time',
+          value: startTime,
+          mode: 'time' as const,
+          doneLabel: 'Next: End',
+          onDone: (d: Date) => {
+            commitStartTime(d);
+            setSheetField('end');
+          },
+        };
+      case 'arrival':
+        return {
+          label: 'Arrival Time',
+          value: arrivalTime,
+          mode: 'time' as const,
+          onDone: (d: Date) => {
+            setArrivalTime(d);
+            setSheetField(null);
+          },
+        };
+      case 'end':
+        return {
+          label: 'End Time',
+          value: endTime,
+          mode: 'time' as const,
+          onDone: (d: Date) => {
+            setEndTime(d);
+            setSheetField(null);
+          },
+        };
+      case 'endRepeat':
+        return {
+          label: 'End Repeat',
+          // Same expression the inline picker used, including the fallback.
+          value: endRepeatDate ? new Date(endRepeatDate) : minEndRepeatDate,
+          mode: 'date' as const,
+          minimumDate: minEndRepeatDate,
+          maximumDate: addMonths(new Date(eventDate), 2),
+          onDone: (d: Date) => {
+            setEndRepeatDate(formatDateForPayload(d));
+            setSheetField(null);
+          },
+        };
+      default:
+        return null;
+    }
+  })();
 
   const handleCancel = () => {
     if (!submitting) onClose();
@@ -618,30 +742,13 @@ export function CreateEventModal({
           >
             <TouchableOpacity
               style={styles.subCollapsible}
-              onPress={() => {
-                Keyboard.dismiss();
-                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                setDateExpanded(!dateExpanded);
-              }}
+              onPress={() => openSheet('date')}
               disabled={submitting}
             >
               <Text style={styles.subLabel}>Date</Text>
               <Text style={styles.subValue}>{formatDateDisplay(eventDate)}</Text>
-              <Text style={styles.chevron}>{dateExpanded ? '▲' : '▼'}</Text>
+              <Text style={styles.chevron}>{sheetField === 'date' ? '▲' : '▼'}</Text>
             </TouchableOpacity>
-            {dateExpanded && (
-              <DateTimePicker
-                value={eventDate}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                minimumDate={new Date()}
-                onChange={(_, d) => {
-                  if (d) setEventDate(d);
-                }}
-                textColor={colors.text}
-                themeVariant="dark"
-              />
-            )}
             {errors.eventDate ? (
               <Text style={styles.errorText}>{errors.eventDate}</Text>
             ) : null}
@@ -650,82 +757,36 @@ export function CreateEventModal({
               <>
                 <TouchableOpacity
                   style={styles.subCollapsible}
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                    setStartTimeExpanded(!startTimeExpanded);
-                  }}
+                  onPress={() => openSheet('start')}
                   disabled={submitting}
                 >
                   <Text style={styles.subLabel}>Start Time</Text>
                   <Text style={styles.subValue}>{formatTimeDisplay(startTime)}</Text>
-                  <Text style={styles.chevron}>{startTimeExpanded ? '▲' : '▼'}</Text>
+                  <Text style={styles.chevron}>{sheetField === 'start' ? '▲' : '▼'}</Text>
                 </TouchableOpacity>
-                {startTimeExpanded && (
-                  <DateTimePicker
-                    value={startTime}
-                    mode="time"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={handleStartTimeChange}
-                    textColor={colors.text}
-                    themeVariant="dark"
-                  />
-                )}
 
                 <TouchableOpacity
                   style={styles.subCollapsible}
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                    setArrivalTimeExpanded(!arrivalTimeExpanded);
-                  }}
+                  onPress={() => openSheet('arrival')}
                   disabled={submitting}
                 >
                   <Text style={styles.subLabel}>Arrival Time</Text>
                   <Text style={styles.subValue}>{formatTimeDisplay(arrivalTime)}</Text>
-                  <Text style={styles.chevron}>{arrivalTimeExpanded ? '▲' : '▼'}</Text>
+                  <Text style={styles.chevron}>{sheetField === 'arrival' ? '▲' : '▼'}</Text>
                 </TouchableOpacity>
-                {arrivalTimeExpanded && (
-                  <DateTimePicker
-                    value={arrivalTime}
-                    mode="time"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={(_, d) => {
-                      if (d) setArrivalTime(d);
-                    }}
-                    textColor={colors.text}
-                    themeVariant="dark"
-                  />
-                )}
                 {errors.arrivalTime ? (
                   <Text style={styles.errorText}>{errors.arrivalTime}</Text>
                 ) : null}
 
                 <TouchableOpacity
                   style={styles.subCollapsible}
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                    setEndTimeExpanded(!endTimeExpanded);
-                  }}
+                  onPress={() => openSheet('end')}
                   disabled={submitting}
                 >
                   <Text style={styles.subLabel}>End Time</Text>
                   <Text style={styles.subValue}>{formatTimeDisplay(endTime)}</Text>
-                  <Text style={styles.chevron}>{endTimeExpanded ? '▲' : '▼'}</Text>
+                  <Text style={styles.chevron}>{sheetField === 'end' ? '▲' : '▼'}</Text>
                 </TouchableOpacity>
-                {endTimeExpanded && (
-                  <DateTimePicker
-                    value={endTime}
-                    mode="time"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={(_, d) => {
-                      if (d) setEndTime(d);
-                    }}
-                    textColor={colors.text}
-                themeVariant="dark"
-                  />
-                )}
                 {errors.endTime ? (
                   <Text style={styles.errorText}>{errors.endTime}</Text>
                 ) : null}
@@ -784,13 +845,7 @@ export function CreateEventModal({
                 <View style={styles.endRepeatContainer}>
                   <TouchableOpacity
                     style={styles.endRepeatRow}
-                    onPress={() => {
-                      Keyboard.dismiss();
-                      LayoutAnimation.configureNext(
-                        LayoutAnimation.Presets.easeInEaseOut
-                      );
-                      setEndRepeatExpanded(!endRepeatExpanded);
-                    }}
+                    onPress={() => openSheet('endRepeat')}
                     disabled={submitting}
                   >
                     <Text style={styles.endRepeatLabel}>End Repeat</Text>
@@ -801,32 +856,10 @@ export function CreateEventModal({
                           : 'Select date'}
                       </Text>
                       <Text style={styles.chevron}>
-                        {endRepeatExpanded ? '▲' : '▼'}
+                        {sheetField === 'endRepeat' ? '▲' : '▼'}
                       </Text>
                     </View>
                   </TouchableOpacity>
-
-                  {endRepeatExpanded && (
-                    <DateTimePicker
-                      value={
-                        endRepeatDate
-                          ? new Date(endRepeatDate)
-                          : minEndRepeatDate
-                      }
-                      mode="date"
-                      display={
-                        Platform.OS === 'ios' ? 'spinner' : 'default'
-                      }
-                      minimumDate={minEndRepeatDate}
-                      maximumDate={addMonths(new Date(eventDate), 2)}
-                      onChange={(_, d) => {
-                        if (d) setEndRepeatDate(formatDateForPayload(d));
-                      }}
-                      textColor="#ffffff"
-                      themeVariant="dark"
-                      style={styles.datePicker}
-                    />
-                  )}
 
                   {endRepeatDate && recurrenceDates.length > 0 && (
                     <View style={styles.previewCount}>
@@ -882,6 +915,27 @@ export function CreateEventModal({
 
           <View style={styles.bottomSpacer} />
         </ScrollView>
+
+        {/* Overlay, NOT a nested <Modal> -- see DateTimeSheet's header comment.
+            Last child of the KeyboardAvoidingView so it covers the whole form. */}
+        {sheetConfig ? (
+          <DateTimeSheet
+            // Keyed so advancing Start -> End REMOUNTS the sheet: the draft is
+            // then initialised from the new field's value, instead of showing
+            // the previous field's value for a frame while an effect re-seeds it.
+            key={sheetField ?? ''}
+            visible
+            fieldKey={sheetField ?? ''}
+            label={sheetConfig.label}
+            value={sheetConfig.value}
+            mode={sheetConfig.mode}
+            minimumDate={sheetConfig.minimumDate}
+            maximumDate={sheetConfig.maximumDate}
+            doneLabel={sheetConfig.doneLabel}
+            onCancel={() => setSheetField(null)}
+            onDone={sheetConfig.onDone}
+          />
+        ) : null}
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -1109,10 +1163,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginRight: 8,
-  },
-  datePicker: {
-    backgroundColor: '#1e1e3a',
-    marginTop: 8,
   },
   previewCount: {
     backgroundColor: 'rgba(139, 92, 246, 0.15)',

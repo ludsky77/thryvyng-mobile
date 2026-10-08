@@ -36,9 +36,9 @@ import DateTimePicker, {
  *    stuck pointing up at an invisible picker.
  *
  * Draft + commit: the wheel writes to a local draft. onDone hands the draft to
- * the host, which is the only moment form state changes (and, on the create
- * form, the only moment the arrival/end cascade fires). onCancel discards the
- * draft and leaves form state untouched.
+ * the host and closes the sheet -- that is the only moment form state changes
+ * (and, on the create form, the only moment the arrival/end cascade fires).
+ * onCancel discards the draft and leaves form state untouched.
  */
 
 type DateTimeSheetMode = 'date' | 'time';
@@ -46,12 +46,6 @@ type DateTimeSheetMode = 'date' | 'time';
 export interface DateTimeSheetProps {
   /** Whether a field's sheet is open. */
   visible: boolean;
-  /**
-   * Identifies WHICH field is open. The sequence flow keeps the sheet mounted
-   * while moving from one field to the next, so `visible` alone cannot tell us
-   * to re-seed the draft -- this can.
-   */
-  fieldKey: string;
   /** Header title, e.g. "Start Time". */
   label: string;
   /** The committed form value. Seeds the draft when the sheet opens. */
@@ -60,30 +54,26 @@ export interface DateTimeSheetProps {
   minimumDate?: Date;
   maximumDate?: Date;
   minuteInterval?: 1 | 2 | 3 | 4 | 5 | 6 | 10 | 12 | 15 | 20 | 30;
-  /** Defaults to "Done". The sequence flow passes e.g. "Next: End Time". */
-  doneLabel?: string;
   onCancel: () => void;
   onDone: (value: Date) => void;
 }
 
 export function DateTimeSheet({
   visible,
-  fieldKey,
   label,
   value,
   mode,
   minimumDate,
   maximumDate,
   minuteInterval,
-  doneLabel,
   onCancel,
   onDone,
 }: DateTimeSheetProps) {
   const [draft, setDraft] = useState<Date>(value);
 
-  // Re-seed the draft from committed form state when the sheet opens, and
-  // again when the sequence advances it to a different field while it stays
-  // open.
+  // Re-seed the draft from committed form state whenever the sheet opens, so a
+  // host that keeps this mounted and merely toggles `visible` still starts from
+  // the current value rather than a stale draft.
   //
   // `value` is deliberately NOT a dependency: once the sheet is open the draft
   // is MEANT to diverge from form state -- that divergence is the only reason
@@ -93,7 +83,7 @@ export function DateTimeSheet({
   useEffect(() => {
     if (visible) setDraft(value);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, fieldKey]);
+  }, [visible]);
 
   if (!visible) return null;
 
@@ -146,7 +136,7 @@ export function DateTimeSheet({
             onPress={() => onDone(draft)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Text style={styles.doneText}>{doneLabel ?? 'Done'}</Text>
+            <Text style={styles.doneText}>Done</Text>
           </TouchableOpacity>
         </View>
 

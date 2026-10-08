@@ -146,7 +146,6 @@ type SheetConfig = {
   mode: 'date' | 'time';
   minimumDate?: Date;
   maximumDate?: Date;
-  doneLabel?: string;
   onDone: (value: Date) => void;
 };
 
@@ -502,9 +501,10 @@ export function CreateEventModal({
    * endRepeat are carried over unchanged from the old inline pickers, so the
    * submit payload is byte-for-byte what it was.
    *
-   * Sequence: Start's Done advances to End rather than closing, so the common
-   * "set start, confirm the derived end" pass is one gesture. Every other
-   * field's Done closes the sheet.
+   * Every field's Done commits and closes the sheet -- Start included. An
+   * earlier build auto-advanced Start to End; device testing showed that
+   * taking the sheet somewhere the user did not ask to go was worse than a
+   * second tap, so it was removed.
    */
   const sheetConfig: SheetConfig | null = (() => {
     switch (sheetField) {
@@ -524,10 +524,9 @@ export function CreateEventModal({
           label: 'Start Time',
           value: startTime,
           mode: 'time' as const,
-          doneLabel: 'Next: End',
           onDone: (d: Date) => {
             commitStartTime(d);
-            setSheetField('end');
+            setSheetField(null);
           },
         };
       case 'arrival':
@@ -920,18 +919,12 @@ export function CreateEventModal({
             Last child of the KeyboardAvoidingView so it covers the whole form. */}
         {sheetConfig ? (
           <DateTimeSheet
-            // Keyed so advancing Start -> End REMOUNTS the sheet: the draft is
-            // then initialised from the new field's value, instead of showing
-            // the previous field's value for a frame while an effect re-seeds it.
-            key={sheetField ?? ''}
             visible
-            fieldKey={sheetField ?? ''}
             label={sheetConfig.label}
             value={sheetConfig.value}
             mode={sheetConfig.mode}
             minimumDate={sheetConfig.minimumDate}
             maximumDate={sheetConfig.maximumDate}
-            doneLabel={sheetConfig.doneLabel}
             onCancel={() => setSheetField(null)}
             onDone={sheetConfig.onDone}
           />

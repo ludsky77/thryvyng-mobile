@@ -459,10 +459,8 @@ correct; Lu's per-type table was therefore implemented as a spec correction.
   moment form state changes; `onCancel` and a backdrop tap discard the draft.
 - **The cascade fires once**, on Done. Previously it ran on every wheel settle, so
   scrolling 4pm → 7pm clobbered arrival and end at every intermediate hour.
-- **Sequence:** Start's Done reads "Next: End" and advances the sheet to End; every other
-  field's Done closes it. Implemented on **both** event forms. Date → close and
-  End Repeat → close, because Lu's spec only named Starts → Ends.
-- **Edit form has no cascade**, as before: Start's Done commits start only, then advances.
+- **Sequence:** none. Every field's Done commits that field and closes the sheet.
+- **Edit form has no cascade**, as before: Start's Done commits start only.
 - **Android** keeps `display="default"` (the OS dialog) and gets no custom sheet.
 
 ## Risk register — how each recon §6 risk landed
@@ -502,7 +500,5 @@ correct; Lu's per-type table was therefore implemented as a spec correction.
 ## Still to do
 
 - **Device pass on iOS and Android** for all 11 sites. Specifically: the overlay inside
-  each of the three host Modals, the Start → End advance, backdrop-tap discard, and the
+  each of the three host Modals, backdrop-tap discard, and the
   Android dismiss path now clearing the chevron.
-- Decide whether the poll's Date → Time should also chain (left unchained; Lu's spec
-  scoped sequencing to event forms).

@@ -71,7 +71,6 @@ type SheetConfig = {
   label: string;
   value: Date;
   mode: 'date' | 'time';
-  doneLabel?: string;
   onDone: (value: Date) => void;
 };
 
@@ -243,7 +242,8 @@ export function EditEventModal({
    * NO CASCADE HERE, deliberately. The edit form has never re-derived arrival
    * or end from start (only the create form did), and silently adding that
    * would rewrite times on an existing event that the team has already been
-   * notified about. Start's Done just commits start and advances to End.
+   * notified about. Start's Done commits start and closes, like every other
+   * field.
    */
   const sheetConfig: SheetConfig | null = (() => {
     switch (sheetField) {
@@ -264,10 +264,9 @@ export function EditEventModal({
           label: 'Start Time',
           value: startTime,
           mode: 'time' as const,
-          doneLabel: 'Next: End',
           onDone: (d: Date) => {
             setStartTime(d);
-            setSheetField('end');
+            setSheetField(null);
           },
         };
       case 'arrival':
@@ -598,16 +597,10 @@ export function EditEventModal({
         {/* Overlay, NOT a nested <Modal> -- see DateTimeSheet's header comment. */}
         {sheetConfig ? (
           <DateTimeSheet
-            // Keyed so advancing Start -> End REMOUNTS the sheet: the draft is
-            // then initialised from the new field's value, instead of showing
-            // the previous field's value for a frame while an effect re-seeds it.
-            key={sheetField ?? ''}
             visible
-            fieldKey={sheetField ?? ''}
             label={sheetConfig.label}
             value={sheetConfig.value}
             mode={sheetConfig.mode}
-            doneLabel={sheetConfig.doneLabel}
             onCancel={() => setSheetField(null)}
             onDone={sheetConfig.onDone}
           />

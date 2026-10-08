@@ -602,7 +602,6 @@ export function CreatePollModal({
         {sheetField === 'customDate' ? (
           <DateTimeSheet
             visible
-            fieldKey="customDate"
             label="Deadline Date"
             value={customDate}
             mode="date"
@@ -618,7 +617,6 @@ export function CreatePollModal({
         {sheetField === 'customTime' ? (
           <DateTimeSheet
             visible
-            fieldKey="customTime"
             label="Deadline Time"
             // Date -> the picker; the committed date carries the wheel's day.
             value={customDateTime}

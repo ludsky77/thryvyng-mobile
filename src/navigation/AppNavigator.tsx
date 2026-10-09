@@ -63,7 +63,6 @@ const PollDetailScreen = lazy(() => import('../screens/PollDetailScreen'));
 const SurveyResponseScreen = lazy(() => import('../screens/SurveyResponseScreen'));
 const SurveyListScreen = lazy(() => import('../screens/SurveyListScreen'));
 const SurveyResultsScreen = lazy(() => import('../screens/SurveyResultsScreen'));
-const AttendanceScreen = lazy(() => import('../screens/AttendanceScreen'));
 const RosterScreen = lazy(() => import('../screens/RosterScreen'));
 const CreateEvaluationScreen = lazy(() => import('../screens/CreateEvaluationScreen'));
 const EvaluationRosterScreen = lazy(() => import('../screens/EvaluationRosterScreen'));
@@ -589,9 +588,6 @@ function CalendarStack() {
       </Stack.Screen>
       <Stack.Screen name="MatchSummary" options={{ headerShown: false }}>
         {(props) => <LazyScreen component={MatchSummaryScreen} {...props} />}
-      </Stack.Screen>
-      <Stack.Screen name="Attendance" options={{ title: 'Take Attendance' }}>
-        {(props) => <LazyScreen component={AttendanceScreen} {...props} />}
       </Stack.Screen>
       <Stack.Screen
         name="Notifications"

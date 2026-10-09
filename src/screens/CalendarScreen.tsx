@@ -24,6 +24,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useUserTeams, UserTeam } from '../hooks/useUserTeams';
 import { useCalendarEvents } from '../hooks/useCalendarEvents';
+import { upsertRsvp } from '../utils/rsvp';
 import { MonthView } from '../components/calendar/MonthView';
 import { WeekView } from '../components/calendar/WeekView';
 import { DayView } from '../components/calendar/DayView';
@@ -117,10 +118,12 @@ export default function CalendarScreen({ route, navigation }: any) {
   const createTeamId =
     createForTeamId ||
     (selectedTeamId !== ALL_TEAMS_ID ? selectedTeamId : null);
+  // Create-only hook: this screen does its own fetch below, and the hook's
+  // duplicate fetch/realtime/updateRsvp went with the one-writer cleanup.
   const {
     createEvent,
     createRecurringEvents,
-  } = useCalendarEvents(createTeamId, startDate, endDate);
+  } = useCalendarEvents(createTeamId);
 
   const allTeams = useMemo(() => [...teams, ...pastTeams], [teams, pastTeams]);
 
@@ -233,10 +236,12 @@ export default function CalendarScreen({ route, navigation }: any) {
       const enrichedEvents = (eventsData || []).map((event: any) => {
         const team = allTeams.find((t) => t.id === event.team_id);
         const rsvps = rsvpsByEvent[event.id] || [];
+        // Card counts stay a straight row tally of the family's answers --
+        // the cards carry no coach marks to merge. The event-detail strip is
+        // the resolved view; this is the at-a-glance one.
         const rsvp_counts = {
           yes: rsvps.filter((r) => r.status === 'yes').length,
           no: rsvps.filter((r) => r.status === 'no').length,
-          maybe: rsvps.filter((r) => r.status === 'maybe').length,
           pending: rsvps.filter((r) => r.status === 'pending').length,
         };
         const user_rsvp = rsvps.find((r) => r.user_id === user?.id) || null;
@@ -290,51 +295,22 @@ export default function CalendarScreen({ route, navigation }: any) {
         ? myPlayerByTeam.get(target.team_id) ?? null
         : null;
 
-      const payload: Record<string, unknown> = {
+      // Same single writer EventDetailScreen uses (src/utils/rsvp.ts): one
+      // upsert against UNIQUE (event_id, user_id, player_id), replacing the
+      // select-then-update-or-insert dance this screen used to duplicate.
+      // ok:false also covers a silent RLS refusal.
+      const { ok, error } = await upsertRsvp({
+        eventId,
+        userId: user.id,
+        playerId: myPlayerId,
         status,
-        responded_at: new Date().toISOString(),
-        decline_reason: status === 'no' ? declineReason ?? null : null,
-      };
-      if (myPlayerId) payload.player_id = myPlayerId;
+        declineReason,
+      });
 
-      // limit(1), not maybeSingle(): a duplicate row must not error the answer out.
-      const { data: existingRows, error: lookupError } = await supabase
-        .from('cal_event_rsvps')
-        .select('id')
-        .eq('event_id', eventId)
-        .eq('user_id', user.id)
-        .limit(1);
-
-      if (lookupError) {
-        if (__DEV__) console.warn('[Calendar] rsvp lookup failed:', lookupError);
+      if (!ok) {
+        if (__DEV__) console.warn('[Calendar] rsvp upsert failed:', error);
         Alert.alert('Error', 'Could not save your response');
         return;
-      }
-
-      const existing = existingRows?.[0];
-
-      if (existing) {
-        const { data, error } = await supabase
-          .from('cal_event_rsvps')
-          .update(payload)
-          .eq('id', existing.id)
-          .select('id');
-        // RLS filters a denied write out silently: no error, no rows.
-        if (error || !data || data.length === 0) {
-          if (__DEV__) console.warn('[Calendar] rsvp update failed:', error);
-          Alert.alert('Error', 'Could not save your response');
-          return;
-        }
-      } else {
-        const { data, error } = await supabase
-          .from('cal_event_rsvps')
-          .insert({ event_id: eventId, user_id: user.id, ...payload })
-          .select('id');
-        if (error || !data || data.length === 0) {
-          if (__DEV__) console.warn('[Calendar] rsvp insert failed:', error);
-          Alert.alert('Error', 'Could not save your response');
-          return;
-        }
       }
 
       // Apply locally so the strip flips instantly and the list never blanks.
@@ -343,7 +319,7 @@ export default function CalendarScreen({ route, navigation }: any) {
           if (e.id !== eventId) return e;
           const wasYes = e.user_rsvp?.status === 'yes';
           const wasNo = e.user_rsvp?.status === 'no';
-          const counts = { ...(e.rsvp_counts || { yes: 0, no: 0, maybe: 0, pending: 0 }) };
+          const counts = { ...(e.rsvp_counts || { yes: 0, no: 0, pending: 0 }) };
           if (wasYes) counts.yes = Math.max(0, (counts.yes || 0) - 1);
           if (wasNo) counts.no = Math.max(0, (counts.no || 0) - 1);
           if (status === 'yes') counts.yes = (counts.yes || 0) + 1;
@@ -787,7 +763,9 @@ export default function CalendarScreen({ route, navigation }: any) {
                                   <View style={styles.pastEventBadge}>
                                     <Text style={styles.pastEventText}>Past</Text>
                                   </View>
-                                ) : event.user_rsvp && event.user_rsvp.status !== 'maybe' ? (
+                                ) : event.user_rsvp &&
+                                  (event.user_rsvp.status === 'yes' ||
+                                    event.user_rsvp.status === 'no') ? (
                                   <View
                                     style={[
                                       styles.rsvpBadge,
@@ -1713,9 +1691,6 @@ const styles = StyleSheet.create({
   },
   rsvpNo: {
     backgroundColor: 'rgba(76, 29, 149, 0.2)',
-  },
-  rsvpMaybe: {
-    backgroundColor: 'rgba(245, 158, 11, 0.2)',
   },
   rsvpBadgeText: {
     color: '#fff',

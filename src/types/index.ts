@@ -149,7 +149,14 @@ export interface Channel {
   
   // Calendar Types
   export type EventType = 'game' | 'scrimmage' | 'practice' | 'other_event' | 'club_event';
-  export type RSVPStatus = 'yes' | 'no' | 'maybe' | 'pending';
+  /**
+   * What a family can answer. There is no Maybe: the DB CHECK on
+   * cal_event_rsvps.status rejects anything outside these three, and silence
+   * is 'pending'. Legacy rows may still read differently off the wire, which
+   * is why the attendance resolver treats an unrecognised value as silence
+   * rather than trusting this type at runtime.
+   */
+  export type RSVPStatus = 'yes' | 'no' | 'pending';
 
   export const EVENT_TYPES = [
     { value: 'game' as const, label: 'Game', icon: '🏆', color: '#06B6D4' },
@@ -191,7 +198,6 @@ export interface Channel {
     rsvp_counts?: {
       yes: number;
       no: number;
-      maybe: number;
       pending: number;
     };
     user_rsvp?: EventRSVP | null;

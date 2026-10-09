@@ -28,6 +28,16 @@ import { confirmAndNotifyTeam, confirmAndNotifyTeamSeries } from '../lib/eventCh
 import PlayerAvatar from '../components/PlayerAvatar';
 import { GameEntryButton } from '../components/game-stats/GameEntryButton';
 import { isEventPast } from '../utils/calendar';
+import {
+  resolveEffectiveStatus,
+  summarizeEffective,
+  type CoachStatus,
+  type EffectiveStatus,
+  type EffectiveStatusResult,
+  type ResolverRsvpRow,
+  type StatusSource,
+} from '../utils/attendanceResolver';
+import { upsertRsvp } from '../utils/rsvp';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 function formatTime(time: string | null): string {
@@ -66,33 +76,24 @@ function getEventTypeLabel(eventType: string): string {
   }
 }
 
-/** Coach-marked attendance vocabulary. Never crosses into RSVP status. */
-type CoachStatus = 'present' | 'absent' | 'late' | 'excused';
-/** Resolved per-player status shown on the Details roster. */
-type DisplayStatus = 'going' | 'cant' | 'late' | 'excused' | 'no_reply';
-/** Who supplied the resolved status. */
-type StatusSource = 'coach' | 'parent' | 'player' | null;
-
-const COACH_TO_DISPLAY: Record<CoachStatus, DisplayStatus> = {
-  present: 'going',
-  absent: 'cant',
-  late: 'late',
-  excused: 'excused',
-};
+/**
+ * Status vocabulary now lives in the resolver, which is the single rule both
+ * the roster list and the Responses strip read. This screen only renders what
+ * it is told.
+ */
+type DisplayStatus = EffectiveStatus;
 
 const STATUS_CHIP: Record<DisplayStatus, { label: string; color: string }> = {
   going: { label: 'Going', color: '#22c55e' },
-  cant: { label: "Can't go", color: '#ef4444' },
-  late: { label: 'Late', color: '#f59e0b' },
-  excused: { label: 'Excused', color: '#6b7280' },
+  cant_go: { label: "Can't go", color: '#ef4444' },
   no_reply: { label: 'No reply', color: '#64748b' },
 };
 
 /** Fallbacks for when the responder's profile is not readable under RLS. */
 const SOURCE_LABEL: Record<Exclude<StatusSource, null>, string> = {
-  coach: 'coach-marked',
-  parent: 'by parent',
-  player: 'by player',
+  coach: 'marked by coach',
+  parent: 'marked by parent',
+  player: 'marked by player',
 };
 
 /** "Paula Quintero" -> "Paula Q."  Single-word names pass through. */
@@ -122,17 +123,16 @@ function timeRangeLabel(start: string | null, end: string | null): string {
 /**
  * How a row's status is drawn on the Attendance tab.
  *
- * The product has exactly two stated answers plus silence -- there is NO
- * 'maybe'. `late` and `excused` are legacy coach marks that still exist on old
- * rows; they keep their recorded label but render in the muted style rather
- * than getting a colour of their own, and nothing invents a label for a value
- * we do not recognise.
+ * The product has exactly two stated answers plus silence -- there is no
+ * middle option. The resolver has already folded the legacy coach marks
+ * (late -> going, excused -> cant_go) and anything unrecognised into silence,
+ * so there are only three kinds to draw here.
  */
 type BadgeKind = 'going' | 'cant' | 'muted';
 
 function statusBadge(status: DisplayStatus): { kind: BadgeKind; label: string } {
   if (status === 'going') return { kind: 'going', label: 'Going' };
-  if (status === 'cant') return { kind: 'cant', label: "Can't go" };
+  if (status === 'cant_go') return { kind: 'cant', label: "Can't go" };
   return { kind: 'muted', label: STATUS_CHIP[status]?.label ?? 'No reply' };
 }
 
@@ -157,6 +157,20 @@ interface AttendanceRow {
   player_id: string;
   status: CoachStatus;
   marked_by: string | null;
+  /** Trigger-maintained. The resolver orders by it, so the read must select it. */
+  updated_at: string | null;
+  created_at: string | null;
+}
+
+/** One cal_event_rsvps row as this screen reads it. */
+interface EventRsvpRow {
+  player_id: string | null;
+  user_id: string;
+  status: string;
+  decline_reason: string | null;
+  /** Trigger-maintained, and what "latest action wins" is decided on. */
+  updated_at: string | null;
+  responded_at: string | null;
 }
 
 interface RosterEntry {
@@ -166,6 +180,9 @@ interface RosterEntry {
   /** Short name of whoever supplied the status, when their profile is readable. */
   sourceName: string | null;
   reason: string | null;
+  /** When the winning action happened. Drives nothing visually; kept for the strip. */
+  at: string | null;
+  /** Whether a coach mark EXISTS for this player -- not whether it won. */
   hasCoachMark: boolean;
   /** Raw coach mark, so the ✓/✗ pair can show which one is active. */
   coachStatus: CoachStatus | null;
@@ -178,6 +195,8 @@ interface UnmappedRsvp {
   status: DisplayStatus;
   reason: string | null;
   ambiguous: boolean;
+  /** The same resolver verdict the roster rows carry, so the strip counts it identically. */
+  resolved: EffectiveStatusResult;
 }
 
 export default function EventDetailScreen({ route, navigation }: any) {
@@ -190,7 +209,7 @@ export default function EventDetailScreen({ route, navigation }: any) {
   /** Brief "Address copied" confirmation under the location block. */
   const [addressCopied, setAddressCopied] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
-  const [eventRsvps, setEventRsvps] = useState<Array<{ player_id: string | null; user_id: string; status: string; decline_reason: string | null }>>([]);
+  const [eventRsvps, setEventRsvps] = useState<EventRsvpRow[]>([]);
   const [nonResponders, setNonResponders] = useState<string[]>([]);
   const [reminderSending, setReminderSending] = useState(false);
   const [reminderSent, setReminderSent] = useState(false);
@@ -269,19 +288,18 @@ export default function EventDetailScreen({ route, navigation }: any) {
       if (error) throw error;
 
       if (data) {
+        // updated_at is named explicitly because the resolver orders by it:
+        // a select that silently stopped returning it would quietly turn
+        // "latest action wins" back into "whatever came first".
         const { data: rsvpsData } = await supabase
           .from('cal_event_rsvps')
-          .select('*')
+          .select('player_id, user_id, status, decline_reason, updated_at, responded_at')
           .eq('event_id', data.id);
 
-        const rsvps = rsvpsData || [];
-        setEventRsvps(rsvps);
-        const rsvp_counts = {
-          yes: rsvps.filter((r: any) => r.status === 'yes').length,
-          no: rsvps.filter((r: any) => r.status === 'no').length,
-          maybe: rsvps.filter((r: any) => r.status === 'maybe').length,
-        };
-        setEvent({ ...data, rsvp_counts } as CalendarEvent);
+        setEventRsvps((rsvpsData || []) as EventRsvpRow[]);
+        // No rsvp_counts here any more: it counted raw rows, nothing on this
+        // screen read it, and the Responses strip now comes from the resolver.
+        setEvent(data as CalendarEvent);
       }
 
       if (lineupRes.data) {
@@ -314,9 +332,11 @@ export default function EventDetailScreen({ route, navigation }: any) {
       const list = (playersData || []) as RosterPlayer[];
       setPlayers(list);
 
+      // updated_at/created_at ride along for the same reason the RSVP read
+      // names updated_at: they are what the resolver orders coach marks by.
       const { data: attData, error: attError } = await supabase
         .from('event_attendance')
-        .select('id, player_id, status, marked_by')
+        .select('id, player_id, status, marked_by, updated_at, created_at')
         .eq('event_id', event.id);
 
       if (attError && __DEV__) {
@@ -494,27 +514,56 @@ export default function EventDetailScreen({ route, navigation }: any) {
   const dateParts = event ? formatDateParts(event.event_date) : { day: '', date: '', month: '' };
 
   /**
-   * Resolve every RSVP to at most one player on this team.
-   * Priority: explicit rsvp.player_id -> the responder IS the player (user_roles)
-   * -> exactly one parent-email match. Two or more matches is ambiguous and is
-   * deliberately NOT guessed: it surfaces as one un-mapped row instead.
+   * Attribute every RSVP to at most one player on this team.
+   *
+   * Priority is unchanged: explicit rsvp.player_id -> the responder IS the
+   * player (user_roles) -> exactly one parent-email match. Two or more matches
+   * is ambiguous and is deliberately NOT guessed; it surfaces as one un-mapped
+   * row instead. This is the ONLY place identity is decided -- the resolver
+   * consumes the decision and never re-derives it.
+   *
+   * What changed: a player now collects an ARRAY of rows, not one. The map
+   * used to `set` per player, so the last row in an unordered result set
+   * silently won and the roster could flicker between refetches. Several rows
+   * for one player is normal -- two parents each own a row, and the schema's
+   * UNIQUE (event_id, user_id, player_id) with NULLS NOT DISTINCT lets one
+   * family hold both a legacy null-player_id row and a player_id row. They are
+   * all candidates; the resolver picks by recency.
    */
   const resolvedRsvps = useMemo(() => {
-    const byPlayer = new Map<string, { rsvp: (typeof eventRsvps)[number]; source: StatusSource }>();
+    const byPlayer = new Map<string, Array<ResolverRsvpRow & { user_id: string }>>();
     const unmapped: UnmappedRsvp[] = [];
+
+    const add = (
+      playerId: string,
+      r: EventRsvpRow,
+      source: 'parent' | 'player'
+    ) => {
+      const candidate = {
+        user_id: r.user_id,
+        status: r.status,
+        updated_at: r.updated_at,
+        responded_at: r.responded_at,
+        decline_reason: r.decline_reason,
+        source,
+      };
+      const list = byPlayer.get(playerId);
+      if (list) list.push(candidate);
+      else byPlayer.set(playerId, [candidate]);
+    };
 
     for (const r of eventRsvps) {
       const selfPlayerId = playerRoleMap.get(r.user_id);
 
       if (r.player_id) {
-        byPlayer.set(r.player_id, {
-          rsvp: r,
-          source: selfPlayerId === r.player_id ? 'player' : 'parent',
-        });
+        add(r.player_id, r, selfPlayerId === r.player_id ? 'player' : 'parent');
         continue;
       }
+      // A null player_id still resolves: the responder may BE the player, or
+      // be the one parent whose email matches exactly one kid. This is the
+      // mapping that keeps older rows counting.
       if (selfPlayerId) {
-        byPlayer.set(selfPlayerId, { rsvp: r, source: 'player' });
+        add(selfPlayerId, r, 'player');
         continue;
       }
 
@@ -529,96 +578,99 @@ export default function EventDetailScreen({ route, navigation }: any) {
         : [];
 
       if (matches.length === 1) {
-        byPlayer.set(matches[0].id, { rsvp: r, source: 'parent' });
+        add(matches[0].id, r, 'parent');
       } else {
+        // Nobody we can pin to a player, but still a person who answered -- so
+        // it runs through the same resolver and counts in the same strip.
+        const resolved = resolveEffectiveStatus(
+          [{ status: r.status, updated_at: r.updated_at, responded_at: r.responded_at, decline_reason: r.decline_reason }],
+          null
+        );
         unmapped.push({
           key: `${r.user_id}`,
           label: profile?.name || 'Team member',
-          status: r.status === 'yes' ? 'going' : r.status === 'no' ? 'cant' : 'no_reply',
-          reason: r.status === 'no' ? r.decline_reason : null,
+          status: resolved.status,
+          reason: resolved.reason,
           ambiguous: matches.length > 1,
+          resolved,
         });
       }
     }
     return { byPlayer, unmapped };
   }, [eventRsvps, players, playerRoleMap, responderEmails]);
 
-  /** Coach mark wins, then family RSVP, then no reply. */
+  /**
+   * One verdict per roster player: LATEST ACTION WINS.
+   *
+   * The old rule here was positional -- a coach mark was found first and
+   * returned early, so it beat every family answer no matter how stale, and a
+   * family answer could never override a mark. Both directions now work, and
+   * the Responses strip below reads these same verdicts, so the two cannot
+   * disagree. The tie rule (coach wins) lives in the resolver.
+   */
   const roster = useMemo<RosterEntry[]>(() => {
     return players.map((player) => {
-      const mark = attendanceRows.find((a) => a.player_id === player.id);
-      if (mark) {
-        return {
-          player,
-          status: COACH_TO_DISPLAY[mark.status] ?? 'no_reply',
-          source: mark.marked_by ? 'coach' : null,
-          sourceName: mark.marked_by
-            ? firstName(responderEmails.get(mark.marked_by)?.name)
-            : null,
-          reason: null,
-          hasCoachMark: true,
-          coachStatus: mark.status,
-        };
+      const mark = attendanceRows.find((a) => a.player_id === player.id) ?? null;
+      const candidates = resolvedRsvps.byPlayer.get(player.id) ?? [];
+      const verdict = resolveEffectiveStatus(candidates, mark);
+
+      // Who to name. The coach side has exactly one row, so marked_by is it.
+      // On the family side the winner is the candidate carrying the winning
+      // timestamp; on an exact tie the resolver keeps the first, so `find`
+      // lands on the same row the resolver chose.
+      let sourceName: string | null = null;
+      if (verdict.source === 'coach') {
+        sourceName = mark?.marked_by
+          ? firstName(responderEmails.get(mark.marked_by)?.name)
+          : null;
+      } else if (verdict.source) {
+        const winner = candidates.find(
+          (c) => (c.updated_at ?? c.responded_at ?? null) === verdict.at
+        );
+        sourceName = winner
+          ? shortName(responderEmails.get(winner.user_id)?.name)
+          : null;
       }
-      const hit = resolvedRsvps.byPlayer.get(player.id);
-      if (hit) {
-        const status: DisplayStatus =
-          hit.rsvp.status === 'yes' ? 'going' : hit.rsvp.status === 'no' ? 'cant' : 'no_reply';
-        return {
-          player,
-          status,
-          source: hit.source,
-          sourceName: shortName(responderEmails.get(hit.rsvp.user_id)?.name),
-          reason: status === 'cant' ? hit.rsvp.decline_reason : null,
-          hasCoachMark: false,
-          coachStatus: null,
-        };
-      }
+
       return {
         player,
-        status: 'no_reply',
-        source: null,
-        sourceName: null,
-        reason: null,
-        hasCoachMark: false,
-        coachStatus: null,
+        status: verdict.status,
+        source: verdict.source,
+        sourceName,
+        reason: verdict.reason,
+        at: verdict.at,
+        // Whether a mark EXISTS, which is what the ✓/✗ pair reflects -- not
+        // whether it won. A coach must still see their own mark highlighted
+        // after a parent has overridden it, or the button lies about state.
+        hasCoachMark: !!mark,
+        coachStatus: mark?.status ?? null,
       };
     });
   }, [players, attendanceRows, resolvedRsvps, responderEmails]);
 
   /**
-   * The headcount strip. Every number comes from the RSVP rows themselves, not
-   * from the player-matched roster.
+   * The Responses strip, counted off the SAME verdicts the roster rows show.
    *
-   * The old strip mixed two sources: Going counted raw RSVP rows while
-   * Headcount counted roster entries that had resolved to a player. For a
-   * viewer who cannot resolve their peers those two disagree badly -- the
-   * reported "Going 6 / Headcount 1". Counting one way removes the collision,
-   * and a responder nobody could match to a player is still a person who
-   * answered, so they count here.
-   *
-   * Every RSVP row lands in exactly one bucket, and roster players nobody
-   * answered for land in No reply.
+   * It used to count raw cal_event_rsvps rows, which meant a coach mark could
+   * never move it (mark fifteen players present, strip still read "No reply
+   * 15") and a duplicate row double-counted one player as "Going 2". Now one
+   * population, one rule: every roster player contributes exactly one verdict,
+   * plus every responder nobody could pin to a player -- they answered, so
+   * they count.
    */
   const headcounts = useMemo(() => {
-    const going = eventRsvps.filter((r) => r.status === 'yes').length;
-    const cant = eventRsvps.filter((r) => r.status === 'no').length;
-    // Anything that is neither yes nor no is an unanswered row: legacy
-    // 'pending' / 'maybe' / null. The product has no Maybe, so it is silence.
-    const unansweredRows = Math.max(0, eventRsvps.length - going - cant);
-    // Roster players no RSVP row resolved to. byPlayer is keyed by player id,
-    // so its size is the number of players already spoken for.
-    const playersWithNoRsvp = Math.max(
-      0,
-      players.length - resolvedRsvps.byPlayer.size
-    );
-    return { going, cant, noReply: unansweredRows + playersWithNoRsvp };
-  }, [eventRsvps, players, resolvedRsvps]);
-
-  const myRsvp = useMemo(
-    () => eventRsvps.find((r) => r.user_id === user?.id) ?? null,
-    [eventRsvps, user?.id]
-  );
+    const verdicts: EffectiveStatusResult[] = [
+      ...roster.map((e) => ({
+        status: e.status,
+        source: e.source,
+        at: e.at,
+        reason: e.reason,
+      })),
+      ...resolvedRsvps.unmapped.map((u) => u.resolved),
+    ];
+    const s = summarizeEffective(verdicts);
+    return { going: s.going, cant: s.cantGo, noReply: s.noReply, markedByCoach: s.markedByCoach };
+  }, [roster, resolvedRsvps]);
 
   /** The one player this user speaks for, or null when staff / ambiguous. */
   const myPlayerId = useMemo(() => {
@@ -635,6 +687,28 @@ export default function EventDetailScreen({ route, navigation }: any) {
     return matches.length === 1 ? matches[0].id : null;
   }, [user?.id, user?.email, players, playerRoleMap]);
 
+  /**
+   * My own row, for the "Will you be there?" toggle.
+   *
+   * Prefers the row on the exact conflict key (user_id + player_id) because
+   * that is the one upsertRsvp writes -- a plain find by user_id could land on
+   * a legacy null-player_id row while the write went to the player_id row, and
+   * the control would then show an answer that is not the one being changed.
+   * Falls back to this user's most recent row when there is no exact match.
+   */
+  const myRsvp = useMemo(() => {
+    if (!user?.id) return null;
+    const mine = eventRsvps.filter((r) => r.user_id === user.id);
+    if (mine.length === 0) return null;
+    const exact = mine.find((r) => (r.player_id ?? null) === (myPlayerId ?? null));
+    if (exact) return exact;
+    return mine.reduce((newest, r) => {
+      const a = new Date(r.updated_at ?? r.responded_at ?? 0).getTime();
+      const b = new Date(newest.updated_at ?? newest.responded_at ?? 0).getTime();
+      return a > b ? r : newest;
+    }, mine[0]);
+  }, [eventRsvps, user?.id, myPlayerId]);
+
   const handleRsvp = async (
     status: 'yes' | 'no' | 'pending',
     declineReason?: string | null
@@ -643,72 +717,50 @@ export default function EventDetailScreen({ route, navigation }: any) {
     setRsvpLoading(true);
 
     try {
-      const payload: Record<string, unknown> = {
+      // One writer for the whole app (src/utils/rsvp.ts). It upserts against
+      // UNIQUE (event_id, user_id, player_id), so the old
+      // select-then-update-or-insert dance -- and the duplicate rows it
+      // tolerated -- are gone. ok:false covers a silent RLS refusal too.
+      const { ok, error } = await upsertRsvp({
+        eventId: event.id,
+        userId: user.id,
+        // Only when this user speaks for exactly one player on this team.
+        playerId: myPlayerId,
         status,
-        responded_at: new Date().toISOString(),
-        // Cleared on yes/pending so an undone "can't go" leaves no stale reason.
-        decline_reason: status === 'no' ? declineReason ?? null : null,
-      };
-      // Only when this user speaks for exactly one player on this team.
-      if (myPlayerId) payload.player_id = myPlayerId;
+        declineReason,
+      });
 
-      // limit(1) rather than maybeSingle(): a duplicate row must not error the
-      // whole response out.
-      const { data: existingRows, error: lookupError } = await supabase
-        .from('cal_event_rsvps')
-        .select('id')
-        .eq('event_id', event.id)
-        .eq('user_id', user.id)
-        .limit(1);
-
-      if (lookupError) {
-        if (__DEV__) console.warn('[EventDetail] rsvp lookup failed:', lookupError);
+      if (!ok) {
+        if (__DEV__) console.warn('[EventDetail] rsvp upsert failed:', error);
         Alert.alert('Error', 'Failed to save response. Please try again.');
         return;
-      }
-
-      const existing = existingRows?.[0];
-
-      if (existing) {
-        const { data, error } = await supabase
-          .from('cal_event_rsvps')
-          .update(payload)
-          .eq('id', existing.id)
-          .select('id');
-        // RLS filters a denied write out silently: no error, no rows.
-        if (error || !data || data.length === 0) {
-          if (__DEV__) console.warn('[EventDetail] rsvp update failed:', error);
-          Alert.alert('Error', 'Failed to save response. Please try again.');
-          return;
-        }
-      } else {
-        const { data, error } = await supabase
-          .from('cal_event_rsvps')
-          .insert({
-            event_id: event.id,
-            user_id: user.id,
-            ...payload,
-          })
-          .select('id');
-        if (error || !data || data.length === 0) {
-          if (__DEV__) console.warn('[EventDetail] rsvp insert failed:', error);
-          Alert.alert('Error', 'Failed to save response. Please try again.');
-          return;
-        }
       }
 
       setCantGoModalVisible(false);
 
       // Apply my row locally so the memos recompute instantly. The refetch
       // below is a background reconcile -- it must not blank the roster.
+      //
+      // updated_at is stamped locally ON PURPOSE: the resolver orders by it,
+      // and an optimistic row with no timestamp would lose to an existing
+      // coach mark, so the row would visibly snap back to the coach's answer
+      // until the refetch landed. The server's own trigger value replaces this
+      // moments later.
+      const now = new Date().toISOString();
       setEventRsvps((prev) => {
-        const mine = {
-          player_id: (myPlayerId ?? null) as string | null,
+        const mine: EventRsvpRow = {
+          player_id: myPlayerId ?? null,
           user_id: user.id,
           status,
           decline_reason: status === 'no' ? declineReason ?? null : null,
+          updated_at: now,
+          responded_at: now,
         };
-        const idx = prev.findIndex((r) => r.user_id === user.id);
+        // Matched on the full conflict key, not user_id alone: one user can
+        // hold both a null-player_id row and a player_id row.
+        const idx = prev.findIndex(
+          (r) => r.user_id === user.id && (r.player_id ?? null) === (myPlayerId ?? null)
+        );
         if (idx === -1) return [...prev, mine];
         const next = [...prev];
         next[idx] = { ...next[idx], ...mine };
@@ -1052,7 +1104,15 @@ export default function EventDetailScreen({ route, navigation }: any) {
 
   /**
    * Coach headcount tool. Writes ONLY to event_attendance -- never to
-   * cal_event_rsvps, whose vocabulary (yes/no/maybe/pending) is the family's.
+   * cal_event_rsvps, whose vocabulary is the family's. This is now the only
+   * coach-facing writer in the app: the separate "take attendance" sheet,
+   * which wrote the FAMILY's table under the coach's user_id and overwrote the
+   * parent's own row, is deleted.
+   *
+   * The mark no longer outranks the family by position -- it competes on
+   * recency through the resolver, so marking here overrides a parent's earlier
+   * answer and a parent answering later overrides this. The family is never
+   * locked out.
    */
   const markAttendance = async (playerId: string, status: CoachStatus) => {
     if (!event || !user?.id || !isStaff) return;
@@ -1177,15 +1237,18 @@ export default function EventDetailScreen({ route, navigation }: any) {
             roster.map((entry) => {
               const busy = markingPlayerId === entry.player.id;
               const badge = statusBadge(entry.status);
-              // Attribution reads the same as it always has: who supplied this
-              // status, by name when we could resolve one.
-              const attribution = entry.source
-                ? entry.sourceName
-                  ? entry.source === 'coach'
-                    ? `by Coach ${entry.sourceName}`
-                    : `by ${entry.sourceName}`
-                  : SOURCE_LABEL[entry.source]
-                : null;
+              // Who supplied the status that WON, by name when we could
+              // resolve one. Suppressed on silence: "No reply · marked by
+              // parent" would read as a contradiction, even though a retracted
+              // answer is genuinely attributable.
+              const attribution =
+                entry.source && entry.status !== 'no_reply'
+                  ? entry.sourceName
+                    ? entry.source === 'coach'
+                      ? `marked by Coach ${entry.sourceName}`
+                      : `marked by ${entry.sourceName}`
+                    : SOURCE_LABEL[entry.source]
+                  : null;
               return (
                 <View key={entry.player.id} style={styles.attRow}>
                   <PlayerAvatar
@@ -1535,10 +1598,10 @@ export default function EventDetailScreen({ route, navigation }: any) {
           )}
 
           {/* Headcount strip. Counts only -- the per-player list and all coach
-              marking live on the Attendance tab, so the two cannot disagree.
-              The separate "Headcount" tile is gone: it counted a different
-              population from "Going" beside it, which is the collision this
-              replaces. */}
+              marking live on the Attendance tab. Both read the SAME resolver
+              verdicts, so the strip and the rows can no longer disagree: this
+              used to count raw RSVP rows, which meant a coach mark never moved
+              it and a duplicate row counted one player twice. */}
           <View style={styles.responsesCard}>
             <Text style={styles.responsesTitle}>📊 Responses</Text>
             <View style={styles.responsesRow}>
@@ -1555,6 +1618,16 @@ export default function EventDetailScreen({ route, navigation }: any) {
                 <Text style={styles.responseLabel}>No reply</Text>
               </View>
             </View>
+
+            {/* How much of the count above is the coach's own doing, rather
+                than the family's. Muted because it is provenance, not a
+                fourth bucket -- these rows are already counted in Going and
+                Can't go. */}
+            {headcounts.markedByCoach > 0 ? (
+              <Text style={styles.responsesCoachNote}>
+                {headcounts.markedByCoach} marked by coach
+              </Text>
+            ) : null}
 
             {/* The per-player list used to be duplicated here. It now lives
                 only on the Attendance tab, where the coach can actually act on
@@ -2241,6 +2314,12 @@ const styles = StyleSheet.create({
     color: '#E9D5FF',
     fontSize: 13,
     marginTop: 4,
+  },
+  responsesCoachNote: {
+    color: '#94a3b8',
+    fontSize: 12,
+    marginTop: 12,
+    textAlign: 'center',
   },
 
   // Lineup Section

@@ -44,8 +44,11 @@ export function EventCard({ event, onRsvp, rsvping = false, onRefetch }: EventCa
     ? 'All day'
     : [event.start_time, event.end_time].filter(Boolean).map(formatTime).join(' – ') || '—';
   const dateBadge = formatDateBadge(event.event_date);
-  const counts = event.rsvp_counts || { yes: 0, no: 0, maybe: 0, pending: 0 };
-  const userStatus = event.user_rsvp?.status === 'maybe' ? undefined : event.user_rsvp?.status;
+  const counts = event.rsvp_counts || { yes: 0, no: 0, pending: 0 };
+  // Only an answered RSVP highlights a button. A pending row is silence -- it
+  // used to slip through the old not-Maybe guard and light up as an answer.
+  const answered = event.user_rsvp?.status;
+  const userStatus = answered === 'yes' || answered === 'no' ? answered : undefined;
 
   const handleCardPress = () => {
     navigation.navigate('EventDetail', { event, onRefetch });

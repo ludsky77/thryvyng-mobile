@@ -1,124 +1,23 @@
-import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import type { CalendarEvent, EventRSVP, EventType, RSVPStatus } from '../types';
+import type { CalendarEvent, EventType } from '../types';
 
-// Table names - match web app schema
+// Table name - matches web app schema
 const EVENTS_TABLE = 'cal_events';
-const RSVPS_TABLE = 'cal_event_rsvps';
 
-export function useCalendarEvents(
-  teamId: string | null,
-  startDate?: string,
-  endDate?: string
-) {
+/**
+ * Event CREATION for the calendar screen. Nothing else.
+ *
+ * This hook used to also fetch the whole visible event range, enrich it with
+ * RSVP counts, hold a realtime subscription and export an `updateRsvp` writer.
+ * None of it was consumed: CalendarScreen destructures only the two create
+ * functions and does its own fetch, so the hook was running a duplicate
+ * events+RSVP read on every mount and keeping a second realtime channel open
+ * for results nobody read. `updateRsvp` was a fourth, dead RSVP writer; the
+ * one writer now lives in src/utils/rsvp.ts.
+ */
+export function useCalendarEvents(teamId: string | null) {
   const { user } = useAuth();
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchEvents = useCallback(async () => {
-    if (!teamId) {
-      setEvents([]);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    let query = supabase
-      .from(EVENTS_TABLE)
-      .select('*')
-      .eq('team_id', teamId)
-      .order('event_date', { ascending: true })
-      .order('start_time', { ascending: true, nullsFirst: false });
-
-    if (startDate) {
-      query = query.gte('event_date', startDate);
-    }
-    if (endDate) {
-      query = query.lte('event_date', endDate);
-    }
-
-    const { data: eventsData, error: eventsError } = await query.limit(100);
-
-    if (eventsError) {
-      setLoading(false);
-      return;
-    }
-
-    const eventIds = (eventsData || []).map((e: CalendarEvent) => e.id);
-    if (eventIds.length === 0) {
-      const enriched = (eventsData || []).map((e: CalendarEvent) => ({
-        ...e,
-        rsvp_counts: { yes: 0, no: 0, maybe: 0, pending: 0 },
-        user_rsvp: null,
-      }));
-      setEvents(enriched);
-      setLoading(false);
-      return;
-    }
-
-    const { data: rsvpsData } = await supabase
-      .from(RSVPS_TABLE)
-      .select('*')
-      .in('event_id', eventIds);
-
-    const rsvpsByEvent: Record<string, EventRSVP[]> = {};
-    eventIds.forEach((id) => (rsvpsByEvent[id] = []));
-    (rsvpsData || []).forEach((r: EventRSVP) => {
-      if (rsvpsByEvent[r.event_id]) rsvpsByEvent[r.event_id].push(r);
-    });
-
-    const enriched = (eventsData || []).map((e: CalendarEvent) => {
-      const rsvps = rsvpsByEvent[e.id] || [];
-      const rsvp_counts = {
-        yes: rsvps.filter((r) => r.status === 'yes').length,
-        no: rsvps.filter((r) => r.status === 'no').length,
-        maybe: rsvps.filter((r) => r.status === 'maybe').length,
-        pending: rsvps.filter((r) => r.status === 'pending').length,
-      };
-      const user_rsvp = rsvps.find((r) => r.user_id === user?.id) || null;
-      return { ...e, rsvp_counts, user_rsvp };
-    });
-
-    setEvents(enriched as CalendarEvent[]);
-    setLoading(false);
-  }, [teamId, startDate, endDate, user?.id]);
-
-  useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
-
-  // Real-time subscription for events
-  useEffect(() => {
-    if (!teamId) return;
-
-    const channel = supabase
-      .channel(`events:${teamId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: EVENTS_TABLE,
-          filter: `team_id=eq.${teamId}`,
-        },
-        () => fetchEvents()
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: RSVPS_TABLE,
-        },
-        () => fetchEvents()
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [teamId, fetchEvents]);
 
   const createEvent = async (payload: {
     title: string;
@@ -236,53 +135,8 @@ export function useCalendarEvents(
     return data;
   };
 
-  const updateRsvp = async (eventId: string, status: RSVPStatus) => {
-    if (!user) return false;
-
-    // limit(1), not maybeSingle(): a duplicate row must not error the whole
-    // response out -- the two sibling RSVP write paths (EventDetailScreen,
-    // CalendarScreen) were hardened the same way.
-    const { data: existingRows, error: lookupError } = await supabase
-      .from(RSVPS_TABLE)
-      .select('id')
-      .eq('event_id', eventId)
-      .eq('user_id', user.id)
-      .limit(1);
-
-    if (lookupError) {
-      console.error('updateRsvp lookup error:', lookupError.message);
-      return false;
-    }
-
-    const existing = existingRows?.[0];
-
-    if (existing) {
-      const { error } = await supabase
-        .from(RSVPS_TABLE)
-        .update({
-          status,
-          responded_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existing.id);
-      return !error;
-    } else {
-      const { error } = await supabase.from(RSVPS_TABLE).insert({
-        event_id: eventId,
-        user_id: user.id,
-        status,
-        responded_at: new Date().toISOString(),
-      });
-      return !error;
-    }
-  };
-
   return {
-    events,
-    loading,
     createEvent,
     createRecurringEvents,
-    updateRsvp,
-    refetch: fetchEvents,
   };
 }

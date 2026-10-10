@@ -6,6 +6,12 @@ import {
   subscribeToReactionChanges,
 } from '../lib/realtimeHub';
 import { fetchChannelTeamMemberNames } from '../lib/memberNames';
+import { logError } from '../utils/logError';
+import {
+  SEND_OK,
+  sendFailure,
+  type SendResult,
+} from '../utils/sendResult';
 import type { Message } from '../types';
 
 /**
@@ -132,20 +138,12 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
       // INSERT. Log first so foreign events are visible, then scope before
       // doing any work.
       const isMine = row?.channel_id === channelId;
-      if (__DEV__) {
-        console.log(
-          '[useMessages] INSERT event',
-          row?.id,
-          row?.channel_id,
-          'mine=' + isMine
-        );
-      }
       if (!isMine) return;
       const insertedId = row?.id;
       if (!insertedId) {
-        if (__DEV__) {
-          console.error('[useMessages] realtime INSERT has no row id', row);
-        }
+        logError('useMessages.realtimeInsert', 'realtime INSERT has no row id', {
+          channelId,
+        });
         return;
       }
       // The initial fetch hides deleted rows; do the same here rather than
@@ -171,9 +169,9 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
       // sender's name through memberNames, not through this join.
       let newMessage: Message;
       if (error || !data) {
-        if (__DEV__) {
-          console.error('[useMessages] enrichment failed', error);
-        }
+        logError('useMessages.realtimeInsert.enrich', error ?? 'no row returned', {
+          messageId: insertedId,
+        });
         newMessage = {
           ...(row as Record<string, unknown>),
           profile: null,
@@ -191,9 +189,6 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
       setMessages(prev => {
         if (prev.some(m => m.id === newMessage.id)) return prev;
         onNewMessage?.();
-        if (__DEV__) {
-          console.log('[useMessages] appended', newMessage.id);
-        }
         return [...prev, newMessage];
       });
     });
@@ -208,12 +203,65 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
       fetchMessages({ silent: true });
     });
 
+    // UPDATEs get their own channel. The shared hub subscribes with
+    // event:'INSERT' (lib/realtimeHub.ts), so without this an edit -- or a
+    // soft delete -- only ever reached the editor's own device and every other
+    // viewer kept the old text until they reopened the room. Narrow filter so
+    // this costs one server-side-filtered stream per open channel.
+    const updateChannel = supabase
+      .channel(`messages-updates-${channelId}-${instanceIdRef.current}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'comm_messages',
+          filter: `channel_id=eq.${channelId}`,
+        },
+        (payload: any) => {
+          const row = payload?.new;
+          if (!row?.id) return;
+
+          setMessages((prev) => {
+            const index = prev.findIndex((m) => m.id === row.id);
+            if (index === -1) return prev; // not in the loaded window
+            // A row soft-deleted elsewhere must leave, matching the fetch's
+            // .eq('is_deleted', false).
+            if (row.is_deleted) {
+              return prev.filter((m) => m.id !== row.id);
+            }
+            const next = [...prev];
+            // Merge, never replace: the realtime row carries no joined profile,
+            // reactions or attachments, and overwriting would blank them.
+            next[index] = {
+              ...next[index],
+              content: row.content,
+              is_edited: row.is_edited,
+              edited_at: row.edited_at,
+              is_pinned: row.is_pinned,
+            } as Message;
+            return next;
+          });
+        }
+      )
+      .subscribe();
+
     return () => {
       unsubscribeInserts();
       unsubscribeReactions();
+      supabase.removeChannel(updateChannel);
     };
   }, [channelId, fetchMessages, onNewMessage]);
 
+  /**
+   * Send one message. Returns a REASON, never a bare boolean.
+   *
+   * Six unrelated failures used to collapse into `false`, and the input bar
+   * turned all of them into "Your attachment could not be uploaded" -- so a
+   * text-only reply whose INSERT was refused blamed an attachment that did not
+   * exist. The reason now travels with the result and the copy is derived from
+   * it (src/utils/sendResult.ts).
+   */
   const sendMessage = async (
     content: string,
     options?: {
@@ -227,10 +275,12 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
         size?: number;
       };
     }
-  ) => {
-    if (!user || !channelId) return false;
+  ): Promise<SendResult> => {
+    if (!user || !channelId) {
+      return sendFailure('auth', !user ? 'no signed-in user' : 'no channel');
+    }
     const hasContent = (content && content.trim()) || options?.attachment;
-    if (!hasContent) return false;
+    if (!hasContent) return sendFailure('validation', 'empty message');
 
     // UPLOAD FIRST. A message row created before a failed upload was a message
     // the sender saw as delivered and the recipient could never open, with no
@@ -251,10 +301,10 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
         const arrayBuffer = await response.arrayBuffer();
 
         if (!arrayBuffer || arrayBuffer.byteLength === 0) {
-          if (__DEV__) {
-            console.error('[useMessages] attachment read as empty', att.uri);
-          }
-          return false;
+          logError('useMessages.sendMessage.attachment', 'attachment read as empty', {
+            uri: att.uri,
+          });
+          return sendFailure('attachment_upload', 'attachment read as empty');
         }
 
         const safeName = att.name.replace(/[^a-zA-Z0-9.-]/g, '_');
@@ -268,10 +318,8 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
           });
 
         if (uploadError) {
-          if (__DEV__) {
-            console.error('[useMessages] attachment upload failed', uploadError);
-          }
-          return false;
+          logError('useMessages.sendMessage.upload', uploadError, { filePath });
+          return sendFailure('attachment_upload', uploadError.message);
         }
 
         const { data: urlData } = supabase.storage
@@ -285,10 +333,11 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
           file_size: att.size ?? arrayBuffer.byteLength,
         };
       } catch (err) {
-        if (__DEV__) {
-          console.error('[useMessages] attachment upload threw', err);
-        }
-        return false;
+        logError('useMessages.sendMessage.upload', err, { channelId });
+        return sendFailure(
+          'attachment_upload',
+          err instanceof Error ? err.message : 'upload threw'
+        );
       }
     }
 
@@ -311,10 +360,17 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
       .single();
 
     if (messageError || !messageData) {
-      if (__DEV__) {
-        console.error('[useMessages] message insert failed', messageError);
-      }
-      return false;
+      // THE case that caused the misreport: a text-only reply lands here, with
+      // nothing whatsoever to do with attachments.
+      logError('useMessages.sendMessage.insert', messageError ?? 'no row returned', {
+        channelId,
+        isReply: !!options?.replyTo,
+        hasAttachment: !!options?.attachment,
+      });
+      return sendFailure(
+        'insert',
+        messageError?.message ?? 'insert returned no row'
+      );
     }
 
     // The file is already in storage; link it to the row that now exists.
@@ -327,12 +383,12 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
           ...uploadedAttachment,
         });
       if (attachmentError) {
-        if (__DEV__) {
-          console.error(
-            '[useMessages] attachment row insert failed',
-            attachmentError
-          );
-        }
+        // The bytes ARE in storage and the message row exists, so the send
+        // succeeded -- only the link row failed. Reported, not surfaced: the
+        // message is there, and telling the sender it failed would be wrong.
+        logError('useMessages.sendMessage.attachmentRow', attachmentError, {
+          messageId: messageData.id,
+        });
       } else {
         attachmentRows = [{ message_id: messageData.id, ...uploadedAttachment }];
       }
@@ -346,6 +402,13 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
       content: (content && content.trim()) || '',
       message_type: 'standard',
       parent_id: options?.parentMessageId ?? null,
+      // The reply quote has to be on the optimistic row too. Without these the
+      // sender saw their own reply render as a plain message and the quote only
+      // appeared after a refetch -- the row went in with reply_to_* set, but the
+      // local echo did not carry them.
+      reply_to_id: options?.replyTo?.id ?? null,
+      reply_to_content: options?.replyTo?.content ?? null,
+      reply_to_sender: options?.replyTo?.senderName ?? null,
       poll_id: null,
       thread_count: 0,
       is_pinned: false,
@@ -355,7 +418,12 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
       created_at: messageData.created_at || new Date().toISOString(),
       profile: {
         id: user.id,
-        full_name: user.user_metadata?.full_name || user.email || 'You',
+        // NO EMAIL FALLBACK. A raw email must never become a display name --
+        // the same rule the reaction paint below already states, which this
+        // site was missing. Screens resolve the real name through memberNames
+        // (the channel RPC) before ever reaching this, so this value is only a
+        // last resort for the sender's own bubble in the frame after sending.
+        full_name: user.user_metadata?.full_name || 'You',
         avatar_url: user.user_metadata?.avatar_url || null,
       },
       reactions: [],
@@ -368,7 +436,67 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
       return [...prev, optimisticMessage];
     });
 
-    return true;
+    return SEND_OK;
+  };
+
+  /**
+   * Edit one's OWN message in place.
+   *
+   * The 5-minute window is enforced where the action is offered
+   * (MessageActionsModal) and again by RLS, which only lets an author update
+   * their own rows -- the `.eq('user_id', user.id)` here is the third guard and
+   * the reason a refusal comes back as zero rows rather than an error.
+   *
+   * is_edited / edited_at are set by this write, never by a trigger, so the
+   * bubble's "(edited)" marker and this update cannot disagree.
+   *
+   * Optimistic, like the send and the reaction toggle: paint, persist, roll
+   * back on refusal.
+   */
+  const editMessage = async (
+    messageId: string,
+    content: string
+  ): Promise<SendResult> => {
+    if (!user) return sendFailure('auth', 'no signed-in user');
+    const trimmed = content.trim();
+    if (!trimmed) return sendFailure('validation', 'empty edit');
+
+    const previous = messages.find((m) => m.id === messageId);
+    if (!previous) return sendFailure('validation', 'message not loaded');
+    if (previous.content === trimmed) return SEND_OK; // nothing to write
+
+    const editedAt = new Date().toISOString();
+
+    // 1. PAINT
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId
+          ? ({ ...m, content: trimmed, is_edited: true, edited_at: editedAt } as Message)
+          : m
+      )
+    );
+
+    // 2. PERSIST -- author-only, enforced here and by RLS.
+    const { data, error } = await supabase
+      .from('comm_messages')
+      .update({ content: trimmed, is_edited: true, edited_at: editedAt })
+      .eq('id', messageId)
+      .eq('user_id', user.id)
+      .select('id');
+
+    // RLS filters a denied write out silently: no error, no rows.
+    if (error || !data || data.length === 0) {
+      logError('useMessages.editMessage', error ?? 'update returned no rows', {
+        messageId,
+      });
+      // 3. ROLLBACK to exactly what was on screen before.
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? previous : m))
+      );
+      return sendFailure('insert', error?.message ?? 'update refused');
+    }
+
+    return SEND_OK;
   };
 
   /**
@@ -475,12 +603,10 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
     // 3. ROLLBACK -- put the bubble back, then resync in case anything else
     //    changed while the write was in flight.
     if (!ok) {
-      if (__DEV__) {
-        console.warn('[useMessages] reaction write refused, rolled back', {
-          messageId,
-          emoji,
-        });
-      }
+      logError('useMessages.toggleReaction', 'reaction write refused, rolled back', {
+        messageId,
+        emoji,
+      });
       paintReaction(messageId, emoji, userReacted);
       fetchMessages({ silent: true });
       return false;
@@ -494,6 +620,7 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
     messages,
     loading,
     sendMessage,
+    editMessage,
     addReaction,
     removeReaction,
     toggleReaction,

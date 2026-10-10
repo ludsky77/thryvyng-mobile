@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { logError } from '../utils/logError';
 
 /**
  * What a sender's name suffix means. Drives ChatBubble's rendering:
@@ -71,7 +72,10 @@ export function useChatSenderLabels(
       setMemberNames(map);
     } catch (err) {
       // Fall back to whatever the caller can read itself (profile.full_name).
-      if (__DEV__) console.error('[useChatSenderLabels] member names failed:', err);
+      // Reported, not silent: when this RPC fails EVERY sender in the room
+      // loses its resolved name at once, and the old __DEV__ gate meant a
+      // release build gave no hint that it had happened.
+      logError('useChatSenderLabels.memberNames', err, { channelId });
       setMemberNames(new Map());
     }
   }, [channelId]);
@@ -116,8 +120,10 @@ export function useChatSenderLabels(
           setPlayerLabels(labels);
         }
       } catch (err) {
-        // RLS refusals and dropped connections both land here: no label, no crash.
-        if (__DEV__) console.error('[useChatSenderLabels] labels failed:', err);
+        // RLS refusals and dropped connections both land here: no label, no
+        // crash -- and every parent/player suffix in the room disappears, so
+        // it is reported rather than swallowed.
+        logError('useChatSenderLabels.labels', err, { channelId });
         if (!cancelled) {
           setPlayerLabels(new Map());
           setLabelKind(new Map());

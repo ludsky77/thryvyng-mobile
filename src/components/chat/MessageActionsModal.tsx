@@ -10,6 +10,29 @@ import {
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 
+/**
+ * How long after sending an author may still edit. Was 3 minutes; 5 gives a
+ * sender time to notice a typo after the thread has scrolled.
+ */
+const EDIT_WINDOW_MS = 5 * 60 * 1000;
+
+/**
+ * Three tones, and only three.
+ *
+ * The sheet had green, amber, blue, purple, grey and red at once, which made
+ * every row look like a different severity and left nothing for the one row
+ * that is actually destructive. Now: purple marks a positive action, grey is
+ * neutral, and red is reserved for Delete and Block.
+ */
+const TONE = {
+  /** Positive/constructive actions. */
+  accent: '#8B5CF6',
+  /** Neutral actions and all body text. */
+  neutral: '#9CA3AF',
+  /** Destructive only: Delete, Block. */
+  danger: '#EF4444',
+} as const;
+
 interface MessageActionsModalProps {
   visible: boolean;
   onClose: () => void;
@@ -59,12 +82,21 @@ export function MessageActionsModal({
 
   const isOwnMessage = message?.user_id === currentUserId;
 
+  /**
+   * Edit your OWN message, within 5 minutes of sending it.
+   *
+   * Author-only and time-boxed: the window keeps an edit a correction rather
+   * than a rewrite of what the team already read. An unparseable created_at
+   * closes the window rather than opening it forever.
+   *
+   * This is the offer, not the enforcement -- useMessages.editMessage also
+   * scopes the UPDATE to the author, and RLS is the backstop.
+   */
   const canEdit = useMemo(() => {
     if (!isOwnMessage || !message) return false;
     const messageTime = new Date(message.created_at).getTime();
-    const now = Date.now();
-    const threeMinutes = 3 * 60 * 1000;
-    return now - messageTime < threeMinutes;
+    if (Number.isNaN(messageTime)) return false;
+    return Date.now() - messageTime < EDIT_WINDOW_MS;
   }, [isOwnMessage, message]);
 
   const canDelete = isOwnMessage || isStaff;
@@ -166,14 +198,14 @@ export function MessageActionsModal({
 
           {/* Copy - Always available */}
           <TouchableOpacity style={styles.actionItem} onPress={handleCopy}>
-            <Feather name="copy" size={20} color="#10B981" />
+            <Feather name="copy" size={20} color={TONE.accent} />
             <Text style={styles.actionText}>Copy</Text>
           </TouchableOpacity>
 
-          {/* Edit - Own messages within 3 min */}
+          {/* Edit - Own messages within the 5-minute window */}
           {isOwnMessage && canEdit && onEdit && (
             <TouchableOpacity style={styles.actionItem} onPress={handleEdit}>
-              <Feather name="edit-2" size={20} color="#3B82F6" />
+              <Feather name="edit-2" size={20} color={TONE.accent} />
               <Text style={styles.actionText}>Edit</Text>
             </TouchableOpacity>
           )}
@@ -181,8 +213,8 @@ export function MessageActionsModal({
           {/* Delete - Own messages or Staff */}
           {canDelete && onDelete && (
             <TouchableOpacity style={styles.actionItem} onPress={handleDelete}>
-              <Feather name="trash-2" size={20} color="#EF4444" />
-              <Text style={[styles.actionText, { color: '#EF4444' }]}>Delete Message</Text>
+              <Feather name="trash-2" size={20} color={TONE.danger} />
+              <Text style={[styles.actionText, { color: TONE.danger }]}>Delete Message</Text>
             </TouchableOpacity>
           )}
 
@@ -195,7 +227,7 @@ export function MessageActionsModal({
                 onClose();
               }}
             >
-              <Feather name="eye" size={20} color="#10B981" />
+              <Feather name="eye" size={20} color={TONE.accent} />
               <Text style={styles.actionText}>View Read History</Text>
             </TouchableOpacity>
           )}
@@ -209,7 +241,7 @@ export function MessageActionsModal({
                 onClose();
               }}
             >
-              <Feather name="smile" size={20} color="#F59E0B" />
+              <Feather name="smile" size={20} color={TONE.accent} />
               <Text style={styles.actionText}>Add Reaction</Text>
             </TouchableOpacity>
           )}
@@ -223,7 +255,7 @@ export function MessageActionsModal({
                 onClose();
               }}
             >
-              <Feather name="corner-up-left" size={20} color="#8B5CF6" />
+              <Feather name="corner-up-left" size={20} color={TONE.accent} />
               <Text style={styles.actionText}>Reply</Text>
             </TouchableOpacity>
           )}
@@ -231,7 +263,7 @@ export function MessageActionsModal({
           {/* Mute - Others' messages only */}
           {!isOwnMessage && onMuteUser && (
             <TouchableOpacity style={styles.actionItem} onPress={handleMute}>
-              <Feather name="bell-off" size={20} color="#9CA3AF" />
+              <Feather name="bell-off" size={20} color={TONE.neutral} />
               <View style={styles.actionContent}>
                 <Text style={styles.actionText}>Mute {senderName}</Text>
                 <Text style={styles.actionDescription}>
@@ -244,9 +276,9 @@ export function MessageActionsModal({
           {/* Block - Staff only, others' messages */}
           {!isOwnMessage && isStaff && onBlockUser && (
             <TouchableOpacity style={styles.actionItem} onPress={handleBlock}>
-              <Feather name="x-square" size={20} color="#EF4444" />
+              <Feather name="x-square" size={20} color={TONE.danger} />
               <View style={styles.actionContent}>
-                <Text style={[styles.actionText, { color: '#EF4444' }]}>Block {senderName}</Text>
+                <Text style={[styles.actionText, { color: TONE.danger }]}>Block {senderName}</Text>
                 <Text style={styles.actionDescription}>
                   Block the user from being able to send messages in this channel until unblocked
                 </Text>

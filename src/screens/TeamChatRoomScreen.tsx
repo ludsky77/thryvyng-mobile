@@ -15,12 +15,15 @@ import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useMessages } from '../hooks/useMessages';
+import { logError } from '../utils/logError';
+import { formatDayDivider, invertedDayDividerIndices } from '../utils/chatDays';
+import { sendFailure } from '../utils/sendResult';
 import { PollCard } from '../components/chat/PollCard';
 import { CreatePollModal } from '../components/chat/CreatePollModal';
 import SurveyPickerModal from '../components/chat/SurveyPickerModal';
 import SurveyChatCard from '../components/chat/SurveyChatCard';
 import { ChatBubble, type ReactionSummary } from '../components/chat/ChatBubble';
-import { ChatInputBar, type AttachmentData } from '../components/chat/ChatInputBar';
+import { ChatInputBar, type AttachmentData, type EditingInfo } from '../components/chat/ChatInputBar';
 import { ReactionPicker } from '../components/chat/ReactionPicker';
 import { MessageActionsModal } from '../components/chat/MessageActionsModal';
 import {
@@ -119,7 +122,9 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   const [actionsModalVisible, setActionsModalVisible] = useState(false);
   const [actionsModalMessage, setActionsModalMessage] =
     useState<Message | null>(null);
-  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  // The message being edited, or null. Replaces a dead `editingMessageId` that
+  // was set and never read.
+  const [editing, setEditing] = useState<EditingInfo | null>(null);
   const [celebration, setCelebration] = useState<{
     type: CelebrationType;
     visible: boolean;
@@ -147,8 +152,8 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
       .eq('channel_id', channelId)
       .eq('user_id', user.id)
       .then(({ error }) => {
-        if (error && __DEV__) {
-          console.error('[markChannelAsRead] mark read failed:', error);
+        if (error) {
+          logError('TeamChatRoom.markChannelAsRead', error, { channelId });
         }
       });
   }, [channelId, user?.id]);
@@ -157,6 +162,7 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     messages,
     loading,
     sendMessage,
+    editMessage,
     toggleReaction,
     refetch,
   } = useMessages(channelId, markChannelAsRead);
@@ -304,7 +310,7 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     if (sending) return;
     setSending(true);
     try {
-      const success = await sendMessage(content, {
+      const result = await sendMessage(content, {
         attachment: attachment
           ? {
               uri: attachment.uri,
@@ -322,7 +328,7 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
             }
           : undefined,
       });
-      if (success) {
+      if (result.ok) {
         setReplyingTo(null);
         isAtBottomRef.current = true;
         scrollToNewest(true);
@@ -331,10 +337,16 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           setCelebration({ type: celebrationType, visible: true });
         }
       }
-      return success;
+      // The reason rides back to ChatInputBar, which picks the copy. Returning
+      // a bare false here is what let an insert failure claim an attachment
+      // could not be uploaded.
+      return result;
     } catch (error) {
-      console.error('Error sending message:', error);
-      return false;
+      logError('TeamChatRoom.handleSendMessage', error, { channelId });
+      return sendFailure(
+        'unknown',
+        error instanceof Error ? error.message : 'send threw'
+      );
     } finally {
       setSending(false);
     }
@@ -389,15 +401,55 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     }
   };
 
+  /**
+   * Enter edit mode. The input bar prefills with the current text and shows an
+   * "Editing message" banner; saving goes through useMessages.editMessage,
+   * which is author-scoped and sets is_edited/edited_at.
+   *
+   * The 5-minute window is enforced where the action is offered
+   * (MessageActionsModal); by the time we are here the user has a live offer.
+   */
   const handleEditMessage = (messageId: string) => {
-    setEditingMessageId(messageId);
-    // TODO: Implement edit UI - for now just show alert
-    Alert.alert('Edit', 'Edit functionality coming soon');
+    const target = messages.find((m) => m.id === messageId);
+    if (!target) {
+      logError('TeamChatRoom.handleEditMessage', 'message not in loaded window', {
+        messageId,
+      });
+      return;
+    }
+    // Editing and replying are different intents; never both at once.
+    setReplyingTo(null);
+    setEditing({ id: messageId, content: target.content ?? '' });
   };
 
+  const handleSaveEdit = async (messageId: string, content: string) => {
+    const result = await editMessage(messageId, content);
+    // ChatInputBar alerts off the reason and keeps the draft on failure.
+    return result;
+  };
+
+  /**
+   * Who has read this message.
+   *
+   * The screen needs the message's timestamp and author, not just its id: "read"
+   * means a member's last_read_at is at or after this message, and the author is
+   * excluded from both lists. Passing them avoids a second read of a row we are
+   * already holding.
+   */
   const handleViewReadHistory = (messageId: string) => {
-    // Navigate to read history or show modal
-    navigation.navigate('MessageReadHistory', { messageId, channelId });
+    const target = messages.find((m) => m.id === messageId);
+    if (!target) {
+      logError('TeamChatRoom.handleViewReadHistory', 'message not in loaded window', {
+        messageId,
+      });
+      return;
+    }
+    navigation.navigate('MessageReadHistory', {
+      channelId,
+      messageId,
+      messageCreatedAt: target.created_at,
+      authorId: target.user_id,
+    });
   };
 
   const handleMuteUser = async (userId: string, userName: string) => {
@@ -487,63 +539,58 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   };
 
   /**
-   * Calendar day in the DEVICE's timezone, as YYYY-MM-DD. Both sides of every
-   * comparison go through this, so a message sent at 23:00 and one sent at
-   * 01:00 the next morning land on different days for the reader, which is what
-   * a day separator is for. An unparseable timestamp returns '' and groups with
-   * its neighbours rather than forcing a separator with an Invalid Date label.
+   * Day grouping and labels both come from src/utils/chatDays.ts, which works
+   * in the READER's local calendar day and is unit-tested across timezones
+   * (Denver, Tokyo, UTC). They used to be two ad-hoc helpers here -- grouping
+   * by a hand-rolled local key, labelling by toDateString() -- with no test
+   * holding them to the same definition of "day".
    */
-  const localDayKey = (value: string | null | undefined) => {
-    if (!value) return '';
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return '';
-    const month = `${d.getMonth() + 1}`.padStart(2, '0');
-    const day = `${d.getDate()}`.padStart(2, '0');
-    return `${d.getFullYear()}-${month}-${day}`;
-  };
+  /**
+   * Which rows of the inverted list carry a day divider, computed once per
+   * message change by the unit-tested helper rather than by neighbour lookups
+   * inside renderItem.
+   */
+  const dayDividerIndices = useMemo(
+    () => invertedDayDividerIndices(invertedMessages.map((m) => m.created_at)),
+    [invertedMessages]
+  );
 
-  const isNewDay = (currentMsg: Message, prevMsg: Message | undefined) => {
-    if (!prevMsg) return true;
-    return localDayKey(currentMsg.created_at) !== localDayKey(prevMsg.created_at);
-  };
+  const formatDateSeparator = (dateString: string) => formatDayDivider(dateString);
 
-  const formatDateSeparator = (dateString: string) => {
-    const date = new Date(dateString);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    if (date.toDateString() === today.toDateString()) {
-      return 'Today';
-    }
-    if (date.toDateString() === yesterday.toDateString()) {
-      return 'Yesterday';
-    }
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
+  /**
+   * The day divider row.
+   *
+   * ORDER IS LOAD-BEARING: this renders AFTER the message in JSX, not before.
+   * The list is `inverted`, and an inverted cell draws its own children
+   * bottom-up, so a separator placed first in JSX appeared BELOW the message it
+   * belongs to -- which is why two messages a few seconds apart on the same day
+   * showed "Today" wedged between them instead of above both.
+   */
+  const renderDaySeparator = (show: boolean, createdAt: string) => {
+    if (!show) return null;
+    const label = formatDateSeparator(createdAt);
+    if (!label) return null; // unparseable timestamp: group, do not label
+    return (
+      <View style={styles.daySeparator}>
+        <Text style={styles.daySeparatorText}>{label}</Text>
+        <View style={styles.daySeparatorLine} />
+      </View>
+    );
   };
 
   const renderItem = ({ item, index }: { item: Message; index: number }) => {
-    // Inverted: the message visually ABOVE this one is the next OLDER item.
-    const olderItem = invertedMessages[index + 1];
-    const showDaySeparator = isNewDay(item, olderItem);
+    // Which rows carry a divider is decided once, by the tested helper, over
+    // the inverted array -- the divider belongs to the OLDEST message of each
+    // local day.
+    const showDaySeparator = dayDividerIndices.has(index);
 
     if (item.message_type === 'poll' && item.poll_id) {
       return (
         <>
-          {showDaySeparator && (
-            <View style={styles.daySeparator}>
-              <Text style={styles.daySeparatorText}>
-                {formatDateSeparator(item.created_at)}
-              </Text>
-              <View style={styles.daySeparatorLine} />
-            </View>
-          )}
           <View style={styles.messageContainer}>
             <PollCard pollId={item.poll_id} compact={true} isStaffInChannel={isStaffInChannel} />
           </View>
+          {renderDaySeparator(showDaySeparator, item.created_at)}
         </>
       );
     }
@@ -551,15 +598,8 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     if (item.message_type === 'survey') {
       return (
         <>
-          {showDaySeparator && (
-            <View style={styles.daySeparator}>
-              <Text style={styles.daySeparatorText}>
-                {formatDateSeparator(item.created_at)}
-              </Text>
-              <View style={styles.daySeparatorLine} />
-            </View>
-          )}
           <SurveyChatCard messageId={item.id} navigation={navigation} />
+          {renderDaySeparator(showDaySeparator, item.created_at)}
         </>
       );
     }
@@ -580,14 +620,6 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
 
     return (
       <>
-        {showDaySeparator && (
-          <View style={styles.daySeparator}>
-            <Text style={styles.daySeparatorText}>
-              {formatDateSeparator(item.created_at)}
-            </Text>
-            <View style={styles.daySeparatorLine} />
-          </View>
-        )}
         <View style={styles.messageContainer}>
           <ChatBubble
           message={{
@@ -595,6 +627,8 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
             content: item.content,
             user_id: item.user_id,
             created_at: item.created_at,
+            is_edited: (item as any).is_edited ?? false,
+            edited_at: (item as any).edited_at ?? null,
             comm_message_attachments: item.comm_message_attachments,
             attachment_url: item.attachment_url ?? undefined,
             attachment_type: item.attachment_type ?? undefined,
@@ -635,6 +669,7 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           }
         />
         </View>
+        {renderDaySeparator(showDaySeparator, item.created_at)}
       </>
     );
   };
@@ -666,12 +701,17 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           }}
           disabled={!isGroupDm}
         >
+          {/* The TEAM is the headline. The channel name ("Team Chat" on nearly
+              every row) drops to the secondary line, matching the chat list's
+              card titles -- the two used to disagree about which was which.
+              With no team, the channel name takes the title slot rather than
+              leaving it empty. */}
           <Text style={styles.headerTitle} numberOfLines={1}>
-            {channelName || 'Team Chat'}
+            {teamName || channelName || 'Team Chat'}
           </Text>
           {teamName && (
             <Text style={styles.headerSubtitle} numberOfLines={1}>
-              {teamName}
+              {channelName || 'Team Chat'}
             </Text>
           )}
         </TouchableOpacity>
@@ -748,6 +788,9 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
               : null
           }
           onCancelReply={() => setReplyingTo(null)}
+          editing={editing}
+          onCancelEdit={() => setEditing(null)}
+          onSaveEdit={handleSaveEdit}
         />
       </KeyboardAvoidingView>
 
@@ -892,15 +935,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
   },
+  // Large and bold: the team name is what identifies the room.
   headerTitle: {
     color: '#fff',
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: 19,
+    fontWeight: '700',
   },
+  // Small and muted grey -- it is "Team Chat", a label, not a second title.
   headerSubtitle: {
-    color: '#8b5cf6',
+    color: '#94a3b8',
     fontSize: 12,
-    marginTop: 2,
+    marginTop: 1,
   },
   headerIconButton: {
     width: 40,

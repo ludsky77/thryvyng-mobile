@@ -63,6 +63,9 @@ const PollDetailScreen = lazy(() => import('../screens/PollDetailScreen'));
 const SurveyResponseScreen = lazy(() => import('../screens/SurveyResponseScreen'));
 const SurveyListScreen = lazy(() => import('../screens/SurveyListScreen'));
 const SurveyResultsScreen = lazy(() => import('../screens/SurveyResultsScreen'));
+const MessageReadHistoryScreen = lazy(
+  () => import('../screens/MessageReadHistoryScreen')
+);
 const RosterScreen = lazy(() => import('../screens/RosterScreen'));
 const CreateEvaluationScreen = lazy(() => import('../screens/CreateEvaluationScreen'));
 const EvaluationRosterScreen = lazy(() => import('../screens/EvaluationRosterScreen'));
@@ -545,6 +548,12 @@ function ChatStack() {
       </Stack.Screen>
       <Stack.Screen name="PollDetail" options={{ headerShown: false }}>
         {(props) => <LazyScreen component={PollDetailScreen} {...props} />}
+      </Stack.Screen>
+      {/* Target of "View Read History" in the message long-press sheet
+          (TeamChatRoomScreen). The navigate call shipped without this route,
+          so the action silently did nothing. */}
+      <Stack.Screen name="MessageReadHistory" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={MessageReadHistoryScreen} {...props} />}
       </Stack.Screen>
       <Stack.Screen
         name="Notifications"

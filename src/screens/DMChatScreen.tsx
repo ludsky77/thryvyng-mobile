@@ -17,6 +17,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useMessages } from '../hooks/useMessages';
+import { logError } from '../utils/logError';
+import { sendFailure } from '../utils/sendResult';
 import { useChatSenderLabels } from '../hooks/useChatSenderLabels';
 import { useTypingPresence } from '../hooks/useTypingPresence';
 import { TypingIndicator } from '../components/chat/TypingIndicator';
@@ -125,8 +127,8 @@ export default function DMChatScreen({ route, navigation }: any) {
       .eq('channel_id', channelId)
       .eq('user_id', user.id)
       .then(({ error }) => {
-        if (error && __DEV__) {
-          console.error('[markChannelRead] mark read failed:', error);
+        if (error) {
+          logError('DMChat.markChannelRead', error, { channelId });
         }
       });
   }, [channelId, user?.id]);
@@ -271,7 +273,7 @@ export default function DMChatScreen({ route, navigation }: any) {
     if (!content.trim() && !attachment) return;
     setSending(true);
     try {
-      const success = await sendMessage(content, {
+      const result = await sendMessage(content, {
         attachment: attachment
           ? {
               uri: attachment.uri,
@@ -289,7 +291,7 @@ export default function DMChatScreen({ route, navigation }: any) {
             }
           : undefined,
       });
-      if (success) {
+      if (result.ok) {
         setReplyingTo(null);
         isAtBottomRef.current = true;
         scrollToNewest(true);
@@ -302,10 +304,13 @@ export default function DMChatScreen({ route, navigation }: any) {
           .update({ updated_at: new Date().toISOString() })
           .eq('id', channelId);
       }
-      return success;
+      return result;
     } catch (error) {
-      console.error('Error sending message:', error);
-      return false;
+      logError('DMChat.handleSendMessage', error, { channelId });
+      return sendFailure(
+        'unknown',
+        error instanceof Error ? error.message : 'send threw'
+      );
     } finally {
       setSending(false);
     }
@@ -381,6 +386,8 @@ export default function DMChatScreen({ route, navigation }: any) {
             content: item.content,
             user_id: item.user_id,
             created_at: item.created_at,
+            is_edited: (item as any).is_edited ?? false,
+            edited_at: (item as any).edited_at ?? null,
             comm_message_attachments: item.comm_message_attachments,
             attachment_url: item.attachment_url ?? undefined,
             attachment_type: item.attachment_type ?? undefined,
@@ -684,13 +691,16 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  // The other person's name is the headline, matching the team room's header.
   headerName: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 19,
+    fontWeight: '700',
   },
+  // Their role is the small secondary line. Muted grey, not green: green read
+  // as a status indicator rather than as a label.
   headerRole: {
-    color: '#10B981',
+    color: '#94a3b8',
     fontSize: 12,
     marginTop: 1,
   },

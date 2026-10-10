@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   TextInput,
@@ -13,6 +13,11 @@ import {
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import {
+  sendFailureCopy,
+  shouldAlertForResult,
+  type SendResult,
+} from '../../utils/sendResult';
 
 export interface AttachmentData {
   uri: string;
@@ -27,16 +32,29 @@ export interface ReplyingToInfo {
   content: string;
 }
 
+/** The message being edited, when the bar is in edit mode. */
+export interface EditingInfo {
+  id: string;
+  content: string;
+}
+
 interface ChatInputBarProps {
   onSendMessage: (
     content: string,
     attachment?: AttachmentData
-  ) => void | boolean | Promise<void | boolean>;
+  ) => void | SendResult | Promise<void | SendResult>;
   onPollPress?: () => void;
   placeholder?: string;
   replyingTo?: ReplyingToInfo | null;
   onCancelReply?: () => void;
   onTypingChange?: (isTyping: boolean) => void;
+  /** Non-null puts the bar in edit mode: prefilled text, banner, no attachments. */
+  editing?: EditingInfo | null;
+  onCancelEdit?: () => void;
+  onSaveEdit?: (
+    messageId: string,
+    content: string
+  ) => void | SendResult | Promise<void | SendResult>;
 }
 
 const TYPING_DEBOUNCE_MS = 2000;
@@ -84,6 +102,9 @@ export function ChatInputBar({
   replyingTo,
   onCancelReply,
   onTypingChange,
+  editing = null,
+  onCancelEdit,
+  onSaveEdit,
 }: ChatInputBarProps) {
   const [message, setMessage] = useState('');
   const [attachment, setAttachment] = useState<AttachmentData | null>(null);
@@ -109,25 +130,60 @@ export function ChatInputBar({
     [onTypingChange]
   );
 
+  // Entering edit mode prefills the draft; leaving it clears the box. Keyed on
+  // the message id so switching directly from one edit to another reloads.
+  const editingIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const id = editing?.id ?? null;
+    if (id === editingIdRef.current) return;
+    editingIdRef.current = id;
+    setMessage(editing ? editing.content : '');
+    if (editing) {
+      // An attachment cannot be added to an existing message; drop any pending
+      // one rather than silently carrying it into the edit.
+      setAttachment(null);
+      setShowAttachmentMenu(false);
+    }
+  }, [editing]);
+
   const handleSend = async () => {
     if (sending) return;
-    if (!message.trim() && !attachment) return;
+    const draft = message.trim();
+
+    // EDIT MODE: save the edit instead of sending a new message. An emptied
+    // box is not a delete -- deleting has its own action -- so it is a no-op.
+    if (editing) {
+      if (!draft) return;
+      onTypingChange?.(false);
+      setSending(true);
+      try {
+        const result = await onSaveEdit?.(editing.id, draft);
+        if (shouldAlertForResult(result)) {
+          const copy = sendFailureCopy((result as { reason: any }).reason);
+          Alert.alert(copy.title, copy.body);
+          return; // keep the draft so the edit is not lost
+        }
+        onCancelEdit?.();
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    if (!draft && !attachment) return;
     onTypingChange?.(false);
 
-    const draft = message.trim();
     const pending = attachment || undefined;
     setSending(true);
     try {
-      // Screens that forward sendMessage's result let us keep the draft on
-      // failure. Ones that return undefined keep the previous fire-and-forget
-      // behaviour, so this is safe either way.
+      // The result carries a REASON now, so the copy matches what actually
+      // failed. This used to blame the attachment for every failure, including
+      // a text-only reply whose insert was refused.
       const result = await onSendMessage(draft, pending);
-      if (result === false) {
-        Alert.alert(
-          'Message not sent',
-          'Your attachment could not be uploaded. Please try again.'
-        );
-        return;
+      if (shouldAlertForResult(result)) {
+        const copy = sendFailureCopy((result as { reason: any }).reason);
+        Alert.alert(copy.title, copy.body);
+        return; // keep the draft and the attachment so nothing is lost
       }
       setMessage('');
       setAttachment(null);
@@ -254,7 +310,24 @@ export function ChatInputBar({
 
   return (
     <View style={styles.container}>
-      {replyingTo && (
+      {editing && (
+        <View style={styles.editBanner}>
+          <View style={styles.replyInfo}>
+            <Text style={styles.editLabel}>Editing message</Text>
+            <Text style={styles.replyPreviewText} numberOfLines={1}>
+              {editing.content}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={onCancelEdit}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Feather name="x" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {!editing && replyingTo && (
         <View style={styles.replyBanner}>
           <View style={styles.replyInfo}>
             <Text style={styles.replyLabel}>
@@ -273,7 +346,7 @@ export function ChatInputBar({
         </View>
       )}
 
-      {attachment && (
+      {!editing && attachment && (
         <View style={styles.attachmentPreview}>
           {attachment.type === 'image' ? (
             <Image
@@ -311,7 +384,7 @@ export function ChatInputBar({
         </View>
       )}
 
-      {showAttachmentMenu && (
+      {!editing && showAttachmentMenu && (
         <View style={styles.attachmentMenu}>
           <TouchableOpacity
             style={styles.attachmentOption}
@@ -338,16 +411,18 @@ export function ChatInputBar({
       )}
 
       <View style={styles.inputRow}>
-        <TouchableOpacity
-          style={styles.attachButton}
-          onPress={() => setShowAttachmentMenu(!showAttachmentMenu)}
-        >
-          <Feather
-            name="paperclip"
-            size={22}
-            color={showAttachmentMenu ? '#8B5CF6' : '#9CA3AF'}
-          />
-        </TouchableOpacity>
+        {!editing && (
+          <TouchableOpacity
+            style={styles.attachButton}
+            onPress={() => setShowAttachmentMenu(!showAttachmentMenu)}
+          >
+            <Feather
+              name="paperclip"
+              size={22}
+              color={showAttachmentMenu ? '#8B5CF6' : '#9CA3AF'}
+            />
+          </TouchableOpacity>
+        )}
 
         <TextInput
           style={styles.input}
@@ -364,7 +439,7 @@ export function ChatInputBar({
             }
             onTypingChange?.(false);
           }}
-          placeholder={placeholder}
+          placeholder={editing ? 'Edit your message…' : placeholder}
           placeholderTextColor="#6B7280"
           multiline
           maxLength={2000}
@@ -373,7 +448,7 @@ export function ChatInputBar({
           blurOnSubmit={false}
         />
 
-        {onPollPress && (
+        {!editing && onPollPress && (
           <TouchableOpacity style={styles.pollButton} onPress={onPollPress}>
             <Feather name="bar-chart-2" size={22} color="#9CA3AF" />
           </TouchableOpacity>
@@ -382,16 +457,22 @@ export function ChatInputBar({
         <TouchableOpacity
           style={[
             styles.sendButton,
-            ((!message.trim() && !attachment) || sending) &&
+            // In edit mode an attachment can never satisfy the button -- only
+            // text can -- so the two conditions differ.
+            ((editing ? !message.trim() : !message.trim() && !attachment) ||
+              sending) &&
               styles.sendButtonDisabled,
           ]}
           onPress={handleSend}
-          disabled={(!message.trim() && !attachment) || sending}
+          disabled={
+            (editing ? !message.trim() : !message.trim() && !attachment) ||
+            sending
+          }
         >
           {sending ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
-            <Feather name="send" size={20} color="#FFFFFF" />
+            <Feather name={editing ? 'check' : 'send'} size={20} color="#FFFFFF" />
           )}
         </TouchableOpacity>
       </View>
@@ -431,6 +512,24 @@ const styles = StyleSheet.create({
   },
   replyLabel: {
     color: '#8B5CF6',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  // Amber rather than the reply banner's violet: editing changes history, and
+  // it should not look like the routine reply affordance.
+  editBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#3F3522',
+    borderBottomWidth: 1,
+    borderBottomColor: '#78350F',
+  },
+  editLabel: {
+    color: '#FBBF24',
     fontSize: 12,
     fontWeight: '600',
     marginBottom: 2,

@@ -16,6 +16,7 @@ import {
   useAttachmentViewer,
   openExternally,
 } from './AttachmentViewer';
+import { logError } from '../../utils/logError';
 
 /**
  * Splits message text into plain runs and URL runs. Capturing group so
@@ -107,6 +108,9 @@ interface ChatBubbleProps {
     content: string;
     user_id: string;
     created_at: string;
+    /** Set by useMessages.editMessage. Drives the "(edited)" marker. */
+    is_edited?: boolean | null;
+    edited_at?: string | null;
     comm_message_attachments?: MessageAttachmentShape[];
     attachment_url?: string | null;
     attachment_type?: 'image' | 'video' | 'document' | null;
@@ -186,7 +190,7 @@ export function ChatBubble({
     try {
       await Share.share({ url, message: url });
     } catch (err) {
-      if (__DEV__) console.error('[ChatBubble] share failed', err);
+      logError('ChatBubble.share', err, { messageId: message.id });
       Alert.alert('Could not share', 'Sharing this file failed.');
     }
   };
@@ -342,6 +346,11 @@ export function ChatBubble({
           <Text style={styles.messageTime}>
             {formatTime(message.created_at)}
           </Text>
+          {/* An edit changes what the team already read, so it is disclosed --
+              muted, because it is provenance and not the message. */}
+          {message.is_edited ? (
+            <Text style={styles.editedMarker}>(edited)</Text>
+          ) : null}
           <TouchableOpacity
             style={styles.reactionTrigger}
             onPress={onLongPress}
@@ -350,6 +359,36 @@ export function ChatBubble({
             <Text style={styles.triggerPlus}>+</Text>
           </TouchableOpacity>
         </View>
+
+        {/* REPLY CHIP - above the bubble and attached to it.
+
+            It lives in the content column, NOT in the bubble, and stretches to
+            the column's width rather than the bubble's. That is the whole
+            point: inside a short bubble the quote had only a few characters to
+            work with and truncated to "Co... Te...". The column is the row's
+            80%, so the preview gets real room no matter how short the message
+            under it is. */}
+        {replyTo && (
+          <TouchableOpacity
+            style={[
+              styles.replyChip,
+              isOwnMessage ? styles.replyChipOwn : styles.replyChipOther,
+            ]}
+            onPress={onReplyPress}
+            activeOpacity={0.7}
+          >
+            <View style={styles.replyChipBar} />
+            {/* One line, one Text: the nested spans let the sender stay
+                semibold while the PREVIEW is what gets clipped, because it is
+                last on the line. */}
+            <Text style={styles.replyChipText} numberOfLines={1}>
+              Replying to{' '}
+              <Text style={styles.replyChipSender}>{replyTo.senderName}</Text>
+              {' · '}
+              {replyTo.content}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* BUBBLE - with gap from header */}
         <TouchableOpacity
@@ -363,21 +402,6 @@ export function ChatBubble({
               isOwnMessage ? styles.ownBubble : styles.otherBubble,
             ]}
           >
-            {replyTo && (
-              <TouchableOpacity
-                style={styles.replyPreview}
-                onPress={onReplyPress}
-                activeOpacity={0.7}
-              >
-                <View style={styles.replyBar} />
-                <View style={styles.replyContent}>
-                  <Text style={styles.replySender}>{replyTo.senderName}</Text>
-                  <Text style={styles.replyText} numberOfLines={1}>
-                    {replyTo.content}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            )}
             {renderAttachment()}
             {message.content ? (
               <Text
@@ -508,6 +532,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#6B7280',
   },
+  editedMarker: {
+    fontSize: 11,
+    color: '#6B7280',
+    fontStyle: 'italic',
+    marginLeft: 4,
+  },
 
   reactionTrigger: {
     flexDirection: 'row',
@@ -563,31 +593,52 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
 
-  replyPreview: {
+  /**
+   * The reply chip: a compact quote ABOVE the bubble, not inside it.
+   *
+   * `alignSelf: 'stretch'` is load-bearing. The chip takes the CONTENT
+   * COLUMN's width (the row's 80%) instead of shrink-wrapping to the bubble,
+   * so a one-word reply still shows a readable preview. Sitting outside the
+   * bubble also returns the bubble to holding only the message text.
+   *
+   * Attached, not floating: 2px below it and a squared bottom edge on the side
+   * the bubble shares, so the chip and bubble read as one unit.
+   */
+  replyChip: {
     flexDirection: 'row',
+    alignSelf: 'stretch',
     alignItems: 'center',
-    marginBottom: 8,
-    gap: 8,
-  },
-  replyBar: {
-    width: 3,
-    height: '100%',
-    minHeight: 32,
-    backgroundColor: '#8B5CF6',
-    borderRadius: 2,
-  },
-  replyContent: {
-    flex: 1,
-  },
-  replySender: {
-    color: '#8B5CF6',
-    fontSize: 12,
-    fontWeight: '600',
     marginBottom: 2,
+    paddingVertical: 5,
+    paddingRight: 10,
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(148,163,184,0.14)',
   },
-  replyText: {
-    color: '#9CA3AF',
-    fontSize: 13,
+  // The squared corner faces the bubble's own squared corner.
+  replyChipOwn: {
+    borderBottomLeftRadius: 10,
+    borderBottomRightRadius: 4,
+  },
+  replyChipOther: {
+    borderBottomLeftRadius: 4,
+    borderBottomRightRadius: 10,
+  },
+  replyChipBar: {
+    width: 3,
+    alignSelf: 'stretch',
+    marginRight: 8,
+    backgroundColor: '#A78BFA',
+  },
+  replyChipText: {
+    flex: 1,
+    color: '#94A3B8',
+    fontSize: 12,
+  },
+  replyChipSender: {
+    color: '#C4B5FD',
+    fontWeight: '600',
   },
 
   videoOverlay: {

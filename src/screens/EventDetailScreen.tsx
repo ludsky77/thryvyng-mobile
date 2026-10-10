@@ -339,11 +339,27 @@ export default function EventDetailScreen({ route, navigation }: any) {
         .select('id, player_id, status, marked_by, updated_at, created_at')
         .eq('event_id', event.id);
 
-      if (attError && __DEV__) {
-        console.warn('[EventDetail] attendance read failed:', attError);
+      // A FAILED READ IS NOT "NO MARKS".
+      //
+      // `attData || []` used to publish an empty array on any error, and
+      // `players` is already set ten lines above and survives -- so a failed
+      // attendance read left a full roster with zero coach marks, and every
+      // player resolved to silence. That is precisely how a coach's "present"
+      // vanished from the Details strip (0 Going / 1 Can't go / 7 No reply)
+      // while the Attendance tab, painted from an earlier successful fetch,
+      // still showed the mark. Keep whatever marks we already hold instead of
+      // blanking them, so a bad read degrades to stale rather than to wrong.
+      //
+      // The warn is NOT __DEV__-gated: gating it is why this cost a device
+      // round trip to find. A release build said nothing at all.
+      if (attError) {
+        console.warn(
+          '[EventDetail] attendance read failed; keeping previously loaded marks:',
+          attError
+        );
+      } else {
+        setAttendanceRows((attData || []) as AttendanceRow[]);
       }
-      const attRows = (attData || []) as AttendanceRow[];
-      setAttendanceRows(attRows);
 
       // Player-role users are their own player: an exact user -> player identity
       // that beats any email guess.

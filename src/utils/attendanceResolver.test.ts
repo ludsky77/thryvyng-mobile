@@ -296,3 +296,18 @@ test('summarizeEffective on an empty roster is all zeroes', () => {
     markedByCoach: 0,
   });
 });
+
+// --- the Oct 10 device case -------------------------------------------------
+
+test('device case: single coach mark, no rsvp rows, both timestamps set -> going', () => {
+  // Exactly the row the DB returned for player 179a0b68: 'present', with
+  // created_at and updated_at both populated, and NO cal_event_rsvps row.
+  const r = resolveEffectiveStatus([], {
+    status: 'present',
+    created_at: '2026-10-10 07:03:42.445382+00',
+    updated_at: '2026-10-10 07:03:42.445382+00',
+  });
+  assert.equal(r.status, 'going');
+  assert.equal(r.source, 'coach');
+  assert.equal(r.at, '2026-10-10 07:03:42.445382+00');
+});

@@ -20,12 +20,13 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
-import { useUserTeams } from '../hooks/useUserTeams';
+import { useSharedUserTeams } from '../contexts/TeamsContext';
 import { supabase } from '../lib/supabase';
 import { formatRoleLabel, getRolePriority, getTimeAgo } from '../lib/chatHelpers';
 import { NotificationBell } from '../components/NotificationBell';
 import { useFocusEffect } from '@react-navigation/native';
-import { subscribeToMessageInserts } from '../lib/realtimeHub';
+import { useChatUnread } from '../contexts/ChatUnreadContext';
+import { logError } from '../utils/logError';
 
 interface EnrichedConversation {
   id: string;
@@ -46,7 +47,7 @@ interface EnrichedConversation {
   lastMessage: string | null;
   lastMessageTime: string | null;
   unreadCount: number;
-  /** Channel is muted for this user. Counted in the card badge, excluded from the tab total. */
+  /** Channel is muted for this user. Shown as a bell-off icon; still counted everywhere. */
   isMuted?: boolean;
   channel_type?: string;
   team_id?: string | null;
@@ -85,14 +86,29 @@ function getChannelColor(conversation: EnrichedConversation): string {
   return '#8B6BAD';
 }
 
+/** Most recent message first; rows with no message sink to the bottom. */
+function sortByRecent(list: EnrichedConversation[]): EnrichedConversation[] {
+  return [...list].sort((a, b) => {
+    const tA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+    const tB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+    return tB - tA;
+  });
+}
+
 function ConversationItem({
   conversation,
   onPress,
-  muted = false,
+  pastTeam = false,
 }: {
   conversation: EnrichedConversation;
   onPress: () => void;
-  muted?: boolean;
+  /**
+   * This row belongs to a PAST team. It was called `muted`, which is a
+   * different thing the card also needs to show (see conversation.isMuted),
+   * and it rendered the label "Archived", which is a third thing again --
+   * archived channels never reach this list at all.
+   */
+  pastTeam?: boolean;
 }) {
   const borderColor = getChannelColor(conversation);
 
@@ -144,14 +160,14 @@ function ConversationItem({
       style={[
         styles.conversationCard,
         { borderLeftColor: borderColor },
-        muted && styles.conversationCardPast,
+        pastTeam && styles.conversationCardPast,
       ]}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      {muted && (
+      {pastTeam && (
         <Feather
-          name="archive"
+          name="clock"
           size={16}
           color="#888"
           style={styles.pastChannelPrefixIcon}
@@ -166,23 +182,37 @@ function ConversationItem({
           <Text
             style={[
               styles.conversationName,
-              muted && styles.conversationNamePast,
+              pastTeam && styles.conversationNamePast,
               conversation.unreadCount > 0 && styles.conversationNameUnread,
             ]}
             numberOfLines={1}
           >
             {conversation.cardTitle || conversation.displayName}
           </Text>
-          {!muted && (
+          {conversation.isMuted && (
+            <Feather
+              name="bell-off"
+              size={13}
+              color="#6B7280"
+              style={styles.mutedIcon}
+            />
+          )}
+          {!pastTeam && (
             <Text style={styles.conversationTime}>
               {getTimeAgo(conversation.lastMessageTime)}
             </Text>
           )}
         </View>
 
-        {muted ? (
-          <Text style={styles.archivedSubtitle} numberOfLines={1}>
-            Archived
+        {pastTeam ? (
+          /* The channel name has to survive here. Dropping it for the bare
+             words "Past team" made two channels of the same retired team
+             render identically ("PAC Boys 2015" twice) with no way to tell
+             them apart. */
+          <Text style={styles.pastTeamSubtitle} numberOfLines={1}>
+            {conversation.cardMeta
+              ? `${conversation.cardMeta} · Past team`
+              : 'Past team'}
           </Text>
         ) : conversation.cardMeta ? (
           <Text
@@ -207,7 +237,15 @@ function ConversationItem({
       </View>
 
       <View style={styles.conversationRight}>
-        {conversation.unreadCount > 0 ? (
+        {/* Past-team rows carry no number: their unread is excluded from the
+            chat total (countsTowardUnread), so a count here would be a number
+            the tab badge does not agree with. A neutral dot still says
+            "something is in here" without competing with the real counters. */}
+        {pastTeam ? (
+          conversation.unreadCount > 0 ? (
+            <View style={styles.pastUnreadDot} />
+          ) : null
+        ) : conversation.unreadCount > 0 ? (
           <View
             style={[styles.unreadBadge, { backgroundColor: borderColor }]}
           >
@@ -244,16 +282,21 @@ interface TeamChannelOption {
 
 export default function ChatScreen({ navigation, route }: any) {
   const { user } = useAuth();
-  const { teams, activeTeams, pastTeams, loading: teamsLoading } = useUserTeams();
+  const { teams, activeTeams, pastTeams, loading: teamsLoading } =
+    useSharedUserTeams();
   const allTeams = useMemo(() => [...activeTeams, ...pastTeams], [activeTeams, pastTeams]);
 
-  const [conversations, setConversations] = useState<EnrichedConversation[]>([]);
-  const [pastConversations, setPastConversations] = useState<EnrichedConversation[]>([]);
-  const [loading, setLoading] = useState(true);
+  // The rows, the load flags and the total all come from the one shared fetch,
+  // so the tab badge is the sum of exactly the rows rendered below.
+  const {
+    mainRows,
+    pastRows,
+    loading,
+    hasLoadedOnce,
+    refresh,
+    refreshNow,
+  } = useChatUnread();
   const [refreshing, setRefreshing] = useState(false);
-  // First fetch has resolved (success or failure). Until it does we must not
-  // claim the user has no conversations.
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   // ensure_team_channel_membership is a one-time repair, not a per-fetch step.
   const membershipEnsuredRef = useRef(false);
   const [activeTab, setActiveTab] = useState<'recent' | 'byTeam' | 'past'>('recent');
@@ -291,161 +334,122 @@ export default function ChatScreen({ navigation, route }: any) {
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [clubTeams, setClubTeams] = useState<any[]>([]);
 
-  const fetchConversations = useCallback(async () => {
-    if (!user?.id) {
-      setConversations([]);
-      setPastConversations([]);
-      setLoading(false);
-      setHasLoadedOnce(true);
-      return;
-    }
-    // Wait for the teams hook: ensure_team_channel_membership must run before
-    // get_my_conversations, or a freshly-added member's team channel is missing
-    // from the very first result and the screen briefly claims "no conversations".
-    if (teamsLoading) {
-      setLoading(true);
-      return;
-    }
-    setLoading(true);
-    try {
-      // One-time membership repair, in parallel, and only on the first load of
-      // the session -- it used to run serially before every single refetch.
-      if (!membershipEnsuredRef.current && activeTeams.length > 0) {
-        membershipEnsuredRef.current = true;
-        await Promise.all(
-          activeTeams.map(async (team) => {
-            try {
-              await supabase.rpc('ensure_team_channel_membership', { p_team_id: team.id });
-            } catch (err) {
-              console.warn(`ensure_team_channel_membership failed for team ${team.id}:`, err);
-            }
-          })
-        );
-      }
+  /**
+   * Row -> card. Hoisted to component level: it is pure given `allTeams`, and
+   * the rows themselves now arrive from the shared provider rather than from a
+   * fetch this screen owns.
+   */
+  const toConversation = useCallback((row: any): EnrichedConversation => {
+    const lastMessageTime = row.last_message_at ?? null;
+    const unreadCount = row.unread_count ?? 0;
+    const isMuted = row.is_muted === true;
 
-      // One server-side call replaces the former 3 serial stages + 7-query
-      // parallel batch + client-side joins. Unread counting, muting, archiving
-      // and last-message resolution now all happen in the database.
-      const { data, error } = await supabase.rpc('get_my_conversations');
-      if (error) {
-        if (__DEV__) {
-          console.error('[ChatScreen] get_my_conversations failed:', error);
-        }
-        // Keep whatever is already on screen rather than blanking the list.
-        return;
-      }
-
-      const activeTeamIds = new Set(activeTeams.map((t) => t.id));
-      const pastTeamIds = new Set(pastTeams.map((t) => t.id));
-
-      const toConversation = (row: any): EnrichedConversation => {
-        const lastMessageTime = row.last_message_at ?? null;
-        const unreadCount = row.unread_count ?? 0;
-        const isMuted = row.is_muted === true;
-
-        if (row.is_direct_message) {
-          const otherName = row.other_user_name || 'Unknown User';
-          return {
-            id: row.channel_id,
-            displayType: 'dm',
-            displayName: otherName,
-            displaySubtitle: '',
-            // DM card: the other person's name, no type label.
-            cardTitle: otherName,
-            cardMeta: '',
-            displayAvatar: row.other_user_avatar || null,
-            displayInitial: otherName.charAt(0)?.toUpperCase() || '?',
-            lastMessage: row.last_message_content || null,
-            lastMessageTime,
-            unreadCount,
-            isMuted,
-            channel_type: row.channel_type,
-            name: row.name,
-          };
-        }
-        if (row.channel_type === 'group_dm') {
-          return {
-            id: row.channel_id,
-            displayType: 'group',
-            displayName: row.name || 'Group Chat',
-            displaySubtitle: `${row.member_count || 0} members`,
-            // Group card: the group's own name, member count stays secondary.
-            cardTitle: row.name || 'Group Chat',
-            cardMeta: `${row.member_count || 0} members`,
-            displayAvatar: null,
-            displayInitial: '👥',
-            lastMessage: row.last_message_content || null,
-            lastMessageTime,
-            unreadCount,
-            isMuted,
-            channel_type: row.channel_type,
-            name: row.name,
-          };
-        }
-        const team = allTeams.find((t) => t.id === row.team_id);
-        return {
-          id: row.channel_id,
-          displayType: 'team',
-          displayName: row.name || 'Team Chat',
-          displaySubtitle: row.team_name || team?.name || '',
-          // Team card: the TEAM is the headline. The channel name ("Team Chat"
-          // on nearly every row) drops to the secondary line, and is omitted
-          // when it would just repeat the team name.
-          cardTitle: row.team_name || team?.name || row.name || 'Team Chat',
-          cardMeta:
-            row.team_name || team?.name
-              ? row.name || 'Team Chat'
-              : '',
-          displayAvatar: null,
-          displayInitial: '#',
-          lastMessage: row.last_message_content || null,
-          lastMessageTime,
-          unreadCount,
-          isMuted,
-          channel_type: row.channel_type,
-          team_id: row.team_id,
-          team: row.team_id
-            ? { id: row.team_id, name: row.team_name || team?.name || '', color: team?.color }
-            : null,
-          name: row.name,
-        };
+    if (row.is_direct_message) {
+      const otherName = row.other_user_name || 'Unknown User';
+      return {
+        id: row.channel_id,
+        displayType: 'dm',
+        displayName: otherName,
+        displaySubtitle: '',
+        // DM card: the other person's name, no type label.
+        cardTitle: otherName,
+        cardMeta: '',
+        displayAvatar: row.other_user_avatar || null,
+        displayInitial: otherName.charAt(0)?.toUpperCase() || '?',
+        lastMessage: row.last_message_content || null,
+        lastMessageTime,
+        unreadCount,
+        isMuted,
+        channel_type: row.channel_type,
+        name: row.name,
       };
-
-      // Archived channels never reach the list, matching the previous query.
-      const rows = (data || []).filter((r: any) => r?.channel_id && !r.is_archived);
-      const activeRows = rows.filter(
-        (r: any) => !r.team_id || activeTeamIds.has(r.team_id)
-      );
-      const pastRows = rows.filter(
-        (r: any) => r.team_id && pastTeamIds.has(r.team_id)
-      );
-
-      const sortByRecent = (list: EnrichedConversation[]) =>
-        [...list].sort((a, b) => {
-          const tA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
-          const tB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
-          return tB - tA;
-        });
-
-      setConversations(sortByRecent(activeRows.map(toConversation)));
-      setPastConversations(sortByRecent(pastRows.map(toConversation)));
-    } catch (err) {
-      console.error('Error fetching conversations:', err);
     }
-    setLoading(false);
-    setRefreshing(false);
-    setHasLoadedOnce(true);
-  }, [user?.id, teamsLoading, activeTeams, pastTeams, allTeams]);
+    if (row.channel_type === 'group_dm') {
+      return {
+        id: row.channel_id,
+        displayType: 'group',
+        displayName: row.name || 'Group Chat',
+        displaySubtitle: `${row.member_count || 0} members`,
+        // Group card: the group's own name, member count stays secondary.
+        cardTitle: row.name || 'Group Chat',
+        cardMeta: `${row.member_count || 0} members`,
+        displayAvatar: null,
+        displayInitial: '👥',
+        lastMessage: row.last_message_content || null,
+        lastMessageTime,
+        unreadCount,
+        isMuted,
+        channel_type: row.channel_type,
+        name: row.name,
+      };
+    }
+    const team = allTeams.find((t) => t.id === row.team_id);
+    return {
+      id: row.channel_id,
+      displayType: 'team',
+      displayName: row.name || 'Team Chat',
+      displaySubtitle: row.team_name || team?.name || '',
+      // Team card: the TEAM is the headline. The channel name ("Team Chat"
+      // on nearly every row) drops to the secondary line, and is omitted
+      // when it would just repeat the team name.
+      cardTitle: row.team_name || team?.name || row.name || 'Team Chat',
+      cardMeta:
+        row.team_name || team?.name
+          ? row.name || 'Team Chat'
+          : '',
+      displayAvatar: null,
+      displayInitial: '#',
+      lastMessage: row.last_message_content || null,
+      lastMessageTime,
+      unreadCount,
+      isMuted,
+      channel_type: row.channel_type,
+      team_id: row.team_id,
+      team: row.team_id
+        ? { id: row.team_id, name: row.team_name || team?.name || '', color: team?.color }
+        : null,
+      name: row.name,
+    };
+  }, [allTeams]);
 
+  const conversations = useMemo(
+    () => sortByRecent(mainRows.map(toConversation)),
+    [mainRows, toConversation]
+  );
+  const pastConversations = useMemo(
+    () => sortByRecent(pastRows.map(toConversation)),
+    [pastRows, toConversation]
+  );
+
+  /**
+   * One-time membership repair. It has to finish before its channels can show
+   * up, so the provider is asked to refetch once it has. Not part of the fetch
+   * path any more -- it used to run inside it.
+   */
   useEffect(() => {
-    fetchConversations();
-  }, [fetchConversations]);
+    if (!user?.id || teamsLoading) return;
+    if (membershipEnsuredRef.current) return;
+    if (activeTeams.length === 0) return;
+    membershipEnsuredRef.current = true;
+    void (async () => {
+      await Promise.all(
+        activeTeams.map(async (team) => {
+          try {
+            await supabase.rpc('ensure_team_channel_membership', { p_team_id: team.id });
+          } catch (err) {
+            logError('ChatScreen.ensureTeamChannelMembership', err, { teamId: team.id });
+          }
+        })
+      );
+      refresh();
+    })();
+  }, [user?.id, teamsLoading, activeTeams, refresh]);
 
-  // Refresh unread counts when user returns to the conversation list
+  // Returning to the list: re-read, in case something was read elsewhere.
   useFocusEffect(
     useCallback(() => {
-      fetchConversations();
-    }, [fetchConversations])
+      refresh();
+    }, [refresh])
   );
 
   useEffect(() => {
@@ -855,19 +859,9 @@ export default function ChatScreen({ navigation, route }: any) {
     setTeamChannels(withTeams);
   }, [user?.id]);
 
-  useEffect(() => {
-    if (!user?.id) return;
-    // Shared hub channel; status is logged once by the hub itself.
-    const unsubscribe = subscribeToMessageInserts((row: any) => {
-      if (__DEV__) {
-        console.log('[ChatScreen] INSERT event', row?.id);
-      }
-      fetchConversations();
-    });
-    return () => {
-      unsubscribe();
-    };
-  }, [user?.id, fetchConversations]);
+  // No message subscription here: ChatUnreadProvider owns the one that feeds
+  // both this list and the tab badge. This screen having its own was what let
+  // the row update while the tab badge sat behind a separate 3 s debounce.
 
   const closeModal = useCallback(() => {
     setShowNewChatModal(false);
@@ -1029,9 +1023,13 @@ export default function ChatScreen({ navigation, route }: any) {
     )
     .map(([title, data]) => ({ title, data }));
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setRefreshing(true);
-    fetchConversations();
+    try {
+      await refreshNow();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleConversationPress = (conversation: EnrichedConversation) => {
@@ -1736,7 +1734,7 @@ export default function ChatScreen({ navigation, route }: any) {
               <ConversationItem
                 conversation={item}
                 onPress={() => handleConversationPress(item)}
-                muted
+                pastTeam
               />
             )}
             contentContainerStyle={styles.listContent}
@@ -1948,10 +1946,20 @@ const styles = StyleSheet.create({
   conversationNamePast: {
     fontSize: 14,
   },
-  archivedSubtitle: {
+  pastTeamSubtitle: {
     color: '#888',
     fontSize: 11,
     marginTop: 2,
+  },
+  mutedIcon: {
+    marginRight: 6,
+  },
+  pastUnreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#6B7280',
+    marginBottom: 4,
   },
   conversationIcon: {
     width: 40,

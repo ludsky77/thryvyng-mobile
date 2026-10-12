@@ -1,5 +1,7 @@
 import React, { lazy, Suspense } from 'react';
-import { useTotalChatUnread } from '../hooks/useTotalChatUnread';
+import { syncAppBadge } from '../services/appBadge';
+import { TeamsProvider } from '../contexts/TeamsContext';
+import { ChatUnreadProvider, useChatUnread } from '../contexts/ChatUnreadContext';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -165,9 +167,21 @@ const TAB_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
 };
 
 function MainTabs() {
-  const { currentRole } = useAuth();
-  const totalChatUnread = useTotalChatUnread();
+  const { currentRole, user } = useAuth();
+  const { total: totalChatUnread, syncTick } = useChatUnread();
   const insets = useSafeAreaInsets();
+
+  // R3: the app-icon badge is the chat tab total, always. One writer, here.
+  //
+  // syncTick is in the deps on purpose. A push can change the OS badge while
+  // the app is backgrounded, so returning to the SAME total still has to
+  // re-apply our number -- keying on `total` alone would skip exactly that
+  // case and leave the server's inflated count on the icon. Every successful
+  // recount ticks, so every foreground re-count re-applies, and so does every
+  // recount after a mark-read or an incoming message.
+  React.useEffect(() => {
+    void syncAppBadge(totalChatUnread, user?.id);
+  }, [totalChatUnread, syncTick, user?.id]);
 
   const isStaff =
     currentRole &&
@@ -1007,7 +1021,11 @@ export default function AppNavigator() {
         hasMountedNavRef.current = true;
       }}
     >
-      <RootStackNavigator />
+      <TeamsProvider>
+        <ChatUnreadProvider>
+          <RootStackNavigator />
+        </ChatUnreadProvider>
+      </TeamsProvider>
     </NavigationContainer>
   );
 }

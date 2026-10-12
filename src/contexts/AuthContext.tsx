@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserRole } from '../types';
 import { registerForPushNotifications, deactivatePushToken } from '../services/notifications';
+import { clearAppBadge } from '../services/appBadge';
 import Constants from 'expo-constants';
 
 const withTimeout = <T,>(promise: Promise<T>, ms: number = 10000): Promise<T> => {
@@ -246,6 +247,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (user?.id) {
       await deactivatePushToken(user.id);
     }
+    // The icon badge is this user's chat total; it must not survive them.
+    // Badge reset only -- no other auth behaviour changes here.
+    await clearAppBadge();
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);

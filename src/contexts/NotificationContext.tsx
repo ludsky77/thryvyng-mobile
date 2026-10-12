@@ -8,6 +8,8 @@ import React, {
 } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
+import { getUnreadCount } from '../services/notifications';
+import { logError } from '../utils/logError';
 
 export interface Notification {
   id: string;
@@ -41,6 +43,18 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
+  /**
+   * The badge number, counted server-side with count: 'exact' and no limit.
+   * getUnreadCount already existed in services/notifications and was unused.
+   */
+  const refreshUnreadCount = useCallback(async () => {
+    if (!user?.id) {
+      setUnreadCount(0);
+      return;
+    }
+    setUnreadCount(await getUnreadCount(user.id));
+  }, [user?.id]);
+
   const fetchNotifications = useCallback(async () => {
     if (!user?.id) {
       setNotifications([]);
@@ -51,6 +65,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     setLoading(true);
     try {
+      // The LIST stays paged at the newest 100 -- that is a display decision.
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
@@ -58,16 +73,25 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         .order('created_at', { ascending: false })
         .limit(100);
 
-      if (!error && data) {
+      if (error) {
+        logError('NotificationContext.fetchNotifications', error, {
+          userId: user.id,
+        });
+      } else if (data) {
         setNotifications((data as Notification[]) || []);
-        setUnreadCount((data || []).filter((n: Notification) => !n.is_read).length);
       }
+
+      // R4: the BADGE is the exact unread count. Deriving it from the page
+      // above undercounted anyone whose unread sat outside the newest 100.
+      await refreshUnreadCount();
     } catch (err) {
-      console.error('Error fetching notifications:', err);
+      logError('NotificationContext.fetchNotifications', err, {
+        userId: user.id,
+      });
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, refreshUnreadCount]);
 
   const markAsRead = useCallback(
     async (notificationId: string) => {
@@ -85,10 +109,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             n.id === notificationId ? { ...n, is_read: true } : n
           )
         );
+        // Optimistic so the row restyles instantly, then reconciled against
+        // the exact count -- the badge must not drift away from the truth.
         setUnreadCount((prev) => Math.max(0, prev - 1));
+        void refreshUnreadCount();
       }
     },
-    [user?.id]
+    [user?.id, refreshUnreadCount]
   );
 
   const markAllAsRead = useCallback(async () => {
@@ -105,8 +132,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         prev.map((n) => ({ ...n, is_read: true }))
       );
       setUnreadCount(0);
+      // Rows older than the newest 100 were also marked read server-side;
+      // re-count rather than trust the page we can see.
+      void refreshUnreadCount();
     }
-  }, [user?.id]);
+  }, [user?.id, refreshUnreadCount]);
 
   const deleteNotification = useCallback(
     async (notificationId: string) => {
@@ -123,10 +153,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
         if (target && !target.is_read) {
           setUnreadCount((prev) => Math.max(0, prev - 1));
+          void refreshUnreadCount();
         }
       }
     },
-    [user?.id, notifications]
+    [user?.id, notifications, refreshUnreadCount]
   );
 
   const clearAllNotifications = useCallback(async () => {
@@ -140,8 +171,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     if (!error) {
       setNotifications([]);
       setUnreadCount(0);
+      void refreshUnreadCount();
     }
-  }, [user?.id]);
+  }, [user?.id, refreshUnreadCount]);
 
   useEffect(() => {
     fetchNotifications();
@@ -164,6 +196,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           const newNotif = payload.new as Notification;
           setNotifications((prev) => [newNotif, ...prev]);
           setUnreadCount((prev) => prev + 1);
+          void refreshUnreadCount();
         }
       )
       .subscribe();
@@ -171,7 +204,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id]);
+  }, [user?.id, refreshUnreadCount]);
 
   return (
     <NotificationContext.Provider

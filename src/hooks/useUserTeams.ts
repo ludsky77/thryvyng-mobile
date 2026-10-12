@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import type { TeamLifecycleFacts } from '../utils/unreadRule';
 
 export interface UserTeam {
   id: string;
@@ -80,6 +81,16 @@ export function useUserTeams() {
   const { user, currentRole } = useAuth();
   const [activeTeams, setActiveTeams] = useState<UserTeam[]>([]);
   const [pastTeams, setPastTeams] = useState<UserTeam[]>([]);
+  /**
+   * teamId -> raw lifecycle, for EVERY team found -- including the ones
+   * bucketTeams drops as "hidden". The unread rule needs the raw team_status,
+   * not the bucket: a test team that is still active counts, and a test team
+   * that has been retired does not (PARITY SPEC v2 in utils/unreadRule).
+   * Additive -- no existing return value or bucket changes.
+   */
+  const [teamLifecycle, setTeamLifecycle] = useState<Map<string, TeamLifecycleFacts>>(
+    new Map()
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,6 +98,7 @@ export function useUserTeams() {
     if (!user?.id || !user?.email) {
       setActiveTeams([]);
       setPastTeams([]);
+      setTeamLifecycle(new Map());
       setLoading(false);
       return;
     }
@@ -318,7 +330,18 @@ export function useUserTeams() {
         }
       }
 
-      const { active, past } = bucketTeams(Array.from(teamMap.values()));
+      // Built from teamMap, i.e. BEFORE bucketing, so hidden teams are included.
+      const allFound = Array.from(teamMap.values());
+      setTeamLifecycle(
+        new Map(
+          allFound.map((t) => [
+            t.id,
+            { team_status: t.team_status ?? null, is_test: t.is_test ?? null },
+          ])
+        )
+      );
+
+      const { active, past } = bucketTeams(allFound);
       setActiveTeams(active);
       setPastTeams(past);
     } catch (err: any) {
@@ -375,6 +398,7 @@ export function useUserTeams() {
     teams,
     activeTeams: teams,
     pastTeams,
+    teamLifecycle,
     loading,
     error,
     refetch: fetchTeams,

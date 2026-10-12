@@ -18,6 +18,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useMessages } from '../hooks/useMessages';
 import { logError } from '../utils/logError';
+import { requestChatUnreadRefresh } from '../hooks/useTotalChatUnread';
 import { sendFailure } from '../utils/sendResult';
 import { useChatSenderLabels } from '../hooks/useChatSenderLabels';
 import { useTypingPresence } from '../hooks/useTypingPresence';
@@ -129,7 +130,11 @@ export default function DMChatScreen({ route, navigation }: any) {
       .then(({ error }) => {
         if (error) {
           logError('DMChat.markChannelRead', error, { channelId });
+          return;
         }
+        // Stamp landed: re-count now so the chat tab and the app icon drop
+        // immediately instead of waiting out the hook's 3 s debounce.
+        requestChatUnreadRefresh();
       });
   }, [channelId, user?.id]);
 

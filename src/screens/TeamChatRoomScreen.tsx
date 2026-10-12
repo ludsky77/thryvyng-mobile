@@ -16,6 +16,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useMessages } from '../hooks/useMessages';
 import { logError } from '../utils/logError';
+import { requestChatUnreadRefresh } from '../hooks/useTotalChatUnread';
 import { formatDayDivider, invertedDayDividerIndices } from '../utils/chatDays';
 import { sendFailure } from '../utils/sendResult';
 import { PollCard } from '../components/chat/PollCard';
@@ -154,7 +155,11 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
       .then(({ error }) => {
         if (error) {
           logError('TeamChatRoom.markChannelAsRead', error, { channelId });
+          return;
         }
+        // Stamp landed: re-count now so the chat tab and the app icon drop
+        // immediately instead of waiting out the hook's 3 s debounce.
+        requestChatUnreadRefresh();
       });
   }, [channelId, user?.id]);
 

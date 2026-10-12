@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { fetchChannelTeamMemberNames } from '../lib/memberNames';
+import { logError } from '../utils/logError';
+import { requestChatUnreadRefresh } from './useTotalChatUnread';
 
 export interface ChannelMemberRead {
   user_id: string;
@@ -49,7 +51,9 @@ export function useChannelMembers(channelId: string | null) {
       if (!channelId) return;
       const { data: { user } } = await supabase.auth.getUser();
       if (!user?.id) return;
-      await supabase
+      // This was the last mark-read writer still discarding its error: a
+      // failed stamp left a stale badge and looked exactly like a successful one.
+      const { error } = await supabase
         .from('comm_channel_members')
         .update({
           last_read_at: new Date().toISOString(),
@@ -57,7 +61,17 @@ export function useChannelMembers(channelId: string | null) {
         })
         .eq('channel_id', channelId)
         .eq('user_id', user.id);
+
+      if (error) {
+        logError('useChannelMembers.updateLastReadMessage', error, {
+          channelId,
+          messageId,
+        });
+        return;
+      }
       fetchMembers();
+      // Stamp landed: re-count the chat total so the tab and app icon drop now.
+      requestChatUnreadRefresh();
     },
     [channelId, fetchMembers]
   );

@@ -16,6 +16,20 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  canLeaveChannel,
+  leaveChannel,
+  leaveConfirmTitle,
+  LEAVE_ACTION_LABEL,
+  LEAVE_CONFIRM_BODY,
+  LEAVE_FAILED_MESSAGE,
+  LEAVE_REFUSED_MESSAGE,
+} from '../lib/channelLeave';
+import {
+  forgetChatChannel,
+  requestChatUnreadRefresh,
+} from '../contexts/ChatUnreadContext';
+import { logError } from '../utils/logError';
 
 /** Per-channel role from comm_channel_members.role -- not the global app role. */
 type ChannelRole = 'admin' | 'member';
@@ -273,35 +287,40 @@ export default function GroupInfoScreen({ route, navigation }: any) {
 
   const leaveGroup = () => {
     if (!user?.id) {
-      Alert.alert('Error', 'Could not leave group');
+      Alert.alert('Error', LEAVE_FAILED_MESSAGE);
       return;
     }
 
     Alert.alert(
-      'Leave Group',
-      'Are you sure you want to leave this group?',
+      leaveConfirmTitle(channel?.name),
+      LEAVE_CONFIRM_BODY,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Leave',
           style: 'destructive',
           onPress: async () => {
-            const { data, error } = await supabase
-              .from('comm_channel_members')
-              .delete()
-              .eq('channel_id', channelId)
-              .eq('user_id', user.id)
-              .select('user_id');
+            const result = await leaveChannel(channelId, user.id);
 
             // Navigating away on a denied delete makes a failure look like a
             // success -- the user stays in the group but never sees it again.
-            if (error || !data || data.length === 0) {
-              if (__DEV__) {
-                console.error('[GroupInfoScreen] leave failed:', error);
-              }
-              Alert.alert('Error', 'Could not leave group');
+            // So a refusal changes nothing locally and stays put.
+            if (result.status === 'refused') {
+              logError('GroupInfo.leaveChannel', 'refused', { channelId });
+              Alert.alert('Error', LEAVE_REFUSED_MESSAGE);
               return;
             }
+
+            if (result.status === 'error') {
+              logError('GroupInfo.leaveChannel', result.error, { channelId });
+              Alert.alert('Error', LEAVE_FAILED_MESSAGE);
+              return;
+            }
+
+            // Membership is gone: drop the row from the list now rather than
+            // waiting for the refresh that the chat list does on focus.
+            forgetChatChannel(channelId);
+            requestChatUnreadRefresh();
 
             // GroupInfo sits on ChatStack above TeamChatRoom, so a plain
             // goBack() lands on the room they just left. Popping the stack
@@ -412,9 +431,14 @@ export default function GroupInfoScreen({ route, navigation }: any) {
         )}
       </View>
 
-      <TouchableOpacity style={styles.leaveButton} onPress={leaveGroup}>
-        <Text style={styles.leaveButtonText}>Leave Group</Text>
-      </TouchableOpacity>
+      {/* Same rule as ChatInfo's Leave: absent, not disabled, where the DB
+          would refuse. A group chat normally passes, so this hides the button
+          only if the channel row failed to load or is not a leavable kind. */}
+      {canLeaveChannel(channel) && (
+        <TouchableOpacity style={styles.leaveButton} onPress={leaveGroup}>
+          <Text style={styles.leaveButtonText}>{LEAVE_ACTION_LABEL}</Text>
+        </TouchableOpacity>
+      )}
 
       <Modal
         visible={showAddMemberModal}

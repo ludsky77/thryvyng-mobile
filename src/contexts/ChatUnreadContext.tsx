@@ -42,6 +42,7 @@ import { subscribeToMessageInserts } from '../lib/realtimeHub';
 import { useAuth } from './AuthContext';
 import { useSharedUserTeams } from './TeamsContext';
 import { classifyConversationRows } from '../utils/unreadRule';
+import type { ConversationRow } from '../utils/unreadRule';
 import { logError } from '../utils/logError';
 
 /*
@@ -93,6 +94,32 @@ export function requestChatUnreadRefresh(): void {
   }, REFRESH_THROTTLE_MS - sinceLast);
 }
 
+type ForgetListener = (channelId: string) => void;
+const forgetListeners = new Set<ForgetListener>();
+
+/**
+ * Drop one channel from the chat list NOW, without waiting for a round trip.
+ *
+ * Called after a successful leave: the membership row is gone, so the next
+ * `get_my_conversations` will not return the channel -- but until that read
+ * lands the list would still be showing a chat the user just left. Module-
+ * level for the same reason as requestChatUnreadRefresh(): the screens that
+ * leave a chat live in other navigators. Safe to call when nothing is mounted.
+ *
+ * This is a local drop, not a second opinion: the next refresh re-reads the
+ * server and reconciles, so a channel dropped here that the DB still returns
+ * comes straight back.
+ */
+export function forgetChatChannel(channelId: string): void {
+  forgetListeners.forEach((listener) => {
+    try {
+      listener(channelId);
+    } catch (error) {
+      logError('ChatUnread.forgetListener', error);
+    }
+  });
+}
+
 export interface ChatUnreadValue {
   /** Channels whose unread counts; what the main list renders. */
   mainRows: any[];
@@ -134,6 +161,13 @@ export function ChatUnreadProvider({ children }: { children: ReactNode }) {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [syncTick, setSyncTick] = useState(0);
   const isMountedRef = useRef(true);
+  /**
+   * The last RPC result, unclassified. forgetChatChannel() re-runs the SAME
+   * classifier over it minus one channel, so the local drop cannot invent a
+   * different total than a real fetch would -- `total` stays, by construction,
+   * the sum over `mainRows`.
+   */
+  const rawRowsRef = useRef<ConversationRow[]>([]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -171,7 +205,8 @@ export function ChatUnreadProvider({ children }: { children: ReactNode }) {
       if (!isMountedRef.current) return;
 
       // One pass produces both lists and the total, so they cannot disagree.
-      setRows(classifyConversationRows(data as any[], teamLifecycle));
+      rawRowsRef.current = (data as ConversationRow[]) ?? [];
+      setRows(classifyConversationRows(rawRowsRef.current, teamLifecycle));
       setSyncTick((tick) => tick + 1);
     } catch (err) {
       logError('ChatUnread.refreshNow', err, { userId: user.id });
@@ -203,6 +238,23 @@ export function ChatUnreadProvider({ children }: { children: ReactNode }) {
       refreshListeners.delete(listener);
     };
   }, [refreshNow]);
+
+  // A chat the user just left. Reclassify the held rows minus that channel so
+  // the list and the tab badge both lose it in the same pass.
+  useEffect(() => {
+    const listener = (channelId: string) => {
+      if (!channelId) return;
+      rawRowsRef.current = rawRowsRef.current.filter(
+        (row) => row?.channel_id !== channelId
+      );
+      if (!isMountedRef.current) return;
+      setRows(classifyConversationRows(rawRowsRef.current, teamLifecycle));
+    };
+    forgetListeners.add(listener);
+    return () => {
+      forgetListeners.delete(listener);
+    };
+  }, [teamLifecycle]);
 
   // Incoming messages. This is the fix for the simulator FAIL: the provider is
   // mounted above the navigator, so this fires on ANY tab with no background

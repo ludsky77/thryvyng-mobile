@@ -19,6 +19,20 @@ import {
   fetchTeamMemberNames,
   UNRESOLVED_NAME,
 } from '../lib/memberNames';
+import {
+  canLeaveChannel,
+  leaveChannel,
+  leaveConfirmTitle,
+  LEAVE_ACTION_LABEL,
+  LEAVE_CONFIRM_BODY,
+  LEAVE_FAILED_MESSAGE,
+  LEAVE_REFUSED_MESSAGE,
+} from '../lib/channelLeave';
+import {
+  forgetChatChannel,
+  requestChatUnreadRefresh,
+} from '../contexts/ChatUnreadContext';
+import { logError } from '../utils/logError';
 
 interface Member {
   id: string;
@@ -31,6 +45,8 @@ interface Member {
 
 interface ChannelRecord {
   id: string;
+  name?: string | null;
+  channel_type?: string | null;
   is_default?: boolean | null;
   is_direct_message?: boolean | null;
   dm_participant_1?: string | null;
@@ -65,6 +81,7 @@ export default function ChatInfoScreen() {
   const [channel, setChannel] = useState<ChannelRecord | null>(null);
   const [myMembershipRole, setMyMembershipRole] = useState<string | null>(null);
   const [isArchiving, setIsArchiving] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
   const [pollsCount, setPollsCount] = useState(0);
   const [filesCount, setFilesCount] = useState(0);
   const [linksCount, setLinksCount] = useState(0);
@@ -130,10 +147,13 @@ export default function ChatInfoScreen() {
       setFilesCount(filesRes.count ?? 0);
       setLinksCount(linksRes.count ?? 0);
 
+      // `channel_type` and `name` come from the row on purpose: the route
+      // param `channelType` is undefined on a push-opened room and 'direct'
+      // from a DM, so the leave gate cannot be built on it (see channelLeave).
       const { data: channelData } = await supabase
         .from('comm_channels')
         .select(
-          'allow_member_text, is_default, is_direct_message, dm_participant_1, dm_participant_2, created_by'
+          'name, channel_type, allow_member_text, is_default, is_direct_message, dm_participant_1, dm_participant_2, created_by'
         )
         .eq('id', channelId)
         .single();
@@ -299,6 +319,13 @@ export default function ChatInfoScreen() {
     );
   }, [channel, user?.id, myMembershipRole, isPlatformAdmin]);
 
+  /**
+   * Group chats and non-default team / club channels only. A default team or
+   * club chat and a 1-on-1 DM show no Leave control at all -- the rule itself
+   * lives in src/lib/channelLeave.ts and is shared with GroupInfoScreen.
+   */
+  const canLeave = useMemo(() => canLeaveChannel(channel), [channel]);
+
   const sections = useMemo(() => {
     if (sortBy === 'alpha') {
       return [
@@ -391,6 +418,49 @@ export default function ChatInfoScreen() {
     } finally {
       setIsArchiving(false);
     }
+  };
+
+  const performLeave = async () => {
+    if (!channelId || !user?.id || isLeaving) return;
+    setIsLeaving(true);
+    try {
+      const result = await leaveChannel(channelId, user.id);
+
+      if (result.status === 'refused') {
+        // The DB said no. Change nothing locally -- dropping the row here
+        // would hide a chat the user is still a member of. Worth recording:
+        // a refusal here means this gate and the DB rule disagree.
+        logError('ChatInfo.leaveChannel', 'refused', { channelId });
+        Alert.alert('Error', LEAVE_REFUSED_MESSAGE);
+        return;
+      }
+
+      if (result.status === 'error') {
+        logError('ChatInfo.leaveChannel', result.error, { channelId });
+        Alert.alert('Error', LEAVE_FAILED_MESSAGE);
+        return;
+      }
+
+      // Membership is gone: drop the row now, then let the next read confirm.
+      forgetChatChannel(channelId);
+      requestChatUnreadRefresh();
+      navigation.navigate('Conversations' as never);
+    } finally {
+      setIsLeaving(false);
+    }
+  };
+
+  const handleLeavePress = () => {
+    if (isLeaving) return;
+
+    Alert.alert(
+      leaveConfirmTitle(channel?.name || channelName),
+      LEAVE_CONFIRM_BODY,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Leave', style: 'destructive', onPress: performLeave },
+      ]
+    );
   };
 
   const handleArchivePress = () => {
@@ -516,22 +586,42 @@ export default function ChatInfoScreen() {
         }
         contentContainerStyle={styles.listContent}
         ListFooterComponent={
-          canArchive ? (
+          canArchive || canLeave ? (
             <View style={styles.archiveSection}>
-              <TouchableOpacity
-                style={[
-                  styles.archiveButton,
-                  isArchiving && styles.archiveButtonDisabled,
-                ]}
-                onPress={handleArchivePress}
-                disabled={isArchiving}
-                activeOpacity={0.7}
-              >
-                <Feather name="archive" size={20} color="#ef4444" />
-                <Text style={styles.archiveButtonText}>
-                  {isArchiving ? 'Archiving...' : 'Archive chat'}
-                </Text>
-              </TouchableOpacity>
+              {canLeave && (
+                <TouchableOpacity
+                  style={[
+                    styles.archiveButton,
+                    isLeaving && styles.archiveButtonDisabled,
+                  ]}
+                  onPress={handleLeavePress}
+                  disabled={isLeaving}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="log-out" size={20} color="#ef4444" />
+                  <Text style={styles.archiveButtonText}>
+                    {isLeaving ? 'Leaving...' : LEAVE_ACTION_LABEL}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {canArchive && (
+                <TouchableOpacity
+                  style={[
+                    styles.archiveButton,
+                    canLeave && styles.archiveButtonStacked,
+                    isArchiving && styles.archiveButtonDisabled,
+                  ]}
+                  onPress={handleArchivePress}
+                  disabled={isArchiving}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="archive" size={20} color="#ef4444" />
+                  <Text style={styles.archiveButtonText}>
+                    {isArchiving ? 'Archiving...' : 'Archive chat'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : null
         }
@@ -730,6 +820,10 @@ const styles = StyleSheet.create({
   },
   archiveButtonDisabled: {
     opacity: 0.5,
+  },
+  /** Only applied when Leave sits above Archive, so neither moves alone. */
+  archiveButtonStacked: {
+    marginTop: 12,
   },
   archiveButtonText: {
     fontSize: 16,

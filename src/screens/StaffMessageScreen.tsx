@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   FlatList,
+  TextInput,
   ActivityIndicator,
   Alert,
 } from 'react-native';
@@ -19,9 +20,17 @@ import {
 } from '../lib/memberNames';
 import {
   buildMemberInserts,
+  chatNameOnEdit,
+  chatNameOnGroupChange,
   checkedRecipientIds,
+  filterByNameQuery,
   formatRoleLabel,
+  initialChatName,
   pickHighestRole,
+  resolveChatName,
+  selectAllLabel,
+  toggleWholeGroup,
+  type ChatNameState,
 } from '../lib/chatHelpers';
 
 type StaffFilter = 'all' | 'head_coaches' | 'all_coaches' | 'managers';
@@ -50,6 +59,22 @@ interface StaffMember {
  * "Team Managers Only" -- the old version tested a single arbitrary role and
  * dropped them from one of the two.
  */
+/**
+ * The groups, in display order. Module scope because the default chat name is
+ * derived from the SAME label the radio shows -- two lists would drift.
+ */
+const FILTER_OPTIONS: { key: StaffFilter; label: string }[] = [
+  { key: 'all', label: 'All Staff' },
+  { key: 'head_coaches', label: 'Head Coaches Only' },
+  { key: 'all_coaches', label: 'All Coaches' },
+  { key: 'managers', label: 'Team Managers Only' },
+];
+
+/** The picked group's label = the chat's default name. */
+function groupLabel(filter: StaffFilter): string {
+  return FILTER_OPTIONS.find((o) => o.key === filter)?.label ?? 'All Staff';
+}
+
 function matchesFilter(staff: StaffMember, filter: StaffFilter): boolean {
   switch (filter) {
     case 'head_coaches':
@@ -80,6 +105,13 @@ export default function StaffMessageScreen() {
   // so this holds the exceptions rather than the selection -- switching groups
   // then cannot leave a stale "selected" set behind.
   const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
+  // The chat's name, and whether the sender owns it yet. Starts as the default
+  // group's label and follows the group until they type their own.
+  const [chatName, setChatName] = useState<ChatNameState>(() =>
+    initialChatName(groupLabel('all'))
+  );
+  // Hides rows in the checklist. Never touches who is checked.
+  const [recipientQuery, setRecipientQuery] = useState('');
 
   useEffect(() => {
     if (clubId) {
@@ -167,10 +199,21 @@ export default function StaffMessageScreen() {
   const recipientIds = checkedRecipientIds(filteredStaff, excludedIds);
   const recipientCount = recipientIds.length;
 
+  // The rows the FlatList shows. Deliberately NOT fed to recipientIds, the
+  // count, or the select-all toggle -- searching must not change the send list.
+  const visibleStaff = filterByNameQuery(filteredStaff, recipientQuery);
+
+  const defaultChatName = groupLabel(selectedFilter);
+  const toggleLabel = selectAllLabel(filteredStaff, excludedIds);
+
   /** Picking a different group starts that group fully checked. */
   const selectFilter = (key: StaffFilter) => {
     setSelectedFilter(key);
     setExcludedIds(new Set());
+    setChatName((prev) => chatNameOnGroupChange(prev, groupLabel(key)));
+    // A query typed against the old group would silently hide most of the new
+    // one, and the list would read as empty when it is not.
+    setRecipientQuery('');
   };
 
   const toggleRecipient = (userId: string) => {
@@ -182,13 +225,6 @@ export default function StaffMessageScreen() {
     });
   };
 
-  const filterOptions: { key: StaffFilter; label: string }[] = [
-    { key: 'all', label: 'All Staff' },
-    { key: 'head_coaches', label: 'Head Coaches Only' },
-    { key: 'all_coaches', label: 'All Coaches' },
-    { key: 'managers', label: 'Team Managers Only' },
-  ];
-
   const handleStartConversation = async () => {
     // Send is already disabled at zero; this is the guard for the programmatic
     // path so an empty group can never be created.
@@ -196,14 +232,9 @@ export default function StaffMessageScreen() {
 
     setCreating(true);
     try {
-      const channelName =
-        selectedFilter === 'all'
-          ? 'All Staff'
-          : selectedFilter === 'head_coaches'
-            ? 'Head Coaches'
-            : selectedFilter === 'all_coaches'
-              ? 'Coaches'
-              : 'Team Managers';
+      // Trimmed; an empty field falls back to the group's label rather than
+      // creating a nameless chat.
+      const channelName = resolveChatName(chatName, defaultChatName);
 
       const { data: channel, error: channelError } = await supabase
         .from('comm_channels')
@@ -301,7 +332,7 @@ export default function StaffMessageScreen() {
 
       <View style={styles.filterSection}>
         <Text style={styles.filterLabel}>Select recipients:</Text>
-        {filterOptions.map((option) => (
+        {FILTER_OPTIONS.map((option) => (
           <TouchableOpacity
             key={option.key}
             style={[
@@ -328,26 +359,63 @@ export default function StaffMessageScreen() {
         ))}
       </View>
 
+      {/* Item 1. Defaults to the picked group's label and follows the group
+          until the sender types their own name, then stays as typed
+          (`chatNameOnGroupChange`). No maxLength: Group Message's name field
+          has none either, and matching it is the point. */}
+      <View style={styles.nameSection}>
+        <Text style={styles.filterLabel}>Chat name</Text>
+        <TextInput
+          style={styles.textInput}
+          value={chatName.value}
+          onChangeText={(text) =>
+            setChatName((prev) => chatNameOnEdit(prev, text))
+          }
+          placeholder={defaultChatName}
+          placeholderTextColor="#64748b"
+          returnKeyType="done"
+          accessibilityLabel="Chat name"
+        />
+      </View>
+
       {/* The group is a starting point, not the send list: every row is
           checked when a group is picked and the sender can uncheck anyone.
           The whole group is listed -- the old slice(0, 10) + "+N more" could
           not be a checklist, because the people it hid were unreachable. */}
       <View style={styles.previewSection}>
+        {/* Item 2. Hides rows only -- the count below and the send list are
+            both computed from the whole group. */}
+        <TextInput
+          style={styles.searchInput}
+          value={recipientQuery}
+          onChangeText={setRecipientQuery}
+          placeholder="Search by name..."
+          placeholderTextColor="#64748b"
+          autoCapitalize="none"
+          autoCorrect={false}
+          accessibilityLabel="Search recipients"
+        />
         <View style={styles.previewHeader}>
+          {/* Every checked person, visible or hidden by the search. */}
           <Text style={styles.previewTitle}>
             {recipientCount} {recipientCount === 1 ? 'recipient' : 'recipients'}
           </Text>
-          {excludedIds.size > 0 ? (
+          {/* Item 3. Acts on the whole group, not the visible rows. */}
+          {filteredStaff.length > 0 ? (
             <TouchableOpacity
-              onPress={() => setExcludedIds(new Set())}
+              onPress={() =>
+                setExcludedIds((prev) => toggleWholeGroup(filteredStaff, prev))
+              }
               accessibilityRole="button"
+              accessibilityLabel={toggleLabel}
             >
-              <Text style={styles.selectAllText}>Select all</Text>
+              <Text style={styles.selectAllText}>{toggleLabel}</Text>
             </TouchableOpacity>
           ) : null}
         </View>
         <FlatList
-          data={filteredStaff}
+          data={visibleStaff}
+          keyboardShouldPersistTaps="handled"
           keyExtractor={(item) => item.user_id}
           renderItem={({ item }) => {
             const checked = !excludedIds.has(item.user_id);
@@ -390,7 +458,9 @@ export default function StaffMessageScreen() {
           }}
           ListEmptyComponent={
             <Text style={styles.moreText}>
-              No staff match this group.
+              {recipientQuery.trim()
+                ? 'No one in this group matches that search.'
+                : 'No staff match this group.'}
             </Text>
           }
         />
@@ -496,9 +566,34 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#64748b',
   },
+  nameSection: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  textInput: {
+    backgroundColor: '#1e293b',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#fff',
+  },
   previewSection: {
     flex: 1,
     padding: 16,
+  },
+  searchInput: {
+    backgroundColor: '#1e293b',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: '#fff',
+    marginBottom: 12,
   },
   previewHeader: {
     flexDirection: 'row',

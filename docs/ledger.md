@@ -3,7 +3,8 @@
 **What this is.** The record of what this app has and *how we know it works*. Read it
 before planning any phase. Never plan as new what this file shows as already built.
 
-**Base:** HEAD `3fd26a0` · written 2026-10-14 · docs-only, nothing in `src/` read-modified.
+**Base:** HEAD `66f7dea` · seeded 2026-10-14, updated 2026-10-14 after Lu's simulator
+click-through · docs-only, nothing in `src/` read-modified.
 
 **How to read `Status`.** Status is the strength of the *test record*, never a claim that
 a feature is good. It is deliberately decoupled from release: a row can be `UNVERIFIED`
@@ -16,8 +17,12 @@ and still be in users' hands — the `Verified how` cell then says `in stores <v
 | `AGENT-ONLY` | typecheck / unit or logic smoke / static proof only — never run on device or simulator |
 | `UNVERIFIED` | no test record of any kind in this repo |
 
+`Date` is when the feature **landed** (commit date); the date it was *verified* is in `Verified how`.
+
 **Sources.** Every row cites one: a file in `docs/recon/`, a commit message (`git log`), or
-`handoff Oct 13` = facts relayed from the planning chat on 2026-10-13. Anything unsourced
+`handoff Oct 13` = facts relayed from the planning chat on 2026-10-13, or `sim run Oct 14` =
+Lu's click-through on the **iPhone 17 Pro simulator** against live Metro at HEAD `66f7dea`,
+2026-10-14. Anything unsourced
 was omitted rather than guessed. `INFERRED` marks reasoning, not proof.
 
 **Coverage.** Rows start at the 2026-09-01 chat core batch. Earlier history
@@ -30,10 +35,18 @@ was omitted rather than guessed. `INFERRED` marks reasoning, not proof.
 
 | Feature | Commit | Verified how | Date | Status |
 |---|---|---|---|---|
-| **Phase C chat-mobile** — Players chip; DM date separators; manage members on custom team channels; one `formatRoleLabel` across 5 sites; FND-A Staff Message send fix; Staff Message recipient uncheck; DM celebrate crash fix | `3fd26a0` | `npx tsc --noEmit` 70 → **64**, zero errors in every touched file; `src/lib/chatHelpers.test.ts` **33/33** in `America/Denver`, `Asia/Tokyo`, `UTC`; `src/utils/chatDays.test.ts` **22/22** unchanged — `docs/recon/phaseC-mobile-build.md`; handoff Oct 13. A device click-through checklist exists in that doc (§"Device click-through checklist") and has **not** been run. | Oct 14, 2026 | AGENT-ONLY |
+| **Staff Message — chat name field** (defaults to the picked group's label, follows the group until the sender types their own, trimmed, empty falls back; names the created channel) | *uncommitted* | tsc **64** (ceiling, zero in touched files); `chatHelpers.test.ts` **48/48** in `America/Denver`, `Asia/Tokyo`, `UTC` (33 existing + 15 new); `chatDays.test.ts` **22/22** unchanged. **sim run Oct 14** — "follows group until edited; 'U40 mens' kept". Covered by 5 cases: follows-group, stays-as-typed, trimmed, empty→default, clearing hands it back. | Oct 14, 2026 | VERIFIED-SIMULATOR |
+| **Staff Message — recipient search** (case-insensitive, any part of the name; hides rows only — never changes who is checked, and "N recipients" still counts every checked person) | *uncommitted* | tsc **64** (ceiling, zero in touched files); `chatHelpers.test.ts` **48/48** in `America/Denver`, `Asia/Tokyo`, `UTC` (33 existing + 15 new); `chatDays.test.ts` **22/22** unchanged. **sim run Oct 14** — "search cole → 1 recipient". Covered by 4 cases, including "a person hidden by the search stays unchecked" and the count staying at 3 while 2 rows show. | Oct 14, 2026 | VERIFIED-SIMULATOR |
+| **Staff Message — select all / deselect all** (label flips on whole-group state; acts on the whole group, not the search-visible rows; send stays disabled at 0) | *uncommitted* | tsc **64** (ceiling, zero in touched files); `chatHelpers.test.ts` **48/48** in `America/Denver`, `Asia/Tokyo`, `UTC` (33 existing + 15 new); `chatDays.test.ts` **22/22** unchanged. **sim run Oct 14** — "Deselect all → 0, Send disabled". Covered by 6 cases: label flip, empty group never offers Deselect all, whole-group action under an active search, outside-group exclusions preserved, and 0→empty insert batch. | Oct 14, 2026 | VERIFIED-SIMULATOR |
+| **Phase C — Players chip** (team-channel member filter) | `3fd26a0` | **sim run Oct 14** — "chip shown, filters players". Build proof: tsc 70 → **64** (zero in touched files), `chatHelpers.test.ts` **33/33** in 3 TZs — `docs/recon/phaseC-mobile-build.md` | Oct 14, 2026 | VERIFIED-SIMULATOR |
+| **Phase C — DM date separators** | `3fd26a0` | **sim run Oct 14** — "Yesterday/Today in DM". Build proof: tsc 70 → **64** (zero in touched files), `chatHelpers.test.ts` **33/33** in 3 TZs — `docs/recon/phaseC-mobile-build.md` | Oct 14, 2026 | VERIFIED-SIMULATOR |
+| **Phase C — manage members on custom team channels** (`AddMembersModal`, add + remove, default channels excluded) | `3fd26a0` | **sim run Oct 14** — "add + remove Cole on zz-test-m". Build proof: tsc 70 → **64** (zero in touched files), `chatHelpers.test.ts` **33/33** in 3 TZs — `docs/recon/phaseC-mobile-build.md` | Oct 14, 2026 | VERIFIED-SIMULATOR |
+| **Phase C — one role-label function** (`formatRoleLabel`, 5 call sites) | `3fd26a0` | **sim run Oct 14** — "Cole = Head Coach in Chat Info (was Team Manager)". Build proof: tsc 70 → **64** (zero in touched files), `chatHelpers.test.ts` **33/33** in 3 TZs — `docs/recon/phaseC-mobile-build.md` | Oct 14, 2026 | VERIFIED-SIMULATOR |
+| **Phase C — FND-A Staff Message**: send fix + recipient uncheck | `3fd26a0` | **sim run Oct 14** — "chat created, Members (2), unchecked staff excluded". Build proof: tsc 70 → **64** (zero in touched files), `chatHelpers.test.ts` **33/33** in 3 TZs — `docs/recon/phaseC-mobile-build.md` | Oct 14, 2026 | VERIFIED-SIMULATOR |
+| **Phase C — DM celebrate crash fix** | `3fd26a0` | **sim run Oct 14** — "'happy birthday' → confetti, no crash". Build proof: tsc 70 → **64** (zero in touched files), `chatHelpers.test.ts` **33/33** in 3 TZs — `docs/recon/phaseC-mobile-build.md` | Oct 14, 2026 | VERIFIED-SIMULATOR |
 | **Phase B — FND-1 names**: chat member lists resolve via `get_chat_profiles` app-wide; `'Thryvyng member'` fallback; email guard at the write boundary (`reply_to_sender`, `evaluator_name`) | `da2e565` | Human-observed on the **iOS simulator Oct 13** (handoff Oct 13). Build-time proof: tsc **70 before / 70 after**, zero new zero fixed; pure-logic smoke **22/22**; grep proof of the data path — `docs/recon/phaseB-mobile-cosmetics.md` §Proof (that doc self-labels "NOT verified: on-device rendering" as of write time). | Oct 13, 2026 | VERIFIED-SIMULATOR |
 | **Phase B — club-announcements member list hidden**, count only ("N members", no roster, no sort control) | `da2e565` | Same simulator run, Oct 13 (handoff Oct 13); `isDefaultClubChannel` covered by the 22/22 logic smoke — `docs/recon/phaseB-mobile-cosmetics.md` | Oct 13, 2026 | VERIFIED-SIMULATOR |
-| **Phase B — role filter chips** in both add-people pickers (`GroupInfoScreen` Add Members, `ChatScreen` new-group Add People) + latest-wins guard on the group search | `da2e565` | Explicitly **not verified** on simulator or device (handoff Oct 13). Build proof only: `contactRoleGroup` / `presentRoleGroups` in the 22/22 logic smoke, tsc delta 0 — `docs/recon/phaseB-mobile-cosmetics.md` | Oct 13, 2026 | UNVERIFIED |
+| **Phase B — role filter chips** in both add-people pickers (`GroupInfoScreen` Add Members, `ChatScreen` new-group Add People) + latest-wins guard on the group search | `da2e565` | **sim run Oct 14** — "Coaches chip → only Cole" (was UNVERIFIED at seed). Build proof: `contactRoleGroup` / `presentRoleGroups` in the 22/22 logic smoke, tsc delta 0 — `docs/recon/phaseB-mobile-cosmetics.md` | Oct 13, 2026 | VERIFIED-SIMULATOR |
 | **Stone B2 S2a — leave group / archive / handover UI** (`src/lib/channelLeave.ts`: `canLeaveChannel`, `leaveChannel`, copy; surfaced in `ChatInfoScreen` + `GroupInfoScreen`), DB-gated by migration `20261013013626` | `920c7d5` | **11/11 click-through reported in handoff Oct 13; device/SQL split not on record.** The only record in this repo is `docs/recon/stone-b2-s2a-build-oct12.md:178` — "Not verified on a device/simulator" — plus zero tsc delta vs the 70 baseline. See Open gaps. | Oct 13, 2026 | UNVERIFIED |
 | **Stone B chat counters, observed arm** — past-team rows quiet (clock icon, gray dot, no number); retired team's unread excluded from the tab total; `bell-off` icon on muted rows; muted chats still count toward the tab total; exact (uncapped) bell count | `bfe297b` | Human-observed on the **iOS simulator Oct 11, 5 PASS / 0 FAIL on those five** — `docs/recon/badge-stone-b-freshness-oct10.md` §"Simulator test Oct 11" | Oct 11, 2026 | VERIFIED-SIMULATOR |
 | **Stone B chat counters, structural arm** — one shared `get_my_conversations` fetch (`ChatUnreadProvider`, mounted in `AppNavigator`); `classifyConversationRows` makes the tab total the sum over the rows the list shows; icon-badge write keyed on `syncTick` | `bfe297b` | `src/utils/unreadRule.test.ts` **23 pass**, including the invariant `total === sum(mainRows)`. This arm is the **fix for the one Oct 11 simulator FAIL** (row showed `2`, tab badge showed nothing until background→foreground) and **no post-fix simulator or device run is recorded**. App-icon badge number is **not observable on the simulator** — needs a physical phone on a 1.0.18 dev build. `docs/recon/badge-stone-b-freshness-oct10.md` §"What this prompt changed", §Unverified | Oct 11, 2026 | AGENT-ONLY |
@@ -69,6 +82,21 @@ was omitted rather than guessed. `INFERRED` marks reasoning, not proof.
 
 ---
 
+## Planned
+
+- **Unified chat builder** — merge Staff Message into Group Message; filters by role, age
+  group, gender, season. Needs data recon first (team age/gender/season fields).
+  Ruled Oct 14, Lu: after 1.0.18.
+
+---
+
+## Decisions
+
+- **Oct 14** — add-people picker stays search-first (2+ letters); chips filter results.
+  Ruled by Lu (web + mobile).
+
+---
+
 ## Known side effects
 
 - **Push to `main` in *this* repo triggers nothing automatically.** EAS builds are manual,
@@ -96,6 +124,12 @@ was omitted rather than guessed. `INFERRED` marks reasoning, not proof.
 - **Stone B moved chat-row fetching to app start** (`ChatUnreadProvider` mounted in
   `AppNavigator`), not to Chat-tab open: slightly more startup work, and the reason the tab
   badge is now correct on any tab without opening Chat.
+- **Payments never move the roster backwards.** Cancel, refund and failed payment
+  touch `orders`, `commissions` and `registration_payments` only — never roster,
+  registration status, team membership or chat membership. Only a *successful* payment
+  moves the roster, forward (rosters + activates). There is no subscription-cancel
+  handler at all. Source: `docs/recon/removal-payments-dprep.md` §3, recon Oct 14
+  (`stripe-webhook/index.ts:3083-3199`; forward path `:1252-1306`).
 
 ---
 
@@ -121,6 +155,22 @@ was omitted rather than guessed. `INFERRED` marks reasoning, not proof.
 4. **Poll staff arm — server allows the creator only.** `comm_polls_update` grants update to
    the poll creator, so the Phase B item "staff can manage any poll" was **SKIPPED with no
    file touched** and carried forward (`docs/recon/phaseB-mobile-cosmetics.md` §Item 2).
+5. **"Staff-only messaging" is client-only; the server lets any member post.**
+   `comm_channels.allow_member_text` is read and toggled by both apps
+   (`ChatInfoScreen.tsx:179-184`, `:321-327`; web `MessageInput.tsx:70`), but **no RLS
+   policy and no trigger reads the column** — it appears in exactly one migration, the
+   `ADD COLUMN` that created it. The live INSERT rule is membership-only
+   (`20260108184412:392-397`), so any channel member can bypass the toggle with a direct
+   insert. Phase D, server fix. Source: `docs/recon/removal-payments-dprep.md` §4b, recon Oct 14.
+6. **Read receipts are NOT a new build — the computation already exists.** "Seen by N of M"
+   is already computed from `comm_channel_members.last_read_at` vs the message's
+   `created_at` in `MessageReadHistoryScreen.tsx:73-137`, which already renders
+   "Read by N" / "Not yet (N)" (`:136-137`). **No new table is needed.** Caveat, already
+   written in that file (`:8-13`): `last_read_at` is a per-channel watermark, not a
+   per-message receipt. The one thing to check first is whether the co-member SELECT
+   policy is as wide in prod as the captured drift says
+   (`20260902090000:24-28`) — if narrower, the count silently undercounts today.
+   Source: `docs/recon/removal-payments-dprep.md` §4a, recon Oct 14.
 
 ### Record gaps
 
@@ -151,12 +201,27 @@ was omitted rather than guessed. `INFERRED` marks reasoning, not proof.
   disagree on `player`, `platform_admin`, `content_creator`, `sales_director`. Unifying
   renames switcher entries app-wide, so Phase C did not do it unilaterally
   (`docs/recon/phaseC-mobile-build.md`).
+- **Mobile Chat Info shows no Add / Remove / Rename on a Staff Message chat.** Chats created
+  from Staff Message are club-level groups with no team, so the manage-members arm never
+  shows — **sim screenshot Oct 14 ("U40 mens")**. Client-only fix next session: per RLS a
+  **channel admin** may add and remove, so the gate can widen without a server change.
+  Include `maxLength` 100 on the rename input while in there.
+- **No name input caps channel names at the DB limit.** `comm_channels.name` is
+  `VARCHAR(100) NOT NULL` (`20260108184412:51`, never altered) and nothing client-side
+  enforces it, so an over-length name is a hard Postgres `22001` error, not a truncation.
+  Affects every create/rename site, including the uncommitted Staff Message chat-name field.
+  Source: `docs/recon/removal-payments-dprep.md` §4c
+- **SACRED — team delete wipes all team chat history, client-side, with no guards and no
+  audit.** Six raw client statements delete every `comm_messages` row, all
+  `comm_channel_members`, all `comm_channels` for the team, then null every player's
+  `team_id` (web `ClubManagementTeamsTab.tsx:427-452`). No money check, no
+  `roster_removal_log` row, errors mostly unchecked. **Needs its own slice** — do not fold
+  into other work. Source: recon Oct 14, `docs/recon/removal-payments-dprep.md` §2.1
 
 ### Verifications still owed
 
 - App-icon badge number on a physical phone, 1.0.18 dev build (simulator cannot show it).
 - Bell badge at >99 — only inspected in the style box; the test account showed 34.
 - Stone B teams-fetch-failure hold path — in code and reasoned, never exercised.
-- Phase C device click-through, 6 items — checklist written, not run
-  (`docs/recon/phaseC-mobile-build.md` §"Device click-through checklist").
-- Phase B role filter chips — never rendered on a simulator or device.
+- Phase C click-through on a **physical device**, 6 items — the Oct 14 pass was on the
+  simulator; the checklist in `docs/recon/phaseC-mobile-build.md` is written for a device.

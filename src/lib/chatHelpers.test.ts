@@ -6,10 +6,13 @@
  *   npx tsc src/lib/chatHelpers.ts src/lib/chatHelpers.test.ts \
  *     src/utils/chatDays.ts --outDir /tmp/phasec --module commonjs \
  *     --target es2020 --skipLibCheck --strict --esModuleInterop
- *   node --test /tmp/phasec
+ *   node --test /tmp/phasec/lib/chatHelpers.test.js
+ *
+ * (A bare directory is not a valid target on Node 24 -- it throws
+ * MODULE_NOT_FOUND. Point it at the compiled file.)
  *
  * The day-divider cases want a NON-UTC timezone or they are vacuous:
- *   TZ=America/Denver node --test /tmp/phasec
+ *   TZ=America/Denver node --test /tmp/phasec/lib/chatHelpers.test.js
  *
  * Only pure modules are imported. Nothing here touches supabase or React
  * Native, which is why the logic lives in chatHelpers/chatDays and the screens
@@ -21,11 +24,20 @@ import assert from 'node:assert/strict';
 import {
   buildMemberInserts,
   buildRoleMap,
+  chatNameOnEdit,
+  chatNameOnGroupChange,
   checkedRecipientIds,
+  filterByNameQuery,
   formatRoleLabel,
+  initialChatName,
+  isWholeGroupChecked,
+  matchesNameQuery,
   pickHighestRole,
+  resolveChatName,
   resolveRoleLabel,
   roleChipGroup,
+  selectAllLabel,
+  toggleWholeGroup,
 } from './chatHelpers';
 import { invertedDayDividerIndices } from '../utils/chatDays';
 
@@ -301,4 +313,130 @@ test('DM dividers: a late-evening and an early-morning of the SAME local day sha
     localIso(2026, 10, 13, 7, 30),
   ];
   assert.deepEqual([...invertedDayDividerIndices(stamps)], [1]);
+});
+
+// === 6. Staff Message upgrades: chat name, search, select-all (Oct 14) ======
+// The three rules a sender can break by accident: a name that silently stops
+// following the group, a search that quietly changes who gets the message, and
+// a select-all that only acts on what happens to be on screen.
+
+const NAMED_STAFF = [
+  { user_id: 'u-cole', full_name: 'Cole Coachman' },
+  { user_id: 'u-nicole', full_name: 'Nicole Parker' },
+  { user_id: 'u-mara', full_name: 'Mara Manager' },
+];
+
+test('chat name: defaults to the picked group and FOLLOWS the group while untouched', () => {
+  let state = initialChatName('All Staff');
+  assert.equal(state.value, 'All Staff');
+  state = chatNameOnGroupChange(state, 'Head Coaches Only');
+  assert.equal(state.value, 'Head Coaches Only');
+  state = chatNameOnGroupChange(state, 'Team Managers Only');
+  assert.equal(state.value, 'Team Managers Only');
+});
+
+test('chat name: once edited it STAYS as typed through later group changes', () => {
+  let state = initialChatName('All Staff');
+  state = chatNameOnEdit(state, 'Tournament crew');
+  assert.equal(state.edited, true);
+  state = chatNameOnGroupChange(state, 'Head Coaches Only');
+  assert.equal(state.value, 'Tournament crew');
+  state = chatNameOnGroupChange(state, 'All Coaches');
+  assert.equal(state.value, 'Tournament crew');
+});
+
+test('chat name: resolves trimmed', () => {
+  const state = chatNameOnEdit(initialChatName('All Staff'), '  Tournament crew  ');
+  assert.equal(resolveChatName(state, 'All Staff'), 'Tournament crew');
+});
+
+test('chat name: EMPTY (or whitespace) falls back to the current default', () => {
+  const cleared = chatNameOnEdit(initialChatName('All Staff'), '');
+  assert.equal(resolveChatName(cleared, 'Head Coaches Only'), 'Head Coaches Only');
+  const blanks = chatNameOnEdit(initialChatName('All Staff'), '    ');
+  assert.equal(resolveChatName(blanks, 'All Coaches'), 'All Coaches');
+});
+
+test('chat name: clearing the field hands the name back to the group', () => {
+  // Otherwise an emptied box freezes on a group the sender has since left and
+  // the field disagrees with the name the channel is actually created with.
+  let state = chatNameOnEdit(initialChatName('All Staff'), 'Tournament crew');
+  state = chatNameOnEdit(state, '');
+  assert.equal(state.edited, false);
+  state = chatNameOnGroupChange(state, 'Team Managers Only');
+  assert.equal(resolveChatName(state, 'Team Managers Only'), 'Team Managers Only');
+});
+
+test('search: case-insensitive, matches ANY part of the name', () => {
+  assert.equal(matchesNameQuery('Cole Coachman', 'cole'), true);
+  assert.equal(matchesNameQuery('Cole Coachman', 'COLE'), true);
+  assert.equal(matchesNameQuery('Cole Coachman', 'oach'), true);   // mid-word
+  assert.equal(matchesNameQuery('Cole Coachman', 'coachman'), true); // last name
+  assert.equal(matchesNameQuery('Cole Coachman', 'mara'), false);
+});
+
+test('search: an empty or whitespace query shows everyone', () => {
+  assert.equal(filterByNameQuery(NAMED_STAFF, '').length, 3);
+  assert.equal(filterByNameQuery(NAMED_STAFF, '   ').length, 3);
+});
+
+test('search HIDES rows but KEEPS the checks -- the send list is unchanged', () => {
+  const excluded = new Set<string>();           // everyone checked
+  const visible = filterByNameQuery(NAMED_STAFF, 'cole');
+  // "cole" matches Cole Coachman AND Nicole Parker (any part of the name).
+  assert.deepEqual(visible.map((s) => s.user_id), ['u-cole', 'u-nicole']);
+  // The count and the send list are computed from the WHOLE group, not the view.
+  assert.equal(checkedRecipientIds(NAMED_STAFF, excluded).length, 3);
+});
+
+test('search: a person hidden by the search STAYS unchecked', () => {
+  const excluded = new Set(['u-mara']);          // Mara unchecked, then hidden
+  const visible = filterByNameQuery(NAMED_STAFF, 'cole');
+  assert.equal(visible.some((s) => s.user_id === 'u-mara'), false);
+  assert.deepEqual(checkedRecipientIds(NAMED_STAFF, excluded), ['u-cole', 'u-nicole']);
+});
+
+test('toggle label: "Deselect all" only when EVERY person in the group is checked', () => {
+  assert.equal(selectAllLabel(NAMED_STAFF, new Set()), 'Deselect all');
+  assert.equal(selectAllLabel(NAMED_STAFF, new Set(['u-mara'])), 'Select all');
+  assert.equal(isWholeGroupChecked(NAMED_STAFF, new Set()), true);
+  assert.equal(isWholeGroupChecked(NAMED_STAFF, new Set(['u-mara'])), false);
+});
+
+test('toggle label: an EMPTY group offers Select all, never Deselect all', () => {
+  assert.equal(selectAllLabel([], new Set()), 'Select all');
+  assert.equal(isWholeGroupChecked([], new Set()), false);
+});
+
+test('toggle acts on the WHOLE group, not the search-visible rows', () => {
+  // All checked + a search showing 2 of 3 -> Deselect all must clear all 3.
+  const allOff = toggleWholeGroup(NAMED_STAFF, new Set());
+  assert.deepEqual([...allOff].sort(), ['u-cole', 'u-mara', 'u-nicole']);
+  assert.equal(checkedRecipientIds(NAMED_STAFF, allOff).length, 0);
+  // None checked -> Select all must restore all 3, including the hidden one.
+  const allOn = toggleWholeGroup(NAMED_STAFF, allOff);
+  assert.equal(allOn.size, 0);
+  assert.equal(checkedRecipientIds(NAMED_STAFF, allOn).length, 3);
+});
+
+test('toggle leaves exclusions for people OUTSIDE the group alone', () => {
+  const excluded = new Set(['u-outsider']);
+  const next = toggleWholeGroup(NAMED_STAFF, excluded);
+  assert.equal(next.has('u-outsider'), true);
+});
+
+test('zero recipients BLOCKS the send: deselect all -> 0 -> empty insert batch', () => {
+  const allOff = toggleWholeGroup(NAMED_STAFF, new Set());
+  const ids = checkedRecipientIds(NAMED_STAFF, allOff);
+  assert.equal(ids.length, 0);
+  // The screen disables the button at 0; this is the programmatic floor behind
+  // it -- nothing to insert, so no channel can be populated.
+  assert.deepEqual(buildMemberInserts('ch-1', ids, 'u-creator'), []);
+});
+
+test('zero recipients: unchecking the last person also lands on 0', () => {
+  const one = [{ user_id: 'u-cole', full_name: 'Cole Coachman' }];
+  const off = toggleWholeGroup(one, new Set());
+  assert.equal(checkedRecipientIds(one, off).length, 0);
+  assert.equal(selectAllLabel(one, off), 'Select all');
 });

@@ -250,3 +250,123 @@ export function checkedRecipientIds(
 ): string[] {
   return candidates.map((c) => c.user_id).filter((id) => !excluded.has(id));
 }
+
+// ---------------------------------------------------------------------------
+// Staff Message: chat name, recipient search, select-all (Oct 14 upgrades).
+//
+// All three are decisions, not rendering, so they live here where they can be
+// executed by the smoke suite. The screen holds the state and calls these; it
+// re-implements none of the rules.
+//
+// The one invariant that ties them together: SEARCH IS A VIEW, never a
+// selection. `filterByNameQuery` feeds the FlatList only. The recipient count,
+// the send list and the select-all toggle are all computed from the whole
+// group, so a sender who types a name cannot silently drop everyone else from
+// a message they are about to send.
+// ---------------------------------------------------------------------------
+
+/** The chat-name field: what is in it, and whether the sender owns it yet. */
+export interface ChatNameState {
+  /** Exactly what is in the field, untrimmed. */
+  value: string;
+  /** True once the sender has typed something of their own. */
+  edited: boolean;
+}
+
+export function initialChatName(defaultName: string): ChatNameState {
+  return { value: defaultName, edited: false };
+}
+
+/**
+ * Picking a different group renames the chat -- until the sender has typed
+ * their own name, after which the group never overwrites it again.
+ */
+export function chatNameOnGroupChange(
+  state: ChatNameState,
+  nextDefault: string
+): ChatNameState {
+  return state.edited ? state : { value: nextDefault, edited: false };
+}
+
+/**
+ * `edited` latches only while the field holds something of the sender's own.
+ * Clearing it hands the name back to the group; without that, emptying the box
+ * would freeze the chat on the name of a group the sender has since left, and
+ * the field would disagree with the name actually created.
+ */
+export function chatNameOnEdit(
+  state: ChatNameState,
+  text: string
+): ChatNameState {
+  return { value: text, edited: text.trim().length > 0 };
+}
+
+/** The name the channel is created with. Trimmed; empty falls back. */
+export function resolveChatName(
+  state: ChatNameState,
+  defaultName: string
+): string {
+  return state.value.trim() || defaultName;
+}
+
+/**
+ * One name-search rule: case-insensitive, matches ANY part of the name, and an
+ * empty or whitespace query matches everyone (so clearing the box restores the
+ * list rather than emptying it).
+ */
+export function matchesNameQuery(
+  name: string | null | undefined,
+  query: string
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return (name ?? '').toLowerCase().includes(q);
+}
+
+/** The rows to SHOW. Never pass this to anything that decides who is sent to. */
+export function filterByNameQuery<T extends { full_name: string }>(
+  items: T[],
+  query: string
+): T[] {
+  if (!query.trim()) return items;
+  return items.filter((item) => matchesNameQuery(item.full_name, query));
+}
+
+/**
+ * Is every person in the group checked? `group` is the WHOLE group, not the
+ * search-visible slice. An empty group is not "all checked" -- there is nothing
+ * to deselect, so the toggle offers Select all and the send button stays
+ * disabled at zero.
+ */
+export function isWholeGroupChecked(
+  group: { user_id: string }[],
+  excluded: ReadonlySet<string>
+): boolean {
+  if (group.length === 0) return false;
+  return group.every((member) => !excluded.has(member.user_id));
+}
+
+export function selectAllLabel(
+  group: { user_id: string }[],
+  excluded: ReadonlySet<string>
+): 'Select all' | 'Deselect all' {
+  return isWholeGroupChecked(group, excluded) ? 'Deselect all' : 'Select all';
+}
+
+/**
+ * The next excluded set for a select-all / deselect-all tap. Acts on the whole
+ * group whatever the search box says, and leaves exclusions for people outside
+ * this group untouched.
+ */
+export function toggleWholeGroup(
+  group: { user_id: string }[],
+  excluded: ReadonlySet<string>
+): Set<string> {
+  const next = new Set(excluded);
+  if (isWholeGroupChecked(group, excluded)) {
+    group.forEach((member) => next.add(member.user_id));
+  } else {
+    group.forEach((member) => next.delete(member.user_id));
+  }
+  return next;
+}

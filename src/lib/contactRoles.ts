@@ -19,43 +19,35 @@
  *
  * When neither table names a role, the candidate carries no group and is shown
  * only under "All" -- an untagged person is never filed under a guess.
+ *
+ * Phase C: 'player' is now a chip group of its own. It was always being
+ * FETCHED (user_roles carries it) and then dropped by the mapping's `default`
+ * arm, so the Players chip costs no extra query. Only players who have an
+ * account can ever appear -- `search_chat_contacts` joins `profiles`, so a
+ * roster player with no login is not a candidate in the first place.
  */
 
 import { supabase } from './supabase';
-import { getRolePriority } from './chatHelpers';
+import {
+  buildRoleMap,
+  ROLE_CHIP_GROUPS,
+  ROLE_CHIP_GROUP_LABELS,
+  roleChipGroup,
+  type RoleChipGroup,
+} from './chatHelpers';
 
-/** The chip groups. Players are deliberately absent (deferred by ruling). */
-export type ContactRoleGroup = 'coaches' | 'managers' | 'parents';
-
-/** Chip order, left to right. "All" is rendered by the screen, not a group. */
-export const CONTACT_ROLE_GROUPS: ContactRoleGroup[] = [
-  'coaches',
-  'managers',
-  'parents',
-];
-
-export const CONTACT_ROLE_GROUP_LABELS: Record<ContactRoleGroup, string> = {
-  coaches: 'Coaches',
-  managers: 'Managers',
-  parents: 'Parents',
-};
-
-/** A structural role string -> its chip group. Unknown roles map to null. */
-export function contactRoleGroup(
-  role: string | null | undefined
-): ContactRoleGroup | null {
-  switch (role) {
-    case 'head_coach':
-    case 'assistant_coach':
-      return 'coaches';
-    case 'team_manager':
-      return 'managers';
-    case 'parent':
-      return 'parents';
-    default:
-      return null;
-  }
-}
+/**
+ * The chip groups, including Players as of Phase C.
+ *
+ * The group vocabulary and the role -> group mapping both live in
+ * `chatHelpers.ts`, next to `getRolePriority` and `formatRoleLabel`, so the app
+ * has ONE role vocabulary. These three are re-exports kept at their original
+ * names so every existing call site in the two pickers is untouched.
+ */
+export type ContactRoleGroup = RoleChipGroup;
+export const CONTACT_ROLE_GROUPS = ROLE_CHIP_GROUPS;
+export const CONTACT_ROLE_GROUP_LABELS = ROLE_CHIP_GROUP_LABELS;
+export const contactRoleGroup = roleChipGroup;
 
 /**
  * Highest-priority structural role per user id, for the ids given.
@@ -70,17 +62,8 @@ export function contactRoleGroup(
 export async function fetchContactRoles(
   userIds: (string | null | undefined)[]
 ): Promise<Map<string, string>> {
-  const roleMap = new Map<string, string>();
   const unique = [...new Set(userIds.filter(Boolean) as string[])];
-  if (unique.length === 0) return roleMap;
-
-  const keepHighest = (userId: string | null, role: string | null) => {
-    if (!userId || !role) return;
-    const current = roleMap.get(userId);
-    if (!current || getRolePriority(role) > getRolePriority(current)) {
-      roleMap.set(userId, role);
-    }
-  };
+  if (unique.length === 0) return new Map<string, string>();
 
   const [rolesRes, staffRes] = await Promise.all([
     supabase.from('user_roles').select('user_id, role').in('user_id', unique),
@@ -97,12 +80,10 @@ export async function fetchContactRoles(
     console.warn('[contactRoles] team_staff read failed:', staffRes.error);
   }
 
-  (rolesRes.data || []).forEach((r: any) => keepHighest(r.user_id, r.role));
-  (staffRes.data || []).forEach((r: any) =>
-    keepHighest(r.user_id, r.staff_role)
-  );
-
-  return roleMap;
+  // The tie-break lives in chatHelpers.buildRoleMap, shared with the three
+  // other label sites. It is order-independent, so a slower `team_staff`
+  // response can no longer change the answer.
+  return buildRoleMap(rolesRes.data as any[], staffRes.data as any[]);
 }
 
 /**

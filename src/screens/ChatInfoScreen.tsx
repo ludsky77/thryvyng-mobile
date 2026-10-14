@@ -35,6 +35,8 @@ import {
   requestChatUnreadRefresh,
 } from '../contexts/ChatUnreadContext';
 import { logError } from '../utils/logError';
+import { buildRoleMap, formatRoleLabel } from '../lib/chatHelpers';
+import AddMembersModal from '../components/chat/AddMembersModal';
 
 interface Member {
   id: string;
@@ -89,7 +91,7 @@ function mapArchiveError(code: string): string {
 }
 
 export default function ChatInfoScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const route = useRoute();
   const { channelId, channelName, teamId, channelType } = (route.params as any) || {};
   const { user, roles, currentRole } = useAuth();
@@ -110,6 +112,7 @@ export default function ChatInfoScreen() {
   const [staffOnlyMessaging, setStaffOnlyMessaging] = useState(false);
   const [isStaffInTeam, setIsStaffInTeam] = useState(false);
   const [sortBy, setSortBy] = useState<'role' | 'alpha'>('role');
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
 
   useEffect(() => {
     if (channelId) {
@@ -254,7 +257,13 @@ export default function ChatInfoScreen() {
         .select('user_id, staff_role')
         .eq('team_id', teamId);
 
-      staffMap = new Map(staffData?.map((s: any) => [s.user_id, s.staff_role]) || []);
+      // `new Map(rows.map(...))` kept the LAST row for a duplicate user id, and
+      // this read has no ORDER BY -- so a coach holding both head_coach and
+      // team_manager on one team was labelled by whichever row came back
+      // second. buildRoleMap collects every role per person and tie-breaks on
+      // getRolePriority, so the answer no longer depends on row order.
+      // (docs/recon/phaseC-audit.md item 6.)
+      staffMap = buildRoleMap(staffData as any[]);
     }
 
     const membersList: Member[] = userIds.map((userId) => {
@@ -265,15 +274,16 @@ export default function ChatInfoScreen() {
       let role: Member['role'] = 'member';
       let role_label = 'Member';
 
-      if (staffRole === 'head_coach') {
-        role = 'head_coach';
-        role_label = 'Head Coach';
-      } else if (staffRole === 'assistant_coach') {
-        role = 'assistant_coach';
-        role_label = 'Asst. Coach';
-      } else if (staffRole === 'team_manager') {
-        role = 'team_manager';
-        role_label = 'Team Manager';
+      // Granular staff titles come from the ONE label function. The three
+      // hard-coded strings here were a fourth role vocabulary; formatRoleLabel
+      // owns the wording now (note: 'Assistant Coach', not 'Asst. Coach').
+      if (
+        staffRole === 'head_coach' ||
+        staffRole === 'assistant_coach' ||
+        staffRole === 'team_manager'
+      ) {
+        role = staffRole;
+        role_label = formatRoleLabel(staffRole);
       } else if (label?.kind === 'staff') {
         role = 'staff';
         role_label = 'Staff';
@@ -358,6 +368,79 @@ export default function ChatInfoScreen() {
     [channel]
   );
 
+  /**
+   * Membership management is offered on CUSTOM team channels only.
+   *
+   * Excluded, and why:
+   *   * the default team chat and club-announcements -- membership is
+   *     maintained server-side (ensure_team_channel_membership re-adds members
+   *     on the next chat load, and the S4 club sync owns the club channel), so
+   *     a client add or remove would be undone or would fight the trigger;
+   *   * DMs -- a two-person channel has no roster to manage;
+   *   * group chats -- those have their own screen, GroupInfoScreen.
+   */
+  const isCustomTeamChannel = useMemo(() => {
+    if (!channel) return false;
+    if (channel.is_direct_message === true) return false;
+    if (channel.is_default === true) return false;
+    return channel.channel_type === 'team' || channel.channel_type === 'club';
+  }, [channel]);
+
+  /**
+   * ADD: team staff or a channel admin. Mirrors the two live arms of the
+   * comm_channel_members INSERT policy -- `is_channel_admin(auth.uid(),
+   * channel_id)` OR a `team_staff` row for the channel's team (web repo
+   * 20261013013626_stone_b2_s1_chat_permissions_leave.sql:151-168). No new
+   * rule: `isStaffInTeam` is the existence check this screen already ran for
+   * its Staff Controls, and `myMembershipRole` is already loaded.
+   */
+  const canAddMembers =
+    isCustomTeamChannel && (isStaffInTeam || myMembershipRole === 'admin');
+
+  /**
+   * REMOVE: the channel admin ONLY. The DELETE policy's other-person arm is
+   * `user_id <> auth.uid() AND is_channel_admin(auth.uid(), channel_id)`
+   * (same migration, :191-200) -- team staff are NOT admitted, so showing
+   * Remove to a coach would offer a button the DB silently refuses.
+   */
+  const canRemoveMembers = isCustomTeamChannel && myMembershipRole === 'admin';
+
+  const removeMember = (target: Member) => {
+    Alert.alert(
+      'Remove Member',
+      `Remove ${target.full_name} from this channel?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            // `.select()` is the refusal check: RLS filters a denied delete out
+            // silently -- no error, no rows -- so an empty result is a refusal,
+            // not a success. Same pattern as GroupInfoScreen.
+            const { data, error } = await supabase
+              .from('comm_channel_members')
+              .delete()
+              .eq('channel_id', channelId)
+              .eq('user_id', target.user_id)
+              .select('user_id');
+
+            if (error || !data || data.length === 0) {
+              logError('ChatInfo.removeMember', error ?? 'refused', {
+                channelId,
+                targetUserId: target.user_id,
+              });
+              Alert.alert('Error', 'Could not remove member');
+              return;
+            }
+
+            await fetchChatInfo();
+          },
+        },
+      ]
+    );
+  };
+
   const sections = useMemo(() => {
     if (hideMemberList) return [];
 
@@ -408,19 +491,32 @@ export default function ChatInfoScreen() {
           <Text style={styles.memberRole}>{item.role_label}</Text>
         )}
       </View>
+      {/* Never on your own row: the DELETE policy's admin arm is explicitly
+          `user_id <> auth.uid()`, and leaving is the Leave button's job. */}
+      {canRemoveMembers && item.user_id !== user?.id ? (
+        <TouchableOpacity
+          style={styles.removeButton}
+          onPress={() => removeMember(item)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${item.full_name}`}
+        >
+          <Text style={styles.removeButtonText}>Remove</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 
   const handlePollsPress = () => {
-    navigation.navigate('ChannelPolls' as never, { channelId } as never);
+    navigation.navigate('ChannelPolls', { channelId });
   };
 
   const handleFilesPress = () => {
-    navigation.navigate('ChannelFiles' as never, { channelId } as never);
+    navigation.navigate('ChannelFiles', { channelId });
   };
 
   const handleLinksPress = () => {
-    navigation.navigate('ChannelLinks' as never, { channelId } as never);
+    navigation.navigate('ChannelLinks', { channelId });
   };
 
   const performArchive = async () => {
@@ -445,7 +541,7 @@ export default function ChatInfoScreen() {
       Alert.alert('Chat archived', 'This chat has been archived.', [
         {
           text: 'OK',
-          onPress: () => navigation.navigate('Conversations' as never),
+          onPress: () => navigation.navigate('Conversations'),
         },
       ]);
     } catch (err: any) {
@@ -479,7 +575,7 @@ export default function ChatInfoScreen() {
       // Membership is gone: drop the row now, then let the next read confirm.
       forgetChatChannel(channelId);
       requestChatUnreadRefresh();
-      navigation.navigate('Conversations' as never);
+      navigation.navigate('Conversations');
     } finally {
       setIsLeaving(false);
     }
@@ -619,15 +715,26 @@ export default function ChatInfoScreen() {
             ) : (
               <View style={styles.membersHeader}>
                 <Text style={styles.membersTitle}>Members ({memberCount})</Text>
-                <TouchableOpacity
-                  style={styles.sortButton}
-                  onPress={() => setSortBy(sortBy === 'role' ? 'alpha' : 'role')}
-                >
-                  <Feather name="filter" size={16} color="#8b5cf6" />
-                  <Text style={styles.sortText}>
-                    {sortBy === 'role' ? 'By Role' : 'A-Z'}
-                  </Text>
-                </TouchableOpacity>
+                <View style={styles.membersActions}>
+                  {canAddMembers ? (
+                    <TouchableOpacity
+                      onPress={() => setShowAddMemberModal(true)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Add members"
+                    >
+                      <Text style={styles.addButton}>+ Add</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  <TouchableOpacity
+                    style={styles.sortButton}
+                    onPress={() => setSortBy(sortBy === 'role' ? 'alpha' : 'role')}
+                  >
+                    <Feather name="filter" size={16} color="#8b5cf6" />
+                    <Text style={styles.sortText}>
+                      {sortBy === 'role' ? 'By Role' : 'A-Z'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
           </>
@@ -673,6 +780,17 @@ export default function ChatInfoScreen() {
             </View>
           ) : null
         }
+      />
+
+      {/* Same picker as Group Info. It carries no permission logic of its own:
+          it is rendered only when canAddMembers, and the INSERT policy is the
+          real gate. */}
+      <AddMembersModal
+        visible={showAddMemberModal}
+        channelId={channelId}
+        existingUserIds={members.map((m) => m.user_id)}
+        onClose={() => setShowAddMemberModal(false)}
+        onAdded={fetchChatInfo}
       />
     </SafeAreaView>
   );
@@ -790,6 +908,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 8,
+  },
+  // "+ Add" and the sort toggle share the right-hand side of the header.
+  membersActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  // Same three rules as GroupInfoScreen:429-433, so the two Add affordances
+  // read identically.
+  addButton: {
+    color: '#8B5CF6',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // Same as GroupInfoScreen:504-517: an outlined destructive chip, never a
+  // filled button -- it sits inside a scrolling roster.
+  removeButton: {
+    marginLeft: 12,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#7F1D1D',
+  },
+  removeButtonText: {
+    color: '#EF4444',
+    fontSize: 12,
+    fontWeight: '600',
   },
   membersTitle: {
     fontSize: 14,

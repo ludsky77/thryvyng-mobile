@@ -22,7 +22,7 @@ import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { useSharedUserTeams } from '../contexts/TeamsContext';
 import { supabase } from '../lib/supabase';
-import { formatRoleLabel, getRolePriority, getTimeAgo } from '../lib/chatHelpers';
+import { formatRoleLabel, getTimeAgo } from '../lib/chatHelpers';
 import { CHAT_FALLBACK_NAME } from '../lib/memberNames';
 import {
   CONTACT_ROLE_GROUP_LABELS,
@@ -566,35 +566,13 @@ export default function ChatScreen({ navigation, route }: any) {
         avatar_url: c.avatar_url ?? null,
       }));
       const userIds = profiles.map((p: any) => p.id);
-      const roleMap = new Map<string, string>();
-      if (userIds.length > 0) {
-        const { data: roles } = await supabase
-          .from('user_roles')
-          .select('user_id, role')
-          .in('user_id', userIds);
-        (roles || []).forEach((r: any) => {
-          const cur = roleMap.get(r.user_id);
-          if (
-            !cur ||
-            getRolePriority(r.role) > getRolePriority(cur)
-          ) {
-            roleMap.set(r.user_id, r.role);
-          }
-        });
-        const { data: staffRoles } = await supabase
-          .from('team_staff')
-          .select('user_id, staff_role')
-          .in('user_id', userIds);
-        (staffRoles || []).forEach((r: any) => {
-          const cur = roleMap.get(r.user_id);
-          if (
-            !cur ||
-            getRolePriority(r.staff_role) > getRolePriority(cur)
-          ) {
-            roleMap.set(r.user_id, r.staff_role);
-          }
-        });
-      }
+      // One resolver for the whole app (chatHelpers.fetchContactRoles ->
+      // buildRoleMap). This used to be a hand-rolled copy of the same merge,
+      // one of four that could disagree with each other.
+      const roleMap =
+        userIds.length > 0
+          ? await fetchContactRoles(userIds)
+          : new Map<string, string>();
       const enriched = profiles.map((p: any) => ({
         ...p,
         role: roleMap.get(p.id),

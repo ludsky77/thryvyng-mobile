@@ -12,7 +12,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { formatRoleLabel, getRolePriority } from '../lib/chatHelpers';
+import { formatRoleLabel } from '../lib/chatHelpers';
+import { fetchContactRoles } from '../lib/contactRoles';
 import {
   CHAT_FALLBACK_NAME,
   fetchChatProfileNames,
@@ -143,27 +144,10 @@ export default function DirectMessagesScreen({ navigation }: any) {
       //   real name -> "<Child>'s parent" -> 'Thryvyng member', never an email.
       const chatNames = await fetchChatProfileNames(otherUserIds);
 
-      const { data: userRoles } = await supabase
-        .from('user_roles')
-        .select('user_id, role')
-        .in('user_id', otherUserIds);
-      const { data: staffRoles } = await supabase
-        .from('team_staff')
-        .select('user_id, staff_role')
-        .in('user_id', otherUserIds);
-      const roleMap = new Map<string, string>();
-      (userRoles || []).forEach((r: any) => {
-        const existing = roleMap.get(r.user_id);
-        if (!existing || getRolePriority(r.role) > getRolePriority(existing)) {
-          roleMap.set(r.user_id, r.role);
-        }
-      });
-      (staffRoles || []).forEach((r: any) => {
-        const existing = roleMap.get(r.user_id);
-        if (!existing || getRolePriority(r.staff_role) > getRolePriority(existing)) {
-          roleMap.set(r.user_id, r.staff_role);
-        }
-      });
+      // One resolver for the whole app. This was the third hand-rolled copy of
+      // the same priority merge; `fetchContactRoles` reads the same two tables
+      // and tie-breaks through chatHelpers.buildRoleMap.
+      const roleMap = await fetchContactRoles(otherUserIds);
 
       const profileMap = new Map<string, Profile>();
       chatNames.forEach((resolved, id) => {

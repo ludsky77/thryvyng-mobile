@@ -24,7 +24,8 @@ import { useChatSenderLabels } from '../hooks/useChatSenderLabels';
 import { useTypingPresence } from '../hooks/useTypingPresence';
 import { TypingIndicator } from '../components/chat/TypingIndicator';
 import { setActiveChannelId } from '../services/notifications';
-import { formatRoleLabel, getRolePriority } from '../lib/chatHelpers';
+import { formatRoleLabel, pickHighestRole } from '../lib/chatHelpers';
+import { formatDayDivider, invertedDayDividerIndices } from '../utils/chatDays';
 import {
   CHAT_FALLBACK_NAME,
   fetchChatProfileNames,
@@ -103,6 +104,13 @@ export default function DMChatScreen({ route, navigation }: any) {
     scrollToNewest(true);
   }, [scrollToNewest]);
 
+  // Same shape and defaults as TeamChatRoomScreen:130-133. `getCelebrationType`
+  // and CelebrationOverlay were already imported and called here; only the
+  // state and the overlay were missing, so the call site threw.
+  const [celebration, setCelebration] = useState<{
+    type: CelebrationType;
+    visible: boolean;
+  }>({ type: 'celebrate', visible: false });
   const [otherPerson, setOtherPerson] = useState<OtherPerson | null>(null);
   const [channelLoading, setChannelLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -208,17 +216,15 @@ export default function DMChatScreen({ route, navigation }: any) {
         .select('staff_role')
         .eq('user_id', otherUserId);
 
-      let bestRole = '';
-      (userRoles || []).forEach((r: any) => {
-        if (getRolePriority(r.role) > getRolePriority(bestRole)) {
-          bestRole = r.role;
-        }
-      });
-      (staffRoles || []).forEach((r: any) => {
-        if (getRolePriority(r.staff_role) > getRolePriority(bestRole)) {
-          bestRole = r.staff_role;
-        }
-      });
+      // The ONE resolver. This was a fifth hand-rolled priority merge -- an
+      // accumulator rather than a Map, which is how it survived the first
+      // sweep. Order-independent, so the two awaits above can land either way
+      // round and the header still reads the same.
+      const bestRole =
+        pickHighestRole([
+          ...(userRoles || []).map((r: any) => r.role),
+          ...(staffRoles || []).map((r: any) => r.staff_role),
+        ]) ?? '';
 
       setOtherPerson({
         id: otherUserId,
@@ -379,8 +385,42 @@ export default function DMChatScreen({ route, navigation }: any) {
     setRefreshing(false);
   };
 
-  const renderItem = ({ item }: { item: Message }) => {
+  /**
+   * Day grouping and labels come from src/utils/chatDays.ts -- the same
+   * unit-tested helper the team / group / club room uses, in the READER's local
+   * calendar day. Nothing is re-implemented here; DMs were simply the one room
+   * that never called it.
+   */
+  const dayDividerIndices = useMemo(
+    () => invertedDayDividerIndices(invertedMessages.map((m) => m.created_at)),
+    [invertedMessages]
+  );
+
+  /**
+   * The day divider row.
+   *
+   * ORDER IS LOAD-BEARING: this renders AFTER the message in JSX, not before.
+   * The list is `inverted`, and an inverted cell draws its own children
+   * bottom-up, so a separator placed first in JSX appears BELOW the message it
+   * belongs to.
+   */
+  const renderDaySeparator = (show: boolean, createdAt: string) => {
+    if (!show) return null;
+    const label = formatDayDivider(createdAt);
+    if (!label) return null; // unparseable timestamp: group, do not label
+    return (
+      <View style={styles.daySeparator}>
+        <Text style={styles.daySeparatorText}>{label}</Text>
+        <View style={styles.daySeparatorLine} />
+      </View>
+    );
+  };
+
+  const renderItem = ({ item, index }: { item: Message; index: number }) => {
     const isOwnMessage = item.user_id === user?.id;
+    // Decided once, by the tested helper, over the inverted array -- the
+    // divider belongs to the OLDEST message of each local day.
+    const showDaySeparator = dayDividerIndices.has(index);
     const reactionsSummary = getReactionsSummary(item.reactions, user?.id);
     const senderLabelKind = labelKind.get(item.user_id) ?? null;
     const playerLabel =
@@ -397,7 +437,8 @@ export default function DMChatScreen({ route, navigation }: any) {
         : undefined;
 
     return (
-      <View style={styles.messageContainer}>
+      <>
+        <View style={styles.messageContainer}>
         <ChatBubble
           message={{
             id: item.id,
@@ -431,7 +472,9 @@ export default function DMChatScreen({ route, navigation }: any) {
           }
           onReactionPress={(reaction) => toggleReaction(item.id, reaction)}
         />
-      </View>
+        </View>
+        {renderDaySeparator(showDaySeparator, item.created_at)}
+      </>
     );
   };
 
@@ -600,6 +643,14 @@ export default function DMChatScreen({ route, navigation }: any) {
           onReply={startReply}
         />
 
+        <CelebrationOverlay
+          type={celebration.type}
+          visible={celebration.visible}
+          onComplete={() =>
+            setCelebration({ type: 'celebrate', visible: false })
+          }
+        />
+
         <TypingIndicator users={typingNames} />
 
         <ChatInputBar
@@ -740,6 +791,28 @@ const styles = StyleSheet.create({
   messagesList: {
     padding: 16,
     paddingBottom: 20,
+  },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 19,
+    fontWeight: '700',
+  },
+  daySeparator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 16,
+    paddingHorizontal: 12,
+  },
+  daySeparatorText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginRight: 12,
+  },
+  daySeparatorLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#374151',
   },
   messageContainer: {
     marginBottom: 16,

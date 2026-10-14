@@ -13,6 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { CHAT_FALLBACK_NAME } from '../lib/memberNames';
 
 interface Evaluation {
   id: string;
@@ -71,7 +72,7 @@ export default function EvaluationsScreen() {
         evaluation_date: e.evaluation_date,
         season_name: e.season_name ?? null,
         player_name: e.player_name ?? null,
-        evaluator_name: e.evaluator_name || 'Unknown',
+        evaluator_name: e.evaluator_name || CHAT_FALLBACK_NAME,
         award_id: e.award_id ?? null,
       }));
 

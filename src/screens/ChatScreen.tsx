@@ -23,6 +23,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSharedUserTeams } from '../contexts/TeamsContext';
 import { supabase } from '../lib/supabase';
 import { formatRoleLabel, getRolePriority, getTimeAgo } from '../lib/chatHelpers';
+import { CHAT_FALLBACK_NAME } from '../lib/memberNames';
+import {
+  CONTACT_ROLE_GROUP_LABELS,
+  contactRoleGroup,
+  fetchContactRoles,
+  presentRoleGroups,
+  type ContactRoleGroup,
+} from '../lib/contactRoles';
 import { NotificationBell } from '../components/NotificationBell';
 import { useFocusEffect } from '@react-navigation/native';
 import { useChatUnread } from '../contexts/ChatUnreadContext';
@@ -269,6 +277,8 @@ interface ProfileResult {
   full_name: string | null;
   avatar_url: string | null;
   role?: string;
+  /** Which add-people filter chip this candidate belongs under, if any. */
+  roleGroup?: ContactRoleGroup | null;
   existingChannelId?: string;
 }
 
@@ -317,8 +327,14 @@ export default function ChatScreen({ navigation, route }: any) {
   const [selectedGroupUsers, setSelectedGroupUsers] = useState<ProfileResult[]>([]);
   const [groupSearchQuery, setGroupSearchQuery] = useState('');
   const [groupSearchResults, setGroupSearchResults] = useState<ProfileResult[]>([]);
+  // 'all' is the default and the only chip that is always offered.
+  const [groupRoleFilter, setGroupRoleFilter] = useState<ContactRoleGroup | 'all'>('all');
   const [isSearchingGroup, setIsSearchingGroup] = useState(false);
   const groupSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Latest-wins: clearing the debounce timer does not cancel an RPC already
+  // in flight, so a slower earlier keystroke must not overwrite a newer
+  // result. Two awaits now run per search (contacts, then role tags).
+  const groupSearchSeqRef = useRef(0);
   const [existingGroupMatch, setExistingGroupMatch] = useState<{
     id: string;
     name: string;
@@ -345,7 +361,10 @@ export default function ChatScreen({ navigation, route }: any) {
     const isMuted = row.is_muted === true;
 
     if (row.is_direct_message) {
-      const otherName = row.other_user_name || 'Unknown User';
+      // other_user_name is get_my_conversations column 17, which S1 pointed at
+      // the shared name ladder -- so this fallback fires only when that column
+      // came back null, and says the one ruled thing rather than 'Unknown User'.
+      const otherName = row.other_user_name || CHAT_FALLBACK_NAME;
       return {
         id: row.channel_id,
         displayType: 'dm',
@@ -619,10 +638,16 @@ export default function ChatScreen({ navigation, route }: any) {
         setGroupSearchResults([]);
         return;
       }
+      const seq = ++groupSearchSeqRef.current;
+
       // Same membership-gated RPC as the DM picker -- see searchUsersForDM.
       const { data: contacts, error } = await supabase.rpc('search_chat_contacts', {
         p_query: query,
       });
+
+      // A response that is no longer the newest request is dropped outright.
+      if (seq !== groupSearchSeqRef.current) return;
+
       if (error) {
         if (__DEV__) {
           console.error('[ChatScreen] search_chat_contacts (group) failed:', error);
@@ -639,7 +664,18 @@ export default function ChatScreen({ navigation, route }: any) {
         .filter(
           (p: any) => !selectedGroupUsers.some((s) => s.id === p.id)
         ) as ProfileResult[];
-      setGroupSearchResults(filtered);
+
+      // Role tag resolved here, from role COLUMNS: the search RPC returns no
+      // role, and the display string must never be pattern-matched for one.
+      const roleMap = await fetchContactRoles(filtered.map((p) => p.id));
+      if (seq !== groupSearchSeqRef.current) return;
+
+      setGroupSearchResults(
+        filtered.map((p) => {
+          const role = roleMap.get(p.id);
+          return { ...p, role, roleGroup: contactRoleGroup(role) };
+        })
+      );
     },
     [user?.id, selectedGroupUsers]
   );
@@ -872,6 +908,7 @@ export default function ChatScreen({ navigation, route }: any) {
     setSelectedGroupUsers([]);
     setGroupSearchQuery('');
     setGroupSearchResults([]);
+    setGroupRoleFilter('all');
     setExistingGroupMatch(null);
     setTeamChannelSearch('');
     setClubWideMode('all');
@@ -1243,6 +1280,19 @@ export default function ChatScreen({ navigation, route }: any) {
     }
 
     if (newChatStep === 'group') {
+      // Chips describe the list in front of the user: a group with nobody in
+      // it gets no chip, and a chip that vanishes mid-search cannot leave the
+      // list filtered to an empty set -- the filter falls back to All.
+      const availableRoleGroups = presentRoleGroups(groupSearchResults);
+      const activeRoleFilter =
+        groupRoleFilter !== 'all' && availableRoleGroups.includes(groupRoleFilter)
+          ? groupRoleFilter
+          : 'all';
+      const visibleGroupResults =
+        activeRoleFilter === 'all'
+          ? groupSearchResults
+          : groupSearchResults.filter((p) => p.roleGroup === activeRoleFilter);
+
       return (
         <View style={styles.modalInner}>
           <View style={styles.stepHeader}>
@@ -1324,8 +1374,54 @@ export default function ChatScreen({ navigation, route }: any) {
               queueGroupSearch(text);
             }}
           />
+          {/* Client-side only: these chips filter the rows already loaded,
+              they never re-query. "All" shows whenever any group does. */}
+          {availableRoleGroups.length > 0 ? (
+            <View style={styles.roleChipRow}>
+              <TouchableOpacity
+                style={[
+                  styles.roleChip,
+                  activeRoleFilter === 'all' && styles.roleChipActive,
+                ]}
+                onPress={() => setGroupRoleFilter('all')}
+                accessibilityRole="button"
+                accessibilityState={{ selected: activeRoleFilter === 'all' }}
+              >
+                <Text
+                  style={[
+                    styles.roleChipText,
+                    activeRoleFilter === 'all' && styles.roleChipTextActive,
+                  ]}
+                >
+                  All
+                </Text>
+              </TouchableOpacity>
+
+              {availableRoleGroups.map((group) => (
+                <TouchableOpacity
+                  key={group}
+                  style={[
+                    styles.roleChip,
+                    activeRoleFilter === group && styles.roleChipActive,
+                  ]}
+                  onPress={() => setGroupRoleFilter(group)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: activeRoleFilter === group }}
+                >
+                  <Text
+                    style={[
+                      styles.roleChipText,
+                      activeRoleFilter === group && styles.roleChipTextActive,
+                    ]}
+                  >
+                    {CONTACT_ROLE_GROUP_LABELS[group]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
           <FlatList
-            data={groupSearchResults}
+            data={visibleGroupResults}
             keyExtractor={(item) => item.id}
             keyboardShouldPersistTaps="handled"
             // Dragging the member list dismisses the keyboard. Tapping the
@@ -1336,7 +1432,9 @@ export default function ChatScreen({ navigation, route }: any) {
             // screen for header + name field + chips + this list + the Create
             // button. A floor of 120 here kept the list at full size and pushed
             // "Create Group" off the bottom of the fixed-height container.
-            style={{ maxHeight: 180 }}
+            // The role chip row takes ~38px when it is shown, so the list
+            // gives exactly that back and the total height does not move.
+            style={{ maxHeight: availableRoleGroups.length > 0 ? 142 : 180 }}
             contentContainerStyle={{ paddingBottom: 20 }}
             ListEmptyComponent={
               isSearchingGroup ? (
@@ -2116,6 +2214,36 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
     paddingBottom: 0,
+  },
+  // Role filter chips for the add-people list. Inactive chips sit a shade
+  // darker than the sheet, like the search field above them -- on the sheet
+  // colour they were invisible.
+  roleChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  roleChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#334155',
+    backgroundColor: '#0f172a',
+  },
+  roleChipActive: {
+    borderColor: '#8b5cf6',
+    backgroundColor: '#8b5cf6',
+  },
+  roleChipText: {
+    color: '#94a3b8',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  roleChipTextActive: {
+    color: '#fff',
   },
   fixedBottomButton: {
     padding: 16,

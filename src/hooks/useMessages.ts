@@ -5,7 +5,7 @@ import {
   subscribeToMessageInserts,
   subscribeToReactionChanges,
 } from '../lib/realtimeHub';
-import { fetchChannelTeamMemberNames } from '../lib/memberNames';
+import { chatPersonName, fetchChatProfileNames } from '../lib/memberNames';
 import { logError } from '../utils/logError';
 import {
   SEND_OK,
@@ -87,12 +87,13 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
 
       // Resolve reactor names. Reading `profiles` directly returned nothing for
       // a regular parent/player viewer -- RLS hides other members' rows -- so
-      // every reactor rendered as 'Unknown'. The team-gated RPC resolves for
-      // any viewer on the team; a DM or club channel has no team, so the map
-      // comes back empty and the reaction keeps a null profile.
+      // every reactor rendered as 'Unknown'. The CHANNEL-gated RPC resolves
+      // for any member of the room, asked for the reactors by id; the
+      // team-gated call it replaced came back empty in a DM or club channel,
+      // which have no team to gate with, and left the reactor nameless again.
       let profilesMap: Record<string, { full_name: string | null; avatar_url: string | null }> = {};
       if (reactionUserIds.size > 0) {
-        const memberNames = await fetchChannelTeamMemberNames(channelId);
+        const memberNames = await fetchChatProfileNames([...reactionUserIds]);
         reactionUserIds.forEach((reactorId) => {
           const resolved = memberNames.get(reactorId);
           if (resolved) {
@@ -341,6 +342,15 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
       }
     }
 
+    // reply_to_sender is PERSISTED, so the guarantee belongs here at the write
+    // rather than in each calling screen: a quoted name that is blank, or the
+    // legacy 'Unknown', or an address, becomes the one ruled fallback. Callers
+    // that already resolve properly pass straight through. null when there is
+    // no reply at all -- an absent quote is not a nameless one.
+    const replySenderName = options?.replyTo
+      ? chatPersonName(options.replyTo.senderName)
+      : null;
+
     const insertPayload: Record<string, unknown> = {
       channel_id: channelId,
       user_id: user.id,
@@ -350,7 +360,7 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
     if (options?.replyTo) {
       insertPayload.reply_to_id = options.replyTo.id;
       insertPayload.reply_to_content = options.replyTo.content;
-      insertPayload.reply_to_sender = options.replyTo.senderName;
+      insertPayload.reply_to_sender = replySenderName;
     }
 
     const { data: messageData, error: messageError } = await supabase
@@ -408,7 +418,9 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
       // local echo did not carry them.
       reply_to_id: options?.replyTo?.id ?? null,
       reply_to_content: options?.replyTo?.content ?? null,
-      reply_to_sender: options?.replyTo?.senderName ?? null,
+      // The same guarded string the row received, so the local echo and the
+      // persisted row cannot show two different names.
+      reply_to_sender: replySenderName,
       poll_id: null,
       thread_count: 0,
       is_pinned: false,

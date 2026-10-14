@@ -106,3 +106,23 @@ export async function leaveChannel(
 
   return { status: 'ok' };
 }
+
+/**
+ * Is this the club-announcements channel -- the club-level DEFAULT channel?
+ *
+ * Identified by the ROW, not by the name: `channel_type = 'club'` AND
+ * `is_default = true`. Mirrors web `src/lib/channelPermissions.ts`
+ * `isDefaultClubChannel` verbatim, and is the same pair the S4 migration uses
+ * for its club membership sync and `canLeaveChannel` above already gates on.
+ *
+ * The name is deliberately NOT tested: default channels have been renamed
+ * before (the default team chat went from "announcements" to "Team Chat").
+ * The club's other seeded channel, `coaches-lounge`, is created private and
+ * WITHOUT `is_default`, so it is not matched and keeps its roster.
+ */
+export function isDefaultClubChannel(
+  channel: LeavableChannel | null | undefined
+): boolean {
+  if (!channel) return false;
+  return channel.channel_type === 'club' && channel.is_default === true;
+}

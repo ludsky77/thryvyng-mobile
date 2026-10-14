@@ -15,6 +15,7 @@ import { Feather } from '@expo/vector-icons';
 import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { CHAT_FALLBACK_NAME } from '../lib/memberNames';
 import { GROUP_LETTERS, TEAMS, teamByCode, type WcTeam } from '../constants/wcTeams';
 
 const formatMountainDateTime = (iso?: string | null): string => {
@@ -174,9 +175,12 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 function displayName(profile?: ProfileRow | null): string {
-  if (!profile) return 'Unknown';
+  if (!profile) return CHAT_FALLBACK_NAME;
   if (profile.full_name?.trim()) return profile.full_name.trim();
-  return [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim() || 'Unknown';
+  return (
+    [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim() ||
+    CHAT_FALLBACK_NAME
+  );
 }
 
 function initials(name: string): string {

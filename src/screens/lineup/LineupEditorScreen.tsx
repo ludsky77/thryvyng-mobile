@@ -23,6 +23,7 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import Svg, { Path } from 'react-native-svg';
 import { supabase } from '../../lib/supabase';
+import { CHAT_FALLBACK_NAME } from '../../lib/memberNames';
 import { useAuth } from '../../contexts/AuthContext';
 import { LineupFieldEditor, type PositionSlot, type JerseyConfig } from '../../components/lineup/LineupFieldEditor';
 import { getFormationPositions } from '../../data/formationPositions';
@@ -55,7 +56,11 @@ interface Player {
 }
 
 function getPlayerDisplayName(p: Player): string {
-  return p.full_name || `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unknown';
+  return (
+    p.full_name ||
+    `${p.first_name || ''} ${p.last_name || ''}`.trim() ||
+    CHAT_FALLBACK_NAME
+  );
 }
 
 interface LineupPlayer {

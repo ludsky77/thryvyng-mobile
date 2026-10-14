@@ -9,6 +9,7 @@ import {
   Image,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { CHAT_FALLBACK_NAME } from '../../lib/memberNames';
 
 export interface ReactionDetailItem {
   emoji?: string;
@@ -86,7 +87,7 @@ export function ReactionDetailsModal({
                     nameFor?.(user.user_id) ||
                     user.profiles?.full_name ||
                     user.profile?.full_name ||
-                    'Unknown';
+                    CHAT_FALLBACK_NAME;
                   const avatarUrl =
                     user.profiles?.avatar_url ?? user.profile?.avatar_url;
                   const initial = userName.charAt(0).toUpperCase();

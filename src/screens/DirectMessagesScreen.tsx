@@ -13,6 +13,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { formatRoleLabel, getRolePriority } from '../lib/chatHelpers';
+import {
+  CHAT_FALLBACK_NAME,
+  fetchChatProfileNames,
+} from '../lib/memberNames';
 
 function getTimeAgo(dateString: string): string {
   const now = new Date();
@@ -67,7 +71,7 @@ function DMListItem({
       </View>
       <View style={styles.dmContent}>
         <Text style={styles.dmName} numberOfLines={1}>
-          {other?.full_name || 'Unknown'}
+          {other?.full_name || CHAT_FALLBACK_NAME}
         </Text>
         {other?.role ? (
           <Text style={styles.dmRole}>{formatRoleLabel(other.role)}</Text>
@@ -127,15 +131,17 @@ export default function DirectMessagesScreen({ navigation }: any) {
           ch.dm_participant_1 === user.id ? ch.dm_participant_2 : ch.dm_participant_1
       ).filter(Boolean);
 
-      // Step 3: Fetch profiles for all other participants
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url')
-        .in('id', otherUserIds);
-
-      if (profilesError) {
-        console.error('Error fetching profiles:', profilesError);
-      }
+      // Step 3: Resolve the other participants' names.
+      //
+      // This used to read `profiles` directly, which RLS hides from a regular
+      // parent/player viewer -- so the row came back empty and every DM in the
+      // list was with 'Unknown'. `get_chat_profiles` is SECURITY DEFINER and
+      // gated on sharing a channel with the viewer, which a DM counterpart
+      // always does (get_or_create_dm_channel inserts BOTH participants into
+      // comm_channel_members). It carries the ruled ladder and returns the
+      // finished string, so nothing is assembled here:
+      //   real name -> "<Child>'s parent" -> 'Thryvyng member', never an email.
+      const chatNames = await fetchChatProfileNames(otherUserIds);
 
       const { data: userRoles } = await supabase
         .from('user_roles')
@@ -160,8 +166,13 @@ export default function DirectMessagesScreen({ navigation }: any) {
       });
 
       const profileMap = new Map<string, Profile>();
-      (profiles || []).forEach((p: Profile) => {
-        profileMap.set(p.id, { ...p, role: roleMap.get(p.id) });
+      chatNames.forEach((resolved, id) => {
+        profileMap.set(id, {
+          id,
+          full_name: resolved.name,
+          avatar_url: resolved.avatar,
+          role: roleMap.get(id),
+        });
       });
 
       // Step 4: Fetch last message for each channel
@@ -189,9 +200,16 @@ export default function DirectMessagesScreen({ navigation }: any) {
           channel.dm_participant_1 === user.id
             ? channel.dm_participant_2
             : channel.dm_participant_1;
+        // Only reached when the RPC returned no row for this id at all. The
+        // ladder's own last rung, not 'Unknown' -- see CHAT_FALLBACK_NAME.
         const otherPerson =
           profileMap.get(otherUserId) ||
-          ({ id: otherUserId, full_name: 'Unknown', avatar_url: null, role: undefined } as Profile);
+          ({
+            id: otherUserId,
+            full_name: CHAT_FALLBACK_NAME,
+            avatar_url: null,
+            role: roleMap.get(otherUserId),
+          } as Profile);
         const lastMsg = lastMessageMap.get(channel.id);
 
         return {

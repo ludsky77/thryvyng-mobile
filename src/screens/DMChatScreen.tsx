@@ -25,6 +25,10 @@ import { useTypingPresence } from '../hooks/useTypingPresence';
 import { TypingIndicator } from '../components/chat/TypingIndicator';
 import { setActiveChannelId } from '../services/notifications';
 import { formatRoleLabel, getRolePriority } from '../lib/chatHelpers';
+import {
+  CHAT_FALLBACK_NAME,
+  fetchChatProfileNames,
+} from '../lib/memberNames';
 import { ChatBubble, type ReactionSummary } from '../components/chat/ChatBubble';
 import { ChatInputBar, type AttachmentData } from '../components/chat/ChatInputBar';
 import { ReactionPicker } from '../components/chat/ReactionPicker';
@@ -184,11 +188,16 @@ export default function DMChatScreen({ route, navigation }: any) {
           ? channel.dm_participant_2
           : channel.dm_participant_1;
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url')
-        .eq('id', otherUserId)
-        .single();
+      // This used to read `profiles` directly, which RLS hides from a regular
+      // parent/player viewer. `get_chat_profiles` is gated on sharing a channel
+      // with the viewer -- which a DM counterpart always does -- and returns
+      // the ruled ladder already assembled:
+      //   real name -> "<Child>'s parent" -> 'Thryvyng member', never an email.
+      // It is preferred over get_channel_member_names for this one name because
+      // that function scopes its child rung to the CHANNEL's team, and a DM has
+      // no team, so it bottoms out at the bare string 'Member' instead.
+      const chatNames = await fetchChatProfileNames([otherUserId]);
+      const resolved = chatNames.get(otherUserId);
 
       const { data: userRoles } = await supabase
         .from('user_roles')
@@ -213,8 +222,8 @@ export default function DMChatScreen({ route, navigation }: any) {
 
       setOtherPerson({
         id: otherUserId,
-        full_name: profile?.full_name ?? null,
-        avatar_url: profile?.avatar_url ?? null,
+        full_name: resolved?.name ?? null,
+        avatar_url: resolved?.avatar ?? null,
         role: bestRole || undefined,
       });
     } catch (err) {
@@ -345,11 +354,12 @@ export default function DMChatScreen({ route, navigation }: any) {
         // Same resolution order as the bubble renders (memberNames from the
         // gated RPC first, the profiles join only as fallback). Reading the join
         // alone made this modal show 'Unknown' on the very screen whose bubble
-        // had the name -- and it is persisted into reply_to_sender.
+        // had the name -- and it is persisted into reply_to_sender, so the last
+        // rung is the ladder's own terminal string, never 'Unknown'.
         senderName:
           memberNames.get(reactionPickerMessage.user_id)?.name ||
           reactionPickerMessage.profile?.full_name ||
-          'Unknown',
+          CHAT_FALLBACK_NAME,
       });
     }
     setReactionPickerMessage(null);
@@ -379,7 +389,10 @@ export default function DMChatScreen({ route, navigation }: any) {
       item.reply_to_id && (item.reply_to_content != null || item.reply_to_sender != null)
         ? {
             content: item.reply_to_content ?? '(message)',
-            senderName: item.reply_to_sender ?? 'Unknown',
+            // reply_to_sender is a string persisted on the row at send time.
+            // Null means it was never captured, so there is no name to show --
+            // the ladder's terminal rung, not 'Unknown'.
+            senderName: item.reply_to_sender ?? CHAT_FALLBACK_NAME,
           }
         : undefined;
 
@@ -422,14 +435,17 @@ export default function DMChatScreen({ route, navigation }: any) {
     );
   };
 
-  // Header title: the RPC name wins over the directly-read profile, because RLS
-  // can leave the latter null for a parent/player reading another member.
+  // Header title. `otherPerson.full_name` is now the get_chat_profiles ladder
+  // result, so it goes FIRST: get_channel_member_names scopes its child rung to
+  // the channel's team and a DM has none, so it bottoms out at 'Member' where
+  // the ladder says "<Child>'s parent" or 'Thryvyng member'. It stays as the
+  // second rung for the case where the ladder call itself returned nothing.
   // Suffix mirrors ChatBubble's rule -- parent gets the child, player gets a
   // plain marker, staff and unknown get nothing.
   const otherUserId = otherPerson?.id;
   const otherDisplayName =
-    (otherUserId ? memberNames.get(otherUserId)?.name : undefined) ||
     otherPerson?.full_name ||
+    (otherUserId ? memberNames.get(otherUserId)?.name : undefined) ||
     null;
   const otherLabelKind = otherUserId ? labelKind.get(otherUserId) ?? null : null;
   const otherChildLabel = otherUserId ? playerLabels.get(otherUserId) : undefined;

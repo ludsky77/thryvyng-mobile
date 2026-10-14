@@ -11,7 +11,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
-import { fetchTeamMemberNames } from '../lib/memberNames';
+import {
+  CHAT_FALLBACK_NAME,
+  fetchTeamMemberNames,
+} from '../lib/memberNames';
 import { useAuth } from '../contexts/AuthContext';
 
 const TEAM_COLOR_PALETTE = [
@@ -257,7 +260,7 @@ export default function TeamDetailScreen({ route, navigation }: any) {
               </View>
               <View style={styles.rowBody}>
                 <Text style={styles.rowName}>
-                  {s.profiles?.full_name || 'Unknown'}
+                  {s.profiles?.full_name || CHAT_FALLBACK_NAME}
                 </Text>
                 <Text style={styles.rowMeta}>
                   {STAFF_ROLE_LABELS[s.role] || s.role}

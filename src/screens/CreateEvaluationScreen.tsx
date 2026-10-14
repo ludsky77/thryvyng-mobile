@@ -133,7 +133,23 @@ export default function CreateEvaluationScreen() {
   const playerName = params.playerName ?? 'Player';
   const jerseyNumber = params.jerseyNumber ?? null;
 
-  const { user, currentRole } = useAuth();
+  const { user, profile, currentRole } = useAuth();
+
+  /**
+   * The evaluator's own name, for the two columns this screen WRITES and the
+   * signature line it renders.
+   *
+   * The profiles row first, then the auth metadata name. The email local-part
+   * rung that used to sit between them is GONE: a name never comes from an
+   * email address, and this was the one path found persisting an
+   * address-derived name into the database. 'Coach' stays as the terminal
+   * rung -- it is a role word chosen for this surface, deliberately not the
+   * chat fallback.
+   */
+  const evaluatorName =
+    (profile?.full_name ?? '').trim() ||
+    (user?.user_metadata?.full_name ?? '').trim() ||
+    'Coach';
 
   const [activeTab, setActiveTab] = useState<'technical' | 'tactical' | 'psychological' | 'physiological'>('technical');
   const [scores, setScores] = useState<Record<string, number>>({});
@@ -229,7 +245,7 @@ export default function CreateEvaluationScreen() {
           club_id: clubId,
           player_name: playerName,
           season_name: selectedSession,
-          evaluator_name: user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Coach',
+          evaluator_name: evaluatorName,
           evaluator_title: 'Head Coach',
           // Optional fields
           player_id: playerId,
@@ -247,7 +263,9 @@ export default function CreateEvaluationScreen() {
           third_position: selectedPositions[2] || null,
           fourth_position: selectedPositions[3] || null,
           // Signature
-          signature_1_name: includeSignature ? (user?.user_metadata?.full_name || 'Coach') : null,
+          // Same order as evaluator_name above -- the two columns described the
+          // same person by two different ladders.
+          signature_1_name: includeSignature ? evaluatorName : null,
           signature_1_title: includeSignature ? 'Head Coach' : null,
         })
         .select()
@@ -565,7 +583,7 @@ export default function CreateEvaluationScreen() {
               <Text style={styles.visibilityTitle}>Include My Signature</Text>
               <Text style={styles.visibilitySubtitle}>
                 {includeSignature
-                  ? `Signed by ${user?.user_metadata?.full_name || 'Coach'}`
+                  ? `Signed by ${evaluatorName}`
                   : 'No signature will be added'}
               </Text>
             </View>

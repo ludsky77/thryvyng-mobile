@@ -15,12 +15,14 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  fetchChannelTeamMemberNames,
-  fetchTeamMemberNames,
-  UNRESOLVED_NAME,
+  fetchChannelMemberLabels,
+  fetchChatProfileNames,
+  CHAT_FALLBACK_NAME,
 } from '../lib/memberNames';
 import {
   canLeaveChannel,
+  isDefaultClubChannel,
+  type LeavableChannel,
   leaveChannel,
   leaveConfirmTitle,
   LEAVE_ACTION_LABEL,
@@ -39,7 +41,14 @@ interface Member {
   user_id: string;
   full_name: string;
   avatar_url: string | null;
-  role: 'head_coach' | 'assistant_coach' | 'team_manager' | 'parent' | 'player' | 'member';
+  role:
+    | 'head_coach'
+    | 'assistant_coach'
+    | 'team_manager'
+    | 'staff'
+    | 'parent'
+    | 'player'
+    | 'member';
   role_label: string;
 }
 
@@ -53,6 +62,14 @@ interface ChannelRecord {
   dm_participant_2?: string | null;
   created_by?: string | null;
 }
+
+/** Every role that belongs under the "Staff" section header. */
+const STAFF_ROLES: Member['role'][] = [
+  'head_coach',
+  'assistant_coach',
+  'team_manager',
+  'staff',
+];
 
 function mapArchiveError(code: string): string {
   switch (code) {
@@ -86,6 +103,9 @@ export default function ChatInfoScreen() {
   const [filesCount, setFilesCount] = useState(0);
   const [linksCount, setLinksCount] = useState(0);
   const [members, setMembers] = useState<Member[]>([]);
+  // Counted separately from the list: club-announcements shows a count and NO
+  // list, so the count cannot be `members.length`.
+  const [memberCount, setMemberCount] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [staffOnlyMessaging, setStaffOnlyMessaging] = useState(false);
   const [isStaffInTeam, setIsStaffInTeam] = useState(false);
@@ -173,7 +193,7 @@ export default function ChatInfoScreen() {
       setIsMuted(memberData?.is_muted ?? false);
       setMyMembershipRole(memberData?.role ?? null);
 
-      await fetchMembers();
+      await fetchMembers(channelData);
     } catch (err) {
       console.error('Error fetching chat info:', err);
     } finally {
@@ -181,7 +201,7 @@ export default function ChatInfoScreen() {
     }
   };
 
-  const fetchMembers = async () => {
+  const fetchMembers = async (channelRow?: LeavableChannel | null) => {
     if (!channelId) return;
 
     const { data: memberRows } = await supabase
@@ -191,21 +211,42 @@ export default function ChatInfoScreen() {
 
     if (!memberRows?.length) {
       setMembers([]);
+      setMemberCount(0);
       return;
     }
 
     const userIds = memberRows.map((m: any) => m.user_id);
+    setMemberCount(userIds.length);
 
-    // Reading `profiles` directly returned only the viewer's own row under RLS,
-    // so every other member of the channel rendered as 'Unknown'. The
-    // team-gated RPC resolves for anyone on the team; `teamId` is not always a
-    // route param, so fall back to the channel's own team.
-    const profileMap = teamId
-      ? await fetchTeamMemberNames(teamId)
-      : await fetchChannelTeamMemberNames(channelId);
+    // Club-announcements shows a count, not a roster, so stop here: resolving
+    // names and labels for a whole club is work nothing would render. The row
+    // is passed in because `channel` state is not readable synchronously here.
+    if (isDefaultClubChannel(channelRow ?? channel)) {
+      setMembers([]);
+      return;
+    }
 
+    // Names come from the CHANNEL-gated RPC, not the team-gated one. The
+    // team-gated resolver had no team id to work with inside a club channel
+    // (comm_channels.team_id is NULL there), returned an empty map, and every
+    // row rendered as 'Unknown'. get_chat_profiles is gated on sharing a
+    // channel with the viewer and carries the S1 name ladder, which ends at
+    // 'Thryvyng member' rather than NULL -- and never at an email address.
+    //
+    // Roles come from the channel-gated label RPC. They cannot be derived
+    // here: `team_staff` is readable only by that team's own staff and
+    // `players` is team-scoped, so a parent viewer read zero rows from both
+    // and EVERY member fell through to a hard-coded 'Parent' default.
+    const [profileMap, labelMap] = await Promise.all([
+      fetchChatProfileNames(userIds),
+      fetchChannelMemberLabels(channelId),
+    ]);
+
+    // Granular staff titles (Head Coach / Asst. Coach / Team Manager) only
+    // when the viewer is allowed to read them. When the read comes back empty
+    // the label RPC's 'staff' still shows, as plain "Staff" -- a less precise
+    // truth, never a wrong one.
     let staffMap = new Map<string, string>();
-    let playerUserIds = new Set<string>();
 
     if (teamId) {
       const { data: staffData } = await supabase
@@ -214,61 +255,41 @@ export default function ChatInfoScreen() {
         .eq('team_id', teamId);
 
       staffMap = new Map(staffData?.map((s: any) => [s.user_id, s.staff_role]) || []);
-
-      // Legacy path: players.user_id (rarely populated in our architecture)
-      const { data: playersData } = await supabase
-        .from('players')
-        .select('id, user_id')
-        .eq('team_id', teamId);
-      playerUserIds = new Set(
-        (playersData || []).filter((p: any) => p.user_id).map((p: any) => p.user_id)
-      );
-
-      // Canonical path: user_roles.role='player' linked via entity_id
-      const playerIds = (playersData || []).map((p: any) => p.id);
-      if (playerIds.length > 0) {
-        const { data: playerRoles } = await supabase
-          .from('user_roles')
-          .select('user_id')
-          .eq('role', 'player')
-          .in('entity_id', playerIds);
-        (playerRoles || []).forEach((ur: any) => {
-          if (ur.user_id) playerUserIds.add(ur.user_id);
-        });
-      }
     }
 
     const membersList: Member[] = userIds.map((userId) => {
       const resolved = profileMap.get(userId);
+      const label = labelMap.get(userId);
       const staffRole = staffMap.get(userId);
-      const isPlayer = playerUserIds.has(userId);
 
       let role: Member['role'] = 'member';
       let role_label = 'Member';
 
-      if (staffRole) {
-        role = staffRole as Member['role'];
-        role_label =
-          staffRole === 'head_coach'
-            ? 'Head Coach'
-            : staffRole === 'assistant_coach'
-              ? 'Asst. Coach'
-              : 'Team Manager';
-      } else if (isPlayer) {
+      if (staffRole === 'head_coach') {
+        role = 'head_coach';
+        role_label = 'Head Coach';
+      } else if (staffRole === 'assistant_coach') {
+        role = 'assistant_coach';
+        role_label = 'Asst. Coach';
+      } else if (staffRole === 'team_manager') {
+        role = 'team_manager';
+        role_label = 'Team Manager';
+      } else if (label?.kind === 'staff') {
+        role = 'staff';
+        role_label = 'Staff';
+      } else if (label?.kind === 'player') {
         role = 'player';
         role_label = 'Player';
-      } else if (channelType === 'group_dm') {
-        role = 'member';
-        role_label = 'Member';
-      } else {
+      } else if (label?.kind === 'parent') {
         role = 'parent';
-        role_label = 'Parent';
+        // Only a parent carries a child suffix, same wording as GroupInfo.
+        role_label = label.childNames ? `Parent of ${label.childNames}` : 'Parent';
       }
 
       return {
         id: userId,
         user_id: userId,
-        full_name: resolved?.name || UNRESOLVED_NAME,
+        full_name: resolved?.name || CHAT_FALLBACK_NAME,
         avatar_url: resolved?.avatar ?? null,
         role,
         role_label,
@@ -326,23 +347,37 @@ export default function ChatInfoScreen() {
    */
   const canLeave = useMemo(() => canLeaveChannel(channel), [channel]);
 
+  /**
+   * Club-announcements hides its roster: it carries the whole club, so a list
+   * of hundreds of names is noise, and a club-wide roster is not this screen's
+   * job. Identified by the ROW -- channel_type 'club' AND is_default -- never
+   * by the name, so coaches-lounge and every other channel keep their list.
+   */
+  const hideMemberList = useMemo(
+    () => isDefaultClubChannel(channel),
+    [channel]
+  );
+
   const sections = useMemo(() => {
+    if (hideMemberList) return [];
+
     if (sortBy === 'alpha') {
       return [
         {
-          title: `All Members (${members.length})`,
+          title: `All Members (${memberCount})`,
           data: [...members].sort((a, b) => a.full_name.localeCompare(b.full_name)),
         },
       ];
     }
 
-    const staff = members.filter((m) =>
-      ['head_coach', 'assistant_coach', 'team_manager'].includes(m.role)
-    );
+    const staff = members.filter((m) => STAFF_ROLES.includes(m.role));
     const parents = members.filter((m) => m.role === 'parent');
     const players = members.filter((m) => m.role === 'player');
     const others = members.filter(
-      (m) => !['head_coach', 'assistant_coach', 'team_manager', 'parent', 'player'].includes(m.role)
+      (m) =>
+        !STAFF_ROLES.includes(m.role) &&
+        m.role !== 'parent' &&
+        m.role !== 'player'
     );
 
     return [
@@ -351,7 +386,7 @@ export default function ChatInfoScreen() {
       { title: `Players (${players.length})`, data: players },
       { title: `Members (${others.length})`, data: others },
     ].filter((s) => s.data.length > 0);
-  }, [members, sortBy]);
+  }, [members, memberCount, sortBy, hideMemberList]);
 
   const getInitials = (name: string) => {
     return name
@@ -521,7 +556,7 @@ export default function ChatInfoScreen() {
                   : channelType === 'group_dm'
                     ? 'Group Chat'
                     : 'Channel'}{' '}
-                • {members.length} members
+                • {memberCount} members
               </Text>
             </View>
 
@@ -572,16 +607,29 @@ export default function ChatInfoScreen() {
               </View>
             )}
 
-            <View style={styles.membersHeader}>
-              <Text style={styles.membersTitle}>Members ({members.length})</Text>
-              <TouchableOpacity
-                style={styles.sortButton}
-                onPress={() => setSortBy(sortBy === 'role' ? 'alpha' : 'role')}
-              >
-                <Feather name="filter" size={16} color="#8b5cf6" />
-                <Text style={styles.sortText}>{sortBy === 'role' ? 'By Role' : 'A-Z'}</Text>
-              </TouchableOpacity>
-            </View>
+            {hideMemberList ? (
+              /* Club-announcements: the count, in place of the roster. The
+                 member rows and the sort control are both ABSENT -- there is
+                 no list here to sort. */
+              <View style={styles.membersHeader}>
+                <Text style={styles.membersTitle}>
+                  {memberCount} {memberCount === 1 ? 'member' : 'members'}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.membersHeader}>
+                <Text style={styles.membersTitle}>Members ({memberCount})</Text>
+                <TouchableOpacity
+                  style={styles.sortButton}
+                  onPress={() => setSortBy(sortBy === 'role' ? 'alpha' : 'role')}
+                >
+                  <Feather name="filter" size={16} color="#8b5cf6" />
+                  <Text style={styles.sortText}>
+                    {sortBy === 'role' ? 'By Role' : 'A-Z'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </>
         }
         contentContainerStyle={styles.listContent}

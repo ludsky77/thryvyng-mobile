@@ -1,10 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  fetchChannelTeamMemberNames,
-  fetchTeamMemberNames,
-} from '../lib/memberNames';
+import { fetchChatProfileNames } from '../lib/memberNames';
 import type { Poll, PollOption, VoterProfile } from '../types';
 
 export function usePoll(pollId: string | null) {
@@ -40,12 +37,14 @@ export function usePoll(pollId: string | null) {
 
     // Voter names came from a `profiles:profiles!user_id(...)` embed that RLS
     // blocked for a regular viewer; the voter was then dropped from the list
-    // by the filter below, so the list silently shrank. The team-gated RPC
-    // resolves for anyone on the team, and every voter is now kept whether or
-    // not a name came back.
-    const memberNames = (pollData as any).team_id
-      ? await fetchTeamMemberNames((pollData as any).team_id)
-      : await fetchChannelTeamMemberNames((pollData as any).channel_id);
+    // by the filter below, so the list silently shrank. Names now come from
+    // the CHANNEL-gated RPC, asked for the voters by id: the team-gated pair
+    // it replaced resolved nothing on a poll in a club channel or a DM (no
+    // team id to gate with), and its ladder could still end in NULL. Every
+    // voter is kept whether or not a name came back.
+    const memberNames = await fetchChatProfileNames(
+      (votes || []).map((v: any) => v.user_id)
+    );
 
     const optionsWithCounts = pollData.options?.map((opt: PollOption) => {
       const optVotes = votes?.filter(v => v.option_id === opt.id) || [];

@@ -16,7 +16,10 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import { BoardVoteContainer } from '../components/polls/BoardVoteContainer';
-import { fetchChannelTeamMemberNames } from '../lib/memberNames';
+import {
+  CHAT_FALLBACK_NAME,
+  fetchChatProfileNames,
+} from '../lib/memberNames';
 
 interface Poll {
   id: string;
@@ -143,10 +146,13 @@ export default function ChannelPollsScreen() {
       ];
       // Creator names used to come from a direct `profiles` read, which RLS
       // blocked for a regular viewer -- every poll was created by 'Unknown'.
-      // The team-gated RPC resolves for anyone on the team.
+      // Names now come from the CHANNEL-gated RPC, asked for the creators by
+      // id; the team-gated call it replaced resolved nothing in a club
+      // channel, which has no team id to gate with, so every poll there was
+      // created by 'Unknown' again.
       let profileMap = new Map<string, string>();
       if (creatorIds.length > 0) {
-        const memberNames = await fetchChannelTeamMemberNames(channelId);
+        const memberNames = await fetchChatProfileNames(creatorIds);
         creatorIds.forEach((creatorId: any) => {
           const resolved = memberNames.get(creatorId);
           if (resolved?.name) profileMap.set(creatorId, resolved.name);
@@ -210,7 +216,7 @@ export default function ChannelPollsScreen() {
           created_at: p.created_at,
           ends_at: p.ends_at,
           created_by: p.created_by,
-          creator_name: profileMap.get(p.created_by) || 'Unknown',
+          creator_name: profileMap.get(p.created_by) || CHAT_FALLBACK_NAME,
           display_style: p.display_style,
           options,
           total_votes,

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { fetchChannelTeamMemberNames } from '../lib/memberNames';
+import { fetchChatProfileNames } from '../lib/memberNames';
 import { logError } from '../utils/logError';
 import { requestChatUnreadRefresh } from './useTotalChatUnread';
 
@@ -31,9 +31,13 @@ export function useChannelMembers(channelId: string | null) {
       return;
     }
     // The old `profile:profiles(full_name)` embed resolved to null for a
-    // regular viewer, so every member came back nameless. Names now come from
-    // the team-gated RPC, which resolves for anyone on the team.
-    const memberNames = await fetchChannelTeamMemberNames(channelId);
+    // regular viewer, so every member came back nameless. Names come from the
+    // CHANNEL-gated RPC: the team-gated one it replaced had no team id to work
+    // with inside a club channel or a DM (comm_channels.team_id is NULL there)
+    // and returned an empty map, so every name fell back to nothing again.
+    const memberNames = await fetchChatProfileNames(
+      (data as any[]).map((row: any) => row.user_id)
+    );
     const list: ChannelMemberRead[] = (data as any[]).map((row: any) => ({
       user_id: row.user_id,
       last_read_message_id: row.last_read_message_id ?? null,

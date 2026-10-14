@@ -13,6 +13,7 @@ import {
   Pressable,
 } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
+import { CHAT_FALLBACK_NAME } from '../../lib/memberNames';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePoll } from '../../hooks/usePolls';
@@ -91,7 +92,9 @@ function VoterListModal({
                     <Text style={voterStyles.initialsText}>{getInitials(item.full_name)}</Text>
                   </View>
                 )}
-                <Text style={voterStyles.voterRowName}>{item.full_name ?? 'Unknown'}</Text>
+                <Text style={voterStyles.voterRowName}>
+                  {item.full_name ?? CHAT_FALLBACK_NAME}
+                </Text>
               </View>
             )}
             style={{ maxHeight: 320 }}

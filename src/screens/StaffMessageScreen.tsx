@@ -14,7 +14,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import {
   fetchTeamMemberNamesForTeams,
-  UNRESOLVED_NAME,
+  CHAT_FALLBACK_NAME,
 } from '../lib/memberNames';
 
 type StaffFilter = 'all' | 'head_coaches' | 'all_coaches' | 'managers';
@@ -83,7 +83,7 @@ export default function StaffMessageScreen() {
       const staffList: StaffMember[] = staffData.map((s: any) => ({
         id: s.id,
         user_id: s.user_id,
-        full_name: memberNames.get(s.user_id)?.name || UNRESOLVED_NAME,
+        full_name: memberNames.get(s.user_id)?.name || CHAT_FALLBACK_NAME,
         role: s.staff_role || '',
         team_name: teamMap.get(s.team_id) || '',
       }));

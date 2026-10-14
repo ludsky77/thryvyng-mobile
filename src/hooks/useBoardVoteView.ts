@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  fetchChannelTeamMemberNames,
-  UNRESOLVED_NAME,
+  fetchChatProfileNames,
+  CHAT_FALLBACK_NAME,
 } from '../lib/memberNames';
 
 export interface BoardVoteParticipant {
@@ -63,7 +63,10 @@ export function useBoardVoteView(
     try {
       // 1. Fetch channel members. The `profile:profiles(id, full_name)` embed
       // this used to carry was blocked by RLS for a regular viewer, so every
-      // participant rendered as 'Unknown'; names come from the team-gated RPC.
+      // participant rendered as 'Unknown'; names come from the CHANNEL-gated
+      // RPC, asked for these members by id. The team-gated call it replaced
+      // resolved nothing on a board vote held in a club channel, which has no
+      // team id to gate with -- the whole room went back to 'Unknown'.
       const { data: membersData, error: membersError } = await supabase
         .from('comm_channel_members')
         .select('user_id')
@@ -71,7 +74,9 @@ export function useBoardVoteView(
 
       if (membersError) throw membersError;
 
-      const memberNames = await fetchChannelTeamMemberNames(channelId);
+      const memberNames = await fetchChatProfileNames(
+        (membersData || []).map((m: any) => m.user_id)
+      );
 
       // 2. Fetch poll votes with option text and comment
       const { data: votesData, error: votesError } = await supabase
@@ -115,7 +120,7 @@ export function useBoardVoteView(
       const merged: BoardVoteParticipant[] = (membersData || []).map(
         (m: any) => {
           const userId = m.user_id;
-          const name = memberNames.get(userId)?.name ?? UNRESOLVED_NAME;
+          const name = memberNames.get(userId)?.name ?? CHAT_FALLBACK_NAME;
           const voteInfo = voteMap.get(userId);
           const hasVote = !!voteInfo;
           const hasView = viewedUserIds.has(userId);

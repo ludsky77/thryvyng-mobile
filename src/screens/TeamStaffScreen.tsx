@@ -12,7 +12,10 @@ import {
   Alert,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
-import { fetchTeamMemberNames } from '../lib/memberNames';
+import {
+  CHAT_FALLBACK_NAME,
+  fetchTeamMemberNames,
+} from '../lib/memberNames';
 
 interface Profile {
   id: string;
@@ -200,7 +203,7 @@ export default function TeamStaffScreen({ route, navigation }: any) {
         ) : (
           staff.map((member) => {
             const profile = member.profiles as Profile | null;
-            const name = profile?.full_name || 'Unknown';
+            const name = profile?.full_name || CHAT_FALLBACK_NAME;
             const config = ROLE_CONFIG[member.role] || {
               label: (member.role || 'Staff')?.replace(/_/g, ' '),
               color: '#8b5cf6',

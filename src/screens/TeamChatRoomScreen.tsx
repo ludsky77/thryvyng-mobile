@@ -39,6 +39,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useChannelMembers } from '../hooks/useChannelMembers';
 import { useChatSenderLabels } from '../hooks/useChatSenderLabels';
+import { CHAT_FALLBACK_NAME } from '../lib/memberNames';
 import { useTypingPresence } from '../hooks/useTypingPresence';
 import { TypingIndicator } from '../components/chat/TypingIndicator';
 import { setActiveChannelId } from '../services/notifications';
@@ -491,12 +492,14 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
         // Same resolution order as the bubble renders (memberNames from the
         // gated RPC first, the profiles join only as fallback). Reading the join
         // alone made this modal show 'Unknown' on the very screen whose bubble
-        // had the name -- and it is persisted into reply_to_sender.
+        // had the name. This string is PERSISTED into reply_to_sender, so the
+        // last rung is the one ruled fallback -- 'Unknown' here was written to
+        // the database and outlived every later display fix.
         senderName:
           memberNames.get(actionsModalMessage.user_id)?.name ||
           (actionsModalMessage as any).profiles?.full_name ||
           actionsModalMessage.profile?.full_name ||
-          'Unknown',
+          CHAT_FALLBACK_NAME,
       });
     }
     setActionsModalVisible(false);
@@ -512,11 +515,12 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
             ? `📎 ${reactionPickerMessage.attachment_name}`
             : 'Attachment'),
         // memberNames first, join as fallback -- see startReplyFromActions.
+        // Also persisted into reply_to_sender.
         senderName:
           memberNames.get(reactionPickerMessage.user_id)?.name ||
           (reactionPickerMessage as any).profiles?.full_name ||
           reactionPickerMessage.profile?.full_name ||
-          'Unknown',
+          CHAT_FALLBACK_NAME,
       });
     }
     setReactionPickerMessage(null);
@@ -619,7 +623,9 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
       item.reply_to_id && (item.reply_to_content != null || item.reply_to_sender != null)
         ? {
             content: item.reply_to_content ?? '(message)',
-            senderName: item.reply_to_sender ?? 'Unknown',
+            // reply_to_sender is a string persisted on the row at send time.
+            // Null means it was never captured, so there is no name to show.
+            senderName: item.reply_to_sender ?? CHAT_FALLBACK_NAME,
           }
         : undefined;
 

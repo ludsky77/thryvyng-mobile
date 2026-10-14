@@ -14,8 +14,8 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  fetchChannelTeamMemberNames,
-  UNRESOLVED_NAME,
+  fetchChatProfileNames,
+  CHAT_FALLBACK_NAME,
   type MemberNameMap,
 } from '../lib/memberNames';
 
@@ -154,10 +154,14 @@ export default function PollDetailScreen() {
       // Voter names used to ride along on the vote rows as a
       // `profiles:profiles!user_id(...)` embed, which RLS blocked for a
       // regular viewer -- the voter then rendered as 'Anonymous' even on a
-      // poll that was never anonymous. The team-gated RPC resolves for anyone
-      // on the team.
+      // poll that was never anonymous. Names now come from the CHANNEL-gated
+      // RPC, asked for the voters already on this poll row; the team-gated
+      // call it replaced resolved nothing for a poll in a club channel or a
+      // DM, and sent "Anonymous" back to a poll that was never anonymous.
       setMemberNames(
-        await fetchChannelTeamMemberNames((data as any).channel_id)
+        await fetchChatProfileNames(
+          ((data as any).comm_poll_votes || []).map((v: any) => v.user_id)
+        )
       );
 
       if (user?.id) {
@@ -376,7 +380,7 @@ export default function PollDetailScreen() {
             here always meant a lookup failure. The anonymous-poll guarantee
             keeps its own word, in the badge below. */}
         <Text style={styles.voterName}>
-          {item.profile.full_name ?? UNRESOLVED_NAME}
+          {item.profile.full_name ?? CHAT_FALLBACK_NAME}
         </Text>
         <Text style={styles.voterVote} numberOfLines={2}>
           {item.voteLabel}

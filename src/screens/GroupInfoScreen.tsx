@@ -30,6 +30,13 @@ import {
   requestChatUnreadRefresh,
 } from '../contexts/ChatUnreadContext';
 import { logError } from '../utils/logError';
+import {
+  CONTACT_ROLE_GROUP_LABELS,
+  contactRoleGroup,
+  fetchContactRoles,
+  presentRoleGroups,
+  type ContactRoleGroup,
+} from '../lib/contactRoles';
 
 /** Per-channel role from comm_channel_members.role -- not the global app role. */
 type ChannelRole = 'admin' | 'member';
@@ -51,6 +58,10 @@ interface ContactResult {
   id: string;
   full_name: string | null;
   avatar_url: string | null;
+  /** Highest-priority structural role string, e.g. 'head_coach'. */
+  role?: string | null;
+  /** Which filter chip this candidate belongs under, if any. */
+  roleGroup?: ContactRoleGroup | null;
 }
 
 /** The picker fires on every keystroke, and each keystroke is an RPC round trip. */
@@ -81,6 +92,8 @@ export default function GroupInfoScreen({ route, navigation }: any) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<ContactResult[]>([]);
   const [searchError, setSearchError] = useState<string | null>(null);
+  // 'all' is the default and the only chip that is always offered.
+  const [roleFilter, setRoleFilter] = useState<ContactRoleGroup | 'all'>('all');
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Latest-wins: a slower earlier keystroke must not overwrite a newer result.
   const searchSeqRef = useRef(0);
@@ -166,8 +179,20 @@ export default function GroupInfoScreen({ route, navigation }: any) {
           avatar_url: c.avatar_url ?? null,
         }))
         .filter((p: ContactResult) => !existingIds.has(p.id));
+
+      // Role comes from role COLUMNS, resolved here at fetch time -- the
+      // search RPC returns no role, and the display string must never be
+      // pattern-matched for one.
+      const roleMap = await fetchContactRoles(filtered.map((p: ContactResult) => p.id));
+      if (seq !== searchSeqRef.current) return;
+
+      const tagged: ContactResult[] = filtered.map((p: ContactResult) => {
+        const role = roleMap.get(p.id) ?? null;
+        return { ...p, role, roleGroup: contactRoleGroup(role) };
+      });
+
       setSearchError(null);
-      setSearchResults(filtered);
+      setSearchResults(tagged);
     },
     [members]
   );
@@ -201,6 +226,7 @@ export default function GroupInfoScreen({ route, navigation }: any) {
     searchTimerRef.current = null;
     searchSeqRef.current += 1;
     setSearchError(null);
+    setRoleFilter('all');
   }, [showAddMemberModal]);
 
   useEffect(() => {
@@ -252,6 +278,19 @@ export default function GroupInfoScreen({ route, navigation }: any) {
     setEditingName(false);
     fetchGroupInfo();
   };
+
+  // Chips describe the list in front of the user: a group with nobody in it
+  // gets no chip, and a chip that vanishes mid-search cannot leave the list
+  // filtered to an empty set -- the filter falls back to All.
+  const availableRoleGroups = presentRoleGroups(searchResults);
+  const activeRoleFilter =
+    roleFilter !== 'all' && availableRoleGroups.includes(roleFilter)
+      ? roleFilter
+      : 'all';
+  const visibleSearchResults =
+    activeRoleFilter === 'all'
+      ? searchResults
+      : searchResults.filter((c) => c.roleGroup === activeRoleFilter);
 
   const removeMember = (target: ChannelMemberRow) => {
     Alert.alert(
@@ -498,8 +537,55 @@ export default function GroupInfoScreen({ route, navigation }: any) {
                 <Text style={styles.errorText}>{searchError}</Text>
               ) : null}
 
+              {/* Client-side only: these chips filter the rows already loaded,
+                  they never re-query. "All" shows whenever any group does. */}
+              {availableRoleGroups.length > 0 ? (
+                <View style={styles.roleChipRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.roleChip,
+                      activeRoleFilter === 'all' && styles.roleChipActive,
+                    ]}
+                    onPress={() => setRoleFilter('all')}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: activeRoleFilter === 'all' }}
+                  >
+                    <Text
+                      style={[
+                        styles.roleChipText,
+                        activeRoleFilter === 'all' && styles.roleChipTextActive,
+                      ]}
+                    >
+                      All
+                    </Text>
+                  </TouchableOpacity>
+
+                  {availableRoleGroups.map((group) => (
+                    <TouchableOpacity
+                      key={group}
+                      style={[
+                        styles.roleChip,
+                        activeRoleFilter === group && styles.roleChipActive,
+                      ]}
+                      onPress={() => setRoleFilter(group)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: activeRoleFilter === group }}
+                    >
+                      <Text
+                        style={[
+                          styles.roleChipText,
+                          activeRoleFilter === group && styles.roleChipTextActive,
+                        ]}
+                      >
+                        {CONTACT_ROLE_GROUP_LABELS[group]}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : null}
+
               <FlatList
-                data={searchResults}
+                data={visibleSearchResults}
                 style={styles.searchResultsList}
                 contentContainerStyle={styles.searchResultsContent}
                 keyExtractor={(item) => item.id}
@@ -531,6 +617,35 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0f172a',
+  },
+  // The sheet already pads 20 all round, so the row only needs its own
+  // bottom gap. Inactive chips sit a shade darker than the sheet, like the
+  // search field above them -- on the sheet colour they were invisible.
+  roleChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  roleChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#334155',
+    backgroundColor: '#0f172a',
+  },
+  roleChipActive: {
+    borderColor: '#8b5cf6',
+    backgroundColor: '#8b5cf6',
+  },
+  roleChipText: {
+    color: '#94a3b8',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  roleChipTextActive: {
+    color: '#fff',
   },
   header: {
     flexDirection: 'row',

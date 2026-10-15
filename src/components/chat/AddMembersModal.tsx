@@ -315,6 +315,7 @@ export default function AddMembersModal({
               contentContainerStyle={styles.searchResultsContent}
               keyExtractor={(item) => item.id}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.searchResultItem}

@@ -273,6 +273,15 @@ export interface ChatNameState {
   edited: boolean;
 }
 
+/**
+ * The hard ceiling on a chat name, from the column itself: `comm_channels.name`
+ * is `VARCHAR(100) NOT NULL` (20260108184412:51, never altered). Uncapped, an
+ * over-length name is a Postgres 22001 error on insert or update -- a failed
+ * write, not a truncation -- so every chat-name input caps at this and the
+ * rename validation measures against it.
+ */
+export const CHANNEL_NAME_MAX = 100;
+
 export function initialChatName(defaultName: string): ChatNameState {
   return { value: defaultName, edited: false };
 }

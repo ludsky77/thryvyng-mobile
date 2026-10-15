@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   SectionList,
   Alert,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, Ionicons } from '@expo/vector-icons';
@@ -35,7 +36,11 @@ import {
   requestChatUnreadRefresh,
 } from '../contexts/ChatUnreadContext';
 import { logError } from '../utils/logError';
-import { buildRoleMap, formatRoleLabel } from '../lib/chatHelpers';
+import {
+  buildRoleMap,
+  CHANNEL_NAME_MAX,
+  formatRoleLabel,
+} from '../lib/chatHelpers';
 import AddMembersModal from '../components/chat/AddMembersModal';
 
 interface Member {
@@ -113,6 +118,13 @@ export default function ChatInfoScreen() {
   const [isStaffInTeam, setIsStaffInTeam] = useState(false);
   const [sortBy, setSortBy] = useState<'role' | 'alpha'>('role');
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  // Rename, admin-only. `nameError` is rendered inline under the field rather
+  // than alerted: an empty name is a correction to make in place, not an
+  // interruption, and a refused write belongs next to the field that caused it.
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [savingName, setSavingName] = useState(false);
 
   useEffect(() => {
     if (channelId) {
@@ -387,28 +399,127 @@ export default function ChatInfoScreen() {
   }, [channel]);
 
   /**
+   * The OTHER manageable shape: a group chat. `channel_type` is 'group_dm'
+   * for both ways one is made -- Chat > + > New Group (ChatScreen.createGroup,
+   * ChatScreen.tsx:783-791) and Chat > + > Staff Message
+   * (StaffMessageScreen.tsx:238-247, which additionally sets `club_id` and
+   * leaves `team_id` NULL). A Staff-Message chat therefore failed
+   * `isCustomTeamChannel` on its channel_type alone, which is why "U40 mens"
+   * showed no Add, no Remove and no Rename.
+   *
+   * Both are included, not just the club-level one: they are the same row
+   * shape under the same policies, and splitting them on `club_id` would be a
+   * UI rule with no DB rule behind it. The admin gate below is what limits it.
+   *
+   * `is_default` is still excluded -- a default channel's membership is
+   * server-maintained -- and so is a DM, which has no roster to manage.
+   */
+  const isManageableGroupChat = useMemo(() => {
+    if (!channel) return false;
+    if (channel.is_direct_message === true) return false;
+    if (channel.is_default === true) return false;
+    return channel.channel_type === 'group_dm';
+  }, [channel]);
+
+  /**
    * ADD: team staff or a channel admin. Mirrors the two live arms of the
    * comm_channel_members INSERT policy -- `is_channel_admin(auth.uid(),
    * channel_id)` OR a `team_staff` row for the channel's team (web repo
    * 20261013013626_stone_b2_s1_chat_permissions_leave.sql:151-168). No new
    * rule: `isStaffInTeam` is the existence check this screen already ran for
    * its Staff Controls, and `myMembershipRole` is already loaded.
+   *
+   * A group chat has no team, so only the admin arm can ever be true there --
+   * `isStaffInTeam` is false whenever the route carries no teamId. The team
+   * arm is left written out rather than folded in, so the team-channel gate
+   * below reads exactly as it did before this change.
    */
   const canAddMembers =
-    isCustomTeamChannel && (isStaffInTeam || myMembershipRole === 'admin');
+    (isCustomTeamChannel && (isStaffInTeam || myMembershipRole === 'admin')) ||
+    (isManageableGroupChat && myMembershipRole === 'admin');
 
   /**
    * REMOVE: the channel admin ONLY. The DELETE policy's other-person arm is
    * `user_id <> auth.uid() AND is_channel_admin(auth.uid(), channel_id)`
    * (same migration, :191-200) -- team staff are NOT admitted, so showing
    * Remove to a coach would offer a button the DB silently refuses.
+   *
+   * Removing someone here removes exactly one `comm_channel_members` row. It
+   * does not touch the team roster, club membership, the player or parent
+   * record, invitations, registration or payments -- re-adding is one tap of
+   * Add. The confirm copy says so.
    */
-  const canRemoveMembers = isCustomTeamChannel && myMembershipRole === 'admin';
+  const canRemoveMembers =
+    (isCustomTeamChannel || isManageableGroupChat) &&
+    myMembershipRole === 'admin';
+
+  /**
+   * RENAME: group chats only, admin only -- the same gate GroupInfoScreen has
+   * always used for the same write (GroupInfoScreen.tsx:117-119). Team and
+   * club channels are deliberately NOT offered a rename here: their names are
+   * part of the team's structure, and nothing about them changes in this
+   * build.
+   */
+  const canRenameChannel = isManageableGroupChat && myMembershipRole === 'admin';
+
+  /** The row's name wins over the route param, so a rename shows immediately. */
+  const displayChannelName = channel?.name || channelName || 'Chat';
+
+  const startRename = () => {
+    setNameDraft(channel?.name || channelName || '');
+    setNameError(null);
+    setEditingName(true);
+  };
+
+  const cancelRename = () => {
+    setEditingName(false);
+    setNameError(null);
+  };
+
+  const saveChannelName = async () => {
+    if (savingName) return;
+
+    const trimmed = nameDraft.trim();
+    if (!trimmed) {
+      setNameError('Enter a chat name.');
+      return;
+    }
+
+    setSavingName(true);
+    try {
+      // `.select('id')` is the refusal check: RLS filters a denied update out
+      // silently -- PostgREST returns no error and no rows -- so an empty
+      // result is a refusal, not a success. Same pattern as the member delete
+      // below and as GroupInfoScreen.updateGroupName.
+      const { data, error } = await supabase
+        .from('comm_channels')
+        .update({ name: trimmed })
+        .eq('id', channelId)
+        .select('id');
+
+      if (error || !data || data.length === 0) {
+        logError('ChatInfo.renameChannel', error ?? 'refused', { channelId });
+        setNameError('Could not rename this chat.');
+        return;
+      }
+
+      setChannel((prev) => (prev ? { ...prev, name: trimmed } : prev));
+      setEditingName(false);
+      setNameError(null);
+    } finally {
+      setSavingName(false);
+    }
+  };
 
   const removeMember = (target: Member) => {
+    // The copy states the blast radius because the old wording ("from this
+    // channel?") left it open. Removing here deletes ONE
+    // comm_channel_members row -- team roster, club membership, player and
+    // parent records, invitations, registration and payments are all
+    // untouched, and Add puts the person back.
     Alert.alert(
-      'Remove Member',
-      `Remove ${target.full_name} from this channel?`,
+      'Remove from this chat?',
+      `${target.full_name} will lose access to this chat. They stay on their team — nothing else changes, and you can add them back.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -645,7 +756,76 @@ export default function ChatInfoScreen() {
               <View style={styles.channelAvatar}>
                 <Feather name="hash" size={28} color="#8b5cf6" />
               </View>
-              <Text style={styles.channelName}>{channelName || 'Chat'}</Text>
+              {canRenameChannel && editingName ? (
+                <View style={styles.renameBlock}>
+                  <TextInput
+                    style={styles.nameInput}
+                    value={nameDraft}
+                    onChangeText={(text) => {
+                      setNameDraft(text);
+                      if (nameError) setNameError(null);
+                    }}
+                    maxLength={CHANNEL_NAME_MAX}
+                    placeholder="Chat name"
+                    placeholderTextColor="#64748b"
+                    autoFocus
+                    returnKeyType="done"
+                    onSubmitEditing={saveChannelName}
+                    accessibilityLabel="Chat name"
+                  />
+                  {nameError ? (
+                    <Text style={styles.nameError}>{nameError}</Text>
+                  ) : null}
+                  <View style={styles.renameActions}>
+                    <TouchableOpacity
+                      onPress={cancelRename}
+                      accessibilityRole="button"
+                      accessibilityLabel="Cancel rename"
+                    >
+                      <Text style={styles.renameCancel}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={saveChannelName}
+                      disabled={savingName}
+                      accessibilityRole="button"
+                      accessibilityLabel="Save chat name"
+                    >
+                      <Text
+                        style={[
+                          styles.renameSave,
+                          savingName && styles.renameSaveDisabled,
+                        ]}
+                      >
+                        {savingName ? 'Saving...' : 'Save'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : canRenameChannel ? (
+                <TouchableOpacity
+                  style={styles.nameRow}
+                  onPress={startRename}
+                  accessibilityRole="button"
+                  accessibilityLabel="Rename chat"
+                >
+                  <Text
+                    style={styles.channelName}
+                    numberOfLines={3}
+                    ellipsizeMode="tail"
+                  >
+                    {displayChannelName}
+                  </Text>
+                  <Feather name="edit-2" size={14} color="#8b5cf6" />
+                </TouchableOpacity>
+              ) : (
+                <Text
+                  style={styles.channelName}
+                  numberOfLines={3}
+                  ellipsizeMode="tail"
+                >
+                  {displayChannelName}
+                </Text>
+              )}
               <Text style={styles.channelMeta}>
                 {channelType === 'team'
                   ? 'Team Chat'
@@ -826,6 +1006,9 @@ const styles = StyleSheet.create({
   channelInfo: {
     alignItems: 'center',
     paddingVertical: 24,
+    // A 100-char name with no spaces has no break opportunity, so without a
+    // horizontal bound it ran off both edges of the screen.
+    paddingHorizontal: 24,
     borderBottomWidth: 1,
     borderBottomColor: '#1e293b',
   },
@@ -843,6 +1026,62 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#fff',
     marginBottom: 4,
+    // flexShrink lets the name yield to the pencil inside nameRow; without it
+    // the Text claimed its full intrinsic width and pushed the pencil off
+    // screen. Centred because the block is centred.
+    flexShrink: 1,
+    textAlign: 'center',
+  },
+  // Tap target for the rename affordance: the name and its pencil read as one
+  // control, centred like the plain name it replaces.
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    // Bounds the row so a long name wraps instead of growing the row past
+    // the screen. The pencil is never pushed out.
+    maxWidth: '100%',
+  },
+  renameBlock: {
+    width: '100%',
+    paddingHorizontal: 24,
+    marginBottom: 8,
+  },
+  nameInput: {
+    backgroundColor: '#1e293b',
+    borderWidth: 1,
+    borderColor: '#8B5CF6',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: '#fff',
+    textAlign: 'center',
+  },
+  nameError: {
+    marginTop: 6,
+    fontSize: 13,
+    color: '#EF4444',
+    textAlign: 'center',
+  },
+  renameActions: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 24,
+    marginTop: 10,
+  },
+  renameCancel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#94a3b8',
+  },
+  renameSave: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8B5CF6',
+  },
+  renameSaveDisabled: {
+    color: '#64748b',
   },
   channelMeta: {
     fontSize: 14,

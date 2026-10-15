@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
+  Keyboard,
   StyleSheet,
   TouchableOpacity,
   FlatList,
@@ -20,6 +21,7 @@ import {
 } from '../lib/memberNames';
 import {
   buildMemberInserts,
+  CHANNEL_NAME_MAX,
   chatNameOnEdit,
   chatNameOnGroupChange,
   checkedRecipientIds,
@@ -27,7 +29,6 @@ import {
   formatRoleLabel,
   initialChatName,
   pickHighestRole,
-  resolveChatName,
   selectAllLabel,
   toggleWholeGroup,
   type ChatNameState,
@@ -112,6 +113,10 @@ export default function StaffMessageScreen() {
   );
   // Hides rows in the checklist. Never touches who is checked.
   const [recipientQuery, setRecipientQuery] = useState('');
+  // An empty chat name blocks CREATE, the same way it blocks rename in Chat
+  // Info and Group Info (Lu, Oct 14 -- one rule for every chat-name field).
+  // Inline under the field, never an alert; cleared on the next keystroke.
+  const [nameError, setNameError] = useState<string | null>(null);
 
   useEffect(() => {
     if (clubId) {
@@ -208,6 +213,10 @@ export default function StaffMessageScreen() {
 
   /** Picking a different group starts that group fully checked. */
   const selectFilter = (key: StaffFilter) => {
+    // Picking a group is a tap outside the two text fields, so the keyboard
+    // goes. It used to stay up and cover the recipient list the tap was
+    // meant to change.
+    Keyboard.dismiss();
     setSelectedFilter(key);
     setExcludedIds(new Set());
     setChatName((prev) => chatNameOnGroupChange(prev, groupLabel(key)));
@@ -217,6 +226,7 @@ export default function StaffMessageScreen() {
   };
 
   const toggleRecipient = (userId: string) => {
+    Keyboard.dismiss();
     setExcludedIds((prev) => {
       const next = new Set(prev);
       if (next.has(userId)) next.delete(userId);
@@ -230,11 +240,21 @@ export default function StaffMessageScreen() {
     // path so an empty group can never be created.
     if (recipientCount === 0 || !user?.id) return;
 
+    // One rule for every chat-name field: empty or whitespace blocks the
+    // write. This used to fall back to the group's label via resolveChatName,
+    // so clearing the field silently created a chat named after a group the
+    // sender had deliberately renamed away from. The preset auto-fill still
+    // populates the field (chatNameOnGroupChange) -- this only catches a field
+    // the sender emptied by hand.
+    const trimmedName = chatName.value.trim();
+    if (!trimmedName) {
+      setNameError('Enter a chat name.');
+      return;
+    }
+
     setCreating(true);
     try {
-      // Trimmed; an empty field falls back to the group's label rather than
-      // creating a nameless chat.
-      const channelName = resolveChatName(chatName, defaultChatName);
+      const channelName = trimmedName;
 
       const { data: channel, error: channelError } = await supabase
         .from('comm_channels')
@@ -330,52 +350,63 @@ export default function StaffMessageScreen() {
         <View style={{ width: 24 }} />
       </View>
 
+      {/* Two columns, not four stacked rows. Four 44pt rows cost ~200pt of a
+          701pt screen (the tab bar is on this route, see styles.filterGrid),
+          which left room for two recipients. The radio is gone -- the filled
+          pill and its border already say which group is picked -- but the
+          44pt tap target and the 15pt label are unchanged. */}
       <View style={styles.filterSection}>
         <Text style={styles.filterLabel}>Select recipients:</Text>
-        {FILTER_OPTIONS.map((option) => (
-          <TouchableOpacity
-            key={option.key}
-            style={[
-              styles.filterOption,
-              selectedFilter === option.key && styles.filterOptionSelected,
-            ]}
-            onPress={() => selectFilter(option.key)}
-          >
-            <View style={styles.radioOuter}>
-              {selectedFilter === option.key && (
-                <View style={styles.radioInner} />
-              )}
-            </View>
-            <Text
+        <View style={styles.filterGrid}>
+          {FILTER_OPTIONS.map((option) => (
+            <TouchableOpacity
+              key={option.key}
               style={[
-                styles.filterOptionText,
-                selectedFilter === option.key && styles.filterOptionTextSelected,
+                styles.filterOption,
+                selectedFilter === option.key && styles.filterOptionSelected,
               ]}
+              onPress={() => selectFilter(option.key)}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: selectedFilter === option.key }}
+              accessibilityLabel={option.label}
             >
-              {option.label}
-            </Text>
-            <Text style={styles.filterCount}>{getFilterCount(option.key)}</Text>
-          </TouchableOpacity>
-        ))}
+              <Text
+                style={[
+                  styles.filterOptionText,
+                  selectedFilter === option.key &&
+                    styles.filterOptionTextSelected,
+                ]}
+                numberOfLines={1}
+              >
+                {option.label}
+              </Text>
+              <Text style={styles.filterCount}>
+                {getFilterCount(option.key)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
       {/* Item 1. Defaults to the picked group's label and follows the group
           until the sender types their own name, then stays as typed
-          (`chatNameOnGroupChange`). No maxLength: Group Message's name field
-          has none either, and matching it is the point. */}
+          (`chatNameOnGroupChange`). */}
       <View style={styles.nameSection}>
         <Text style={styles.filterLabel}>Chat name</Text>
         <TextInput
           style={styles.textInput}
           value={chatName.value}
-          onChangeText={(text) =>
-            setChatName((prev) => chatNameOnEdit(prev, text))
-          }
+          onChangeText={(text) => {
+            setChatName((prev) => chatNameOnEdit(prev, text));
+            if (nameError) setNameError(null);
+          }}
           placeholder={defaultChatName}
           placeholderTextColor="#64748b"
           returnKeyType="done"
           accessibilityLabel="Chat name"
+          maxLength={CHANNEL_NAME_MAX}
         />
+        {nameError ? <Text style={styles.nameError}>{nameError}</Text> : null}
       </View>
 
       {/* The group is a starting point, not the send list: every row is
@@ -403,9 +434,10 @@ export default function StaffMessageScreen() {
           {/* Item 3. Acts on the whole group, not the visible rows. */}
           {filteredStaff.length > 0 ? (
             <TouchableOpacity
-              onPress={() =>
-                setExcludedIds((prev) => toggleWholeGroup(filteredStaff, prev))
-              }
+              onPress={() => {
+                Keyboard.dismiss();
+                setExcludedIds((prev) => toggleWholeGroup(filteredStaff, prev));
+              }}
               accessibilityRole="button"
               accessibilityLabel={toggleLabel}
             >
@@ -416,6 +448,7 @@ export default function StaffMessageScreen() {
         <FlatList
           data={visibleStaff}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           keyExtractor={(item) => item.user_id}
           renderItem={({ item }) => {
             const checked = !excludedIds.has(item.user_id);
@@ -515,49 +548,53 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   filterSection: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#1e293b',
   },
   filterLabel: {
     fontSize: 14,
     color: '#94a3b8',
-    marginBottom: 12,
+    marginBottom: 6,
+  },
+  // Two per row: 49% + space-between leaves an 8pt gutter at 402pt wide, and
+  // 181pt of cell holds the longest label ("Team Managers Only") at 15pt with
+  // room for a two-digit count. rowGap, not marginBottom, so the last row
+  // adds no trailing space.
+  filterGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 6,
   },
   filterOption: {
+    width: '49%',
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 10,
     backgroundColor: '#1e293b',
     borderRadius: 10,
-    marginBottom: 8,
+    // 12 + 18 (15pt line) + 12 + 2 border = 44pt, the minimum tap target.
+    minHeight: 44,
+    // The border is always present and only changes COLOUR on selection --
+    // adding it on select used to make the picked row 2pt taller and shuffle
+    // the grid.
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
   filterOptionSelected: {
     backgroundColor: '#2d2a5e',
-    borderWidth: 1,
     borderColor: '#8b5cf6',
-  },
-  radioOuter: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#64748b',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  radioInner: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#8b5cf6',
   },
   filterOptionText: {
     flex: 1,
     fontSize: 15,
     color: '#fff',
+    marginRight: 6,
   },
   filterOptionTextSelected: {
     fontWeight: '600',
@@ -568,7 +605,14 @@ const styles = StyleSheet.create({
   },
   nameSection: {
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 10,
+  },
+  // Same wording, colour and placement as the rename errors in ChatInfoScreen
+  // and GroupInfoScreen.
+  nameError: {
+    marginTop: 6,
+    fontSize: 13,
+    color: '#EF4444',
   },
   textInput: {
     backgroundColor: '#1e293b',
@@ -582,7 +626,11 @@ const styles = StyleSheet.create({
   },
   previewSection: {
     flex: 1,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    // No bottom padding: the footer's own border and padding already separate
+    // the list from the button, and this is the cheapest 16pt on the screen.
+    paddingBottom: 0,
   },
   searchInput: {
     backgroundColor: '#1e293b',
@@ -593,13 +641,13 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 15,
     color: '#fff',
-    marginBottom: 12,
+    marginBottom: 6,
   },
   previewHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 6,
   },
   previewTitle: {
     fontSize: 14,
@@ -632,15 +680,18 @@ const styles = StyleSheet.create({
     color: '#64748b',
     textDecorationLine: 'line-through',
   },
+  // 7 + 32 + 7 = 46pt: above the 44pt tap target, 6pt shorter than before.
+  // Name 14pt and role 12pt are unchanged -- only the avatar and the padding
+  // came down.
   staffRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 7,
   },
   staffAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#3b82f6',
     alignItems: 'center',
     justifyContent: 'center',
@@ -669,7 +720,8 @@ const styles = StyleSheet.create({
     paddingLeft: 48,
   },
   footer: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: '#1e293b',
   },

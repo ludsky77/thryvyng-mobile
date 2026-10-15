@@ -25,6 +25,7 @@ import {
   requestChatUnreadRefresh,
 } from '../contexts/ChatUnreadContext';
 import { logError } from '../utils/logError';
+import { CHANNEL_NAME_MAX } from '../lib/chatHelpers';
 import AddMembersModal from '../components/chat/AddMembersModal';
 
 /** Per-channel role from comm_channel_members.role -- not the global app role. */
@@ -66,6 +67,10 @@ export default function GroupInfoScreen({ route, navigation }: any) {
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [newName, setNewName] = useState('');
+  // Same inline treatment as ChatInfoScreen: an empty name is a correction to
+  // make in place, not an alert. It used to be a silent `return`, which read
+  // as a dead Save button.
+  const [nameError, setNameError] = useState<string | null>(null);
 
   // Membership comes from one SECURITY DEFINER RPC: RLS does not let a regular
   // parent/player read another member's profile or channel row directly, which
@@ -119,11 +124,15 @@ export default function GroupInfoScreen({ route, navigation }: any) {
     members.find((r) => r.user_id === user?.id)?.channel_role === 'admin';
 
   const updateGroupName = async () => {
-    if (!newName.trim()) return;
+    const trimmed = newName.trim();
+    if (!trimmed) {
+      setNameError('Enter a chat name.');
+      return;
+    }
 
     const { data, error } = await supabase
       .from('comm_channels')
-      .update({ name: newName.trim() })
+      .update({ name: trimmed })
       .eq('id', channelId)
       .select('id');
 
@@ -138,6 +147,7 @@ export default function GroupInfoScreen({ route, navigation }: any) {
     }
 
     setEditingName(false);
+    setNameError(null);
     fetchGroupInfo();
   };
 
@@ -240,25 +250,52 @@ export default function GroupInfoScreen({ route, navigation }: any) {
       <View style={styles.section}>
         <View style={styles.groupNameContainer}>
           {isAdmin && editingName ? (
-            <View style={styles.editNameRow}>
-              <TextInput
-                style={styles.nameInput}
-                value={newName}
-                onChangeText={setNewName}
-                placeholderTextColor="#6B7280"
-                autoFocus
-              />
-              <TouchableOpacity onPress={updateGroupName}>
-                <Text style={styles.saveButton}>Save</Text>
-              </TouchableOpacity>
+            <View style={styles.editNameBlock}>
+              <View style={styles.editNameRow}>
+                <TextInput
+                  style={styles.nameInput}
+                  value={newName}
+                  onChangeText={(text) => {
+                    setNewName(text);
+                    if (nameError) setNameError(null);
+                  }}
+                  placeholderTextColor="#6B7280"
+                  autoFocus
+                  maxLength={CHANNEL_NAME_MAX}
+                />
+                <TouchableOpacity onPress={updateGroupName}>
+                  <Text style={styles.saveButton}>Save</Text>
+                </TouchableOpacity>
+              </View>
+              {nameError ? (
+                <Text style={styles.nameError}>{nameError}</Text>
+              ) : null}
             </View>
           ) : isAdmin ? (
-            <TouchableOpacity onPress={() => setEditingName(true)} style={styles.nameRow}>
-              <Text style={styles.groupName}>{channel?.name}</Text>
+            <TouchableOpacity
+              onPress={() => {
+                setNameError(null);
+                setEditingName(true);
+              }}
+              style={styles.nameRow}
+            >
+              <Text
+                style={styles.groupName}
+                numberOfLines={3}
+                ellipsizeMode="tail"
+              >
+                {channel?.name}
+              </Text>
               <Text style={styles.editIcon}>✏️</Text>
             </TouchableOpacity>
           ) : (
-            <Text style={styles.groupName}>{channel?.name}</Text>
+            <Text
+              style={styles.groupName}
+              numberOfLines={3}
+              ellipsizeMode="tail"
+            >
+              {channel?.name}
+            </Text>
           )}
           <Text style={styles.memberCount}>{members.length} members</Text>
         </View>
@@ -378,16 +415,24 @@ const styles = StyleSheet.create({
   groupNameContainer: {
     alignItems: 'center',
     paddingVertical: 20,
+    // A 100-char name with no spaces has no break opportunity, so without a
+    // horizontal bound it ran off both edges of the screen.
+    paddingHorizontal: 24,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    // Bounds the row so a long name wraps instead of pushing the pencil out.
+    maxWidth: '100%',
   },
   groupName: {
     color: '#fff',
     fontSize: 24,
     fontWeight: '700',
     marginRight: 8,
+    // Yield to the pencil rather than claim the full intrinsic width.
+    flexShrink: 1,
+    textAlign: 'center',
   },
   editIcon: {
     fontSize: 16,
@@ -397,9 +442,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 4,
   },
+  editNameBlock: {
+    alignSelf: 'stretch',
+  },
   editNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  // Same wording and colour as ChatInfoScreen's rename error.
+  nameError: {
+    marginTop: 6,
+    fontSize: 13,
+    color: '#EF4444',
   },
   nameInput: {
     backgroundColor: '#1e293b',

@@ -22,7 +22,11 @@ import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { useSharedUserTeams } from '../contexts/TeamsContext';
 import { supabase } from '../lib/supabase';
-import { formatRoleLabel, getTimeAgo } from '../lib/chatHelpers';
+import {
+  CHANNEL_NAME_MAX,
+  formatRoleLabel,
+  getTimeAgo,
+} from '../lib/chatHelpers';
 import { CHAT_FALLBACK_NAME } from '../lib/memberNames';
 import {
   CONTACT_ROLE_GROUP_LABELS,
@@ -1287,6 +1291,7 @@ export default function ChatScreen({ navigation, route }: any) {
             placeholderTextColor="#6B7280"
             value={groupName}
             onChangeText={setGroupName}
+            maxLength={CHANNEL_NAME_MAX}
           />
           {selectedGroupUsers.length > 0 && (
             <View style={styles.chipsSection}>
@@ -1696,7 +1701,12 @@ export default function ChatScreen({ navigation, route }: any) {
               >
                 <Text style={styles.hashIcon}>#</Text>
                 <View style={styles.teamChannelContent}>
-                  <Text style={styles.teamChannelName}>{item.name}</Text>
+                  {/* Its container is flex:1, so an unbroken 100-char name
+                      char-wrapped into a very tall row instead of running off
+                      screen. One line, same as every other chat list row. */}
+                  <Text style={styles.teamChannelName} numberOfLines={1}>
+                    {item.name}
+                  </Text>
                   <Text style={styles.teamChannelTeam}>
                     {item.team?.name || 'Club Channel'}
                   </Text>

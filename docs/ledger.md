@@ -3,8 +3,8 @@
 **What this is.** The record of what this app has and *how we know it works*. Read it
 before planning any phase. Never plan as new what this file shows as already built.
 
-**Base:** HEAD `66f7dea` · seeded 2026-10-14, updated 2026-10-14 after Lu's simulator
-click-through · docs-only, nothing in `src/` read-modified.
+**Base:** HEAD `22a8b3d` · seeded 2026-10-14, updated 2026-10-15 after Lu's simulator
+click-through and prod SQL probes · docs-only, nothing in `src/` read-modified.
 
 **How to read `Status`.** Status is the strength of the *test record*, never a claim that
 a feature is good. It is deliberately decoupled from release: a row can be `UNVERIFIED`
@@ -14,16 +14,23 @@ and still be in users' hands — the `Verified how` cell then says `in stores <v
 |---|---|
 | `VERIFIED-DEVICE` | a human ran it on a physical device and the result is recorded |
 | `VERIFIED-SIMULATOR` | a human ran it on the iOS simulator and the result is recorded |
+| `VERIFIED-SQL` | a query against **prod** confirmed the stored result, and the query is recorded |
 | `AGENT-ONLY` | typecheck / unit or logic smoke / static proof only — never run on device or simulator |
 | `UNVERIFIED` | no test record of any kind in this repo |
+
+`VERIFIED-SQL` was added 2026-10-15. It is not ranked against the two human-run values: it
+proves what the **database** holds, which a click-through cannot, and says nothing about
+what the UI showed. A row can deserve both; where it does, the stronger evidence is named
+in `Verified how`.
 
 `Date` is when the feature **landed** (commit date); the date it was *verified* is in `Verified how`.
 
 **Sources.** Every row cites one: a file in `docs/recon/`, a commit message (`git log`), or
 `handoff Oct 13` = facts relayed from the planning chat on 2026-10-13, or `sim run Oct 14` =
 Lu's click-through on the **iPhone 17 Pro simulator** against live Metro at HEAD `66f7dea`,
-2026-10-14. Anything unsourced
-was omitted rather than guessed. `INFERRED` marks reasoning, not proof.
+2026-10-14, or `Lu sim Oct 14–15` = the same simulator carried across both days against the
+uncommitted Chat-Info tree, or a **prod SQL probe** quoted with its channel id. Anything
+unsourced was omitted rather than guessed. `INFERRED` marks reasoning, not proof.
 
 **Coverage.** Rows start at the 2026-09-01 chat core batch. Earlier history
 (registration/auth rewrites P1a–P2c, join flows, captcha, versions 1.0.12–1.0.15) is
@@ -35,6 +42,23 @@ was omitted rather than guessed. `INFERRED` marks reasoning, not proof.
 
 | Feature | Commit | Verified how | Date | Status |
 |---|---|---|---|---|
+| **Chat Info — Add / Remove members on `group_dm` chats** (gate widened from `channel_type 'team'\|'club'` to include `'group_dm'`, admin only; this is what unblocked Staff-Message chats like "U40 mens"). Admin cannot remove their own row | *uncommitted* | **Lu sim Oct 14–15** (iPhone 17 Pro simulator, live Metro, uncommitted tree) — Add and Remove both land on a Staff-Message chat; **adding the person back after a Remove works**; no Remove offered on the admin's own row. Build proof: tsc **64 = baseline**, error list byte-identical, zero in touched files; `chatHelpers.test.ts` **48/48** + `chatDays.test.ts` **22/22** in 3 TZs — `docs/recon/chat-info-club-chats.md` | Oct 14, 2026 | VERIFIED-SIMULATOR |
+| **Chat Info — Rename** (group chats, admin only; trim, `.select('id')` refusal check, inline message on an empty name) | *uncommitted* | **Lu sim Oct 14–15** (iPhone 17 Pro simulator, live Metro, uncommitted tree) — rename saves and shows at once; clearing the field and saving shows `Enter a chat name.` inline and writes nothing. Build proof: tsc **64 = baseline**, error list byte-identical, zero in touched files; `chatHelpers.test.ts` **48/48** + `chatDays.test.ts` **22/22** in 3 TZs — `docs/recon/chat-info-club-chats.md` | Oct 14, 2026 | VERIFIED-SIMULATOR |
+| **Chat Info — Remove confirm says it is chat-only** ("Remove from this chat?" / "…They stay on their team — nothing else changes, and you can add them back."). Carries Lu's Oct 14 ruling | *uncommitted* | **Lu sim Oct 14–15** (iPhone 17 Pro simulator, live Metro, uncommitted tree) — wording seen on a `group_dm` chat. The same string on **team** channels is a separate, unverified row below. Build proof: tsc **64 = baseline**, error list byte-identical, zero in touched files; `chatHelpers.test.ts` **48/48** + `chatDays.test.ts` **22/22** in 3 TZs — `docs/recon/chat-info-club-chats.md` | Oct 14, 2026 | VERIFIED-SIMULATOR |
+| **Default team channel still shows no Add / Remove** — `is_default === true` returns false from *both* gates (`ChatInfoScreen.tsx:397` and `:420`), so widening the gate did not leak into server-managed membership | *uncommitted* | **Lu sim Oct 14–15** (iPhone 17 Pro simulator, live Metro, uncommitted tree) — **ZZ Test Team 0826** default team chat, Oct 15: no Add, no Remove. Matters because the prod RPC re-adds exactly there (see Phase D carry). Build proof: tsc **64 = baseline**, error list byte-identical, zero in touched files; `chatHelpers.test.ts` **48/48** + `chatDays.test.ts` **22/22** in 3 TZs — `docs/recon/chat-info-club-chats.md` | Oct 14, 2026 | VERIFIED-SIMULATOR |
+| **Staff Message — chat name capped at 100** (`CHANNEL_NAME_MAX`, `StaffMessageScreen.tsx:378`) | *uncommitted* | **Lu sim Oct 14–15** (iPhone 17 Pro simulator, live Metro, uncommitted tree) — the field stops accepting at 100, so the `22001` write error cannot be reached from this screen. Build proof: tsc **64 = baseline**, error list byte-identical, zero in touched files; `chatHelpers.test.ts` **48/48** + `chatDays.test.ts` **22/22** in 3 TZs — `docs/recon/chat-info-club-chats.md` | Oct 14, 2026 | VERIFIED-SIMULATOR |
+| **Staff Message — keyboard dismisses** on preset tap, recipient tap and list drag (`Keyboard.dismiss()` in the three handlers + `keyboardDismissMode="on-drag"`; `keyboardShouldPersistTaps="handled"` kept so taps still land on the first tap) | *uncommitted* | **Lu sim Oct 14–15** (iPhone 17 Pro simulator, live Metro, uncommitted tree) — FND-SIM-1, raised and re-checked by Lu. Build proof: tsc **64 = baseline**, error list byte-identical, zero in touched files; `chatHelpers.test.ts` **48/48** + `chatDays.test.ts` **22/22** in 3 TZs — `docs/recon/chat-info-club-chats.md` | Oct 14, 2026 | VERIFIED-SIMULATOR |
+| **Staff Message — 2-column preset grid**, radio dropped, gaps tightened, row 52→46pt: ~**6** recipient rows visible, was 2 | *uncommitted* | **Lu sim Oct 14–15** (iPhone 17 Pro simulator, live Metro, uncommitted tree) — **Lu kept the grid** after seeing it (it was flagged as a redesign beyond "less padding", since a 44pt tap target means a stacked row cannot shrink). Build proof: tsc **64 = baseline**, error list byte-identical, zero in touched files; `chatHelpers.test.ts` **48/48** + `chatDays.test.ts` **22/22** in 3 TZs — `docs/recon/chat-info-club-chats.md` | Oct 14, 2026 | VERIFIED-SIMULATOR |
+| **Chat Info — a 100-char unbroken name wraps inside the screen**, max 3 lines then ellipsis, rename pencil always visible (`numberOfLines={3}` + `ellipsizeMode="tail"` + `flexShrink: 1`, row `maxWidth: '100%'`, block `paddingHorizontal: 24`) | *uncommitted* | **Lu sim Oct 14–15** (iPhone 17 Pro simulator, live Metro, uncommitted tree) — FND-SIM-2, raised and re-checked by Lu on Chat Info. The other 4 swept sites are a separate, unverified row below. Build proof: tsc **64 = baseline**, error list byte-identical, zero in touched files; `chatHelpers.test.ts` **48/48** + `chatDays.test.ts` **22/22** in 3 TZs — `docs/recon/chat-info-club-chats.md` | Oct 14, 2026 | VERIFIED-SIMULATOR |
+| **Remove persists server-side** — the delete is not filtered back by RLS and does not reappear | *uncommitted* | **SQL probe against prod, Oct 15**: after a Remove on channel `9c58bd58-e8ff-4629-beef-d983738c6346`, `cole_memberships` = **0**. This is the row that proves Remove is a real write, not a silently-refused one. Build proof: tsc **64 = baseline**, error list byte-identical, zero in touched files; `chatHelpers.test.ts` **48/48** + `chatDays.test.ts` **22/22** in 3 TZs — `docs/recon/chat-info-club-chats.md` | Oct 14, 2026 | VERIFIED-SQL |
+| **Staff Message — empty chat name blocks CREATE** (`StaffMessageScreen.tsx:243-247`; inline `Enter a chat name.`, clears on keystroke; preset auto-fill unchanged). Replaces the `resolveChatName` fallback that silently named the chat after the picked group | *uncommitted* | tsc **64 = baseline**, error list byte-identical, zero in touched files; `chatHelpers.test.ts` **48/48** + `chatDays.test.ts` **22/22** in 3 TZs. **Not seen by Lu in the Oct 14–15 sim pass** — `docs/recon/chat-info-club-chats.md` | Oct 14, 2026 | AGENT-ONLY |
+| **Chat-name overflow — the other 4 swept sites.** `GroupInfoScreen` title wrap (both branches) and `ChatScreen` by-team channel row one-line ellipsis (`:1704`). 9 sites audited, 5 fixed; 4 were already safe | *uncommitted* | tsc **64 = baseline**, error list byte-identical, zero in touched files; `chatHelpers.test.ts` **48/48** + `chatDays.test.ts` **22/22** in 3 TZs. **Not seen by Lu in the Oct 14–15 sim pass** — `docs/recon/chat-info-club-chats.md` | Oct 14, 2026 | AGENT-ONLY |
+| **Group Info rename — empty name says why** (used to `return` silently, which read as a dead Save button; now the same inline `Enter a chat name.`) | *uncommitted* | tsc **64 = baseline**, error list byte-identical, zero in touched files; `chatHelpers.test.ts` **48/48** + `chatDays.test.ts` **22/22** in 3 TZs. **Not seen by Lu in the Oct 14–15 sim pass** — `docs/recon/chat-info-club-chats.md` | Oct 14, 2026 | AGENT-ONLY |
+| **Add picker excludes current members** — `existingUserIds={members.map(m => m.user_id)}` was already wired on the Chat Info `<AddMembersModal>`, so a person already in the chat is not offered again | *uncommitted* | tsc **64 = baseline**, error list byte-identical, zero in touched files; `chatHelpers.test.ts` **48/48** + `chatDays.test.ts` **22/22** in 3 TZs. **Not seen by Lu in the Oct 14–15 sim pass** — `docs/recon/chat-info-club-chats.md` | Oct 14, 2026 | AGENT-ONLY |
+| **Non-admins see no Add / Remove / Rename** — all three gates require `myMembershipRole === 'admin'` | *uncommitted* | tsc **64 = baseline**, error list byte-identical, zero in touched files; `chatHelpers.test.ts` **48/48** + `chatDays.test.ts` **22/22** in 3 TZs. **Not seen by Lu in the Oct 14–15 sim pass** — `docs/recon/chat-info-club-chats.md` | Oct 14, 2026 | AGENT-ONLY |
+| **Team-channel Remove confirm wording** — the new chat-only string also shows on custom **team** channels (accepted by Lu, copy only). Verified on a `group_dm` above; **not** opened on a team channel in the sim pass | *uncommitted* | tsc **64 = baseline**, error list byte-identical, zero in touched files; `chatHelpers.test.ts` **48/48** + `chatDays.test.ts` **22/22** in 3 TZs. **Not seen by Lu in the Oct 14–15 sim pass** — `docs/recon/chat-info-club-chats.md` | Oct 14, 2026 | AGENT-ONLY |
+| **`CHANNEL_NAME_MAX = 100` constant** (`chatHelpers.ts:283`) and the other **3** cap sites: `ChatScreen.tsx:1294` (New Group), `GroupInfoScreen.tsx:264` (Group Info rename), `ChatInfoScreen.tsx:768` (Chat Info rename). `grep "maxLength={100}"` → 0 hits | *uncommitted* | tsc **64 = baseline**, error list byte-identical, zero in touched files; `chatHelpers.test.ts` **48/48** + `chatDays.test.ts` **22/22** in 3 TZs. **Not seen by Lu in the Oct 14–15 sim pass** — `docs/recon/chat-info-club-chats.md` | Oct 14, 2026 | AGENT-ONLY |
+| **`AddMembersModal` keyboard `on-drag`** — it already dismissed on pick via `onClose`→`dismiss()`; the drag arm is new. Group Message create was **already correct** (`ChatScreen.tsx:1409` + `:1413`) and was not touched | *uncommitted* | tsc **64 = baseline**, error list byte-identical, zero in touched files; `chatHelpers.test.ts` **48/48** + `chatDays.test.ts` **22/22** in 3 TZs. **Not seen by Lu in the Oct 14–15 sim pass** — `docs/recon/chat-info-club-chats.md` | Oct 14, 2026 | AGENT-ONLY |
 | **Staff Message — chat name field** (defaults to the picked group's label, follows the group until the sender types their own, trimmed, empty falls back; names the created channel) | *uncommitted* | tsc **64** (ceiling, zero in touched files); `chatHelpers.test.ts` **48/48** in `America/Denver`, `Asia/Tokyo`, `UTC` (33 existing + 15 new); `chatDays.test.ts` **22/22** unchanged. **sim run Oct 14** — "follows group until edited; 'U40 mens' kept". Covered by 5 cases: follows-group, stays-as-typed, trimmed, empty→default, clearing hands it back. | Oct 14, 2026 | VERIFIED-SIMULATOR |
 | **Staff Message — recipient search** (case-insensitive, any part of the name; hides rows only — never changes who is checked, and "N recipients" still counts every checked person) | *uncommitted* | tsc **64** (ceiling, zero in touched files); `chatHelpers.test.ts` **48/48** in `America/Denver`, `Asia/Tokyo`, `UTC` (33 existing + 15 new); `chatDays.test.ts` **22/22** unchanged. **sim run Oct 14** — "search cole → 1 recipient". Covered by 4 cases, including "a person hidden by the search stays unchecked" and the count staying at 3 while 2 rows show. | Oct 14, 2026 | VERIFIED-SIMULATOR |
 | **Staff Message — select all / deselect all** (label flips on whole-group state; acts on the whole group, not the search-visible rows; send stays disabled at 0) | *uncommitted* | tsc **64** (ceiling, zero in touched files); `chatHelpers.test.ts` **48/48** in `America/Denver`, `Asia/Tokyo`, `UTC` (33 existing + 15 new); `chatDays.test.ts` **22/22** unchanged. **sim run Oct 14** — "Deselect all → 0, Send disabled". Covered by 6 cases: label flip, empty group never offers Deselect all, whole-group action under an active search, outside-group exclusions preserved, and 0→empty insert batch. | Oct 14, 2026 | VERIFIED-SIMULATOR |
@@ -94,6 +118,19 @@ was omitted rather than guessed. `INFERRED` marks reasoning, not proof.
 
 - **Oct 14** — add-people picker stays search-first (2+ letters); chips filter results.
   Ruled by Lu (web + mobile).
+- **Oct 14** — **removing someone from a chat is chat-only.** It deletes one
+  `comm_channel_members` row and never touches team roster, club membership,
+  player/parent records, invitations, registration or payments. Re-adding = admin taps
+  Add. Ruled by Lu; implemented in the Chat Info confirm copy and proved against repo
+  code in `docs/recon/chat-info-club-chats.md` §Step 0 c).
+- **Oct 14** — **Chat Info's Add / Remove / Rename applies to ALL `group_dm` chats**, Staff
+  Message and regular Group Message alike, not only Staff Message. Raised as wider than the
+  original goal; **accepted by Lu**.
+- **Oct 14** — **the new chat-only Remove confirm wording also shows on team channels.**
+  Raised as the one team-chat-visible change; **accepted by Lu**. Copy only.
+- **Oct 14** — **an empty / whitespace chat name is blocked on CREATE as well as rename.**
+  One rule for every chat-name field. Ruled by Lu. Staff Message changed; Group Message
+  (`ChatScreen.createGroup:783-786`) already blocked and was left alone.
 
 ---
 
@@ -197,20 +234,28 @@ was omitted rather than guessed. `INFERRED` marks reasoning, not proof.
   map inside a club channel: `usePolls.ts:47-48`, `useMessages.ts:95`,
   `useBoardVoteView.ts:74`, `PollDetailScreen.tsx:160`, `ChannelPollsScreen.tsx:149`. Each is
   a one-line swap to `fetchChatProfileNames` (`docs/recon/phaseB-mobile-cosmetics.md` §FOUND).
+- **Group Message reports an empty name in a combined Alert**, not inline:
+  `ChatScreen.tsx:783-786` alerts "Enter a group name and add at least one person" for
+  either failure, so it names two problems when one applies. Chat Info, Group Info and
+  Staff Message all use an inline message under the field. Left alone — splitting it is a
+  behaviour change the Oct 14 ruling did not name. `docs/recon/chat-info-club-chats.md`
+- **`resolveChatName` is dead code.** Its fallback arm is what the Oct 14 create ruling
+  removed; no app code calls it now. The export and its 5 tests remain because
+  `src/lib/chatHelpers.ts` was in SCOPE for `CHANNEL_NAME_MAX` only. Delete in a later pass.
 - **NEEDS LU (decision, not code):** `RoleSwitcher.ROLE_LABELS` and `formatRoleLabel`
   disagree on `player`, `platform_admin`, `content_creator`, `sales_director`. Unifying
   renames switcher entries app-wide, so Phase C did not do it unilaterally
   (`docs/recon/phaseC-mobile-build.md`).
-- **Mobile Chat Info shows no Add / Remove / Rename on a Staff Message chat.** Chats created
-  from Staff Message are club-level groups with no team, so the manage-members arm never
-  shows — **sim screenshot Oct 14 ("U40 mens")**. Client-only fix next session: per RLS a
-  **channel admin** may add and remove, so the gate can widen without a server change.
-  Include `maxLength` 100 on the rename input while in there.
-- **No name input caps channel names at the DB limit.** `comm_channels.name` is
-  `VARCHAR(100) NOT NULL` (`20260108184412:51`, never altered) and nothing client-side
-  enforces it, so an over-length name is a hard Postgres `22001` error, not a truncation.
-  Affects every create/rename site, including the uncommitted Staff Message chat-name field.
-  Source: `docs/recon/removal-payments-dprep.md` §4c
+- ~~**Mobile Chat Info shows no Add / Remove / Rename on a Staff Message chat.**~~
+  **BUILT Oct 14, sim pending** — the cause was `isCustomTeamChannel` testing
+  `channel_type === 'team' || 'club'` while Staff Message inserts `'group_dm'`. Gate
+  widened client-only, no server change, as predicted. See the four rows above and
+  `docs/recon/chat-info-club-chats.md`.
+- ~~**No name input caps channel names at the DB limit.**~~ **BUILT Oct 14, sim pending** —
+  `maxLength={100}` on all 4 chat-name inputs (row above). `comm_channels.name` is
+  `VARCHAR(100) NOT NULL` (`20260108184412:51`, never altered); uncapped, an over-length
+  name was a hard Postgres `22001`, not a truncation.
+  Source: `docs/recon/removal-payments-dprep.md` §4c, fix `docs/recon/chat-info-club-chats.md`
 - **SACRED — team delete wipes all team chat history, client-side, with no guards and no
   audit.** Six raw client statements delete every `comm_messages` row, all
   `comm_channel_members`, all `comm_channels` for the team, then null every player's

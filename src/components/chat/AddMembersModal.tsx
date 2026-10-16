@@ -33,6 +33,10 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import {
+  SAME_CLUB_MESSAGE,
+  describeAddMemberFailure,
+} from '../../lib/clubRule';
+import {
   CONTACT_ROLE_GROUP_LABELS,
   contactRoleGroup,
   fetchContactRoles,
@@ -178,10 +182,22 @@ export default function AddMembersModal({
     });
 
     if (error) {
+      // BF-8 made 42501 ambiguous on this policy: it is now either "you are not
+      // allowed to add people here" or "they are not in this chat's club".
+      // describeAddMemberFailure asks the server which, using the policy's own
+      // predicate, so the sentence cannot contradict the refusal.
+      const message = await describeAddMemberFailure(
+        error,
+        channelId,
+        newMember.id
+      );
       if (__DEV__) {
         console.error('[AddMembersModal] add member failed:', error);
       }
-      Alert.alert('Error', 'Could not add member');
+      Alert.alert(
+        message === SAME_CLUB_MESSAGE ? 'Different clubs' : 'Error',
+        message
+      );
       return;
     }
 

@@ -14,13 +14,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
+import { SAME_CLUB_MESSAGE, isSameClubRefusal } from '../lib/clubRule';
 import { useAuth } from '../contexts/AuthContext';
 import {
   fetchTeamMemberNamesForTeams,
   CHAT_FALLBACK_NAME,
 } from '../lib/memberNames';
 import {
-  buildMemberInserts,
+  // buildMemberInserts is no longer imported: the server builds the member rows
+  // now (create_group_channel). The helper and its tests stay in chatHelpers --
+  // see docs/recon/phaseD-BF.md FND-BF14 -- but nothing in the app calls it.
   CHANNEL_NAME_MAX,
   chatNameOnEdit,
   chatNameOnGroupChange,
@@ -256,53 +259,47 @@ export default function StaffMessageScreen() {
     try {
       const channelName = trimmedName;
 
-      const { data: channel, error: channelError } = await supabase
-        .from('comm_channels')
-        .insert({
-          name: channelName,
-          channel_type: 'group_dm',
-          club_id: clubId,
-          created_by: user?.id,
-        })
-        .select()
-        .single();
-
-      if (channelError) throw channelError;
-
-      // FND-A. The creator is NOT inserted here: trigger_add_creator_to_members
-      // already added them as 'admin' on the comm_channels INSERT, and
-      // comm_channel_members carries UNIQUE (channel_id, user_id). A multi-row
-      // INSERT is one statement, so including the creator failed the WHOLE
-      // batch and the room opened with nobody in it. Same shape as
-      // ChatScreen.createGroup, which has always done this correctly.
-      const memberInserts = buildMemberInserts(
-        channel.id,
-        recipientIds,
-        user.id
+      // Created SERVER-SIDE since ruling BF-2, and it has to be since BF-8:
+      // the comm_channels_insert policy no longer lets a client insert a
+      // group_dm at all, so the direct insert this screen used to do would now
+      // be refused outright. One RPC is one transaction — the channel, every
+      // recipient and the club land together or not at all.
+      //
+      // p_club_id is passed EXPLICITLY, unlike ChatScreen.createGroup. This
+      // screen knows exactly which club it is messaging (clubId is a required
+      // route param), and a staff broadcast must not have its club guessed: if
+      // the recipients happened to share two clubs, first_shared_club could
+      // pick the other one. The server still checks every recipient is in it
+      // (BF-8) and refuses otherwise.
+      //
+      // THE ORPHAN ROLLBACK IS GONE WITH IT. This used to insert the channel,
+      // then the members in a second round trip, and DELETE the channel by hand
+      // if that failed. A function body cannot half-succeed.
+      //   WEB: supabase/migrations/20261016120000_bf_club_id_on_every_chat.sql
+      //   recon: docs/recon/phaseD-BF.md -- rulings: docs/recon/phaseD-rulings.md
+      const { data: channelId, error: channelError } = await supabase.rpc(
+        'create_group_channel',
+        {
+          p_name: channelName,
+          // The creator is NOT in this list: the server adds them as admin.
+          p_user_ids: recipientIds.filter((id) => id && id !== user?.id),
+          p_club_id: clubId,
+        }
       );
 
-      const { error: memberError } = await supabase
-        .from('comm_channel_members')
-        .insert(memberInserts);
-
-      if (memberError) {
-        // Roll the channel back so a failed create leaves no orphan behind.
-        const { error: rollbackError } = await supabase
-          .from('comm_channels')
-          .delete()
-          .eq('id', channel.id)
-          .select('id');
-        if (rollbackError && __DEV__) {
-          console.warn('[StaffMessage] rollback failed:', rollbackError);
+      if (channelError || !channelId) {
+        // BF-8: a recipient outside this club is a rule, not a fault.
+        if (isSameClubRefusal(channelError)) {
+          Alert.alert('Different clubs', SAME_CLUB_MESSAGE);
+          return;
         }
-        Alert.alert('Error', 'Could not start the conversation');
-        return;
+        throw channelError ?? new Error('create_group_channel returned no id');
       }
 
       // Only on success. A failed member insert used to navigate anyway, into
       // a room the recipients were never added to.
       navigation.replace('TeamChatRoom', {
-        channelId: channel.id,
+        channelId,
         channelName,
         channelType: 'group_dm',
       });

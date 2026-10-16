@@ -22,6 +22,7 @@ import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { useSharedUserTeams } from '../contexts/TeamsContext';
 import { supabase } from '../lib/supabase';
+import { SAME_CLUB_MESSAGE, isSameClubRefusal } from '../lib/clubRule';
 import {
   CHANNEL_NAME_MAX,
   formatRoleLabel,
@@ -591,6 +592,16 @@ export default function ChatScreen({ navigation, route }: any) {
     async (selectedUser: ProfileResult) => {
       if (!user?.id) return;
 
+      // p_club_id: null is DELIBERATE, not a gap. Since Phase D slice BF the
+      // server resolves the DM's club itself when the caller sends null, using
+      // ruling BF-1: the FIRST club the two people shared -- per shared club,
+      // the later of their two earliest membership dates; earliest of those
+      // wins. Sending a club from here would mean guessing, because this screen
+      // only knows a clubId for a CLUB ADMIN (checkClubAdmin, below). An
+      // explicit club still wins if a caller has a real one; the web club tab
+      // does that. Do not "fix" this to a value.
+      //   WEB: supabase/migrations/20261016120000_bf_club_id_on_every_chat.sql
+      //   recon: docs/recon/phaseD-BF.md -- ruling: docs/recon/phaseD-rulings.md
       const { data: channelId, error } = await supabase.rpc(
         'get_or_create_dm_channel',
         {
@@ -602,6 +613,11 @@ export default function ChatScreen({ navigation, route }: any) {
       );
 
       if (error || !channelId) {
+        // BF-8: two people who share no club cannot open a DM.
+        if (isSameClubRefusal(error)) {
+          Alert.alert('Different clubs', SAME_CLUB_MESSAGE);
+          return;
+        }
         console.error('get_or_create_dm_channel failed:', error);
         Alert.alert('Error', 'Could not open conversation');
         return;
@@ -784,53 +800,52 @@ export default function ChatScreen({ navigation, route }: any) {
       Alert.alert('Error', 'Enter a group name and add at least one person');
       return;
     }
-    const { data: newChannel, error } = await supabase
-      .from('comm_channels')
-      .insert({
-        name: groupName.trim(),
-        channel_type: 'group_dm',
-        is_direct_message: false,
-        created_by: user.id,
-      })
-      .select()
-      .single();
-    if (error || !newChannel) {
-      Alert.alert('Error', 'Could not create group');
-      return;
-    }
-    // The creator is NOT inserted here: the DB trigger already adds them as
-    // admin, and UNIQUE (channel_id, user_id) would fail the whole batch.
-    const memberInserts = selectedGroupUsers
-      .filter((u) => u.id !== user.id)
-      .map((u) => ({
-        channel_id: newChannel.id,
-        user_id: u.id,
-        role: 'member',
-      }));
-    const { error: memberError } = await supabase
-      .from('comm_channel_members')
-      .insert(memberInserts);
-    if (memberError) {
-      // Roll the channel back so a failed create leaves no orphan behind.
-      const { error: rollbackError } = await supabase
-        .from('comm_channels')
-        .delete()
-        .eq('id', newChannel.id)
-        .select('id');
-      if (rollbackError && __DEV__) {
-        console.warn('[ChatScreen] group rollback failed:', rollbackError);
+    // Created SERVER-SIDE since ruling BF-2 (Oct 16 2026). One RPC is one
+    // transaction: the channel row, every member row and the chat's club_id land
+    // together or not at all.
+    //
+    // Why the server owns this. Ruling 9 asks every chat to record its club, and
+    // this screen has no club to send: clubId (state, see checkClubAdmin) is set
+    // ONLY for a club admin, so a parent or coach had nothing, and a multi-club
+    // director would have stamped whichever club_staff row came back first -- a
+    // race, not a rule. The server works the club out from the members instead:
+    // the first club ALL of them shared (BF-1 generalised), or NULL.
+    //
+    // THE ORPHAN ROLLBACK IS GONE WITH IT. This used to insert the channel, then
+    // the members in a second round trip, and DELETE the channel by hand if that
+    // second call failed. A function body cannot half-succeed, so there is no
+    // orphan to clean up and no delete here any more.
+    //   WEB: supabase/migrations/20261016120000_bf_club_id_on_every_chat.sql
+    //   recon: docs/recon/phaseD-BF.md -- rulings: docs/recon/phaseD-rulings.md
+    const { data: channelId, error } = await supabase.rpc('create_group_channel', {
+      p_name: groupName.trim(),
+      // The creator is NOT in this list: the server adds them as admin itself.
+      p_user_ids: selectedGroupUsers
+        .filter((u) => u.id !== user.id)
+        .map((u) => u.id),
+    });
+    if (error || !channelId) {
+      // BF-8: the server refuses a group whose members do not all share a club.
+      // That is a rule, not a fault, so it gets its own sentence.
+      if (isSameClubRefusal(error)) {
+        Alert.alert('Different clubs', SAME_CLUB_MESSAGE);
+        return;
+      }
+      if (__DEV__) {
+        console.warn('[ChatScreen] create_group_channel failed:', error);
       }
       Alert.alert('Error', 'Could not create group');
       return;
     }
+    const createdName = groupName.trim();
     setShowNewChatModal(false);
     setNewChatStep('choose');
     setGroupName('');
     setSelectedGroupUsers([]);
     setExistingGroupMatch(null);
     navigation.navigate('TeamChatRoom', {
-      channelId: newChannel.id,
-      channelName: newChannel.name,
+      channelId,
+      channelName: createdName,
       teamName: undefined,
       channelType: 'group_dm',
     });

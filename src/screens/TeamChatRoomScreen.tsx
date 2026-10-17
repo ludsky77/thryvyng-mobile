@@ -40,6 +40,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useChannelMembers } from '../hooks/useChannelMembers';
 import { useChatSenderLabels } from '../hooks/useChatSenderLabels';
 import { CHAT_FALLBACK_NAME } from '../lib/memberNames';
+import { isChannelStaff } from '../lib/channelStaff';
+import { allowsMemberText } from '../lib/announcementChannel';
 import { useTypingPresence } from '../hooks/useTypingPresence';
 import { TypingIndicator } from '../components/chat/TypingIndicator';
 import { setActiveChannelId } from '../services/notifications';
@@ -142,6 +144,23 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   const [missedCount, setMissedCount] = useState(0);
 
   const [channelTeamId, setChannelTeamId] = useState<string | null>(null);
+  /**
+   * Phase D slice 4b. `allowMemberText` is the chat's own
+   * comm_channels.allow_member_text, read through
+   * src/lib/announcementChannel.ts so a null means the same thing here, on web
+   * and in the server's `channel_allows_member_text`. It starts TRUE so an
+   * announcement chat does not flash a composer before the row arrives.
+   *
+   * `isStaffHere` is the server's `is_channel_staff` — ruling Q3 B + Q3 B+ —
+   * and is DELIBERATELY NOT `isStaffInChannel` below, which comes from
+   * get_channel_member_labels and means "team staff anywhere in this chat's
+   * club" after 4g. Those two disagree about real people: a club admin is staff
+   * for the send gate and the labels function has never heard of him, and a
+   * coach of another team in the same club is the other way round. The send
+   * gate must be the one the policy asks (FND-4d3).
+   */
+  const [allowMemberText, setAllowMemberText] = useState(true);
+  const [isStaffHere, setIsStaffHere] = useState<boolean | undefined>(undefined);
 
   // Called on mount, on focus, and on each incoming message (via useMessages'
   // onNewMessage). A failed stamp leaves a stale unread badge, so it is logged
@@ -209,9 +228,13 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
       try {
         const { data: channelData } = await supabase
           .from('comm_channels')
-          .select('team_id')
+          .select('team_id, allow_member_text')
           .eq('id', channelId)
           .single();
+        // 4b: the flag is read for EVERY chat kind, so this runs before the
+        // team_id branch below returns early. A club chat and a group chat have
+        // no team_id and can still be announcement-only.
+        setAllowMemberText(allowsMemberText(channelData));
         if (!channelData?.team_id) {
           setChannelTeamId(null);
           setPermissionsLoaded(true);
@@ -226,6 +249,24 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     };
     checkStaffPermission();
   }, [channelId, user?.id]);
+
+  // 4b: the send gate's staff answer. Only an announcement chat needs it, so an
+  // ordinary chat makes no call; `undefined` while it is in flight, which
+  // ChatInputBar reads as NOT staff.
+  useEffect(() => {
+    if (allowMemberText || !channelId) {
+      setIsStaffHere(undefined);
+      return;
+    }
+    let cancelled = false;
+    setIsStaffHere(undefined);
+    isChannelStaff(channelId).then((answer) => {
+      if (!cancelled) setIsStaffHere(answer);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [allowMemberText, channelId]);
 
   // 1. Mark read on mount
   useEffect(() => {
@@ -789,6 +830,8 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
         <TypingIndicator users={typingNames} />
 
         <ChatInputBar
+          allowMemberText={allowMemberText}
+          isChannelStaff={isStaffHere}
           onSendMessage={handleSendMessage}
           onTypingChange={setTyping}
           onPollPress={canUserCreatePoll ? () => setPollModalVisible(true) : undefined}

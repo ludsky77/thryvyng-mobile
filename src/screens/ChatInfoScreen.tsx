@@ -36,6 +36,13 @@ import {
   requestChatUnreadRefresh,
 } from '../contexts/ChatUnreadContext';
 import { logError } from '../utils/logError';
+import { isChannelStaff } from '../lib/channelStaff';
+import {
+  ANNOUNCEMENT_SET_FAILED_MESSAGE,
+  ANNOUNCEMENT_TOGGLE_HINT,
+  ANNOUNCEMENT_TOGGLE_LABEL,
+  setAnnouncementOnly,
+} from '../lib/announcementChannel';
 import {
   buildRoleMap,
   CHANNEL_NAME_MAX,
@@ -116,6 +123,20 @@ export default function ChatInfoScreen() {
   const [isMuted, setIsMuted] = useState(false);
   const [staffOnlyMessaging, setStaffOnlyMessaging] = useState(false);
   const [isStaffInTeam, setIsStaffInTeam] = useState(false);
+  /**
+   * Phase D slice 4b, ruling Q5 B: who may turn an announcement channel on is
+   * CHANNEL STAFF — `public.is_channel_staff`, ruling Q3 B as amended by Q3 B+.
+   *
+   * This is a SECOND staff flag on purpose and `isStaffInTeam` above is left
+   * exactly as it was. They are different questions with different answers:
+   * `isStaffInTeam` is a team_staff existence check and is FALSE for any chat
+   * with no team, which is why club-announcements could never be switched to
+   * announcement-only from either app; and it still gates Add Members, which
+   * mirrors a different policy (the comm_channel_members INSERT arms) and was
+   * not part of this ruling. Only the Staff Controls section moved.
+   */
+  const [isStaffHere, setIsStaffHere] = useState(false);
+  const [savingStaffOnly, setSavingStaffOnly] = useState(false);
   const [sortBy, setSortBy] = useState<'role' | 'alpha'>('role');
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   // Rename, admin-only. `nameError` is rendered inline under the field rather
@@ -134,6 +155,23 @@ export default function ChatInfoScreen() {
       setLoading(false);
     }
   }, [channelId, teamId, user?.id]);
+
+  // 4b: the announcement-toggle gate, asked of the server. Keyed on the chat
+  // rather than the team, because a club chat and a group chat have no team and
+  // still have staff.
+  useEffect(() => {
+    if (!channelId) {
+      setIsStaffHere(false);
+      return;
+    }
+    let cancelled = false;
+    isChannelStaff(channelId).then((answer) => {
+      if (!cancelled) setIsStaffHere(answer);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [channelId, user?.id]);
 
   const checkStaffStatus = async () => {
     if (!teamId || !user?.id) return;
@@ -330,12 +368,43 @@ export default function ChatInfoScreen() {
       .eq('user_id', user?.id);
   };
 
+  /**
+   * Turn announcement-only on or off. Optimistic, then corrected by the
+   * server's answer -- and a REFUSAL puts the switch back.
+   *
+   * It used to write `.update()` inline and ignore the result, which was the
+   * live bug: `comm_channels_update` admits only the chat's creator and its
+   * channel admins, an UPDATE matching no row is NOT an error, so a coach moved
+   * the switch, saw it stay moved, and nothing had changed. It now goes through
+   * `setAnnouncementOnly`, which calls the `set_channel_announcement_mode` RPC
+   * -- ruling Q5 B-setter = Option B (Lu, 2026-10-17 03:56 MDT): one SECURITY
+   * DEFINER door gated on `is_channel_staff`, so the coach the ruling meant can
+   * actually switch it, and anybody else is refused OUT LOUD with ERRCODE P0024
+   * and a hint sentinel.
+   */
   const toggleStaffOnly = async (value: boolean) => {
+    if (!channelId) return;
+    const previous = staffOnlyMessaging;
     setStaffOnlyMessaging(value);
-    await supabase
-      .from('comm_channels')
-      .update({ allow_member_text: !value })
-      .eq('id', channelId);
+    setSavingStaffOnly(true);
+
+    const result = await setAnnouncementOnly(channelId, value);
+
+    setSavingStaffOnly(false);
+
+    if (result.status === 'ok') {
+      setStaffOnlyMessaging(result.announcementOnly);
+      return;
+    }
+
+    setStaffOnlyMessaging(previous);
+    if (result.status === 'error') {
+      logError('ChatInfo.toggleStaffOnly', result.error, { channelId });
+    }
+    Alert.alert(
+      'Not changed',
+      result.status === 'refused' ? result.message : ANNOUNCEMENT_SET_FAILED_MESSAGE
+    );
   };
 
   const isPlatformAdmin = useMemo(
@@ -865,17 +934,29 @@ export default function ChatInfoScreen() {
               </View>
             </View>
 
-            {isStaffInTeam && (
+            {/* 4b, ruling Q5 B: gated on is_channel_staff, not isStaffInTeam.
+                The old gate was false for every chat with no team, so
+                club-announcements -- the one chat whose name says it -- could
+                never be switched, from either app. */}
+            {isStaffHere && (
               <View style={styles.settingsSection}>
                 <Text style={styles.settingsSectionTitle}>Staff Controls</Text>
                 <View style={styles.settingRow}>
-                  <View style={styles.settingLeft}>
+                  <View style={[styles.settingLeft, styles.settingLeftGrow]}>
                     <Feather name="shield" size={20} color="#94a3b8" />
-                    <Text style={styles.settingLabel}>Staff-only messaging</Text>
+                    <View style={styles.settingLabelBlock}>
+                      <Text style={styles.settingLabel}>
+                        {ANNOUNCEMENT_TOGGLE_LABEL}
+                      </Text>
+                      <Text style={styles.settingHint}>
+                        {ANNOUNCEMENT_TOGGLE_HINT}
+                      </Text>
+                    </View>
                   </View>
                   <Switch
                     value={staffOnlyMessaging}
                     onValueChange={toggleStaffOnly}
+                    disabled={savingStaffOnly}
                     trackColor={{ false: '#475569', true: '#8b5cf6' }}
                     thumbColor="#fff"
                   />
@@ -1136,9 +1217,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  // The announcement row carries a second line, so its label and hint stack
+  // while every other settingLeft stays a single centred line, and only this
+  // row's left side grows so the hint wraps instead of pushing the switch off.
+  settingLeftGrow: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
+  settingLabelBlock: {
+    flex: 1,
+    paddingRight: 8,
+  },
   settingLabel: {
     fontSize: 15,
     color: '#fff',
+  },
+  settingHint: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginTop: 2,
   },
   membersHeader: {
     flexDirection: 'row',

@@ -18,6 +18,10 @@ import {
   shouldAlertForResult,
   type SendResult,
 } from '../../utils/sendResult';
+import {
+  ANNOUNCEMENT_BANNER_MESSAGE,
+  canSendText,
+} from '../../lib/announcementChannel';
 
 export interface AttachmentData {
   uri: string;
@@ -39,6 +43,21 @@ export interface EditingInfo {
 }
 
 interface ChatInputBarProps {
+  /**
+   * Does this chat let ordinary members post text? Phase D slice 4b: FALSE is
+   * an announcement channel. Default TRUE, so every existing caller — including
+   * DMChatScreen, where the flag is never set and a 1-on-1 has no staff —
+   * behaves exactly as it did.
+   */
+  allowMemberText?: boolean;
+  /**
+   * Is the signed-in person staff OF THIS CHAT? Ruling Q3 B + Q3 B+, which is
+   * `public.is_channel_staff` and nothing else. The screen asks, through
+   * src/lib/channelStaff.ts, and passes the answer down; `undefined` means "not
+   * known yet" and counts as NOT staff, so the banner shows while the question
+   * is in flight rather than a composer whose first send would be refused.
+   */
+  isChannelStaff?: boolean;
   onSendMessage: (
     content: string,
     attachment?: AttachmentData
@@ -96,6 +115,8 @@ function validateAttachment(candidate: {
 }
 
 export function ChatInputBar({
+  allowMemberText = true,
+  isChannelStaff,
   onSendMessage,
   onPollPress,
   placeholder = 'Type a message...',
@@ -308,6 +329,24 @@ export function ChatInputBar({
     setAttachment(null);
   };
 
+  // THE SEND GATE — Phase D slice 4b. Until this slice mobile had none at all:
+  // the props interface carried no flag, TeamChatRoomScreen passed none, and
+  // `msg_insert` had no staff check either, so a coach could switch a chat to
+  // announcement-only on this very screen and every member kept typing while
+  // the database accepted it (docs/recon/phaseD-open-rulings.md § 3). The
+  // server now refuses those sends; this is the composer agreeing with it, and
+  // the sentence is the one web prints, from the shared module.
+  if (!canSendText({ allowMemberText, isStaff: isChannelStaff })) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.announcementBanner}>
+          <Feather name="volume-2" size={18} color="#F59E0B" />
+          <Text style={styles.announcementText}>{ANNOUNCEMENT_BANNER_MESSAGE}</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       {editing && (
@@ -495,6 +534,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#1F2937',
     borderTopWidth: 1,
     borderTopColor: '#374151',
+  },
+  // The composer's replacement in an announcement channel. Amber icon and muted
+  // text, the same read as web's banner (a Megaphone on bg-muted/50).
+  announcementBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  announcementText: {
+    flex: 1,
+    color: '#9CA3AF',
+    fontSize: 13,
   },
   replyBanner: {
     flexDirection: 'row',

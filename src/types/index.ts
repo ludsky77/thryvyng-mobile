@@ -68,6 +68,15 @@ export interface Channel {
     reply_to_id?: string | null;
     reply_to_content?: string | null;
     reply_to_sender?: string | null;
+    /**
+     * READ-TIME ONLY -- Phase D slice 4f, ruling Q7 A. NOT a column and never
+     * written: filled in memory for a reply that carries `parent_id` and no
+     * snapshot (every reply made on the web before 4f), so the screens can
+     * resolve the quoted person through the same memberNames ladder they
+     * already use for the bubble instead of showing a nameless quote.
+     * Filled by src/hooks/useMessages.ts.
+     */
+    reply_to_user_id?: string | null;
     // Joined data - profile for parents/staff
     profile?: {
       id: string;

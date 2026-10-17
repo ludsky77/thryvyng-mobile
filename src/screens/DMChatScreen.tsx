@@ -430,9 +430,19 @@ export default function DMChatScreen({ route, navigation }: any) {
         ? {
             content: item.reply_to_content ?? '(message)',
             // reply_to_sender is a string persisted on the row at send time.
-            // Null means it was never captured, so there is no name to show --
-            // the ladder's terminal rung, not 'Unknown'.
-            senderName: item.reply_to_sender ?? CHAT_FALLBACK_NAME,
+            // Null means it was never captured -- which is the case for every
+            // reply made on the WEB before Phase D slice 4f. Ruling Q7 A fills
+            // those rows' quote from the parent at read time and hands the
+            // parent's author id over in reply_to_user_id (see
+            // useMessages.withReplyQuoteFallback), so the middle rung resolves
+            // the name through the SAME memberNames ladder the bubble below
+            // uses. The terminal rung is the ruled fallback, not 'Unknown'.
+            senderName:
+              item.reply_to_sender ??
+              (item.reply_to_user_id
+                ? memberNames.get(item.reply_to_user_id)?.name
+                : undefined) ??
+              CHAT_FALLBACK_NAME,
           }
         : undefined;
 

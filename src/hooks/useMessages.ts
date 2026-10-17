@@ -20,6 +20,72 @@ import type { Message } from '../types';
  */
 const OPTIMISTIC_REACTION_ID = 'optimistic-reaction';
 
+/**
+ * RULING Q7 A -- the read-time fallback for replies written on the web before
+ * Phase D slice 4f.
+ *
+ * Web used to write `parent_id` and nothing else, so every reply made there
+ * carries the FK and no snapshot. The quote render in both screens needs
+ * `reply_to_id && (reply_to_content != null || reply_to_sender != null)`, which
+ * such a row satisfies in none of its parts -- so those replies have always
+ * shown on the phone as ordinary messages. Lu ruled the read-time fix over a
+ * backfill: the quote is drawn from the parent when it is asked for, and
+ * **nothing is written to the database**.
+ *
+ * It fills the two snapshot fields IN MEMORY ONLY and leaves `reply_to_sender`
+ * null on purpose. The quoted person's name is NOT resolved here: the
+ * `profiles` join this hook would have to use comes back empty for an ordinary
+ * parent/player viewer under RLS, which is the exact mistake that made the
+ * reply modal say 'Unknown' on a screen whose bubble had the name
+ * (DMChatScreen.tsx:360-364). Instead it carries the parent's `user_id`, and
+ * each screen resolves it through `memberNames` -- the channel-gated ladder it
+ * already uses for the bubble. A row that already has a snapshot is never
+ * touched, so a real quote is never overwritten by a lookup of a since-edited
+ * parent.
+ *
+ * ONE query for the whole page, bounded by the page. A deleted parent is
+ * deliberately excluded: with no snapshot to show there is nothing to quote,
+ * and resurrecting the text of a deleted message would be worse than the
+ * quote-less message that is there today.
+ */
+async function withReplyQuoteFallback(rows: Message[]): Promise<Message[]> {
+  const parentIds = [
+    ...new Set(
+      rows
+        .filter((m) => m.parent_id && !m.reply_to_id)
+        .map((m) => m.parent_id as string)
+    ),
+  ];
+  if (parentIds.length === 0) return rows;
+
+  const { data, error } = await supabase
+    .from('comm_messages')
+    .select('id, content, user_id')
+    .in('id', parentIds)
+    .eq('is_deleted', false);
+  if (error || !data) {
+    // A failure here costs a quote, never a message: the rows are returned
+    // exactly as they arrived and render the way they do today.
+    logError('useMessages.replyQuoteFallback', error ?? 'no rows returned', {
+      parents: parentIds.length,
+    });
+    return rows;
+  }
+
+  const parents = new Map(data.map((p: any) => [p.id, p]));
+  return rows.map((msg) => {
+    if (!msg.parent_id || msg.reply_to_id) return msg;
+    const parent = parents.get(msg.parent_id);
+    if (!parent) return msg;
+    return {
+      ...msg,
+      reply_to_id: parent.id,
+      reply_to_content: parent.content,
+      reply_to_user_id: parent.user_id,
+    };
+  });
+}
+
 export function useMessages(channelId: string | null, onNewMessage?: () => void) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -119,7 +185,10 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
         };
       });
 
-      setMessages(enrichedMessages as unknown as Message[]);
+      // Ruling Q7 A: old web replies get their quote from the parent, in memory.
+      setMessages(
+        await withReplyQuoteFallback(enrichedMessages as unknown as Message[])
+      );
     }
     setLoading(false);
   }, [channelId]);
@@ -185,6 +254,12 @@ export function useMessages(channelId: string | null, onNewMessage?: () => void)
           profile: data.profile ?? null,
         } as unknown as Message;
       }
+
+      // Same fallback as the page fetch, for the one row that just arrived: a
+      // web client still running the pre-4f build sends `parent_id` only, and
+      // its reply must not render as a plain message here until the next
+      // refetch.
+      [newMessage] = await withReplyQuoteFallback([newMessage]);
 
       // Deduplicate: poll (and other) messages may already be in state from refetch after create
       setMessages(prev => {

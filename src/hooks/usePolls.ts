@@ -2,12 +2,21 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchChatProfileNames } from '../lib/memberNames';
+import {
+  canClosePoll,
+  closePoll as closePollRpc,
+  isChannelStaff,
+  type ClosePollResult,
+} from '../lib/channelStaff';
 import type { Poll, PollOption, VoterProfile } from '../types';
 
 export function usePoll(pollId: string | null) {
   const { user } = useAuth();
   const [poll, setPoll] = useState<Poll | null>(null);
   const [loading, setLoading] = useState(true);
+  // Ruling Q3 B: staffness comes from the server's ONE definition, not from
+  // `label_kind`, not from a `team_staff` count this screen did itself.
+  const [isStaff, setIsStaff] = useState(false);
 
   const fetchPoll = useCallback(async () => {
     if (!pollId) return;
@@ -101,6 +110,27 @@ export function usePoll(pollId: string | null) {
     };
   }, [pollId, fetchPoll]);
 
+  // Ruling Q3 B -- who counts as staff of this chat. Re-asked when the poll
+  // resolves to a different chat, and reset to false in between so a stale
+  // `true` can never leak a Close button into another chat.
+  useEffect(() => {
+    let cancelled = false;
+    const channelId = poll?.channel_id;
+
+    if (!channelId || !user) {
+      setIsStaff(false);
+      return;
+    }
+
+    isChannelStaff(channelId).then(result => {
+      if (!cancelled) setIsStaff(result);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [poll?.channel_id, user]);
+
   const vote = async (optionId: string, comment?: string | null) => {
     if (!user || !poll) return false;
 
@@ -145,21 +175,59 @@ export function usePoll(pollId: string | null) {
     return !error;
   };
 
-  const closePoll = async () => {
-    if (!user || !poll || poll.created_by !== user.id) return false;
+  const isCreator = !!user && !!poll && poll.created_by === user.id;
+  const isExpired = !!poll?.ends_at && new Date(poll.ends_at) < new Date();
 
-    const { error } = await supabase
-      .from('comm_polls')
-      .update({ is_active: false })
-      .eq('id', poll.id);
+  /**
+   * May the Close control be offered at all? Ruling Q3 B's predicate, through
+   * the shared helper, so the hook and the card cannot disagree -- which is
+   * precisely how the old bug worked: `PollCard` offered Close to staff and
+   * this hook refused them.
+   */
+  const canClose = canClosePoll({
+    isCreator,
+    isStaff,
+    isActive: poll?.is_active === true,
+    isExpired,
+  });
 
-    if (!error) {
+  /**
+   * Close the poll. Ruling Q4 B: the ONE door is `close_poll`, never an UPDATE
+   * on `comm_polls`.
+   *
+   * 4d-EXTRA: the card flips to Closed IMMEDIATELY. The local row is updated
+   * before the refetch rather than after it, so the state change does not wait
+   * on a round trip; `fetchPoll` then reconciles vote counts.
+   *
+   * Returns the result object, not a boolean. The old `false` was the bug: it
+   * could mean "you may not" or "it did not go through", and `handleClosePoll`
+   * ignored it either way, so the poll just stayed open with no message.
+   */
+  const closePoll = async (): Promise<ClosePollResult> => {
+    if (!user || !poll) {
+      return { status: 'error', error: new Error('no poll') };
+    }
+
+    const result = await closePollRpc(poll.id);
+
+    if (result.status === 'ok') {
+      setPoll(current => (current ? { ...current, is_active: false } : current));
       await fetchPoll();
     }
-    return !error;
+
+    return result;
   };
 
-  return { poll, loading, vote, removeVote, closePoll, refetch: fetchPoll };
+  return {
+    poll,
+    loading,
+    vote,
+    removeVote,
+    closePoll,
+    canClose,
+    isChannelStaff: isStaff,
+    refetch: fetchPoll,
+  };
 }
 
 /**

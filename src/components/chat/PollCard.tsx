@@ -17,6 +17,10 @@ import { CHAT_FALLBACK_NAME } from '../../lib/memberNames';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePoll } from '../../hooks/usePolls';
+import {
+  CLOSE_POLL_FAILED_MESSAGE,
+  POLL_CLOSED_MESSAGE,
+} from '../../lib/channelStaff';
 import { supabase } from '../../lib/supabase';
 import { BoardVoteContainer } from '../polls/BoardVoteContainer';
 import type { VoterProfile } from '../../types';
@@ -217,7 +221,7 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
   // 1. ALL HOOKS FIRST (before any conditions or returns)
   const { user } = useAuth();
   const navigation = useNavigation<any>();
-  const { poll, loading, vote, removeVote, closePoll } = usePoll(pollId);
+  const { poll, loading, vote, removeVote, closePoll, canClose } = usePoll(pollId);
   const [voting, setVoting] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [nonVoters, setNonVoters] = useState<string[]>([]);
@@ -281,7 +285,13 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
   const hasVoted = userVotedOptionIds.length > 0;
   const isExpired = poll.ends_at && new Date(poll.ends_at) < new Date();
   const isClosed = !poll.is_active || isExpired;
-  const canClose = isStaffInChannel || isCreator;
+  // Ruling Q3 B + Q4 B: `canClose` now comes from `usePoll`, which asks the
+  // server's one `is_channel_staff` definition -- NOT from the
+  // `isStaffInChannel` prop, which `TeamChatRoomScreen` fills from
+  // `get_channel_member_labels` (team staff anywhere in the chat's CLUB, the
+  // definition ruling Q3 refused as option C). The prop keeps its other two
+  // jobs, poll reminders and anonymous-voter visibility, which are not this
+  // slice's rulings.
   const showResults = hasVoted || isClosed || poll.show_results_live;
 
   // 7. Functions
@@ -343,9 +353,31 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
     }
   };
 
+  /**
+   * Ruling 4d-EXTRA: on success the card flips to its Closed state immediately
+   * (`usePoll` sets `is_active: false` locally before it refetches) and a short
+   * "Poll closed" confirmation appears.
+   *
+   * A refusal now SAYS SO. This is the fix for the finding in
+   * docs/recon/phaseD-slices.md section 4d: the old handler threw away
+   * `closePoll`'s `false`, so a coach closing another person's poll got no
+   * write and no error. The sentence shown is the server's own, so it is the
+   * same sentence the web app shows.
+   */
   const handleClosePoll = async () => {
     if (!canClose) return;
-    await closePoll();
+
+    const result = await closePoll();
+
+    if (result.status === 'ok') {
+      Alert.alert(POLL_CLOSED_MESSAGE);
+      return;
+    }
+
+    Alert.alert(
+      'Poll not closed',
+      result.status === 'refused' ? result.message : CLOSE_POLL_FAILED_MESSAGE
+    );
   };
 
   const sortedOptions = [...(poll.options || [])].sort((a, b) => a.sort_order - b.sort_order);

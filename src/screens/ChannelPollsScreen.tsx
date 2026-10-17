@@ -20,6 +20,12 @@ import {
   CHAT_FALLBACK_NAME,
   fetchChatProfileNames,
 } from '../lib/memberNames';
+import {
+  CLOSE_POLL_FAILED_MESSAGE,
+  POLL_CLOSED_MESSAGE,
+  closePoll as closePollRpc,
+  isChannelStaff,
+} from '../lib/channelStaff';
 
 interface Poll {
   id: string;
@@ -81,29 +87,19 @@ export default function ChannelPollsScreen() {
         .eq('id', channelId)
         .single();
 
+      // team_id is still read for the poll-reminder push, which is addressed to
+      // a team. It is no longer what decides staffness.
       if (channelData?.team_id) {
         setChannelTeamId(channelData.team_id);
-
-        // Existence check, not a row fetch: a user can hold several team_staff
-        // rows on one team (e.g. Head Coach + Team Manager), and maybeSingle()
-        // errors on 2+ rows -- which silently stripped poll management from
-        // exactly the most senior staff.
-        const { count, error } = await supabase
-          .from('team_staff')
-          .select('id', { count: 'exact', head: true })
-          .eq('team_id', channelData.team_id)
-          .eq('user_id', user.id);
-
-        if (error) {
-          if (__DEV__) {
-            console.warn('[ChannelPolls] staff check failed:', error);
-          }
-          setIsStaffInChannel(false);
-          return;
-        }
-
-        setIsStaffInChannel((count ?? 0) > 0);
       }
+
+      // Ruling Q3 B: ONE definition of staff, and it is the server's. This
+      // screen used to count `team_staff` rows itself, which disagreed with
+      // `TeamChatRoomScreen` (label_kind) and with `ChatInfoScreen`
+      // (isStaffInTeam) about the same person, and answered false for every
+      // club chat and every group chat because it needed a team_id to work at
+      // all. `is_channel_staff` covers all four channel kinds.
+      setIsStaffInChannel(await isChannelStaff(channelId));
     };
 
     checkStaffAndTeam();
@@ -358,6 +354,21 @@ export default function ChannelPollsScreen() {
     }
   };
 
+  /**
+   * Ruling Q4 B: THE SAME DOOR as the chat card -- `close_poll`.
+   *
+   * This handler used to write `.update({ is_active: false })` straight at
+   * `comm_polls`, bypassing `usePolls` entirely
+   * (docs/recon/phaseD-open-rulings.md OPEN Q4). The creator-only UPDATE policy
+   * would have refused a coach, and the `try/catch` could not even see it: a
+   * policy that filters the row out of an UPDATE returns `error: null` with
+   * nothing matched, so a refused close looked exactly like a successful one.
+   * Both problems go away with one call.
+   *
+   * 4d-EXTRA: the row flips to its Closed state immediately -- `is_active` is
+   * set locally before `fetchPolls()` is awaited -- and a short "Poll closed"
+   * confirmation appears. A refusal shows the server's own sentence.
+   */
   const handleClosePoll = async (pollId: string) => {
     Alert.alert(
       'Close Poll',
@@ -370,14 +381,25 @@ export default function ChannelPollsScreen() {
           onPress: async () => {
             setClosingPoll(pollId);
             try {
-              await supabase
-                .from('comm_polls')
-                .update({ is_active: false })
-                .eq('id', pollId);
+              const result = await closePollRpc(pollId);
 
+              if (result.status !== 'ok') {
+                Alert.alert(
+                  'Poll not closed',
+                  result.status === 'refused'
+                    ? result.message
+                    : CLOSE_POLL_FAILED_MESSAGE
+                );
+                return;
+              }
+
+              setPolls(current =>
+                current.map(p =>
+                  p.id === pollId ? { ...p, status: 'closed' } : p
+                )
+              );
+              Alert.alert(POLL_CLOSED_MESSAGE);
               await fetchPolls();
-            } catch (err) {
-              console.error('Error closing poll:', err);
             } finally {
               setClosingPoll(null);
             }
@@ -452,6 +474,10 @@ export default function ChannelPollsScreen() {
     const isActive = item.status === 'active';
     const isVoting = votingPollId === item.id;
     const isCreator = item.created_by === user?.id;
+    // Ruling Q3 B: `isStaffInChannel` is now the server's answer, so this is
+    // the same predicate the chat card uses. Kept as one flag because this
+    // screen gates both Close and Delete on it, and Delete is creator-only
+    // further down -- not a 4d ruling, so it is left exactly as it was.
     const canManagePoll = isStaffInChannel || isCreator;
     const isExpanded = expandedPolls.has(item.id);
     const isBoardRoom = item.display_style === 'board_room';

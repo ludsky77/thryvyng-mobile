@@ -499,16 +499,6 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     });
   };
 
-  const handleMuteUser = async (userId: string, userName: string) => {
-    // TODO: Implement mute in database
-    Alert.alert('Muted', `${userName} has been muted in this conversation`);
-  };
-
-  const handleBlockUser = async (userId: string, userName: string) => {
-    // TODO: Implement block in database
-    Alert.alert('Blocked', `${userName} has been blocked from this channel`);
-  };
-
   const handleViewProfile = (userId: string) => {
     navigation.navigate('UserProfile', { userId });
   };
@@ -913,18 +903,11 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
         message={actionsModalMessage}
         currentUserId={user?.id || ''}
         isStaff={isStaffInChannel}
-        senderName={
-          actionsModalMessage
-            ? memberNames.get(actionsModalMessage.user_id)?.name
-            : undefined
-        }
         onEdit={handleEditMessage}
         onDelete={handleDeleteMessage}
         onReply={startReplyFromActions}
         onAddReaction={openReactionPickerFromActions}
         onViewReadHistory={handleViewReadHistory}
-        onMuteUser={handleMuteUser}
-        onBlockUser={handleBlockUser}
         onViewProfile={handleViewProfile}
       />
     </SafeAreaView>

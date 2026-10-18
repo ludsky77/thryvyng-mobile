@@ -17,19 +17,18 @@ import * as Clipboard from 'expo-clipboard';
 const EDIT_WINDOW_MS = 5 * 60 * 1000;
 
 /**
- * Three tones, and only three.
+ * Two tones, and only two.
  *
  * The sheet had green, amber, blue, purple, grey and red at once, which made
  * every row look like a different severity and left nothing for the one row
- * that is actually destructive. Now: purple marks a positive action, grey is
- * neutral, and red is reserved for Delete and Block.
+ * that is actually destructive. Now: purple marks a positive action, and red
+ * is reserved for Delete. (A neutral grey lived here for the Mute row; that
+ * row is gone, so the tone went with it.)
  */
 const TONE = {
   /** Positive/constructive actions. */
   accent: '#8B5CF6',
-  /** Neutral actions and all body text. */
-  neutral: '#9CA3AF',
-  /** Destructive only: Delete, Block. */
+  /** Destructive only: Delete. */
   danger: '#EF4444',
 } as const;
 
@@ -41,25 +40,14 @@ interface MessageActionsModalProps {
     content: string;
     user_id: string;
     created_at: string;
-    profile?: {
-      full_name?: string;
-    };
   } | null;
   currentUserId: string;
   isStaff: boolean;
-  /**
-   * Resolved sender name from the parent's `memberNames`. The modal is only
-   * ever rendered from a screen that already holds it, so without this the
-   * Mute/Block copy read 'User' while the bubble behind it showed the name.
-   */
-  senderName?: string | null;
   onEdit?: (messageId: string) => void;
   onDelete?: (messageId: string) => void;
   onReply?: () => void;
   onAddReaction?: () => void;
   onViewReadHistory?: (messageId: string) => void;
-  onMuteUser?: (userId: string, userName: string) => void;
-  onBlockUser?: (userId: string, userName: string) => void;
   onViewProfile?: (userId: string) => void;
 }
 
@@ -69,14 +57,11 @@ export function MessageActionsModal({
   message,
   currentUserId,
   isStaff,
-  senderName: senderNameProp,
   onEdit,
   onDelete,
   onReply,
   onAddReaction,
   onViewReadHistory,
-  onMuteUser,
-  onBlockUser,
   onViewProfile,
 }: MessageActionsModalProps) {
 
@@ -101,8 +86,6 @@ export function MessageActionsModal({
 
   const canDelete = isOwnMessage || isStaff;
   const canViewReadHistory = isOwnMessage || isStaff;
-  // memberNames first, join as fallback -- the same order the bubble uses.
-  const senderName = senderNameProp || message?.profile?.full_name || 'User';
 
   const handleCopy = async () => {
     if (message?.content) {
@@ -137,45 +120,6 @@ export function MessageActionsModal({
         },
       ]
     );
-  };
-
-  const handleMute = () => {
-    if (message && onMuteUser) {
-      Alert.alert(
-        `Mute ${senderName}`,
-        'You will no longer receive notifications when this user sends a message in this conversation.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Mute',
-            onPress: () => {
-              onMuteUser(message.user_id, senderName);
-              onClose();
-            },
-          },
-        ]
-      );
-    }
-  };
-
-  const handleBlock = () => {
-    if (message && onBlockUser) {
-      Alert.alert(
-        `Block ${senderName}`,
-        'This user will not be able to send messages in this channel until unblocked.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Block',
-            style: 'destructive',
-            onPress: () => {
-              onBlockUser(message.user_id, senderName);
-              onClose();
-            },
-          },
-        ]
-      );
-    }
   };
 
   if (!message) return null;
@@ -260,31 +204,13 @@ export function MessageActionsModal({
             </TouchableOpacity>
           )}
 
-          {/* Mute - Others' messages only */}
-          {!isOwnMessage && onMuteUser && (
-            <TouchableOpacity style={styles.actionItem} onPress={handleMute}>
-              <Feather name="bell-off" size={20} color={TONE.neutral} />
-              <View style={styles.actionContent}>
-                <Text style={styles.actionText}>Mute {senderName}</Text>
-                <Text style={styles.actionDescription}>
-                  Prevents notifications on your devices when user sends a message in this conversation.
-                </Text>
-              </View>
-            </TouchableOpacity>
-          )}
-
-          {/* Block - Staff only, others' messages */}
-          {!isOwnMessage && isStaff && onBlockUser && (
-            <TouchableOpacity style={styles.actionItem} onPress={handleBlock}>
-              <Feather name="x-square" size={20} color={TONE.danger} />
-              <View style={styles.actionContent}>
-                <Text style={[styles.actionText, { color: TONE.danger }]}>Block {senderName}</Text>
-                <Text style={styles.actionDescription}>
-                  Block the user from being able to send messages in this channel until unblocked
-                </Text>
-              </View>
-            </TouchableOpacity>
-          )}
+          {/* "Mute <user>" and "Block <user>" were removed here. Both only
+              fired an Alert ('has been muted' / 'has been blocked') over a
+              TODO -- nothing was ever written, so the sheet promised
+              moderation the product does not have. Thryvyng has no block
+              feature at all; Hide and Mute arrive later as Chat List v2 swipe
+              actions, and web never shipped these buttons. Ruling 2026-10-15.
+              Do not re-add a row here until the mute/hide state is real. */}
 
           {/* "View Profile" was removed here. It called
               navigation.navigate('UserProfile', …) and no such route is
@@ -333,18 +259,9 @@ const styles = StyleSheet.create({
     borderBottomColor: '#374151',
     gap: 14,
   },
-  actionContent: {
-    flex: 1,
-  },
   actionText: {
     fontSize: 16,
     color: '#FFFFFF',
     fontWeight: '500',
-  },
-  actionDescription: {
-    fontSize: 13,
-    color: '#9CA3AF',
-    marginTop: 4,
-    lineHeight: 18,
   },
 });

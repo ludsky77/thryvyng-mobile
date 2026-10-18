@@ -186,6 +186,13 @@ const CLAIM_MIN_AGE = 13;
 const UNDER_AGE_CLAIM_MESSAGE = mapJoinError({ hint: 'under_age_claim' });
 
 /**
+ * The one sentence both apps print when a name is missing (ruling Q8 A, slice 4h).
+ * Read out of the shared map rather than written here, so this screen's own form
+ * gates and the server's `name_required` HINT can never disagree about the words.
+ */
+const NAME_REQUIRED_MESSAGE = mapJoinError({ hint: 'name_required' });
+
+/**
  * Shown when a 13-15 year old tries to enter solo self-creation. Claiming a roster
  * spot stays open to them (D12), so this fires at the self-create entry, not the age gate.
  */
@@ -1532,7 +1539,11 @@ export const JoinTeamScreen: React.FC = () => {
   // Check for an existing player before creating a new one (teams with player_join_mode 'open' only)
   const handleSelfCreateDupCheck = async () => {
     setSelfCreateError('');
-    if (!selfCreateFirstName.trim() || !selfCreateLastName.trim() || !selfCreateEmail.trim()) {
+    if (!selfCreateFirstName.trim() || !selfCreateLastName.trim()) {
+      setSelfCreateError(NAME_REQUIRED_MESSAGE);
+      return;
+    }
+    if (!selfCreateEmail.trim()) {
       setSelfCreateError('Please fill in your name and email.');
       return;
     }
@@ -1598,6 +1609,15 @@ export const JoinTeamScreen: React.FC = () => {
     setSelfCreateError('');
     if (!teamInfo?.id) {
       setSelfCreateError('Team not found. Please reopen the invite link.');
+      return;
+    }
+    // Slice 4h, and the same shape as the under-16 gate below: submit is only
+    // reachable through handleSelfCreateDupCheck today, which already refuses an
+    // empty name, but that is a render condition rather than a guarantee. This
+    // keeps signUp and self_register_player_for_team unreachable with an empty
+    // name even if the steps upstream are reordered.
+    if (!selfCreateFirstName.trim() || !selfCreateLastName.trim()) {
+      setSelfCreateError(NAME_REQUIRED_MESSAGE);
       return;
     }
     const isLoggedIn = !!user;
@@ -1744,7 +1764,7 @@ export const JoinTeamScreen: React.FC = () => {
     setPlayerFlowIdentityError('');
 
     if (!selfCreateFirstName.trim() || !selfCreateLastName.trim()) {
-      setPlayerFlowIdentityError('Please enter your first and last name');
+      setPlayerFlowIdentityError(NAME_REQUIRED_MESSAGE);
       return;
     }
     if (!playerClaimDob) {

@@ -7,6 +7,9 @@
  */
 
 export type JoinErrorToken =
+  // Raised by the server AND by the clients' own form gates, which is why its
+  // sentence has to live here rather than in a screen (ruling Q8 A, slice 4h).
+  | 'name_required'
   | 'dob_mismatch'
   | 'max_parents_reached'
   | 'player_already_claimed'
@@ -31,6 +34,7 @@ export type JoinErrorToken =
   | 'unknown';
 
 const TOKENS: JoinErrorToken[] = [
+  'name_required',
   'dob_mismatch',
   'max_parents_reached',
   'player_already_claimed',
@@ -55,6 +59,7 @@ const TOKENS: JoinErrorToken[] = [
 ];
 
 const MESSAGES: Record<JoinErrorToken, string> = {
+  name_required: 'Enter your first and last name.',
   dob_mismatch:
     "That doesn't match our records. Please check the date of birth and try again.",
   max_parents_reached:

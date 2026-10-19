@@ -23,6 +23,7 @@ import {
   classifyConversationRows,
   countsTowardUnread,
   isPastTeamChannel,
+  isHiddenConversation,
   isQuietChannel,
   isRetiredTeam,
   type TeamLifecycleFacts,
@@ -262,4 +263,126 @@ test('an empty lifecycle map counts everything -- it never silences a row', () =
   assert.deepEqual(mainRows.map((r) => r.channel_id), ['g', 'a']);
   assert.deepEqual(pastRows, []);
   assert.equal(total, 5);
+});
+
+// ------------------------------------------------------- the HIDE rule (H7)
+//
+// hidden iff hidden_at IS NOT NULL AND last_message_at <= hidden_at.
+// H4 is the consequence worth testing: a NEW message must bring the chat back
+// and its unread must still be there.
+
+const HID = '2026-10-18T12:00:00.000Z';
+const BEFORE = '2026-10-18T11:00:00.000Z';
+const AFTER = '2026-10-18T13:00:00.000Z';
+
+test('not hidden when hidden_at is absent, null or empty', () => {
+  for (const hidden_at of [undefined, null, '']) {
+    assert.equal(
+      isHiddenConversation({ hidden_at, last_message_at: BEFORE }),
+      false
+    );
+  }
+});
+
+test('hidden when the last message predates the hide', () => {
+  assert.equal(
+    isHiddenConversation({ hidden_at: HID, last_message_at: BEFORE }),
+    true
+  );
+});
+
+test('hidden when the last message IS the hide instant (<=, not <)', () => {
+  assert.equal(
+    isHiddenConversation({ hidden_at: HID, last_message_at: HID }),
+    true
+  );
+});
+
+test('H4: a NEWER message un-hides the chat', () => {
+  assert.equal(
+    isHiddenConversation({ hidden_at: HID, last_message_at: AFTER }),
+    false
+  );
+});
+
+test('a hidden chat with no messages at all stays hidden', () => {
+  // SQL would answer NULL <= x with NULL. Treating that as "not hidden" would
+  // bounce a freshly-hidden empty chat straight back into the list.
+  assert.equal(
+    isHiddenConversation({ hidden_at: HID, last_message_at: null }),
+    true
+  );
+  assert.equal(isHiddenConversation({ hidden_at: HID }), true);
+});
+
+test('an unparseable last_message_at leaves the chat hidden', () => {
+  assert.equal(
+    isHiddenConversation({ hidden_at: HID, last_message_at: 'not-a-date' }),
+    true
+  );
+});
+
+test('hidden rows leave BOTH the list and the total, in one pass', () => {
+  const { mainRows, pastRows, hiddenRows, total } = classifyConversationRows(
+    [
+      { channel_id: 'visible', team_id: 'active', unread_count: 4 },
+      // hidden AND unread: the unread must vanish from the total with it.
+      {
+        channel_id: 'hid',
+        team_id: 'active',
+        unread_count: 9,
+        hidden_at: HID,
+        last_message_at: BEFORE,
+      },
+    ],
+    TEAMS
+  );
+  assert.deepEqual(mainRows.map((r) => r.channel_id), ['visible']);
+  assert.deepEqual(hiddenRows.map((r) => r.channel_id), ['hid']);
+  assert.deepEqual(pastRows, []);
+  // 4, not 13: the hidden row's 9 is gone from the badge too.
+  assert.equal(total, 4);
+  // The invariant still holds over mainRows alone.
+  assert.equal(
+    total,
+    mainRows.reduce((sum, r) => sum + (r.unread_count ?? 0), 0)
+  );
+});
+
+test('H4 end to end: the new message returns the row AND its unread', () => {
+  const { mainRows, hiddenRows, total } = classifyConversationRows(
+    [
+      {
+        channel_id: 'back',
+        team_id: 'active',
+        unread_count: 6,
+        hidden_at: HID,
+        last_message_at: AFTER,
+      },
+    ],
+    TEAMS
+  );
+  assert.deepEqual(mainRows.map((r) => r.channel_id), ['back']);
+  assert.deepEqual(hiddenRows, []);
+  assert.equal(total, 6);
+});
+
+test('archived still beats hidden -- listed nowhere, counted nowhere', () => {
+  const { mainRows, pastRows, hiddenRows, total } = classifyConversationRows(
+    [
+      {
+        channel_id: 'gone',
+        team_id: 'active',
+        unread_count: 3,
+        is_archived: true,
+        hidden_at: HID,
+        last_message_at: BEFORE,
+      },
+    ],
+    TEAMS
+  );
+  assert.deepEqual(mainRows, []);
+  assert.deepEqual(pastRows, []);
+  assert.deepEqual(hiddenRows, []);
+  assert.equal(total, 0);
 });

@@ -230,6 +230,25 @@ export interface MemberLabel {
  *
  * Same contract as the other resolvers here: an RPC reports failure as a
  * returned `error`, and any failure degrades to an empty map.
+ *
+ * ---------------------------------------------------------------------------
+ * RULING 7 / 4g A -- "non-team chats: member labels and child names count only
+ * the chat's OWN club" -- is enforced INSIDE this RPC, not here.
+ * ---------------------------------------------------------------------------
+ *
+ * There is deliberately no `p_club_id` argument below, and the Chat List v2
+ * pass did not add one. `get_channel_member_labels` is SECURITY DEFINER and
+ * takes the CHANNEL, from which it derives the scope itself -- which is why
+ * `useChatSenderLabels` still accepts a `teamId` it no longer uses. The client
+ * holds no club to pass: `get_my_conversations.channel_club_id` belongs to the
+ * chat LIST, and this function is called from inside an open chat where that
+ * row is not in hand.
+ *
+ * Adding a second argument on a guess would be the worst available change:
+ * every sender name and every parent/child suffix in EVERY chat comes through
+ * here, so an argument the function does not accept blanks all of them at
+ * once. If 4g A still needs client work, it needs the RPC's real signature
+ * first -- that is a server fact, not something to infer from this side.
  */
 export async function fetchChannelMemberLabels(
   channelId: string | null | undefined

@@ -34,6 +34,14 @@ export interface Channel {
     role: 'admin' | 'member';
     is_muted: boolean;
     last_read_at: string;
+    /**
+     * When this person hid the chat, else null. Written only by
+     * `set_channel_hidden` (src/lib/hiddenChats.ts). The chat counts as hidden
+     * while `last_message_at <= hidden_at` -- see `isHiddenConversation` in
+     * src/utils/unreadRule.ts. Never written alongside `last_read_at`: hiding
+     * marks nothing read.
+     */
+    hidden_at?: string | null;
     joined_at: string;
     // Joined data
     profile?: {

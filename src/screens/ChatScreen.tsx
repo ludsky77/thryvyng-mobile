@@ -17,6 +17,8 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   Alert,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
@@ -29,6 +31,11 @@ import {
   getTimeAgo,
 } from '../lib/chatHelpers';
 import { CHAT_FALLBACK_NAME } from '../lib/memberNames';
+import {
+  canHideChannelType,
+  setChannelHidden,
+  HIDE_FAILED_MESSAGE,
+} from '../lib/hiddenChats';
 import {
   CONTACT_ROLE_GROUP_LABELS,
   contactRoleGroup,
@@ -58,10 +65,29 @@ interface EnrichedConversation {
   displayAvatar: string | null;
   displayInitial: string;
   lastMessage: string | null;
+  /**
+   * Who sent the last message, for the group-chat preview ("Ana: see you at
+   * 6"). Read BY NAME and optional on purpose: `get_my_conversations` does not
+   * return a sender column today, so this is normally null and line 2 shows the
+   * bare preview. If the server adds one, the prefix starts working with no
+   * client change.
+   */
+  lastMessageSender?: string | null;
   lastMessageTime: string | null;
   unreadCount: number;
   /** Channel is muted for this user. Shown as a bell-off icon; still counted everywhere. */
   isMuted?: boolean;
+  /** How many people are in this chat. Line 1, after the title (ruling 3). */
+  memberCount?: number | null;
+  /**
+   * The chat's club, resolved server-side through its team, read BY NAME from
+   * `get_my_conversations` (never by column position). `clubLogoUrl` null means
+   * NO crest and no placeholder -- ruling 1 is explicit that an absent logo
+   * shows nothing rather than a grey circle.
+   */
+  clubId?: string | null;
+  clubName?: string | null;
+  clubLogoUrl?: string | null;
   channel_type?: string;
   team_id?: string | null;
   team?: { id: string; name: string; color?: string } | null;
@@ -108,13 +134,140 @@ function sortByRecent(list: EnrichedConversation[]): EnrichedConversation[] {
   });
 }
 
+/** One revealed swipe action. `icon` is a Feather glyph name. */
+interface SwipeAction {
+  key: string;
+  label: string;
+  icon: React.ComponentProps<typeof Feather>['name'];
+  color: string;
+  onPress: () => void;
+}
+
+/** How far the row must travel before the actions latch open. */
+const SWIPE_ACTION_WIDTH = 160;
+const SWIPE_ACTION_WIDTH_SINGLE = 80;
+
+/**
+ * Swipe-left actions on a chat row (ruling 4).
+ *
+ * PanResponder, not react-native-gesture-handler: RNGH is NOT installed and
+ * adding it is a dependency change. This follows the precedent already in the
+ * app at NotificationsScreen.tsx:19-64, with one difference -- that row swipes
+ * to COMMIT a delete, whereas a chat row swipes to REVEAL buttons, because
+ * Hide and Mute are two actions on one row and a blind fling cannot choose
+ * between them.
+ *
+ * A team chat still swipes; it just reveals Mute alone (ruling 4).
+ */
+function SwipeableChatRow({
+  children,
+  actions,
+  rowKey,
+  openKey,
+  onOpen,
+}: {
+  children: React.ReactNode;
+  actions: SwipeAction[];
+  rowKey: string;
+  /** Which row is currently open; only one at a time. */
+  openKey: string | null;
+  onOpen: (key: string | null) => void;
+}) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const width =
+    actions.length > 1 ? SWIPE_ACTION_WIDTH : SWIPE_ACTION_WIDTH_SINGLE;
+  const isOpen = openKey === rowKey;
+
+  // Another row opened: close this one. Keeps exactly one row open.
+  useEffect(() => {
+    if (!isOpen) {
+      Animated.spring(translateX, {
+        toValue: 0,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [isOpen, translateX]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      // Horizontal intent only, so the FlatList keeps its vertical scroll.
+      onMoveShouldSetPanResponder: (_, g) =>
+        Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy),
+      onPanResponderMove: (_, g) => {
+        const base = isOpen ? -width : 0;
+        const next = Math.min(0, Math.max(-width, base + g.dx));
+        translateX.setValue(next);
+      },
+      onPanResponderRelease: (_, g) => {
+        const base = isOpen ? -width : 0;
+        const next = base + g.dx;
+        const shouldOpen = next < -width / 2;
+        Animated.spring(translateX, {
+          toValue: shouldOpen ? -width : 0,
+          useNativeDriver: true,
+        }).start();
+        onOpen(shouldOpen ? rowKey : null);
+      },
+    })
+  ).current;
+
+  return (
+    <View style={styles.swipeContainer}>
+      <View style={[styles.swipeActions, { width }]}>
+        {actions.map((action) => (
+          <TouchableOpacity
+            key={action.key}
+            style={[styles.swipeAction, { backgroundColor: action.color }]}
+            onPress={() => {
+              onOpen(null);
+              action.onPress();
+            }}
+          >
+            <Feather name={action.icon} size={18} color="#fff" />
+            <Text style={styles.swipeActionText}>{action.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <Animated.View
+        style={{ transform: [{ translateX }] }}
+        {...panResponder.panHandlers}
+      >
+        {children}
+      </Animated.View>
+    </View>
+  );
+}
+
+/**
+ * The club crest, ruling 1: a small ring on the corner of the chat avatar.
+ *
+ * `club_logo_url` null => NOTHING. No placeholder, no grey circle, no initial.
+ * A club that has not uploaded a crest must not make every one of its chats
+ * carry an empty badge, so the absence is rendered as an absence.
+ */
+function ClubCrest({ url }: { url: string | null | undefined }) {
+  if (!url) return null;
+  return (
+    <View style={styles.crestRing}>
+      <Image source={{ uri: url }} style={styles.crestImage} />
+    </View>
+  );
+}
+
 function ConversationItem({
   conversation,
   onPress,
   pastTeam = false,
+  showClubName = false,
 }: {
   conversation: EnrichedConversation;
   onPress: () => void;
+  /**
+   * Put the club name on line 3. True only when the person belongs to 2+ clubs
+   * (ruling 3) -- with one club it is the same word on every row and says
+   * nothing.
+   */
+  showClubName?: boolean;
   /**
    * This row belongs to a PAST team. It was called `muted`, which is a
    * different thing the card also needs to show (see conversation.isMuted),
@@ -188,10 +341,12 @@ function ConversationItem({
       )}
       <View style={styles.conversationIcon}>
         {renderBadge()}
+        <ClubCrest url={conversation.clubLogoUrl} />
       </View>
 
       <View style={styles.conversationContent}>
         <View style={styles.conversationHeader}>
+          {/* LINE 1 -- title, then member count, then the time hard right. */}
           <Text
             style={[
               styles.conversationName,
@@ -202,14 +357,12 @@ function ConversationItem({
           >
             {conversation.cardTitle || conversation.displayName}
           </Text>
-          {conversation.isMuted && (
-            <Feather
-              name="bell-off"
-              size={13}
-              color="#6B7280"
-              style={styles.mutedIcon}
-            />
-          )}
+          {typeof conversation.memberCount === 'number' &&
+          conversation.memberCount > 0 ? (
+            <Text style={styles.memberCount}>
+              {conversation.memberCount}
+            </Text>
+          ) : null}
           {!pastTeam && (
             <Text style={styles.conversationTime}>
               {getTimeAgo(conversation.lastMessageTime)}
@@ -217,6 +370,10 @@ function ConversationItem({
           )}
         </View>
 
+        {/* LINE 2 -- the last message. A group names its sender when the
+            server supplies one. With no messages yet the line falls back to
+            the card's own meta (team channel name / "N members") so the row is
+            never blank. */}
         {pastTeam ? (
           /* The channel name has to survive here. Dropping it for the bare
              words "Past team" made two channels of the same retired team
@@ -227,6 +384,19 @@ function ConversationItem({
               ? `${conversation.cardMeta} · Past team`
               : 'Past team'}
           </Text>
+        ) : conversation.lastMessage ? (
+          <Text
+            style={[
+              styles.lastMessage,
+              conversation.unreadCount > 0 && styles.lastMessageUnread,
+            ]}
+            numberOfLines={1}
+          >
+            {conversation.displayType === 'group' &&
+            conversation.lastMessageSender
+              ? `${conversation.lastMessageSender}: ${conversation.lastMessage}`
+              : conversation.lastMessage}
+          </Text>
         ) : conversation.cardMeta ? (
           <Text
             style={[styles.conversationSubtitle, { color: borderColor }]}
@@ -236,39 +406,48 @@ function ConversationItem({
           </Text>
         ) : null}
 
-        {conversation.lastMessage ? (
-          <Text
-            style={[
-              styles.lastMessage,
-              conversation.unreadCount > 0 && styles.lastMessageUnread,
-            ]}
-            numberOfLines={1}
-          >
-            {conversation.lastMessage}
-          </Text>
-        ) : null}
+        {/* LINE 3 -- unread badge, mute icon, club name. Rendered only when it
+            has something to say, so a quiet single-club chat keeps a 2-line
+            card rather than a blank third row. */}
+        {(() => {
+          const showUnread = !pastTeam && conversation.unreadCount > 0;
+          const showPastDot = pastTeam && conversation.unreadCount > 0;
+          const clubLabel = showClubName ? conversation.clubName : null;
+          if (!showUnread && !showPastDot && !conversation.isMuted && !clubLabel) {
+            return null;
+          }
+          return (
+            <View style={styles.cardMetaRow}>
+              {/* Past-team rows carry no number: their unread is excluded from
+                  the chat total (countsTowardUnread), so a count here would be
+                  a number the tab badge does not agree with. A neutral dot
+                  still says "something is in here". */}
+              {showPastDot && <View style={styles.pastUnreadDot} />}
+              {showUnread && (
+                <View
+                  style={[styles.unreadBadge, { backgroundColor: borderColor }]}
+                >
+                  <Text style={styles.unreadText}>
+                    {conversation.unreadCount > 99
+                      ? '99+'
+                      : conversation.unreadCount}
+                  </Text>
+                </View>
+              )}
+              {conversation.isMuted && (
+                <Feather name="bell-off" size={13} color="#6B7280" />
+              )}
+              {clubLabel ? (
+                <Text style={styles.cardClubName} numberOfLines={1}>
+                  {clubLabel}
+                </Text>
+              ) : null}
+            </View>
+          );
+        })()}
       </View>
 
       <View style={styles.conversationRight}>
-        {/* Past-team rows carry no number: their unread is excluded from the
-            chat total (countsTowardUnread), so a count here would be a number
-            the tab badge does not agree with. A neutral dot still says
-            "something is in here" without competing with the real counters. */}
-        {pastTeam ? (
-          conversation.unreadCount > 0 ? (
-            <View style={styles.pastUnreadDot} />
-          ) : null
-        ) : conversation.unreadCount > 0 ? (
-          <View
-            style={[styles.unreadBadge, { backgroundColor: borderColor }]}
-          >
-            <Text style={styles.unreadText}>
-              {conversation.unreadCount > 99
-                ? '99+'
-                : conversation.unreadCount}
-            </Text>
-          </View>
-        ) : null}
         <Text style={styles.chevron}>›</Text>
       </View>
     </TouchableOpacity>
@@ -306,11 +485,26 @@ export default function ChatScreen({ navigation, route }: any) {
   const {
     mainRows,
     pastRows,
+    hiddenRows,
     loading,
     hasLoadedOnce,
     refresh,
     refreshNow,
   } = useChatUnread();
+  /** Which swiped row is open. One at a time, across every tab. */
+  const [openSwipeKey, setOpenSwipeKey] = useState<string | null>(null);
+  /** Club chip filter (ruling 2). null = All. */
+  const [clubFilter, setClubFilter] = useState<string | null>(null);
+  /** Is the "Hidden (n)" section expanded? (ruling 8) */
+  const [hiddenExpanded, setHiddenExpanded] = useState(false);
+  /**
+   * Clubs this person is in via STAFF/ADMIN rather than via a team. The three
+   * sources are the same ones the new-chat flow already consults below
+   * (club_staff, user_roles.club_admin, clubs.admin_id) -- read here as a SET
+   * because a club admin with no team must still be counted among their clubs
+   * (ruling 2), which the single-club `clubId` state cannot express.
+   */
+  const [staffClubIds, setStaffClubIds] = useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   // ensure_team_channel_membership is a one-time repair, not a per-fetch step.
   const membershipEnsuredRef = useRef(false);
@@ -364,6 +558,19 @@ export default function ChatScreen({ navigation, route }: any) {
     const lastMessageTime = row.last_message_at ?? null;
     const unreadCount = row.unread_count ?? 0;
     const isMuted = row.is_muted === true;
+    /*
+     * The three club columns, read BY NAME and never by position -- the RPC
+     * grew from 20 to 23 columns and positional reads are exactly what breaks
+     * when it grows again. `channel_club_id` is the chat's club resolved
+     * server-side through its team, so it is present for DMs and group chats
+     * too, which is what makes the club chips able to filter them (ruling 2).
+     */
+    const clubId = row.channel_club_id ?? null;
+    const clubName = row.club_name ?? null;
+    const clubLogoUrl = row.club_logo_url ?? null;
+    const memberCount = row.member_count ?? null;
+    const lastMessageSender = row.last_message_sender_name ?? null;
+    const clubFields = { clubId, clubName, clubLogoUrl, memberCount };
 
     if (row.is_direct_message) {
       // other_user_name is get_my_conversations column 17, which S1 pointed at
@@ -384,6 +591,7 @@ export default function ChatScreen({ navigation, route }: any) {
         lastMessageTime,
         unreadCount,
         isMuted,
+        ...clubFields,
         channel_type: row.channel_type,
         name: row.name,
       };
@@ -400,9 +608,14 @@ export default function ChatScreen({ navigation, route }: any) {
         displayAvatar: null,
         displayInitial: '👥',
         lastMessage: row.last_message_content || null,
+        // Only a GROUP preview names its sender: a DM's sender is the person
+        // whose name is already the card title, and a team chat's line 2 is
+        // the channel name.
+        lastMessageSender,
         lastMessageTime,
         unreadCount,
         isMuted,
+        ...clubFields,
         channel_type: row.channel_type,
         name: row.name,
       };
@@ -427,6 +640,7 @@ export default function ChatScreen({ navigation, route }: any) {
       lastMessageTime,
       unreadCount,
       isMuted,
+      ...clubFields,
       channel_type: row.channel_type,
       team_id: row.team_id,
       team: row.team_id
@@ -436,7 +650,7 @@ export default function ChatScreen({ navigation, route }: any) {
     };
   }, [allTeams]);
 
-  const conversations = useMemo(
+  const allConversations = useMemo(
     () => sortByRecent(mainRows.map(toConversation)),
     [mainRows, toConversation]
   );
@@ -444,6 +658,46 @@ export default function ChatScreen({ navigation, route }: any) {
     () => sortByRecent(pastRows.map(toConversation)),
     [pastRows, toConversation]
   );
+  const hiddenConversations = useMemo(
+    () => sortByRecent(hiddenRows.map(toConversation)),
+    [hiddenRows, toConversation]
+  );
+
+  /**
+   * The person's clubs (ruling 2): clubs where they have a TEAM, plus clubs
+   * where they are staff/admin. Both halves matter -- a parent's clubs come
+   * only from teams, a club admin's may come only from staff rows.
+   */
+  const userClubs = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const team of allTeams) {
+      if (team.club_id) byId.set(team.club_id, team.club_name || 'Club');
+    }
+    // A staffed club with no team of ours still counts; its name is filled in
+    // from any conversation that carries it, else left generic.
+    for (const id of staffClubIds) {
+      if (!byId.has(id)) byId.set(id, 'Club');
+    }
+    for (const convo of allConversations) {
+      if (convo.clubId && convo.clubName && byId.get(convo.clubId) === 'Club') {
+        byId.set(convo.clubId, convo.clubName);
+      }
+    }
+    return Array.from(byId, ([id, name]) => ({ id, name }));
+  }, [allTeams, staffClubIds, allConversations]);
+
+  /** Chips, and the club name on line 3, appear only at 2+ clubs (rulings 2,3). */
+  const isMultiClub = userClubs.length >= 2;
+
+  /**
+   * A chip filters by `channel_club_id`. A chat with no club (a cross-club DM,
+   * say) is shown under "All" and under no chip -- it belongs to no club, so
+   * claiming it for one would be a lie.
+   */
+  const conversations = useMemo(() => {
+    if (!clubFilter) return allConversations;
+    return allConversations.filter((c) => c.clubId === clubFilter);
+  }, [allConversations, clubFilter]);
 
   /**
    * One-time membership repair. It has to finish before its channels can show
@@ -525,6 +779,55 @@ export default function ChatScreen({ navigation, route }: any) {
       setClubId(null);
     };
     checkClubAdmin();
+  }, [user?.id]);
+
+  /**
+   * EVERY club this person staffs, for the chip rule (ruling 2).
+   *
+   * Deliberately separate from `checkClubAdmin` above rather than folded into
+   * it: that effect returns at the FIRST source that answers, because all it
+   * needs is "are you a club admin, and of which one" for the new-chat flow.
+   * The chip rule needs the UNION -- someone can staff two clubs through two
+   * different tables -- and rewriting the early returns would change behaviour
+   * the chip rule has no business touching.
+   */
+  useEffect(() => {
+    if (!user?.id) {
+      setStaffClubIds([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const ids = new Set<string>();
+      try {
+        const [staffRows, roleRows, ownedRows] = await Promise.all([
+          supabase.from('club_staff').select('club_id').eq('user_id', user.id),
+          supabase
+            .from('user_roles')
+            .select('entity_id')
+            .eq('user_id', user.id)
+            .eq('role', 'club_admin'),
+          supabase.from('clubs').select('id').eq('admin_id', user.id),
+        ]);
+        (staffRows.data as { club_id?: string | null }[] | null)?.forEach(
+          (r) => r?.club_id && ids.add(r.club_id)
+        );
+        (roleRows.data as { entity_id?: string | null }[] | null)?.forEach(
+          (r) => r?.entity_id && ids.add(r.entity_id)
+        );
+        (ownedRows.data as { id?: string | null }[] | null)?.forEach(
+          (r) => r?.id && ids.add(r.id)
+        );
+      } catch (err) {
+        // Not fatal: with no staffed clubs the chips simply fall back to the
+        // clubs this person has a team in.
+        logError('ChatScreen.staffClubIds', err, { userId: user.id });
+      }
+      if (!cancelled) setStaffClubIds(Array.from(ids));
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [user?.id]);
 
   const fetchExistingDMs = useCallback(async () => {
@@ -1064,6 +1367,195 @@ export default function ChatScreen({ navigation, route }: any) {
     } finally {
       setRefreshing(false);
     }
+  };
+
+  /**
+   * Mute / unmute (ruling 6). Same write the Chat Info switch uses
+   * (ChatInfoScreen.tsx:362-369) -- `comm_channel_members.is_muted`, scoped to
+   * this channel and this user. Mute changes PUSH DELIVERY only: the chat
+   * keeps its place in the list and its unread keeps counting in the tab
+   * badge, which is PARITY SPEC v2's "a muted channel counts".
+   *
+   * The error is checked, unlike the Chat Info switch: an UPDATE that matches
+   * no row is not a Postgres error, so an unchecked write is how a toggle
+   * appears to work while nothing happens.
+   */
+  const handleToggleMute = useCallback(
+    async (conversation: EnrichedConversation) => {
+      if (!user?.id) return;
+      const next = !conversation.isMuted;
+      const { error } = await supabase
+        .from('comm_channel_members')
+        .update({ is_muted: next })
+        .eq('channel_id', conversation.id)
+        .eq('user_id', user.id);
+      if (error) {
+        logError('ChatScreen.toggleMute', error, { channelId: conversation.id });
+        Alert.alert('Not updated', 'Could not change notifications for this chat.');
+        return;
+      }
+      refresh();
+    },
+    [user?.id, refresh]
+  );
+
+  /**
+   * Hide / unhide (rulings 5 and 8). One door: `setChannelHidden`, which is
+   * the only hide write in this app. Nothing is marked read, and push is
+   * untouched.
+   *
+   * A refusal is SAID OUT LOUD rather than swallowed -- the server refuses
+   * team/club/default chats, and the UI already declines to offer Hide on
+   * them, so reaching a refusal means the two disagree and that is worth
+   * seeing.
+   */
+  const handleSetHidden = useCallback(
+    async (conversation: EnrichedConversation, hidden: boolean) => {
+      const result = await setChannelHidden(conversation.id, hidden);
+      if (result.status === 'ok') {
+        refresh();
+        return;
+      }
+      if (result.status === 'refused') {
+        Alert.alert('Chat not hidden', result.message);
+        return;
+      }
+      logError('ChatScreen.setChannelHidden', result.error, {
+        channelId: conversation.id,
+      });
+      Alert.alert('Chat not hidden', HIDE_FAILED_MESSAGE);
+    },
+    [refresh]
+  );
+
+  /**
+   * The swipe actions for one row (ruling 4): Mute on every chat, Hide only
+   * where `canHideChannelType` allows it -- DMs and group chats. A team, club
+   * or default chat still swipes, and reveals Mute alone.
+   */
+  const swipeActionsFor = useCallback(
+    (conversation: EnrichedConversation) => {
+      const actions: SwipeAction[] = [
+        {
+          key: 'mute',
+          label: conversation.isMuted ? 'Unmute' : 'Mute',
+          icon: conversation.isMuted ? 'bell' : 'bell-off',
+          color: '#4B5563',
+          onPress: () => void handleToggleMute(conversation),
+        },
+      ];
+      if (canHideChannelType(conversation.channel_type)) {
+        actions.push({
+          key: 'hide',
+          label: 'Hide',
+          icon: 'eye-off',
+          color: '#6D28D9',
+          onPress: () => void handleSetHidden(conversation, true),
+        });
+      }
+      return actions;
+    },
+    [handleToggleMute, handleSetHidden]
+  );
+
+  /**
+   * Club filter chips (ruling 2). Rendered ONLY at 2+ clubs -- with one club
+   * every chip would select the whole list and say nothing.
+   */
+  const renderClubChips = () => {
+    if (!isMultiClub) return null;
+    return (
+      <View style={styles.clubChipsRow}>
+        <TouchableOpacity
+          style={[styles.clubChip, !clubFilter && styles.clubChipActive]}
+          onPress={() => setClubFilter(null)}
+        >
+          <Text
+            style={[
+              styles.clubChipText,
+              !clubFilter && styles.clubChipTextActive,
+            ]}
+          >
+            All
+          </Text>
+        </TouchableOpacity>
+        {userClubs.map((club) => (
+          <TouchableOpacity
+            key={club.id}
+            style={[
+              styles.clubChip,
+              clubFilter === club.id && styles.clubChipActive,
+            ]}
+            onPress={() =>
+              setClubFilter(clubFilter === club.id ? null : club.id)
+            }
+          >
+            <Text
+              style={[
+                styles.clubChipText,
+                clubFilter === club.id && styles.clubChipTextActive,
+              ]}
+              numberOfLines={1}
+            >
+              {club.name}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  };
+
+  /**
+   * "Hidden (n)" at the bottom of Recent (ruling 8). Shown only when n > 0,
+   * collapsed by default, and each expanded row swipes to Unhide.
+   *
+   * The count is `hiddenRows.length` straight from the one classification
+   * pass, so it cannot disagree with what expanding actually shows.
+   */
+  const renderHiddenSection = () => {
+    if (hiddenConversations.length === 0) return null;
+    return (
+      <View style={styles.hiddenSection}>
+        <TouchableOpacity
+          style={styles.hiddenHeader}
+          onPress={() => setHiddenExpanded((open) => !open)}
+          activeOpacity={0.7}
+        >
+          <Feather
+            name={hiddenExpanded ? 'chevron-down' : 'chevron-right'}
+            size={16}
+            color="#9CA3AF"
+          />
+          <Text style={styles.hiddenHeaderText}>
+            Hidden ({hiddenConversations.length})
+          </Text>
+        </TouchableOpacity>
+        {hiddenExpanded &&
+          hiddenConversations.map((item) => (
+            <SwipeableChatRow
+              key={item.id}
+              rowKey={`hidden-${item.id}`}
+              openKey={openSwipeKey}
+              onOpen={setOpenSwipeKey}
+              actions={[
+                {
+                  key: 'unhide',
+                  label: 'Unhide',
+                  icon: 'eye',
+                  color: '#6D28D9',
+                  onPress: () => void handleSetHidden(item, false),
+                },
+              ]}
+            >
+              <ConversationItem
+                conversation={item}
+                onPress={() => handleConversationPress(item)}
+                showClubName={isMultiClub}
+              />
+            </SwipeableChatRow>
+          ))}
+      </View>
+    );
   };
 
   const handleConversationPress = (conversation: EnrichedConversation) => {
@@ -1807,11 +2299,21 @@ export default function ChatScreen({ navigation, route }: any) {
           data={conversations}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <ConversationItem
-              conversation={item}
-              onPress={() => handleConversationPress(item)}
-            />
+            <SwipeableChatRow
+              rowKey={item.id}
+              openKey={openSwipeKey}
+              onOpen={setOpenSwipeKey}
+              actions={swipeActionsFor(item)}
+            >
+              <ConversationItem
+                conversation={item}
+                onPress={() => handleConversationPress(item)}
+                showClubName={isMultiClub}
+              />
+            </SwipeableChatRow>
           )}
+          ListHeaderComponent={renderClubChips()}
+          ListFooterComponent={renderHiddenSection()}
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl
@@ -1832,9 +2334,13 @@ export default function ChatScreen({ navigation, route }: any) {
             data={pastConversations}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
+              /* No swipe on Past (ruling 4): these chats are read-only
+                 history, and muting or hiding a retired team's chat is not an
+                 action the rulings asked for. */
               <ConversationItem
                 conversation={item}
                 onPress={() => handleConversationPress(item)}
+                showClubName={isMultiClub}
                 pastTeam
               />
             )}
@@ -1870,10 +2376,18 @@ export default function ChatScreen({ navigation, route }: any) {
             </View>
           )}
           renderItem={({ item }) => (
-            <ConversationItem
-              conversation={item}
-              onPress={() => handleConversationPress(item)}
-            />
+            <SwipeableChatRow
+              rowKey={item.id}
+              openKey={openSwipeKey}
+              onOpen={setOpenSwipeKey}
+              actions={swipeActionsFor(item)}
+            >
+              <ConversationItem
+                conversation={item}
+                onPress={() => handleConversationPress(item)}
+                showClubName={isMultiClub}
+              />
+            </SwipeableChatRow>
           )}
           contentContainerStyle={styles.listContent}
           refreshControl={
@@ -2052,9 +2566,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
   },
-  mutedIcon: {
-    marginRight: 6,
-  },
   pastUnreadDot: {
     width: 8,
     height: 8,
@@ -2070,6 +2581,114 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+  },
+  /* Club filter chips (ruling 2), above the Recent list. */
+  clubChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: 4,
+    paddingBottom: 12,
+  },
+  clubChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: '#374151',
+    maxWidth: 160,
+  },
+  clubChipActive: {
+    backgroundColor: '#8b5cf6',
+  },
+  clubChipText: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  clubChipTextActive: {
+    color: '#fff',
+  },
+  /* "Hidden (n)" at the bottom of Recent (ruling 8). */
+  hiddenSection: {
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#374151',
+    paddingTop: 8,
+  },
+  hiddenHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
+  hiddenHeaderText: {
+    color: '#9CA3AF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  /* Swipe-left actions (ruling 4). The action strip sits UNDER the card and is
+     revealed as the card slides left, so the card itself needs an opaque
+     background -- conversationCard already has one. */
+  swipeContainer: {
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  swipeActions: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    flexDirection: 'row',
+  },
+  swipeAction: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  swipeActionText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  /* The crest sits on the avatar's bottom-right corner. The ring is the card
+     background, so the crest reads as a separate token rather than a smudge on
+     the avatar. Rendered only when club_logo_url is non-null (ruling 1). */
+  crestRing: {
+    position: 'absolute',
+    right: 8,
+    bottom: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: '#1F2937',
+    backgroundColor: '#1F2937',
+    overflow: 'hidden',
+  },
+  crestImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 7,
+  },
+  /* Line 1, after the title: how many people are in this chat. */
+  memberCount: {
+    color: '#6B7280',
+    fontSize: 12,
+    marginLeft: 6,
+  },
+  /* Line 3: unread badge, mute icon and club name on one row. */
+  cardMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 6,
+  },
+  cardClubName: {
+    color: '#9CA3AF',
+    fontSize: 11,
+    flexShrink: 1,
   },
   badgeCircle: {
     width: 40,
@@ -2151,7 +2770,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 6,
-    marginBottom: 4,
   },
   unreadText: {
     color: '#fff',

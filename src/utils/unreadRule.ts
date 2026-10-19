@@ -46,6 +46,45 @@ export interface ChannelLifecycleFacts {
   team_id?: string | null;
 }
 
+/**
+ * What the HIDE rule needs. Both columns come from `get_my_conversations`,
+ * read BY NAME: `hidden_at` is written by `set_channel_hidden`, and
+ * `last_message_at` is the column the list already sorts by.
+ */
+export interface ChannelHiddenFacts {
+  hidden_at?: string | null;
+  last_message_at?: string | null;
+}
+
+/**
+ * THE hide rule (H7), stated once.
+ *
+ *   hidden  iff  hidden_at IS NOT NULL  AND  last_message_at <= hidden_at
+ *
+ * Which is what makes H4 true for free: a NEW message moves `last_message_at`
+ * past `hidden_at`, this returns false, and the chat comes back into the list
+ * **with its unread intact** -- hiding writes one timestamp and never touches
+ * `last_read_at`, so nothing is marked read by hiding or by un-hiding.
+ *
+ * A chat with NO messages at all (`last_message_at` null) that has been hidden
+ * stays hidden. SQL would answer `NULL <= x` with NULL (i.e. not hidden), but
+ * that would bounce a freshly-hidden empty chat straight back into the list the
+ * moment it was hidden, which is not what the user asked for. "No message since
+ * I hid it" is the honest reading, so null counts as "not newer".
+ *
+ * Unparseable timestamps are treated the same way -- `NaN > NaN` is false, so a
+ * garbage `last_message_at` leaves the chat hidden rather than resurrecting it.
+ */
+export function isHiddenConversation(row: ChannelHiddenFacts): boolean {
+  const hiddenAt = row.hidden_at;
+  if (!hiddenAt) return false;
+  const lastMessageAt = row.last_message_at;
+  if (!lastMessageAt) return true;
+  return !(
+    new Date(lastMessageAt).getTime() > new Date(hiddenAt).getTime()
+  );
+}
+
 /** What the rule needs to know about a channel's team. */
 export interface TeamLifecycleFacts {
   team_status?: string | null;
@@ -113,7 +152,9 @@ export function isPastTeamChannel(
 }
 
 /** A get_my_conversations row, reduced to what the rule and the total need. */
-export interface ConversationRow extends ChannelLifecycleFacts {
+export interface ConversationRow
+  extends ChannelLifecycleFacts,
+    ChannelHiddenFacts {
   channel_id?: string | null;
   unread_count?: number | null;
 }
@@ -123,6 +164,13 @@ export interface ClassifiedConversations<T> {
   mainRows: T[];
   /** Quiet because their team is retired, still listed in the Past section. */
   pastRows: T[];
+  /**
+   * Hidden by the user (H7). In NO list and in NO total -- they appear only
+   * behind the "Hidden (n)" row at the bottom of Recent, which renders this
+   * array. Their unread survives untouched; it is simply not counted while
+   * hidden, exactly as a Past row's is not.
+   */
+  hiddenRows: T[];
   /** Sum of unread_count over mainRows -- nothing else. */
   total: number;
 }
@@ -138,6 +186,17 @@ export interface ClassifiedConversations<T> {
  *
  * Archived channels land in neither list and add nothing -- the RPC returns
  * them unfiltered and this is where they are dropped.
+ *
+ * HIDDEN rows (H7) are dropped from `mainRows` AND from `total` in this same
+ * pass, for the same reason the two were merged in the first place: a chat the
+ * user hid must not leave a number behind on the tab badge that no visible row
+ * accounts for. They are collected into `hiddenRows` rather than discarded, so
+ * the "Hidden (n)" row can show them without a second fetch or a second
+ * derivation. Nothing here marks anything read.
+ *
+ * Order matters and is: archived (gone) -> hidden (the user's own choice) ->
+ * past (retired team) -> main. Hiding is checked before the team rule so that a
+ * row which is somehow both stays where the user put it.
  */
 export function classifyConversationRows<T extends ConversationRow>(
   rows: readonly T[] | null | undefined,
@@ -145,10 +204,17 @@ export function classifyConversationRows<T extends ConversationRow>(
 ): ClassifiedConversations<T> {
   const mainRows: T[] = [];
   const pastRows: T[] = [];
+  const hiddenRows: T[] = [];
   let total = 0;
 
   for (const row of rows ?? []) {
     if (!row || !row.channel_id) continue;
+    // Archived is still "listed nowhere, counted nowhere" and wins outright.
+    if (row.is_archived === true) continue;
+    if (isHiddenConversation(row)) {
+      hiddenRows.push(row);
+      continue;
+    }
     if (countsTowardUnread(row, teams)) {
       mainRows.push(row);
       // Negative or absent counts must not subtract from the total.
@@ -158,7 +224,7 @@ export function classifyConversationRows<T extends ConversationRow>(
     }
   }
 
-  return { mainRows, pastRows, total };
+  return { mainRows, pastRows, hiddenRows, total };
 }
 
 /* ---------------------------------------------------------------------------

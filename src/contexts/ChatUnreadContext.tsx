@@ -125,6 +125,12 @@ export interface ChatUnreadValue {
   mainRows: any[];
   /** Retired-team channels; what the Past section renders. */
   pastRows: any[];
+  /**
+   * Chats this person hid (H7). In no list and in no total -- the
+   * "Hidden (n)" row at the bottom of Recent renders these, and nothing else
+   * does. Their unread is intact, just uncounted while hidden.
+   */
+  hiddenRows: ConversationRow[];
   /** Sum of unread_count over mainRows. The tab badge number. */
   total: number;
   loading: boolean;
@@ -144,7 +150,12 @@ export interface ChatUnreadValue {
   refreshNow: () => Promise<void>;
 }
 
-const EMPTY = { mainRows: [] as any[], pastRows: [] as any[], total: 0 };
+const EMPTY = {
+  mainRows: [] as any[],
+  pastRows: [] as any[],
+  hiddenRows: [] as ConversationRow[],
+  total: 0,
+};
 
 const ChatUnreadContext = createContext<ChatUnreadValue | undefined>(undefined);
 
@@ -301,6 +312,7 @@ export function ChatUnreadProvider({ children }: { children: ReactNode }) {
       value={{
         mainRows: rows.mainRows,
         pastRows: rows.pastRows,
+        hiddenRows: rows.hiddenRows,
         total: rows.total,
         loading,
         hasLoadedOnce,

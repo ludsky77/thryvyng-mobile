@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  Image,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
@@ -46,6 +47,17 @@ import { useTypingPresence } from '../hooks/useTypingPresence';
 import { TypingIndicator } from '../components/chat/TypingIndicator';
 import { setActiveChannelId } from '../services/notifications';
 import type { Message } from '../types';
+
+/**
+ * The shape of the club embed added to this screen's `comm_channels` read for
+ * ruling 1. Spelled out rather than cast to `any` so a change in the embed is
+ * a type error here instead of an undefined at runtime.
+ */
+type ChannelClubRow = {
+  teams?: {
+    clubs?: { name?: string | null; logo_url?: string | null } | null;
+  } | null;
+};
 
 function getCelebrationType(
   content: string,
@@ -169,6 +181,9 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
    * function this state is filled from (line 43) — the name would shadow it.
    */
   const [allowMemberText, setAllowMemberText] = useState(true);
+  /** The chat's club, for the header crest + name (ruling 1). */
+  const [clubName, setClubName] = useState<string | null>(null);
+  const [clubLogoUrl, setClubLogoUrl] = useState<string | null>(null);
   const [isStaffHere, setIsStaffHere] = useState<boolean | undefined>(undefined);
 
   // Called on mount, on focus, and on each incoming message (via useMessages'
@@ -237,13 +252,27 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
       try {
         const { data: channelData } = await supabase
           .from('comm_channels')
-          .select('team_id, allow_member_text')
+          .select(
+            'team_id, allow_member_text, teams(club_id, clubs(name, logo_url))'
+          )
           .eq('id', channelId)
           .single();
         // 4b: the flag is read for EVERY chat kind, so this runs before the
         // team_id branch below returns early. A club chat and a group chat have
         // no team_id and can still be announcement-only.
         setAllowMemberText(allowsMemberText(channelData));
+        /*
+         * Ruling 1: the club crest and club NAME belong in the open-chat
+         * header. The club is the chat's team's club -- the same path the
+         * server walks for `get_my_conversations.channel_club_id` -- so it is
+         * read here as one nested embed on a query this screen already makes,
+         * rather than as a second round trip. A chat with no team has no club
+         * and gets no crest, which is the same answer the list reaches.
+         */
+        const clubRow =
+          (channelData as ChannelClubRow | null)?.teams?.clubs ?? null;
+        setClubName(clubRow?.name ?? null);
+        setClubLogoUrl(clubRow?.logo_url ?? null);
         if (!channelData?.team_id) {
           setChannelTeamId(null);
           setPermissionsLoaded(true);
@@ -793,14 +822,28 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
               card titles -- the two used to disagree about which was which.
               With no team, the channel name takes the title slot rather than
               leaving it empty. */}
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {teamName || channelName || 'Team Chat'}
-          </Text>
-          {teamName && (
-            <Text style={styles.headerSubtitle} numberOfLines={1}>
-              {channelName || 'Team Chat'}
+          <View style={styles.headerTitleRow}>
+            {/* Ruling 1: the club crest sits beside the title. A club with no
+                logo_url gets NO crest and no placeholder. */}
+            {clubLogoUrl ? (
+              <Image
+                source={{ uri: clubLogoUrl }}
+                style={styles.headerCrest}
+              />
+            ) : null}
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {teamName || channelName || 'Team Chat'}
             </Text>
-          )}
+          </View>
+          {/* Ruling 1: the club NAME joins the secondary line. With no club it
+              is omitted entirely rather than shown as an empty separator. */}
+          {teamName || clubName ? (
+            <Text style={styles.headerSubtitle} numberOfLines={1}>
+              {[clubName, teamName ? channelName || 'Team Chat' : null]
+                .filter(Boolean)
+                .join(' · ')}
+            </Text>
+          ) : null}
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.headerMenuButton}
@@ -1018,6 +1061,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   // Large and bold: the team name is what identifies the room.
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  headerCrest: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+  },
   headerTitle: {
     color: '#fff',
     fontSize: 19,

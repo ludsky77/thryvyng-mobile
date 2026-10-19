@@ -199,7 +199,6 @@ const voterStyles = StyleSheet.create({
 interface PollCardProps {
   pollId: string;
   compact?: boolean;
-  isStaffInChannel?: boolean;
 }
 
 function getTimeRemaining(endsAt: string): string {
@@ -217,11 +216,15 @@ function getTimeRemaining(endsAt: string): string {
   return 'Ends soon';
 }
 
-export function PollCard({ pollId, compact = false, isStaffInChannel = false }: PollCardProps) {
+export function PollCard({ pollId, compact = false }: PollCardProps) {
   // 1. ALL HOOKS FIRST (before any conditions or returns)
   const { user } = useAuth();
   const navigation = useNavigation<any>();
-  const { poll, loading, vote, removeVote, closePoll, canClose } = usePoll(pollId);
+  // 4i: `isChannelStaff` is taken from the SAME `usePoll` call that already
+  // answers `canClose`, so every staff decision on this card comes from the
+  // server's one `is_channel_staff` and no second RPC is made per card.
+  const { poll, loading, vote, removeVote, closePoll, canClose, isChannelStaff } =
+    usePoll(pollId);
   const [voting, setVoting] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [nonVoters, setNonVoters] = useState<string[]>([]);
@@ -233,7 +236,25 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
   // 2. Derived values (safe when poll is null)
   const totalVotes = poll?.options?.reduce((sum, opt) => sum + (opt.vote_count || 0), 0) ?? 0;
   const isCreator = poll?.created_by === user?.id;
-  const canSendReminder = isStaffInChannel || isCreator;
+  /**
+   * Ruling I4 A (Lu, 2026-10-18): the poll reminder button is CHANNEL STAFF
+   * ONLY. It used to be `isStaffInChannel || isCreator`, so any member who
+   * started a poll in a group chat could push a notification to everyone who
+   * had not voted. Creator alone no longer qualifies — a creator who is also
+   * staff of this chat still sees it, via the same answer.
+   *
+   * The feature itself is untouched (prod shows 47 reminders sent, last
+   * 2026-09-23): this is a gate change, not a redesign.
+   */
+  const canSendReminder = isChannelStaff;
+  /**
+   * Ruling I2 A (Lu, 2026-10-18): voter names on an ANONYMOUS poll are visible
+   * to the poll's creator OR channel staff. A non-anonymous poll shows its
+   * voters to everyone, exactly as before. Previously the anonymous arm was
+   * staff-only, so a member who created an anonymous poll could not see who
+   * had answered their own question.
+   */
+  const canSeeVoters = !poll?.is_anonymous || isChannelStaff || isCreator;
 
   // 3. useCallback - must be before useEffect
   const fetchNonVoters = useCallback(async () => {
@@ -285,18 +306,26 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
   const hasVoted = userVotedOptionIds.length > 0;
   const isExpired = poll.ends_at && new Date(poll.ends_at) < new Date();
   const isClosed = !poll.is_active || isExpired;
-  // Ruling Q3 B + Q4 B: `canClose` now comes from `usePoll`, which asks the
-  // server's one `is_channel_staff` definition -- NOT from the
-  // `isStaffInChannel` prop, which `TeamChatRoomScreen` fills from
+  // Ruling Q3 B + Q4 B: `canClose` comes from `usePoll`, which asks the
+  // server's one `is_channel_staff` definition -- NOT from
   // `get_channel_member_labels` (team staff anywhere in the chat's CLUB, the
-  // definition ruling Q3 refused as option C). The prop keeps its other two
-  // jobs, poll reminders and anonymous-voter visibility, which are not this
-  // slice's rulings.
+  // definition ruling Q3 refused as option C).
+  //
+  // 4i closed the gap that comment used to describe: the `isStaffInChannel`
+  // prop held the card's other two staff jobs, poll reminders and
+  // anonymous-voter visibility, on the label_kind answer. Rulings I4 A and I2 A
+  // moved both onto this same `is_channel_staff`, so the prop is gone and every
+  // staff decision on this card has ONE source. See `canSendReminder` and
+  // `canSeeVoters` above.
   const showResults = hasVoted || isClosed || poll.show_results_live;
 
   // 7. Functions
   const handleSendPollReminder = async () => {
     if (nonVoters.length === 0 || reminderSending || !poll) return;
+    // Ruling I4 A: the same gate the button renders behind, repeated here so
+    // the restriction is not render-only -- `send-push-notification` is
+    // invoked straight from this client.
+    if (!canSendReminder) return;
 
     setReminderSending(true);
 
@@ -634,7 +663,7 @@ export function PollCard({ pollId, compact = false, isStaffInChannel = false }: 
                       )}
                     </View>
                   </TouchableOpacity>
-                  {(isStaffInChannel || !poll.is_anonymous) && showResults && voters.length > 0 && (
+                  {canSeeVoters && showResults && voters.length > 0 && (
                     <VoterAvatarRow
                       voters={voters}
                       onPress={() => setSelectedVoters(voters)}

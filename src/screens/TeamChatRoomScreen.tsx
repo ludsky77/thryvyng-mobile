@@ -158,6 +158,15 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
    * for the send gate and the labels function has never heard of him, and a
    * coach of another team in the same club is the other way round. The send
    * gate must be the one the policy asks (FND-4d3).
+   *
+   * Slice 4i (rulings I4 A / I5 A, Lu 2026-10-18) made `isStaffHere` the
+   * answer for POLL decisions too, so it is now asked in EVERY chat instead of
+   * only announcement-only ones. `undefined` still means "not known yet" and
+   * every gate reads it as NOT staff, so a poll button appears when the answer
+   * arrives rather than flashing for someone who may not have it.
+   *
+   * It is not named `isChannelStaff` because that identifier is the imported
+   * function this state is filled from (line 43) — the name would shadow it.
    */
   const [allowMemberText, setAllowMemberText] = useState(true);
   const [isStaffHere, setIsStaffHere] = useState<boolean | undefined>(undefined);
@@ -250,11 +259,17 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     checkStaffPermission();
   }, [channelId, user?.id]);
 
-  // 4b: the send gate's staff answer. Only an announcement chat needs it, so an
-  // ordinary chat makes no call; `undefined` while it is in flight, which
-  // ChatInputBar reads as NOT staff.
+  // 4b: the send gate's staff answer. 4i: also the POLL answer, so it is asked
+  // for every chat now -- the `allowMemberText` early return is gone, because a
+  // poll gate needs this in ordinary chats too. One call per chat opened, and
+  // `undefined` while it is in flight, which ChatInputBar and both poll gates
+  // read as NOT staff.
+  //
+  // This cannot change the send gate: `canSendText` is
+  // `allowMemberText || isStaff === true`, so in a chat that allows member text
+  // the composer shows whatever this answers.
   useEffect(() => {
-    if (allowMemberText || !channelId) {
+    if (!channelId) {
       setIsStaffHere(undefined);
       return;
     }
@@ -266,7 +281,7 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     return () => {
       cancelled = true;
     };
-  }, [allowMemberText, channelId]);
+  }, [channelId]);
 
   // 1. Mark read on mount
   useEffect(() => {
@@ -565,12 +580,26 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     }
   };
 
+  /**
+   * Who may START a poll. Ruling I5 A (Lu, 2026-10-18): in a team or club chat,
+   * the CHAT's staff; in a group chat, any member — unchanged.
+   *
+   * The team/club arm used to read `isStaffInChannel`, the label_kind answer,
+   * which means "team staff anywhere in this chat's club". That offered the
+   * poll button to a coach of a DIFFERENT team in the same club, and withheld
+   * it from a club_admin the labels function has never heard of. `isStaffHere`
+   * is the server's `is_channel_staff`, the same answer 4d's Close uses, so
+   * creating and closing a poll now agree about who staff is.
+   *
+   * `=== true` on purpose: `undefined` is "not answered yet" and must not open
+   * the gate.
+   */
   const canUserCreatePoll = useMemo(() => {
     if (channelType === 'group_dm' || channelType === 'dm') {
       return true;
     }
-    return isStaffInChannel;
-  }, [channelType, isStaffInChannel]);
+    return isStaffHere === true;
+  }, [channelType, isStaffHere]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -628,7 +657,12 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
       return (
         <>
           <View style={styles.messageContainer}>
-            <PollCard pollId={item.poll_id} compact={true} isStaffInChannel={isStaffInChannel} />
+            {/* 4i: the `isStaffInChannel` prop is gone. PollCard's remaining
+                staff jobs (reminder button, anonymous-voter names) now read
+                the `is_channel_staff` answer `usePoll` ALREADY fetched for
+                4d's Close, so the card needs nothing passed in and makes no
+                extra call. */}
+            <PollCard pollId={item.poll_id} compact={true} />
           </View>
           {renderDaySeparator(showDaySeparator, item.created_at)}
         </>

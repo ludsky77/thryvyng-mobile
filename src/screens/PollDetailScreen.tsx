@@ -18,15 +18,7 @@ import {
   CHAT_FALLBACK_NAME,
   type MemberNameMap,
 } from '../lib/memberNames';
-
-const STAFF_ROLES = [
-  'head_coach',
-  'assistant_coach',
-  'team_manager',
-  'club_admin',
-  'club_director',
-  'platform_admin',
-];
+import { isChannelStaff } from '../lib/channelStaff';
 
 function getInitials(name: string | null): string {
   if (!name) return '?';
@@ -164,46 +156,23 @@ export default function PollDetailScreen() {
         )
       );
 
+      // Ruling I2 A (Lu, 2026-10-18), folded in by slice 4i as a same-stone
+      // site: who may see voter names on an ANONYMOUS poll is the poll's
+      // creator OR THIS CHAT'S staff, and "this chat's staff" has exactly one
+      // definition -- the server's `is_channel_staff`.
+      //
+      // WHAT THIS REPLACED, because it was the worst of the poll gates: a
+      // team_staff count on the chat's team, and then, if that found nothing,
+      // a fallback that asked `user_roles` for ANY of head_coach,
+      // assistant_coach, team_manager, club_admin, club_director or
+      // platform_admin **with no team or club scope at all**. A coach of one
+      // club therefore saw who had voted on an anonymous poll in a different
+      // club's chat. `is_channel_staff` also fixes the opposite error the old
+      // code had: a club_admin of this chat's club was only caught by the
+      // unscoped fallback, never by the team check.
       if (user?.id) {
         const channelId = (data as any).channel_id;
-        let staffFound = false;
-
-        if (channelId) {
-          const { data: chan } = await supabase
-            .from('comm_channels')
-            .select('team_id')
-            .eq('id', channelId)
-            .maybeSingle();
-
-          if (chan?.team_id) {
-            // Existence check, not a row fetch: a user can hold several
-            // team_staff rows on one team (e.g. Head Coach + Team Manager), and
-            // maybeSingle() errors on 2+ rows -- which silently stripped poll
-            // management from exactly the most senior staff.
-            const { count: staffCount, error: staffError } = await supabase
-              .from('team_staff')
-              .select('id', { count: 'exact', head: true })
-              .eq('team_id', chan.team_id)
-              .eq('user_id', user.id);
-            if (staffError) {
-              if (__DEV__) console.warn('[PollDetail] staff check failed:', staffError);
-            } else if ((staffCount ?? 0) > 0) {
-              staffFound = true;
-            }
-          }
-        }
-
-        if (!staffFound) {
-          const { data: roles } = await supabase
-            .from('user_roles')
-            .select('role')
-            .eq('user_id', user.id)
-            .in('role', STAFF_ROLES)
-            .limit(1);
-          if (roles && roles.length > 0) staffFound = true;
-        }
-
-        setIsStaff(staffFound);
+        setIsStaff(channelId ? await isChannelStaff(channelId) : false);
       }
     } catch (e: any) {
       setError(e?.message ?? 'Failed to load poll');

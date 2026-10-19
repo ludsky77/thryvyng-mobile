@@ -57,7 +57,7 @@ export default function ChannelPollsScreen() {
   const [closingPoll, setClosingPoll] = useState<string | null>(null);
   const [deletingPoll, setDeletingPoll] = useState<string | null>(null);
   const [expandedPolls, setExpandedPolls] = useState<Set<string>>(new Set());
-  const [isStaffInChannel, setIsStaffInChannel] = useState(false);
+  const [isChannelStaffHere, setIsChannelStaffHere] = useState(false);
   const [channelTeamId, setChannelTeamId] = useState<string | null>(null);
   const [voteComments, setVoteComments] = useState<Record<string, string>>({});
 
@@ -99,7 +99,7 @@ export default function ChannelPollsScreen() {
       // (isStaffInTeam) about the same person, and answered false for every
       // club chat and every group chat because it needed a team_id to work at
       // all. `is_channel_staff` covers all four channel kinds.
-      setIsStaffInChannel(await isChannelStaff(channelId));
+      setIsChannelStaffHere(await isChannelStaff(channelId));
     };
 
     checkStaffAndTeam();
@@ -301,6 +301,11 @@ export default function ChannelPollsScreen() {
 
   const handleRemindToVote = async (poll: Poll) => {
     if (!channelId) return;
+    // Ruling I4 A: the same gate the button renders behind, repeated here so
+    // the restriction is not render-only. `send-push-notification` is an edge
+    // function this client calls directly, so the button being hidden is the
+    // only thing standing between a non-staff member and the push.
+    if (!isChannelStaffHere) return;
 
     setSendingReminder(poll.id);
 
@@ -474,11 +479,24 @@ export default function ChannelPollsScreen() {
     const isActive = item.status === 'active';
     const isVoting = votingPollId === item.id;
     const isCreator = item.created_by === user?.id;
-    // Ruling Q3 B: `isStaffInChannel` is now the server's answer, so this is
-    // the same predicate the chat card uses. Kept as one flag because this
-    // screen gates both Close and Delete on it, and Delete is creator-only
-    // further down -- not a 4d ruling, so it is left exactly as it was.
-    const canManagePoll = isStaffInChannel || isCreator;
+    // Ruling Q3 B: this is the server's `is_channel_staff` answer (fetched at
+    // line 102), so it is the same predicate the chat card uses. The state was
+    // called `isStaffInChannel` until 4i, which was the name the label_kind
+    // answer carries in `TeamChatRoomScreen` -- two different definitions under
+    // one name. Renamed `isChannelStaffHere`; the VALUE did not change.
+    //
+    // `canManagePoll` still allows the creator, because it gates the staff
+    // controls row and Close, and Close is creator-OR-staff by ruling Q4 B
+    // (`canClosePoll` in src/lib/channelStaff.ts). Delete is creator-only
+    // further down -- not a poll-powers ruling, left exactly as it was.
+    const canManagePoll = isChannelStaffHere || isCreator;
+    /**
+     * Ruling I4 A (Lu, 2026-10-18): the reminder push is CHANNEL STAFF ONLY.
+     * It used to ride along inside `canManagePoll`, so a creator who was not
+     * staff of this chat could notify every member who had not voted. Separate
+     * flag now, so narrowing the reminder cannot narrow Close with it.
+     */
+    const canRemindToVote = isChannelStaffHere;
     const isExpanded = expandedPolls.has(item.id);
     const isBoardRoom = item.display_style === 'board_room';
     const voteComment = voteComments[item.id] ?? '';
@@ -645,7 +663,7 @@ export default function ChannelPollsScreen() {
             {/* Staff controls for ACTIVE polls */}
             {canManagePoll && isActive && (
               <View style={styles.staffControls}>
-                {item.non_voter_count > 0 && (
+                {canRemindToVote && item.non_voter_count > 0 && (
                   <TouchableOpacity
                     style={styles.remindButton}
                     onPress={() => handleRemindToVote(item)}

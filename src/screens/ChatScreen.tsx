@@ -29,6 +29,7 @@ import {
   CHANNEL_NAME_MAX,
   formatRoleLabel,
   getTimeAgo,
+  showsClubCrest,
 } from '../lib/chatHelpers';
 import { CHAT_FALLBACK_NAME } from '../lib/memberNames';
 import {
@@ -46,6 +47,7 @@ import {
 import { NotificationBell } from '../components/NotificationBell';
 import { useFocusEffect } from '@react-navigation/native';
 import { useChatUnread } from '../contexts/ChatUnreadContext';
+import type { ConversationRow } from '../utils/unreadRule';
 import { logError } from '../utils/logError';
 
 interface EnrichedConversation {
@@ -159,9 +161,6 @@ const SWIPE_ACTION_WIDTH_SINGLE = 80;
  *
  * A team chat still swipes; it just reveals Mute alone (ruling 4).
  */
-/** How long an open row waits before it closes itself (fix 4, Oct 20). */
-const SWIPE_AUTO_CLOSE_MS = 3500;
-
 function SwipeableChatRow({
   children,
   actions,
@@ -206,21 +205,6 @@ function SwipeableChatRow({
     onOpenRef.current = onOpen;
   }, [isOpen, width, rowKey, onOpen]);
 
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clearCloseTimer = useCallback(() => {
-    if (closeTimer.current) {
-      clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  }, []);
-  const armCloseTimer = useCallback(() => {
-    clearCloseTimer();
-    closeTimer.current = setTimeout(
-      () => onOpenRef.current(null),
-      SWIPE_AUTO_CLOSE_MS
-    );
-  }, [clearCloseTimer]);
-
   /** Spring to open or closed; unmount the strip once it has settled shut. */
   const settle = useCallback(
     (toOpen: boolean) => {
@@ -235,29 +219,25 @@ function SwipeableChatRow({
   );
 
   /**
-   * CLOSE TRIGGERS (fix 4). `openSwipeKey` is the single source of truth, so
-   * every trigger is one `setOpenSwipeKey(null)` and lands here:
-   *   1. another row opens, or any other row is touched (onTouchStart below)
+   * CLOSE TRIGGERS (item 5, Lu 2026-10-20 -- iPhone Messages behaviour).
+   * `openSwipeKey` is the single source of truth, so every trigger is one
+   * `setOpenSwipeKey(null)` and lands here:
+   *   1. the next tap ANYWHERE outside the action buttons -- consumed, so it
+   *      does not also open a chat (the capture handler in the row below, and
+   *      the one on the screen header)
    *   2. the list starts scrolling (onScrollBeginDrag on both lists)
    *   3. a chat is opened (handleConversationPress)
    *   4. the screen regains focus (useFocusEffect)
-   * plus: the row closes itself SWIPE_AUTO_CLOSE_MS after the finger lifts if
-   * no action was tapped, and snaps back immediately on a short drag.
+   * An open row otherwise STAYS open: there is NO timer. The 3.5s auto-close
+   * this replaces closed the row under a finger already on its way to Mute.
    */
   useEffect(() => {
     if (isOpen) {
       setRevealed(true);
-      armCloseTimer();
-      return clearCloseTimer;
+      return;
     }
-    clearCloseTimer();
     settle(false);
-    return undefined;
-  }, [isOpen, settle, armCloseTimer, clearCloseTimer]);
-
-  // Unmounting mid-swipe (a refresh re-renders the list) must not leave a
-  // timer pointing at a dead row.
-  useEffect(() => clearCloseTimer, [clearCloseTimer]);
+  }, [isOpen, settle]);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -267,7 +247,6 @@ function SwipeableChatRow({
       onMoveShouldSetPanResponder: (_, g) =>
         Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy),
       onPanResponderGrant: () => {
-        clearCloseTimer();
         setRevealed(true);
       },
       onPanResponderMove: (_, g) => {
@@ -280,11 +259,9 @@ function SwipeableChatRow({
         const base = isOpenRef.current ? -w : 0;
         const shouldOpen = base + g.dx < -w / 2;
         settle(shouldOpen);
-        if (shouldOpen === isOpenRef.current) {
-          // No state change, so the effect above will not re-run: the timer
-          // has to be re-armed (or left cleared) from here.
-          if (shouldOpen) armCloseTimer();
-        } else {
+        // Same value = no state change = the effect above will not re-run,
+        // and `settle` has already put the row where it belongs.
+        if (shouldOpen !== isOpenRef.current) {
           onOpenRef.current(shouldOpen ? rowKeyRef.current : null);
         }
       },
@@ -293,15 +270,31 @@ function SwipeableChatRow({
     })
   ).current;
 
+  /**
+   * THE OUTSIDE TAP (item 5). While ANY row is open, the next touch that lands
+   * on a card -- this row's own or another's -- closes that row and is
+   * SWALLOWED: no chat opens, no second action fires.
+   *
+   * It is a CAPTURE handler, and it sits on a wrapper INSIDE the dragged view,
+   * for two reasons:
+   *   * capture phase runs before the descendants, so the card's
+   *     TouchableOpacity never sees the touch -- that is what "consumed"
+   *     means here;
+   *   * inside the Animated.View, so claiming the touch does NOT hand it to
+   *     that view's PanResponder. Claiming it there would fire
+   *     onPanResponderGrant -> setRevealed(true) and flash this row's own
+   *     action strip for a frame.
+   * The strip is a SIBLING of the dragged view, so it is never under this
+   * handler and its buttons stay live.
+   */
+  const consumeOutsideTap = () => {
+    if (!openKey) return false;
+    onOpen(null);
+    return true;
+  };
+
   return (
-    <View
-      style={styles.swipeContainer}
-      // Close trigger 1 -- touching any OTHER row closes the open one. The tap
-      // itself is left alone, so it still opens that chat.
-      onTouchStart={() => {
-        if (openKey && openKey !== rowKey) onOpen(null);
-      }}
-    >
+    <View style={styles.swipeContainer}>
       {revealed && (
         <View style={[styles.swipeActions, { width }]}>
           {actions.map((action) => (
@@ -323,25 +316,10 @@ function SwipeableChatRow({
         style={{ transform: [{ translateX }] }}
         {...panResponder.panHandlers}
       >
-        {children}
+        <View onStartShouldSetResponderCapture={consumeOutsideTap}>
+          {children}
+        </View>
       </Animated.View>
-    </View>
-  );
-}
-
-/**
- * The club crest as a corner ring. Kept for the ONE case where the crest does
- * not take the whole circle: a DM whose person has a real photo (fix 1 below).
- *
- * `club_logo_url` null => NOTHING. No placeholder, no grey circle, no initial.
- * A club that has not uploaded a crest must not make every one of its chats
- * carry an empty badge, so the absence is rendered as an absence.
- */
-function ClubCrest({ url }: { url: string | null | undefined }) {
-  if (!url) return null;
-  return (
-    <View style={styles.crestRing}>
-      <Image source={{ uri: url }} style={styles.crestImage} />
     </View>
   );
 }
@@ -371,18 +349,28 @@ function ConversationItem({
   const borderColor = getChannelColor(conversation);
 
   /**
-   * FIX 1 (Lu, Oct 20): where there is a crest, the crest IS the avatar -- it
-   * fills the whole circle, with no soccer ball or initials left behind it.
-   * The one exception is a DM that has the person's own photo: a face is who
-   * the chat is with, so the photo keeps the circle and the crest stays the
-   * small corner ring it was. No crest => today's avatar, untouched.
+   * The crest belongs to a CLUB's own chats, and only to those (Lu, Oct 20
+   * follow-up). A DM is a person -- their photo or their initials -- and a
+   * group chat is its people, so neither carries a crest anywhere on the card:
+   * not filling the circle, not as the corner ring (which is why `ClubCrest`
+   * is gone; this was its last call site).
+   *
+   * Where it IS shown, the crest fills the whole avatar circle, with no soccer
+   * ball or initials left behind it. No `club_logo_url` => today's avatar,
+   * untouched -- a club that never uploaded a crest gets no placeholder.
+   *
+   * `displayType === 'team'` is the first half because `toConversation` sets it
+   * only on the branch that is neither a DM nor a group chat. `channel_type` is
+   * the second half and the authoritative one. `'default'` is in the list
+   * because the default TEAM chat must keep its crest and this screen cannot
+   * prove which of the two values it carries -- and a 'default' chat is never a
+   * DM or a group, so including it cannot put a crest where one is now barred.
    */
-  const hasPersonPhoto =
-    (conversation.displayType === 'dm' ||
-      conversation.channel_type === 'dm') &&
-    !!conversation.displayAvatar;
-  const crestUrl = conversation.clubLogoUrl || null;
-  const crestFillsAvatar = !!crestUrl && !hasPersonPhoto;
+  const crestedType =
+    conversation.displayType === 'team' &&
+    showsClubCrest(conversation.channel_type);
+  const crestUrl = crestedType ? conversation.clubLogoUrl || null : null;
+  const crestFillsAvatar = !!crestUrl;
 
   // Determine badge content based on type
   const renderBadge = () => {
@@ -453,10 +441,7 @@ function ConversationItem({
             resizeMode="cover"
           />
         ) : (
-          <>
-            {renderBadge()}
-            <ClubCrest url={crestUrl} />
-          </>
+          renderBadge()
         )}
       </View>
 
@@ -619,6 +604,36 @@ export default function ChatScreen({ navigation, route }: any) {
   } = useChatUnread();
   /** Which swiped row is open. One at a time, across every tab. */
   const [openSwipeKey, setOpenSwipeKey] = useState<string | null>(null);
+
+  /**
+   * The chrome's half of the outside tap (item 5): while a row is open, a tap
+   * on the header, the tab bar, the club chips or the "Hidden (n)" header
+   * closes it and goes NO further -- it does not switch tabs, does not open
+   * the New-chat modal and does not expand Hidden. None of those views
+   * contains an action strip, so nothing tappable is shadowed. Declared here,
+   * above every render helper that uses it.
+   */
+  const consumeChromeTap = () => {
+    if (!openSwipeKey) return false;
+    setOpenSwipeKey(null);
+    return true;
+  };
+  /**
+   * Team channels PROVEN not to be their team's default chat (A4, Lu
+   * 2026-10-20). Only these get "Team name · channel name" as their card
+   * title; everything else keeps today's title.
+   *
+   * A default channel is identified by the ROW -- `comm_channels.is_default`
+   * -- never by its name, because default channels have been renamed before
+   * (`lib/channelLeave.ts:110-122`: the default team chat went from
+   * "announcements" to "Team Chat"). `get_my_conversations` is not known to
+   * return that column, and prod cannot be queried from here, so the ids come
+   * from one extra read below. The set holds only `is_default === false`, so
+   * an unanswered or failed read leaves every title exactly as it is.
+   */
+  const [customChannelIds, setCustomChannelIds] = useState<Set<string>>(
+    () => new Set()
+  );
   /** Club chip filter (ruling 2). null = All. */
   const [clubFilter, setClubFilter] = useState<string | null>(null);
   /** Is the "Hidden (n)" section expanded? (ruling 8) */
@@ -747,15 +762,29 @@ export default function ChatScreen({ navigation, route }: any) {
       };
     }
     const team = allTeams.find((t) => t.id === row.team_id);
+    const teamLabel = row.team_name || team?.name || '';
+    const channelLabel = row.name || '';
+    /**
+     * A4: a team's EXTRA channels now say which one they are, because the team
+     * name alone made two channels of one team render identically (the FOUND
+     * from the Oct 20 card pass). `is_default === false` from the row is the
+     * proof; anything else -- the default chat, an unanswered read -- keeps
+     * the team-only title.
+     */
+    const isCustomChannel =
+      row.is_default === false || customChannelIds.has(row.channel_id);
+    const cardTitle =
+      teamLabel && isCustomChannel && channelLabel && channelLabel !== teamLabel
+        ? `${teamLabel} · ${channelLabel}`
+        : teamLabel || channelLabel || 'Team Chat';
     return {
       id: row.channel_id,
       displayType: 'team',
       displayName: row.name || 'Team Chat',
       displaySubtitle: row.team_name || team?.name || '',
-      // Team card: the TEAM is the headline. The channel name ("Team Chat"
-      // on nearly every row) drops to the secondary line, and is omitted
-      // when it would just repeat the team name.
-      cardTitle: row.team_name || team?.name || row.name || 'Team Chat',
+      // Team card: the TEAM is the headline, plus the channel name when this
+      // is not the team's default chat (A4).
+      cardTitle,
       cardMeta:
         row.team_name || team?.name
           ? row.name || 'Team Chat'
@@ -774,7 +803,57 @@ export default function ChatScreen({ navigation, route }: any) {
         : null,
       name: row.name,
     };
-  }, [allTeams]);
+  }, [allTeams, customChannelIds]);
+
+  /**
+   * The ids of every TEAM channel on screen, as a stable string key -- the
+   * effect below must fire when the SET changes, not on every refetch that
+   * hands back new row objects.
+   */
+  const teamChannelIdKey = useMemo(() => {
+    // `ConversationRow` already declares both columns (channel_id, and team_id
+    // via ChannelLifecycleFacts), so no cast and no `any` is needed here --
+    // `mainRows` is typed `any[]` in the context, which would otherwise spread
+    // into one.
+    const rows: ConversationRow[] = [...mainRows, ...pastRows, ...hiddenRows];
+    const ids = rows
+      .filter((row) => row?.channel_id && row?.team_id)
+      .map((row) => row.channel_id as string);
+    return Array.from(new Set(ids)).sort().join(',');
+  }, [mainRows, pastRows, hiddenRows]);
+
+  useEffect(() => {
+    const ids = teamChannelIdKey ? teamChannelIdKey.split(',') : [];
+    if (ids.length === 0) {
+      setCustomChannelIds(new Set());
+      return;
+    }
+    let alive = true;
+    (async () => {
+      const { data, error } = await supabase
+        .from('comm_channels')
+        .select('id, is_default')
+        .in('id', ids);
+      if (!alive) return;
+      if (error) {
+        // A failed read is not "every channel is custom": leave the titles be.
+        logError('ChatScreen.fetchChannelDefaults', error, {
+          channelCount: ids.length,
+        });
+        return;
+      }
+      setCustomChannelIds(
+        new Set(
+          (data ?? [])
+            .filter((row) => row.is_default === false)
+            .map((row) => row.id as string)
+        )
+      );
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [teamChannelIdKey]);
 
   const allConversations = useMemo(
     () => sortByRecent(mainRows.map(toConversation)),
@@ -1593,7 +1672,10 @@ export default function ChatScreen({ navigation, route }: any) {
   const renderClubChips = () => {
     if (!isMultiClub) return null;
     return (
-      <View style={styles.clubChipsRow}>
+      <View
+        style={styles.clubChipsRow}
+        onStartShouldSetResponderCapture={consumeChromeTap}
+      >
         <TouchableOpacity
           style={[styles.clubChip, !clubFilter && styles.clubChipActive]}
           onPress={() => setClubFilter(null)}
@@ -1644,6 +1726,7 @@ export default function ChatScreen({ navigation, route }: any) {
     if (hiddenConversations.length === 0) return null;
     return (
       <View style={styles.hiddenSection}>
+        <View onStartShouldSetResponderCapture={consumeChromeTap}>
         <TouchableOpacity
           style={styles.hiddenHeader}
           onPress={() => setHiddenExpanded((open) => !open)}
@@ -1658,6 +1741,7 @@ export default function ChatScreen({ navigation, route }: any) {
             Hidden ({hiddenConversations.length})
           </Text>
         </TouchableOpacity>
+        </View>
         {hiddenExpanded &&
           hiddenConversations.map((item) => (
             <SwipeableChatRow
@@ -2364,7 +2448,10 @@ export default function ChatScreen({ navigation, route }: any) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View
+        style={styles.header}
+        onStartShouldSetResponderCapture={consumeChromeTap}
+      >
         <Text style={styles.headerTitle}>Conversations</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <NotificationBell />
@@ -2377,7 +2464,10 @@ export default function ChatScreen({ navigation, route }: any) {
         </View>
       </View>
 
-      <View style={styles.tabContainer}>
+      <View
+        style={styles.tabContainer}
+        onStartShouldSetResponderCapture={consumeChromeTap}
+      >
         <TouchableOpacity
           style={[styles.tab, activeTab === 'recent' && styles.tabActive]}
           onPress={() => setActiveTab('recent')}
@@ -2790,26 +2880,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 11,
     fontWeight: '600',
-  },
-  /* The crest sits on the avatar's bottom-right corner. The ring is the card
-     background, so the crest reads as a separate token rather than a smudge on
-     the avatar. Rendered only when club_logo_url is non-null (ruling 1). */
-  crestRing: {
-    position: 'absolute',
-    right: 8,
-    bottom: -2,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 2,
-    borderColor: '#1F2937',
-    backgroundColor: '#1F2937',
-    overflow: 'hidden',
-  },
-  crestImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 7,
   },
   /* Line 3: how many people are in this chat, worded ("2 members"). It was a
      bare number on line 1, which read as an unread count (fix 5, Oct 20). */

@@ -11,11 +11,16 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import {
+  useNavigation,
+  useRoute,
+  type NavigationProp,
+} from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import { BoardVoteContainer } from '../components/polls/BoardVoteContainer';
+import { CreatePollModal } from '../components/chat/CreatePollModal';
 import {
   CHAT_FALLBACK_NAME,
   fetchChatProfileNames,
@@ -43,8 +48,17 @@ interface Poll {
   non_voter_count: number;
 }
 
+/**
+ * Only the route this screen pushes. `RootStackParamList`
+ * (src/navigation/linking.ts) is the DEEP-LINK list and does not carry the chat
+ * stack, so there is nothing app-wide to borrow -- and `useNavigation<any>()`,
+ * the convention in PollCard and ChatInfoScreen, would add a `no-explicit-any`
+ * warning this file does not have.
+ */
+type PollsNavigation = NavigationProp<{ PollDetail: { pollId: string } }>;
+
 export default function ChannelPollsScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<PollsNavigation>();
   const route = useRoute();
   const { channelId } = (route.params as { channelId: string }) || {};
   const { user } = useAuth();
@@ -59,6 +73,9 @@ export default function ChannelPollsScreen() {
   const [expandedPolls, setExpandedPolls] = useState<Set<string>>(new Set());
   const [isChannelStaffHere, setIsChannelStaffHere] = useState(false);
   const [channelTeamId, setChannelTeamId] = useState<string | null>(null);
+  /** The chat's own kind, for the create gate below. Read from the ROW. */
+  const [channelType, setChannelType] = useState<string | null>(null);
+  const [createVisible, setCreateVisible] = useState(false);
   const [voteComments, setVoteComments] = useState<Record<string, string>>({});
 
   const togglePollExpanded = (pollId: string) => {
@@ -83,9 +100,12 @@ export default function ChannelPollsScreen() {
 
       const { data: channelData } = await supabase
         .from('comm_channels')
-        .select('team_id')
+        .select('team_id, channel_type')
         .eq('id', channelId)
         .single();
+
+      // The create gate's other half (A2). Same read, one more column.
+      setChannelType(channelData?.channel_type ?? null);
 
       // team_id is still read for the poll-reminder push, which is addressed to
       // a team. It is no longer what decides staffness.
@@ -475,6 +495,22 @@ export default function ChannelPollsScreen() {
   const activeCount = polls.filter((p) => p.status === 'active').length;
   const closedCount = polls.filter((p) => p.status === 'closed').length;
 
+  /**
+   * Who may START a poll here (A2) -- the SAME rule as the chat composer's
+   * poll button (`TeamChatRoomScreen.canUserCreatePoll`, ruling I5 A, Lu
+   * 2026-10-18): in a team or club chat, the CHAT's staff; in a group chat,
+   * any member. `isChannelStaffHere` is the server's `is_channel_staff`, which
+   * is the answer that gate uses too, so the Polls list cannot offer a button
+   * the chat withholds (or withhold one the chat offers).
+   *
+   * `channelType` is null until the one channel read lands, which closes the
+   * gate -- "not answered yet" must never open it.
+   */
+  const canUserCreatePoll =
+    channelType === 'group_dm' || channelType === 'dm'
+      ? true
+      : channelType !== null && isChannelStaffHere;
+
   const renderPoll = ({ item }: { item: Poll }) => {
     const isActive = item.status === 'active';
     const isVoting = votingPollId === item.id;
@@ -554,6 +590,20 @@ export default function ChannelPollsScreen() {
             <Text style={styles.pollMetaDot}>•</Text>
             <Text style={styles.pollMetaText}>{item.creator_name}</Text>
           </View>
+        </TouchableOpacity>
+
+        {/* A1: the row's way into PollDetail, for an ACTIVE or a CLOSED poll
+            alike. Outside the header TouchableOpacity on purpose -- nesting it
+            inside would make one tap mean both "expand" and "navigate". The
+            header tap still expands in place, so voting from this list is
+            unchanged. Same wording as the in-chat card's link, so the two
+            routes into PollDetail read the same. */}
+        <TouchableOpacity
+          style={styles.detailsLink}
+          onPress={() => navigation.navigate('PollDetail', { pollId: item.id })}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.detailsLinkText}>View Full Results →</Text>
         </TouchableOpacity>
 
         {/* EXPANDED CONTENT - Options / Board Room and Actions */}
@@ -816,6 +866,20 @@ export default function ChannelPollsScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* A2: create from the Polls list itself. Until now the only way to
+          start a poll was the chat composer, so this screen could be opened,
+          read, and left with no way to add to it. */}
+      {canUserCreatePoll && (
+        <TouchableOpacity
+          style={styles.newPollButton}
+          onPress={() => setCreateVisible(true)}
+          activeOpacity={0.8}
+        >
+          <Feather name="plus" size={16} color="#fff" />
+          <Text style={styles.newPollButtonText}>New Poll</Text>
+        </TouchableOpacity>
+      )}
+
       <FlatList
         data={filteredPolls}
         keyExtractor={(item) => item.id}
@@ -834,6 +898,15 @@ export default function ChannelPollsScreen() {
             </Text>
           </View>
         }
+      />
+
+      <CreatePollModal
+        visible={createVisible}
+        onClose={() => setCreateVisible(false)}
+        channelId={channelId}
+        onSuccess={() => {
+          void fetchPolls();
+        }}
       />
     </SafeAreaView>
   );
@@ -890,6 +963,34 @@ const styles = StyleSheet.create({
   },
   filterTabTextActive: {
     color: '#fff',
+  },
+  /* A2: create button, under the filter tabs. */
+  newPollButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#8b5cf6',
+  },
+  newPollButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  /* A1: the row's link into PollDetail. */
+  detailsLink: {
+    paddingTop: 8,
+    paddingBottom: 2,
+    alignSelf: 'flex-start',
+  },
+  detailsLinkText: {
+    color: '#8b5cf6',
+    fontSize: 13,
+    fontWeight: '600',
   },
   listContent: {
     padding: 16,

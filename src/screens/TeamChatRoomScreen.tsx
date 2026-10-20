@@ -20,6 +20,7 @@ import { logError } from '../utils/logError';
 import { requestChatUnreadRefresh } from '../hooks/useTotalChatUnread';
 import { formatDayDivider, invertedDayDividerIndices } from '../utils/chatDays';
 import { sendFailure } from '../utils/sendResult';
+import { showsClubCrest } from '../lib/chatHelpers';
 import { PollCard } from '../components/chat/PollCard';
 import { CreatePollModal } from '../components/chat/CreatePollModal';
 import SurveyPickerModal from '../components/chat/SurveyPickerModal';
@@ -184,6 +185,8 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   /** The chat's club, for the header crest + name (ruling 1). */
   const [clubName, setClubName] = useState<string | null>(null);
   const [clubLogoUrl, setClubLogoUrl] = useState<string | null>(null);
+  /** The chat's own kind, for the header crest gate (Lu, Oct 20 follow-up). */
+  const [rowChannelType, setRowChannelType] = useState<string | null>(null);
   const [isStaffHere, setIsStaffHere] = useState<boolean | undefined>(undefined);
 
   // Called on mount, on focus, and on each incoming message (via useMessages'
@@ -253,7 +256,7 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
         const { data: channelData } = await supabase
           .from('comm_channels')
           .select(
-            'team_id, allow_member_text, teams(club_id, clubs(name, logo_url))'
+            'team_id, channel_type, allow_member_text, teams(club_id, clubs(name, logo_url))'
           )
           .eq('id', channelId)
           .single();
@@ -273,6 +276,12 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           (channelData as ChannelClubRow | null)?.teams?.clubs ?? null;
         setClubName(clubRow?.name ?? null);
         setClubLogoUrl(clubRow?.logo_url ?? null);
+        // Read from the ROW, not from the route param: `channelType` arrives
+        // undefined on a push-opened room, so it cannot carry the crest gate.
+        setRowChannelType(
+          (channelData as { channel_type?: string | null } | null)
+            ?.channel_type ?? null
+        );
         if (!channelData?.team_id) {
           setChannelTeamId(null);
           setPermissionsLoaded(true);
@@ -824,8 +833,13 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
               leaving it empty. */}
           <View style={styles.headerTitleRow}>
             {/* Ruling 1: the club crest sits beside the title. A club with no
-                logo_url gets NO crest and no placeholder. */}
-            {clubLogoUrl ? (
+                logo_url gets NO crest and no placeholder.
+                Lu, Oct 20 follow-up: and only a TEAM or CLUB chat shows one at
+                all -- a group chat that happens to hang off a team must not
+                wear the club's crest, the same rule the chat list's cards now
+                follow. The club NAME on the subtitle line is untouched; the
+                ruling named the crest. */}
+            {clubLogoUrl && showsClubCrest(rowChannelType) ? (
               <Image
                 source={{ uri: clubLogoUrl }}
                 style={styles.headerCrest}

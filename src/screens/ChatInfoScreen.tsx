@@ -905,18 +905,29 @@ export default function ChatInfoScreen() {
               </Text>
             </View>
 
-            <View style={styles.quickAccessRow}>
-              <TouchableOpacity style={styles.quickTile} onPress={handlePollsPress}>
-                <Ionicons name="stats-chart" size={24} color="#8b5cf6" />
-                <Text style={styles.quickTileCount}>{pollsCount}</Text>
-                <Text style={styles.quickTileLabel}>Polls</Text>
-              </TouchableOpacity>
+            {/* A3 (Lu, 2026-10-20): NO Polls tile on a DM. A DM cannot create
+                a poll -- DMChatScreen passes no `onPollPress` to its composer
+                -- so the tile could only ever open an empty list with no way
+                to fill it. Identified by the ROW (`is_direct_message`), the
+                same test lines 421 / 465 / 488 use; the route param is
+                'direct' on a DM and undefined on a push-opened room, so it
+                cannot carry this gate. The whole row goes, not just the tile:
+                Files and Links are already hidden, so a DM would be left with
+                an empty bar. */}
+            {channel?.is_direct_message === true ? null : (
+              <View style={styles.quickAccessRow}>
+                <TouchableOpacity style={styles.quickTile} onPress={handlePollsPress}>
+                  <Ionicons name="stats-chart" size={24} color="#8b5cf6" />
+                  <Text style={styles.quickTileCount}>{pollsCount}</Text>
+                  <Text style={styles.quickTileLabel}>Polls</Text>
+                </TouchableOpacity>
 
-              {/* Files and Links tiles are hidden: they advertised real counts
-                  but navigated to placeholder stubs ("Files list coming soon").
-                  The counts are still fetched and the handlers still exist --
-                  restore these two tiles when the screens are built. */}
-            </View>
+                {/* Files and Links tiles are hidden: they advertised real counts
+                    but navigated to placeholder stubs ("Files list coming soon").
+                    The counts are still fetched and the handlers still exist --
+                    restore these two tiles when the screens are built. */}
+              </View>
+            )}
 
             <View style={styles.settingsSection}>
               <Text style={styles.settingsSectionTitle}>Notifications</Text>

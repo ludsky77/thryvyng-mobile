@@ -338,3 +338,39 @@ and it is the single entry point.
 always-empty Polls list it has no way to fill. `TeamChatRoomScreen`'s
 `canUserCreatePoll` has a `channelType === 'dm'` arm that is dead code, since DMs route to
 `DMChatScreen`.
+
+---
+
+## 11. Crest rule, Lu's follow-up 2026-10-20 — team and club chats ONLY
+
+**This REVERSES §9.2 judgement call 2.** The crest is a CLUB's mark, so it belongs only on
+a club's own chats. A DM is a person — their photo or their initials — and a group chat is
+its people. Neither carries a crest anywhere: not filling the avatar circle, not as the
+corner ring.
+
+One predicate, two callers, so the card and the header cannot drift:
+
+```ts
+// src/lib/chatHelpers.ts — same shape as canHideChannelType in lib/hiddenChats.ts
+const CRESTED_CHANNEL_TYPES = ['team', 'club', 'default'] as const;
+
+export function showsClubCrest(channelType: string | null | undefined): boolean {
+  if (!channelType) return false;
+  return (CRESTED_CHANNEL_TYPES as readonly string[]).includes(channelType);
+}
+```
+
+- **Card** — `ChatScreen.tsx:349-372`: `crestedType = displayType === 'team' && showsClubCrest(channel_type)`, and `crestUrl` is null unless that holds. `displayType === 'team'` is the belt: `toConversation` sets it only on the branch that is neither a DM nor a group chat.
+- **Header** — `TeamChatRoomScreen.tsx:842`: `clubLogoUrl && showsClubCrest(rowChannelType)`. `rowChannelType` is read from the **ROW** (`channel_type` added to the select the screen already made, `:259`), because the route param arrives `undefined` on a push-opened room and `'direct'` from a DM. The club NAME on the subtitle line is untouched — the ruling named the crest.
+- **`ClubCrest` is deleted**, with `styles.crestRing` and `styles.crestImage`: the gate left the corner ring with no case. It existed only for the DM-with-a-photo exception this rule removes.
+
+**Why `'default'` is in the list.** The default TEAM chat must keep its crest, and neither
+screen can prove whether the server gives it `channel_type` `'team'` or `'default'`
+(`lib/hiddenChats.ts:27-33` names "team, club and default" as three kinds). A `'default'`
+chat is never a DM or a group, so including it cannot put a crest where one is now barred —
+the fail-safe direction for Lu's stated intent.
+
+**Group chats that hang off a team were the live bug.** `channel_club_id` is resolved
+server-side through the chat's team and is present for group chats too (§4), so any group
+chat with a `team_id` was wearing its club's crest on the card, and in the header through
+the `teams(club_id, clubs(...))` embed. Both are now closed.

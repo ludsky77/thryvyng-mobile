@@ -20,6 +20,29 @@ export function formatRoleLabel(role: string | undefined): string {
   return roleLabels[role] || role.replace(/_/g, ' ');
 }
 
+/**
+ * The chat kinds that show a club crest (Lu, 2026-10-20 follow-up): a club's
+ * OWN chats. A DM is a person -- their photo or their initials -- and a group
+ * chat is its people, so neither carries a crest, on the list card or in the
+ * open-chat header.
+ *
+ * `'default'` is included because the default TEAM chat must keep its crest
+ * whichever of the two values the server gives it; a 'default' chat is never a
+ * DM or a group, so including it cannot put a crest where one is now barred.
+ *
+ * Same shape as `canHideChannelType` in lib/hiddenChats.ts, and here for the
+ * same reason: ONE list, read by both screens, so the card and the header
+ * cannot drift apart. An unknown or absent kind answers NO.
+ */
+const CRESTED_CHANNEL_TYPES = ['team', 'club', 'default'] as const;
+
+export function showsClubCrest(
+  channelType: string | null | undefined
+): boolean {
+  if (!channelType) return false;
+  return (CRESTED_CHANNEL_TYPES as readonly string[]).includes(channelType);
+}
+
 export function getRolePriority(role: string): number {
   const priorities: Record<string, number> = {
     platform_admin: 11,

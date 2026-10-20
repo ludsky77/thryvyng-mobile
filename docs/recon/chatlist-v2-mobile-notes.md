@@ -204,3 +204,137 @@ in the right rail.
 - **No `lint` or `test` script exists**, and eslint 9 needs `ESLINT_USE_FLAT_CONFIG=false`
   against the legacy `.eslintrc.json` (the flag is removed in eslint 10). Already reported
   2026-10-18; unchanged.
+
+---
+
+## 9. Click-through fixes, Lu's simulator pass 2026-10-20 (PART A)
+
+Five defects from the §7 click-through, all inside `ChatScreen.tsx`. `TeamChatRoomScreen`
+was **not** touched: `ClubCrest` is local to `ChatScreen` (grep — 2 hits, both in that
+file), so the open-chat header shares no crest component with the card.
+
+| # | Defect seen | Cause | Fix |
+|---|---|---|---|
+| 1 | Soccer ball / initials showing behind the crest | the crest was only ever an 18px corner ring over `renderBadge()` | the crest now **fills the 40px circle** (`resizeMode="cover"`), and `renderBadge()` is not rendered at all when one exists |
+| 2 | Grey/purple slivers at the right edge of cards **at rest** | the action strip was mounted always, `position:absolute right:0 bottom:0`, behind a card with `marginHorizontal:12 / marginBottom:10` — it painted those gutters | strip **mounted only while the row is open or dragging**, and inset to `right:12 / bottom:10 / borderRadius:12` so it cannot reach a gutter even while open |
+| 3 | Tap-and-hold revealed "Mute" over the card | same root as 2 — `conversationCard`'s `activeOpacity={0.7}` made the card translucent and the always-mounted strip read straight through it. The PanResponder never claimed the hold (`onMoveShouldSetPanResponder` needs 8px of `dx`), so nothing moved; it was **see-through, not open** | fixed by 2: with nothing mounted behind a closed row there is nothing to show through |
+| 4 | Rows stayed open | only one close path existed (another row opening), and it mis-fired — see below | 4 external triggers + a self-close timer |
+| 5 | Bare member number on line 1; "2 members" / channel name where the preview belongs | line 1 rendered `memberCount` as a raw integer next to the time; line 2 fell back to `cardMeta` | line 1 = **title + time only** (always the time, `getTimeAgo` returns `''` with no messages); line 2 = preview or **"No messages yet"**; line 3 = badge · mute icon · **"2 members"** · club name |
+
+### 9.1 The snap-back logic (fix 4)
+
+`openSwipeKey` is the single source of truth, so **every** external trigger is one
+`setOpenSwipeKey(null)` and lands in the same effect:
+
+```tsx
+useEffect(() => {
+  if (isOpen) {
+    setRevealed(true);
+    armCloseTimer();          // closes itself SWIPE_AUTO_CLOSE_MS after the finger lifts
+    return clearCloseTimer;
+  }
+  clearCloseTimer();
+  settle(false);              // spring home, then UNMOUNT the strip
+  return undefined;
+}, [isOpen, settle, armCloseTimer, clearCloseTimer]);
+```
+
+The four triggers that clear it:
+
+```tsx
+// 1. another row touched (SwipeableChatRow's own container)
+onTouchStart={() => { if (openKey && openKey !== rowKey) onOpen(null); }}
+// 2. the list starts scrolling (Recent FlatList + By-Team SectionList)
+onScrollBeginDrag={() => setOpenSwipeKey(null)}
+// 3. a chat is opened
+const handleConversationPress = (conversation) => { setOpenSwipeKey(null); /* navigate */ }
+// 4. the screen regains focus
+useFocusEffect(useCallback(() => { setOpenSwipeKey(null); refresh(); }, [refresh]));
+```
+
+"Never more than one open row" is structural: one key, and a row springs home whenever the
+key is not its own.
+
+### 9.2 Two judgement calls — SAY IF WRONG
+
+1. **"Closes by itself when the finger lifts" is a 3.5s timer, not an instant close.**
+   Closing the instant the finger lifts would make Mute/Hide untappable and undo ruling 4,
+   so the row latches open at half-travel (unchanged) and then closes itself after
+   `SWIPE_AUTO_CLOSE_MS = 3500`. A drag that never reaches half-travel still snaps back
+   immediately on release. To get a pure latch instead, delete the two `armCloseTimer()`
+   calls — one constant, one line each.
+2. **A DM with the person's real photo keeps the photo; its crest stays the corner ring.**
+   Fix 1 names "soccer ball / initials", both of them generated placeholders. A face is who
+   the DM is with, so the crest does not cover it. Every other row — team, group, and a DM
+   with no photo — gets the full-circle crest.
+
+### 9.3 FOUND while fixing
+
+- **Latent bug, now fixed:** the PanResponder was built in a `useRef` and read `isOpen`
+  and `width` from the **first** render's closure, so they were permanently `false`/initial.
+  Dragging an **already open** row therefore computed `base = 0` and jumped it shut. The
+  handlers now read `isOpenRef` / `widthRef` / `rowKeyRef` / `onOpenRef`.
+- **Two team channels of the same team now look identical in Recent until they have
+  different last messages.** Line 2 was the only place the channel name appeared on a
+  non-past card, and fix 5 replaced it with the preview; with no messages both read
+  "No messages yet". Line 1 shows the TEAM name (`cardTitle = row.team_name || …`). The Past
+  tab is unaffected — its line 2 still carries `cardMeta · Past team`, which an earlier pass
+  put there for exactly this reason. **Not changed** — fix 5 is explicit about what line 2
+  may hold.
+- `styles.conversationSubtitle` lost its only call site with fix 5 and was deleted, or
+  `react-native/no-unused-styles` would have logged a NEW warning. The 91-warning set is
+  otherwise byte-identical to baseline.
+
+---
+
+## 10. PART B — Polls flow recon, 2026-10-20 (READ-ONLY, no code changed)
+
+**(a) Entry points to `ChannelPollsScreen` — exactly one.**
+`ChatInfoScreen.tsx:909` — the "Polls" quick tile, with a live count from
+`comm_polls` (`:202-219`). It is **ungated**: every member sees it. Chat Info itself is
+reached only from the ⋯ header button in `TeamChatRoomScreen.tsx:850` and
+`DMChatScreen.tsx:583`. There is **no** polls entry on the chat header itself and **no** ⋯
+message-level menu route. `AppNavigator.tsx:551` registers the route; nothing else
+navigates to it.
+
+**(b) Closed polls ARE listed there.** `ChannelPollsScreen.tsx:188-189` derives
+`status = p.is_active && !isExpired ? 'active' : 'closed'`, so an expired poll counts as
+closed without a server write. Filter tabs **All / Active (n) / Closed (n)** at `:771-800`,
+default **All** (`:54`). A closed row keeps the full card and shows a grey "Closed" badge
+(`:515-525`), its option buttons are rendered disabled and non-tappable (`:622-626`), and
+the creator — **not** staff — gets a "Delete Poll" button (`:715`).
+
+**(c) create → vote → close → "Poll closed" → PollDetail.**
+- **create — not reachable from the polls screen at all.** `ChannelPollsScreen` has no
+  create button and never mounts `CreatePollModal` (grep: zero hits). The only way in is
+  the composer's poll button, `TeamChatRoomScreen.tsx:915` → `CreatePollModal` `:929`,
+  gated by `canUserCreatePoll` (`:626-632`): in a team/club chat **channel staff only**
+  (ruling I5 A, via the server's `is_channel_staff`); group chats, any member.
+- **vote** — works for any member in both places: the in-chat card
+  (`PollCard.tsx:626`, handler `:363`) and the polls screen
+  (`ChannelPollsScreen.tsx:624`, handler `:234`).
+- **close** — staff-or-creator, `canClose` from `usePoll`'s `is_channel_staff`
+  (`PollCard.tsx:309-319`, buttons `:567` board-room arm and `:684` regular arm;
+  polls screen `:369-406`).
+- **"Poll closed"** — the Oct 16 ruling holds in both: one shared
+  `POLL_CLOSED_MESSAGE = 'Poll closed'` (`lib/channelStaff.ts:53`) alerted at
+  `PollCard.tsx:402` and `ChannelPollsScreen.tsx:406`, with the row flipped to its closed
+  state locally before the refetch.
+- **PollDetail** — reachable **only** from the in-chat card: "View Full Results →",
+  `PollCard.tsx:726-729`, inside the compact card's expanded body, ungated.
+  **MISSING: `ChannelPollsScreen` never navigates to `PollDetail`** (grep: zero
+  `navigation.navigate` calls in the whole file). From the Polls list there is no way to
+  reach a poll's detail — the list is the terminus.
+
+**(d) What Chat Info shows today:** avatar/name (editable where allowed) · "Team Chat /
+Group Chat / Channel • N members" (`:897-904`) · the quick-access row, which holds the
+**Polls tile only** — Files and Links are deliberately hidden because their screens are
+stubs, though both counts are still fetched (`:913-917`) · Notifications → Mute switch
+(`:921-934`) · then members, add/remove/rename and Leave. So **yes, a "Polls" row exists**,
+and it is the single entry point.
+
+**BROKEN, worth a ruling:** a **DM** gets the Polls tile too (Chat Info is shared), but
+`DMChatScreen` passes no `onPollPress` to `ChatInputBar` (`:666-676`) — so a DM can open an
+always-empty Polls list it has no way to fill. `TeamChatRoomScreen`'s
+`canUserCreatePoll` has a `channelType === 'dm'` arm that is dead code, since DMs route to
+`DMChatScreen`.

@@ -159,6 +159,9 @@ const SWIPE_ACTION_WIDTH_SINGLE = 80;
  *
  * A team chat still swipes; it just reveals Mute alone (ruling 4).
  */
+/** How long an open row waits before it closes itself (fix 4, Oct 20). */
+const SWIPE_AUTO_CLOSE_MS = 3500;
+
 function SwipeableChatRow({
   children,
   actions,
@@ -178,56 +181,144 @@ function SwipeableChatRow({
     actions.length > 1 ? SWIPE_ACTION_WIDTH : SWIPE_ACTION_WIDTH_SINGLE;
   const isOpen = openKey === rowKey;
 
-  // Another row opened: close this one. Keeps exactly one row open.
+  /**
+   * The action strip is MOUNTED only while this row is open or under a drag
+   * (fixes 2 and 3, Oct 20). It used to be mounted always, absolutely
+   * positioned behind a card that carries marginHorizontal 12 / marginBottom
+   * 10 -- so its grey and purple showed in those gutters on every row at rest,
+   * and tap-and-hold (the card's activeOpacity 0.7) made the card translucent
+   * enough to read "Mute" straight through it. Unmounted, there is nothing to
+   * leak and nothing to show through.
+   */
+  const [revealed, setRevealed] = useState(false);
+
+  // The PanResponder is built once, so it reads the moving values through refs.
+  // Reading them from the closure meant it saw the FIRST render's values
+  // forever: an already-open row dragged from base 0 and jumped shut.
+  const isOpenRef = useRef(isOpen);
+  const widthRef = useRef(width);
+  const rowKeyRef = useRef(rowKey);
+  const onOpenRef = useRef(onOpen);
   useEffect(() => {
-    if (!isOpen) {
-      Animated.spring(translateX, {
-        toValue: 0,
-        useNativeDriver: true,
-      }).start();
+    isOpenRef.current = isOpen;
+    widthRef.current = width;
+    rowKeyRef.current = rowKey;
+    onOpenRef.current = onOpen;
+  }, [isOpen, width, rowKey, onOpen]);
+
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearCloseTimer = useCallback(() => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
     }
-  }, [isOpen, translateX]);
+  }, []);
+  const armCloseTimer = useCallback(() => {
+    clearCloseTimer();
+    closeTimer.current = setTimeout(
+      () => onOpenRef.current(null),
+      SWIPE_AUTO_CLOSE_MS
+    );
+  }, [clearCloseTimer]);
+
+  /** Spring to open or closed; unmount the strip once it has settled shut. */
+  const settle = useCallback(
+    (toOpen: boolean) => {
+      Animated.spring(translateX, {
+        toValue: toOpen ? -widthRef.current : 0,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished && !toOpen) setRevealed(false);
+      });
+    },
+    [translateX]
+  );
+
+  /**
+   * CLOSE TRIGGERS (fix 4). `openSwipeKey` is the single source of truth, so
+   * every trigger is one `setOpenSwipeKey(null)` and lands here:
+   *   1. another row opens, or any other row is touched (onTouchStart below)
+   *   2. the list starts scrolling (onScrollBeginDrag on both lists)
+   *   3. a chat is opened (handleConversationPress)
+   *   4. the screen regains focus (useFocusEffect)
+   * plus: the row closes itself SWIPE_AUTO_CLOSE_MS after the finger lifts if
+   * no action was tapped, and snaps back immediately on a short drag.
+   */
+  useEffect(() => {
+    if (isOpen) {
+      setRevealed(true);
+      armCloseTimer();
+      return clearCloseTimer;
+    }
+    clearCloseTimer();
+    settle(false);
+    return undefined;
+  }, [isOpen, settle, armCloseTimer, clearCloseTimer]);
+
+  // Unmounting mid-swipe (a refresh re-renders the list) must not leave a
+  // timer pointing at a dead row.
+  useEffect(() => clearCloseTimer, [clearCloseTimer]);
 
   const panResponder = useRef(
     PanResponder.create({
       // Horizontal intent only, so the FlatList keeps its vertical scroll.
+      // A press that never travels horizontally is never claimed, which is
+      // why tap-and-hold alone can no longer start a reveal (fix 3).
       onMoveShouldSetPanResponder: (_, g) =>
         Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy),
+      onPanResponderGrant: () => {
+        clearCloseTimer();
+        setRevealed(true);
+      },
       onPanResponderMove: (_, g) => {
-        const base = isOpen ? -width : 0;
-        const next = Math.min(0, Math.max(-width, base + g.dx));
-        translateX.setValue(next);
+        const w = widthRef.current;
+        const base = isOpenRef.current ? -w : 0;
+        translateX.setValue(Math.min(0, Math.max(-w, base + g.dx)));
       },
       onPanResponderRelease: (_, g) => {
-        const base = isOpen ? -width : 0;
-        const next = base + g.dx;
-        const shouldOpen = next < -width / 2;
-        Animated.spring(translateX, {
-          toValue: shouldOpen ? -width : 0,
-          useNativeDriver: true,
-        }).start();
-        onOpen(shouldOpen ? rowKey : null);
+        const w = widthRef.current;
+        const base = isOpenRef.current ? -w : 0;
+        const shouldOpen = base + g.dx < -w / 2;
+        settle(shouldOpen);
+        if (shouldOpen === isOpenRef.current) {
+          // No state change, so the effect above will not re-run: the timer
+          // has to be re-armed (or left cleared) from here.
+          if (shouldOpen) armCloseTimer();
+        } else {
+          onOpenRef.current(shouldOpen ? rowKeyRef.current : null);
+        }
       },
+      // The list took the gesture over mid-swipe: return to where we were.
+      onPanResponderTerminate: () => settle(isOpenRef.current),
     })
   ).current;
 
   return (
-    <View style={styles.swipeContainer}>
-      <View style={[styles.swipeActions, { width }]}>
-        {actions.map((action) => (
-          <TouchableOpacity
-            key={action.key}
-            style={[styles.swipeAction, { backgroundColor: action.color }]}
-            onPress={() => {
-              onOpen(null);
-              action.onPress();
-            }}
-          >
-            <Feather name={action.icon} size={18} color="#fff" />
-            <Text style={styles.swipeActionText}>{action.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+    <View
+      style={styles.swipeContainer}
+      // Close trigger 1 -- touching any OTHER row closes the open one. The tap
+      // itself is left alone, so it still opens that chat.
+      onTouchStart={() => {
+        if (openKey && openKey !== rowKey) onOpen(null);
+      }}
+    >
+      {revealed && (
+        <View style={[styles.swipeActions, { width }]}>
+          {actions.map((action) => (
+            <TouchableOpacity
+              key={action.key}
+              style={[styles.swipeAction, { backgroundColor: action.color }]}
+              onPress={() => {
+                onOpen(null);
+                action.onPress();
+              }}
+            >
+              <Feather name={action.icon} size={18} color="#fff" />
+              <Text style={styles.swipeActionText}>{action.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
       <Animated.View
         style={{ transform: [{ translateX }] }}
         {...panResponder.panHandlers}
@@ -239,7 +330,8 @@ function SwipeableChatRow({
 }
 
 /**
- * The club crest, ruling 1: a small ring on the corner of the chat avatar.
+ * The club crest as a corner ring. Kept for the ONE case where the crest does
+ * not take the whole circle: a DM whose person has a real photo (fix 1 below).
  *
  * `club_logo_url` null => NOTHING. No placeholder, no grey circle, no initial.
  * A club that has not uploaded a crest must not make every one of its chats
@@ -277,6 +369,20 @@ function ConversationItem({
   pastTeam?: boolean;
 }) {
   const borderColor = getChannelColor(conversation);
+
+  /**
+   * FIX 1 (Lu, Oct 20): where there is a crest, the crest IS the avatar -- it
+   * fills the whole circle, with no soccer ball or initials left behind it.
+   * The one exception is a DM that has the person's own photo: a face is who
+   * the chat is with, so the photo keeps the circle and the crest stays the
+   * small corner ring it was. No crest => today's avatar, untouched.
+   */
+  const hasPersonPhoto =
+    (conversation.displayType === 'dm' ||
+      conversation.channel_type === 'dm') &&
+    !!conversation.displayAvatar;
+  const crestUrl = conversation.clubLogoUrl || null;
+  const crestFillsAvatar = !!crestUrl && !hasPersonPhoto;
 
   // Determine badge content based on type
   const renderBadge = () => {
@@ -340,13 +446,26 @@ function ConversationItem({
         />
       )}
       <View style={styles.conversationIcon}>
-        {renderBadge()}
-        <ClubCrest url={conversation.clubLogoUrl} />
+        {crestFillsAvatar ? (
+          <Image
+            source={{ uri: crestUrl as string }}
+            style={styles.badgeAvatar}
+            resizeMode="cover"
+          />
+        ) : (
+          <>
+            {renderBadge()}
+            <ClubCrest url={crestUrl} />
+          </>
+        )}
       </View>
 
       <View style={styles.conversationContent}>
         <View style={styles.conversationHeader}>
-          {/* LINE 1 -- title, then member count, then the time hard right. */}
+          {/* LINE 1 -- title, then the time hard right, ALWAYS the time and
+              never a bare number (fix 5, Oct 20): the member count moved to
+              line 3 where it reads as "2 members". A row with no messages has
+              no time, and getTimeAgo returns '' for that. */}
           <Text
             style={[
               styles.conversationName,
@@ -357,23 +476,16 @@ function ConversationItem({
           >
             {conversation.cardTitle || conversation.displayName}
           </Text>
-          {typeof conversation.memberCount === 'number' &&
-          conversation.memberCount > 0 ? (
-            <Text style={styles.memberCount}>
-              {conversation.memberCount}
-            </Text>
-          ) : null}
-          {!pastTeam && (
-            <Text style={styles.conversationTime}>
-              {getTimeAgo(conversation.lastMessageTime)}
-            </Text>
-          )}
+          <Text style={styles.conversationTime}>
+            {getTimeAgo(conversation.lastMessageTime)}
+          </Text>
         </View>
 
-        {/* LINE 2 -- the last message. A group names its sender when the
-            server supplies one. With no messages yet the line falls back to
-            the card's own meta (team channel name / "N members") so the row is
-            never blank. */}
+        {/* LINE 2 -- the last message, and nothing else (fix 5, Oct 20). A
+            group names its sender when the server supplies one. With no
+            messages the line reads "No messages yet"; it used to fall back to
+            the card's meta, which put the team channel name or "2 members"
+            where a preview belongs. The member count now lives on line 3. */}
         {pastTeam ? (
           /* The channel name has to survive here. Dropping it for the bare
              words "Past team" made two channels of the same retired team
@@ -397,23 +509,32 @@ function ConversationItem({
               ? `${conversation.lastMessageSender}: ${conversation.lastMessage}`
               : conversation.lastMessage}
           </Text>
-        ) : conversation.cardMeta ? (
-          <Text
-            style={[styles.conversationSubtitle, { color: borderColor }]}
-            numberOfLines={1}
-          >
-            {conversation.cardMeta}
+        ) : (
+          <Text style={styles.lastMessage} numberOfLines={1}>
+            No messages yet
           </Text>
-        ) : null}
+        )}
 
-        {/* LINE 3 -- unread badge, mute icon, club name. Rendered only when it
-            has something to say, so a quiet single-club chat keeps a 2-line
-            card rather than a blank third row. */}
+        {/* LINE 3 -- unread badge, mute icon, member count, club name
+            (fix 5, Oct 20). Rendered only when it has something to say, so a
+            quiet single-club 1:1 keeps a 2-line card rather than a blank third
+            row. */}
         {(() => {
           const showUnread = !pastTeam && conversation.unreadCount > 0;
           const showPastDot = pastTeam && conversation.unreadCount > 0;
           const clubLabel = showClubName ? conversation.clubName : null;
-          if (!showUnread && !showPastDot && !conversation.isMuted && !clubLabel) {
+          const members =
+            typeof conversation.memberCount === 'number' &&
+            conversation.memberCount > 0
+              ? conversation.memberCount
+              : null;
+          if (
+            !showUnread &&
+            !showPastDot &&
+            !conversation.isMuted &&
+            !members &&
+            !clubLabel
+          ) {
             return null;
           }
           return (
@@ -437,6 +558,11 @@ function ConversationItem({
               {conversation.isMuted && (
                 <Feather name="bell-off" size={13} color="#6B7280" />
               )}
+              {members ? (
+                <Text style={styles.memberCount}>
+                  {members === 1 ? '1 member' : `${members} members`}
+                </Text>
+              ) : null}
               {clubLabel ? (
                 <Text style={styles.cardClubName} numberOfLines={1}>
                   {clubLabel}
@@ -723,9 +849,11 @@ export default function ChatScreen({ navigation, route }: any) {
     })();
   }, [user?.id, teamsLoading, activeTeams, refresh]);
 
-  // Returning to the list: re-read, in case something was read elsewhere.
+  // Returning to the list: re-read, in case something was read elsewhere, and
+  // close any row left open when we navigated away (close trigger 4, fix 4).
   useFocusEffect(
     useCallback(() => {
+      setOpenSwipeKey(null);
       refresh();
     }, [refresh])
   );
@@ -1559,6 +1687,8 @@ export default function ChatScreen({ navigation, route }: any) {
   };
 
   const handleConversationPress = (conversation: EnrichedConversation) => {
+    // Close trigger 3 (fix 4): no row stays open behind an opened chat.
+    setOpenSwipeKey(null);
     if (conversation.displayType === 'dm') {
       navigation.navigate('DMChat', { channelId: conversation.id });
     } else {
@@ -2314,6 +2444,8 @@ export default function ChatScreen({ navigation, route }: any) {
           )}
           ListHeaderComponent={renderClubChips()}
           ListFooterComponent={renderHiddenSection()}
+          /* Close trigger 2 (fix 4): scrolling closes any open row. */
+          onScrollBeginDrag={() => setOpenSwipeKey(null)}
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl
@@ -2389,6 +2521,8 @@ export default function ChatScreen({ navigation, route }: any) {
               />
             </SwipeableChatRow>
           )}
+          /* Close trigger 2 (fix 4): scrolling closes any open row. */
+          onScrollBeginDrag={() => setOpenSwipeKey(null)}
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl
@@ -2629,17 +2763,22 @@ const styles = StyleSheet.create({
   },
   /* Swipe-left actions (ruling 4). The action strip sits UNDER the card and is
      revealed as the card slides left, so the card itself needs an opaque
-     background -- conversationCard already has one. */
+     background -- conversationCard already has one. It is INSET to the card's
+     own box (marginHorizontal 12, marginBottom 10, borderRadius 12) so that
+     even while open it cannot paint the gutters between cards, and it is
+     mounted only while the row is open or dragging (fix 2, Oct 20). */
   swipeContainer: {
     position: 'relative',
     overflow: 'hidden',
   },
   swipeActions: {
     position: 'absolute',
-    right: 0,
+    right: 12,
     top: 0,
-    bottom: 0,
+    bottom: 10,
     flexDirection: 'row',
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   swipeAction: {
     flex: 1,
@@ -2672,13 +2811,13 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 7,
   },
-  /* Line 1, after the title: how many people are in this chat. */
+  /* Line 3: how many people are in this chat, worded ("2 members"). It was a
+     bare number on line 1, which read as an unread count (fix 5, Oct 20). */
   memberCount: {
     color: '#6B7280',
     fontSize: 12,
-    marginLeft: 6,
   },
-  /* Line 3: unread badge, mute icon and club name on one row. */
+  /* Line 3: unread badge, mute icon, member count and club name on one row. */
   cardMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2745,10 +2884,6 @@ const styles = StyleSheet.create({
   conversationTime: {
     color: '#6B7280',
     fontSize: 12,
-  },
-  conversationSubtitle: {
-    fontSize: 13,
-    marginTop: 2,
   },
   lastMessage: {
     color: '#6B7280',

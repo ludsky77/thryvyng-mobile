@@ -245,6 +245,30 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
 
   const isCoach = isStaffInChannel;
 
+  /**
+   * P5 (ruling, Lu 2026-10-21) -- the header's two lines, one shape for every
+   * chat type. See the comment on the header itself for the shape and for why
+   * `teamName` carries "N members" on a group chat.
+   *
+   * The kind is taken from `rowChannelType` FIRST -- that is the channel row's
+   * own `channel_type`, read in the effect above -- and only then from the
+   * route param, which arrives `undefined` on a push-opened room. Either way
+   * the fallbacks are the ones already in use, so a chat with nothing resolved
+   * yet reads exactly as it did before.
+   */
+  const isGroupChat = rowChannelType
+    ? rowChannelType === 'group_dm'
+    : isGroupDm;
+  const headerTitleText = isGroupChat
+    ? channelName || 'Group Chat'
+    : teamName || channelName || 'Team Chat';
+  const headerSubtitleText = isGroupChat
+    ? // `teamName` here is the list's card line 2 = "N members".
+      [clubName, teamName].filter(Boolean).join(' · ')
+    : [clubName, teamName ? channelName || 'Team Chat' : null]
+        .filter(Boolean)
+        .join(' · ');
+
   useEffect(() => {
     const checkStaffPermission = async () => {
       if (!channelId || !user?.id) {
@@ -826,11 +850,21 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           }}
           disabled={!isGroupDm}
         >
-          {/* The TEAM is the headline. The channel name ("Team Chat" on nearly
-              every row) drops to the secondary line, matching the chat list's
-              card titles -- the two used to disagree about which was which.
-              With no team, the channel name takes the title slot rather than
-              leaving it empty. */}
+          {/* P5 (ruling, Lu 2026-10-21): ONE header shape for every chat
+              type, and it matches the list cards -- line 1 is the chat's NAME,
+              line 2 is context.
+                * team chat  -> team name        / "<Club> · <channel>"
+                * club chat  -> channel name     / "<Club>"
+                * group chat -> GROUP NAME       / "<Club> · N members"
+              A group chat used to render INVERTED -- "2 members" as the title
+              and "9c hide test" underneath -- because the `teamName` route
+              param is whatever the list put on the card's line 2
+              (`ChatScreen.handleConversationPress` passes `displaySubtitle`),
+              and for a group chat that string IS "N members". So the param is
+              both the cause and, for line 2, the cure: the count is already in
+              hand and no new query was added for it. The club name stays on a
+              group's line 2 only because the header already showed it there
+              today. */}
           <View style={styles.headerTitleRow}>
             {/* Ruling 1: the club crest sits beside the title. A club with no
                 logo_url gets NO crest and no placeholder.
@@ -846,16 +880,14 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
               />
             ) : null}
             <Text style={styles.headerTitle} numberOfLines={1}>
-              {teamName || channelName || 'Team Chat'}
+              {headerTitleText}
             </Text>
           </View>
           {/* Ruling 1: the club NAME joins the secondary line. With no club it
               is omitted entirely rather than shown as an empty separator. */}
-          {teamName || clubName ? (
+          {headerSubtitleText ? (
             <Text style={styles.headerSubtitle} numberOfLines={1}>
-              {[clubName, teamName ? channelName || 'Team Chat' : null]
-                .filter(Boolean)
-                .join(' · ')}
+              {headerSubtitleText}
             </Text>
           ) : null}
         </TouchableOpacity>

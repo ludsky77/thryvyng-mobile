@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchChatProfileNames } from '../lib/memberNames';
@@ -13,15 +13,36 @@ import type { Poll, PollOption, VoterProfile } from '../types';
 export function usePoll(pollId: string | null) {
   const { user } = useAuth();
   const [poll, setPoll] = useState<Poll | null>(null);
+  /** What `fetchPoll` reads to tell a first load from a refetch (P3). */
+  const pollRef = useRef<Poll | null>(null);
   const [loading, setLoading] = useState(true);
   // Ruling Q3 B: staffness comes from the server's ONE definition, not from
   // `label_kind`, not from a `team_staff` count this screen did itself.
   const [isStaff, setIsStaff] = useState(false);
 
+  // Keeps the ref above in step with the state, so one `setPoll` site cannot
+  // forget it (there are two).
+  useEffect(() => {
+    pollRef.current = poll;
+  }, [poll]);
+
   const fetchPoll = useCallback(async () => {
     if (!pollId) return;
-    
-    setLoading(true);
+
+    /*
+     * P3 (Lu, Oct 21): only the FIRST fetch flips `loading`. Every action here
+     * -- vote, removeVote, closePoll -- ends in `fetchPoll()`, and PollCard
+     * renders `if (loading || !poll)` as a small "Loading poll..." box, so a
+     * refetch used to collapse a full poll card to about a fifth of its height
+     * and expand it again a second later, shoving the whole chat. Once a poll
+     * is in hand the card stays on screen with the values it has until the new
+     * ones land, so nothing moves. `poll` is read through a ref because the
+     * callback must not be rebuilt on every poll change -- an effect and a
+     * realtime subscription depend on its identity.
+     */
+    if (!pollRef.current) {
+      setLoading(true);
+    }
     
     const { data: pollData, error: pollError } = await supabase
       .from('comm_polls')

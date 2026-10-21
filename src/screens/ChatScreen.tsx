@@ -64,6 +64,18 @@ interface EnrichedConversation {
    */
   cardTitle: string;
   cardMeta: string;
+  /**
+   * `comm_channel_members.hidden_at` for this chat. THREE states, and the
+   * third is the one that broke item A on device (Oct 21):
+   *   * a timestamp -- hidden at that moment;
+   *   * `null`      -- the server returned the column and it is not set;
+   *   * `undefined` -- the column did not come back AT ALL.
+   * The first version collapsed the last two with `?? null`, so "the server
+   * says no" and "the server never said" were the same value and the clear
+   * could never fire. Carried ONLY for the open path; it must never reach
+   * styling -- see the `dimmed` prop on ConversationItem (P4).
+   */
+  hiddenAt: string | null | undefined;
   displayAvatar: string | null;
   displayInitial: string;
   lastMessage: string | null;
@@ -328,6 +340,7 @@ function ConversationItem({
   conversation,
   onPress,
   pastTeam = false,
+  dimmed = false,
   showClubName = false,
 }: {
   conversation: EnrichedConversation;
@@ -345,6 +358,17 @@ function ConversationItem({
    * archived channels never reach this list at all.
    */
   pastTeam?: boolean;
+  /**
+   * P4 (ruling, Lu 2026-10-21): render this card dimmed. It is keyed on WHERE
+   * the row is being rendered -- the "Hidden (n)" section passes it, the Past
+   * tab gets the same treatment through `pastTeam` -- and NEVER on the data.
+   * A card in the main list always uses normal styling, which is now
+   * structural: Recent and By Team pass neither flag, so no value of
+   * `hidden_at` can reach the dim. A chat that popped back into the main list
+   * on a new message still has `hidden_at` set, and must look like any other
+   * card.
+   */
+  dimmed?: boolean;
 }) {
   const borderColor = getChannelColor(conversation);
 
@@ -420,7 +444,8 @@ function ConversationItem({
       style={[
         styles.conversationCard,
         { borderLeftColor: borderColor },
-        pastTeam && styles.conversationCardPast,
+        // P4: one dim, two render sites, no data path to it.
+        (pastTeam || dimmed) && styles.conversationCardDimmed,
       ]}
       onPress={onPress}
       activeOpacity={0.7}
@@ -711,7 +736,20 @@ export default function ChatScreen({ navigation, route }: any) {
     const clubLogoUrl = row.club_logo_url ?? null;
     const memberCount = row.member_count ?? null;
     const lastMessageSender = row.last_message_sender_name ?? null;
-    const clubFields = { clubId, clubName, clubLogoUrl, memberCount };
+    /**
+     * A (Lu, 2026-10-21): `hidden_at` is `get_my_conversations` column 20,
+     * read BY NAME like the rest. A row can be in the MAIN list and still
+     * carry it -- that is exactly a popped-back chat (H7: a newer message
+     * beats the timestamp) -- and opening one is what clears it.
+     *
+     * NO `?? null` HERE. That is the Oct 21 root cause: it turned a missing
+     * column into "not hidden", which is indistinguishable from the server
+     * saying so, and the clear then skipped silently with nothing to see in
+     * Metro. `undefined` now stays `undefined` and the open path treats it as
+     * UNKNOWN.
+     */
+    const hiddenAt: string | null | undefined = row.hidden_at;
+    const rowFields = { clubId, clubName, clubLogoUrl, memberCount, hiddenAt };
 
     if (row.is_direct_message) {
       // other_user_name is get_my_conversations column 17, which S1 pointed at
@@ -732,7 +770,7 @@ export default function ChatScreen({ navigation, route }: any) {
         lastMessageTime,
         unreadCount,
         isMuted,
-        ...clubFields,
+        ...rowFields,
         channel_type: row.channel_type,
         name: row.name,
       };
@@ -756,7 +794,7 @@ export default function ChatScreen({ navigation, route }: any) {
         lastMessageTime,
         unreadCount,
         isMuted,
-        ...clubFields,
+        ...rowFields,
         channel_type: row.channel_type,
         name: row.name,
       };
@@ -795,7 +833,7 @@ export default function ChatScreen({ navigation, route }: any) {
       lastMessageTime,
       unreadCount,
       isMuted,
-      ...clubFields,
+      ...rowFields,
       channel_type: row.channel_type,
       team_id: row.team_id,
       team: row.team_id
@@ -1763,12 +1801,102 @@ export default function ChatScreen({ navigation, route }: any) {
                 conversation={item}
                 onPress={() => handleConversationPress(item)}
                 showClubName={isMultiClub}
+                /* P4: dim lives HERE -- on the section, not on hidden_at. */
+                dimmed
               />
             </SwipeableChatRow>
           ))}
       </View>
     );
   };
+
+  /**
+   * A (Lu, 2026-10-21): opening a chat whose member row still has `hidden_at`
+   * set clears it, through the SAME server function Hide and Unhide use --
+   * `set_channel_hidden(p_channel_id, p_hidden)`, wrapped by
+   * `setChannelHidden` in lib/hiddenChats.ts:110-126, which is the app's only
+   * hide write (grep-proven: one rpc call, zero direct `hidden_at` UPDATEs).
+   * No new function, no new argument.
+   *
+   * FIRE AND FORGET. It is started AFTER the navigation call, it is never
+   * awaited, and a failure is logged and nothing else -- opening a chat must
+   * not wait on it and must not fail with it. A refusal cannot happen in
+   * practice: only a dm/group_dm can be hidden in the first place
+   * (`canHideChannelType`), so the row being cleared is always one the server
+   * accepts.
+   *
+   * `refresh()` afterwards is what makes the row normal and "Hidden (n)"
+   * right; it is the same refetch Mute already triggers, and it now costs no
+   * layout shift (P1).
+   */
+  const clearStaleHidden = useCallback(
+    (conversation: EnrichedConversation) => {
+      const hiddenAt = conversation.hiddenAt;
+      /*
+       * Fire when the row IS hidden, and also when the row cannot say --
+       * `undefined` means `get_my_conversations` did not return the column, so
+       * the only honest answer is "unknown". In that case the clear is still
+       * safe and still idempotent: `set_channel_hidden` always ALLOWS
+       * unhiding (the hideable check is `IF p_hidden AND NOT ...`), and
+       * `SET hidden_at = NULL` on a row that is already NULL writes the same
+       * value. Restricted to chats that can be hidden at all, so a team or
+       * club chat never triggers a pointless write.
+       */
+      const unknown = hiddenAt === undefined;
+      const shouldClear =
+        !!hiddenAt ||
+        (unknown && canHideChannelType(conversation.channel_type));
+      if (!shouldClear) {
+        // The skip prints too, or a tap that does nothing would again leave
+        // nothing to read -- which is the whole reason Oct 21 was a mystery.
+        // `hiddenAt=null` means the server answered "not hidden for this
+        // member"; `hiddenAt=undefined` would mean the column never arrived.
+        if (__DEV__) {
+          // eslint-disable-next-line no-console -- dev-only hide diagnostic
+          console.log(
+            `[hide] clear-on-open ${conversation.id} hiddenAt=${String(
+              hiddenAt
+            )} → skipped (not hidden)`
+          );
+        }
+        return;
+      }
+      void (async () => {
+        const result = await setChannelHidden(conversation.id, false);
+        if (__DEV__) {
+          // One line, on purpose: the next device tap prints its own proof.
+          // eslint-disable-next-line no-console -- dev-only hide diagnostic
+          console.log(
+            `[hide] clear-on-open ${conversation.id} hiddenAt=${String(hiddenAt)} → ` +
+              (result.status === 'ok'
+                ? 'rpc ok'
+                : `rpc error ${
+                    result.status === 'refused'
+                      ? result.message
+                      : (result.error as { message?: string } | null)?.message ??
+                        'unknown'
+                  }`)
+          );
+        }
+        if (result.status === 'error') {
+          logError('ChatScreen.clearStaleHiddenOnOpen', result.error, {
+            channelId: conversation.id,
+          });
+          return;
+        }
+        if (result.status === 'refused') {
+          logError(
+            'ChatScreen.clearStaleHiddenOnOpen',
+            new Error(result.message),
+            { channelId: conversation.id }
+          );
+          return;
+        }
+        refresh();
+      })();
+    },
+    [refresh]
+  );
 
   const handleConversationPress = (conversation: EnrichedConversation) => {
     // Close trigger 3 (fix 4): no row stays open behind an opened chat.
@@ -1783,6 +1911,8 @@ export default function ChatScreen({ navigation, route }: any) {
         channelType: conversation.channel_type,
       });
     }
+    // After the navigate, never before it (A).
+    clearStaleHidden(conversation);
   };
 
   // Block the screen only before the first fetch resolves. Refetches (focus,
@@ -2494,11 +2624,20 @@ export default function ChatScreen({ navigation, route }: any) {
         </TouchableOpacity>
       </View>
 
-      {loading && hasRows && !refreshing ? (
-        <View style={styles.refreshBar}>
-          <ActivityIndicator size="small" color="#8b5cf6" />
-        </View>
-      ) : null}
+      {/* P1 (Lu, Oct 21): the busy state for a REFETCH floats over the list,
+          it is never inserted into it. This used to be a plain sibling --
+          `styles.refreshBar`, paddingVertical 6 -- between the tab bar and the
+          list, so every Mute/Unmute (which calls refresh()) pushed every card
+          down by the bar's height for about a second and then pulled them
+          back up. A refetch must never change layout. The wrapper below is
+          what the overlay positions against; the list keeps flex: 1, so no
+          card moves. */}
+      <View style={styles.listArea}>
+        {loading && hasRows && !refreshing ? (
+          <View style={styles.refreshOverlay} pointerEvents="none">
+            <ActivityIndicator size="small" color="#8b5cf6" />
+          </View>
+        ) : null}
 
       {teamsLoaded && hasLoadedOnce && !hasRows ? (
         <View style={styles.emptyContainer}>
@@ -2626,6 +2765,7 @@ export default function ChatScreen({ navigation, route }: any) {
           }
         />
       )}
+      </View>
 
       <Modal
         visible={showNewChatModal}
@@ -2654,9 +2794,20 @@ export default function ChatScreen({ navigation, route }: any) {
 }
 
 const styles = StyleSheet.create({
-  refreshBar: {
-    paddingVertical: 6,
+  /* P1: the list area is the positioning parent for the refetch overlay. It
+     takes the space the list already had -- the list itself is flex: 1. */
+  listArea: {
+    flex: 1,
+  },
+  /* P1: OUT of the flow. `styles.refreshBar` was `paddingVertical: 6` in the
+     column, which is exactly what pushed the cards down on every refetch. */
+  refreshOverlay: {
+    position: 'absolute',
+    top: 4,
+    left: 0,
+    right: 0,
     alignItems: 'center',
+    zIndex: 10,
   },
   searchSpinner: {
     paddingVertical: 16,
@@ -2776,7 +2927,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderLeftWidth: 4,
   },
-  conversationCardPast: {
+  /* P4: the ONE dim. Applied for the Past tab (`pastTeam`) and for rows
+     rendered inside the "Hidden (n)" section (`dimmed`) -- never from a row's
+     own data. Was `conversationCardPast`; renamed because it is no longer only
+     the Past tab's. */
+  conversationCardDimmed: {
     opacity: 0.6,
   },
   pastChannelPrefixIcon: {

@@ -374,3 +374,256 @@ the fail-safe direction for Lu's stated intent.
 server-side through the chat's team and is present for group chats too (§4), so any group
 chat with a `team_id` was wearing its club's crest on the card, and in the header through
 the `teams(club_id, clubs(...))` embed. Both are now closed.
+
+---
+
+## 12. Stage 3d — list smoothness (Lu's simulator pass as ludriv, 2026-10-21)
+
+**Base:** `main` @ `2d564a6`. Three device-found items: P1/P3 layout-shifting spinners, P4
+dim styling, A clear-on-open. **Status: BUILT, AGENT-ONLY** — tsc, eslint and an iOS
+bundle export; nothing re-run on a simulator.
+
+### P1/P3 — before and after: which component inserted the spinner
+
+| # | Where | BEFORE — the component that inserted it | AFTER |
+|---|---|---|---|
+| P1 | Chat list, on **Mute/Unmute** (both call `refresh()`) | `ChatScreen.tsx` rendered `<View style={styles.refreshBar}>` as a **plain flow sibling** between the tab bar and the list, whenever `loading && hasRows && !refreshing`. `refreshBar` was `{ paddingVertical: 6, alignItems: 'center' }`, so the bar's height was inserted into the column and **every card moved down** for the length of the refetch, then back up. | The list area is wrapped in `<View style={styles.listArea}>` (`flex: 1`) and the indicator is `styles.refreshOverlay` — `position: 'absolute', top: 4, left: 0, right: 0, zIndex: 10` with `pointerEvents="none"` — **inside** that wrapper. It floats over the first card. Takes no layout space, so nothing moves. `ChatScreen.tsx:2571-2586`, styles `:2741-2756`. |
+| P3 | Polls list, on **vote / close / delete / New Poll** (all end in `fetchPolls()`) | `ChannelPollsScreen.tsx` — `fetchPolls()` set `loading = true` and the `if (loading)` **early return** replaced the entire screen body with a header plus a centred `loadingContainer` spinner, then rebuilt the list. Not just a shift: the list vanished and came back. | `loading` now **blocks only the first load** — `if (loading && !hasLoadedOnce)`, with `hasLoadedOnce` set in `fetchPolls`' `finally`. A refetch keeps the rows exactly where they are and shows the same non-layout `refreshOverlay`, inside a `listArea` wrapper so it floats over the cards and not over the header. `ChannelPollsScreen.tsx:67-76, 149, 261-263, 801-803, 899-907`; styles `:992-1006`. |
+| P3 | Poll **card** in a chat, on vote / remove vote / close | `hooks/usePolls.ts` — `fetchPoll()` set `loading = true` on **every** refetch, and `PollCard.tsx:295` renders `if (loading \|\| !poll)` as a small "Loading poll..." box: a full poll card collapsed to roughly a fifth of its height and expanded again a second later, shoving the chat. | `fetchPoll` flips `loading` only when no poll is in hand yet (`if (!pollRef.current)`), so after the first load the card stays on screen with the values it has until the new ones land. `pollRef` is kept in step with `poll` by one effect, because `fetchPoll`'s identity is depended on by an effect and a realtime subscription. `usePolls.ts:17, 24-27, 33-49`. **PollCard was not edited** — it is outside SCOPE and needed no change. |
+
+**Pull-to-refresh is untouched** — `RefreshControl` keeps its own native indicator, and
+`refreshing` is excluded from the overlay condition so the two never stack.
+
+**`PollDetailScreen` needed no change and was not touched:** its `loadData` never sets
+`loading` back to `true`, and the screen has no action that refetches (only Back and the
+byOption/byVoter tab switch), so it has no layout-shifting refetch to fix.
+
+### P4 — dim is keyed on the render site, never on the data
+
+```tsx
+// ConversationItem — one dim, two render sites, no data path to it
+(pastTeam || dimmed) && styles.conversationCardDimmed     // ChatScreen.tsx:436
+```
+
+- `dimmed` is a new explicit prop (`:331`, `:347-359`), passed **only** by the
+  "Hidden (n)" section (`:1780`). The Past tab keeps `pastTeam`, which also carries its
+  clock icon and its "· Past team" line.
+- Recent and By Team pass **neither** flag, so a main-list card cannot dim whatever
+  `hidden_at` says. The invariant is now structural, not a convention.
+- `styles.conversationCardPast` → `styles.conversationCardDimmed` (same `opacity: 0.6`),
+  renamed because it is no longer only the Past tab's.
+
+**FOUND — the dim Lu saw did not come from `hidden_at`.** At `2d564a6` there was no
+`hidden_at`-keyed styling anywhere: `opacity: 0.6` appeared exactly once in
+`ChatScreen.tsx` and only `pastTeam` applied it, and only the Past tab's FlatList passed
+`pastTeam`. The H7 predicate is also sound — `isHiddenConversation`
+(`utils/unreadRule.ts`) parses both timestamps to epoch ms and a strictly newer message
+returns `false`, so a popped-back row does reach `mainRows`. The most likely thing seen is
+a **Past-tab** card: a popped-back chat whose TEAM is retired is classified `pastRows`
+(precedence archived → hidden → past → main) and renders dimmed there **by design** — the
+telltale is the clock icon and "· Past team" on line 2. Either way the ruling is now
+enforced where it belongs, and no badge/counting code was touched.
+
+### A — clear-on-open: the exact RPC, verified not invented
+
+**`set_channel_hidden(p_channel_id uuid, p_hidden boolean)`** — reached through the one
+wrapper the app already has:
+
+```ts
+// src/lib/hiddenChats.ts:110-118  (unchanged)
+export async function setChannelHidden(channelId: string, hidden: boolean) {
+  const { error } = await supabase.rpc('set_channel_hidden', {
+    p_channel_id: channelId,
+    p_hidden: hidden,
+  });
+```
+
+**Call site: `src/screens/ChatScreen.tsx:1824`**, inside `clearStaleHidden`
+(`:1800-1846`), invoked from `handleConversationPress` at **`:1859`** — *after* the
+`navigation.navigate` call, never awaited.
+
+```tsx
+const clearStaleHidden = useCallback((conversation: EnrichedConversation) => {
+  if (!conversation.hiddenAt) return;
+  void (async () => {
+    const result = await setChannelHidden(conversation.id, false);
+    if (result.status === 'error')   { logError(...); return; }
+    if (result.status === 'refused') { logError(...); return; }
+    refresh();
+  })();
+}, [refresh]);
+```
+
+- **Fire-and-forget**: started after the navigate, never awaited, so opening a chat cannot
+  block on it or fail with it. Both non-ok outcomes are logged and nothing else — no Alert,
+  unlike the swipe's `handleSetHidden`, because the user did not ask for this write.
+- `hidden_at` is carried onto the card as `hiddenAt` (`get_my_conversations` column 20,
+  read BY NAME, `ChatScreen.tsx:720-727`, in the shared `rowFields` spread, renamed from
+  `clubFields`). It is there for this path ONLY and must never reach styling — that is what
+  P4 makes structural.
+- `refresh()` is the same refetch Mute triggers, which after P1 costs no layout shift.
+- **Where the name was verified.** In code: `grep -rn "set_channel_hidden" src/` → exactly
+  **one** call, `lib/hiddenChats.ts:114`, and zero direct `hidden_at` UPDATEs (the §2
+  claim re-checked). In `supabase/`: **nothing to verify against** — this repo's
+  `supabase/migrations/` contains exactly **one** file,
+  `20250224000000_notify_lineup_published.sql`, and `grep -rn "set_channel_hidden\|hidden_at" supabase/`
+  returns nothing. The schema lives outside this repo. The arg names are nonetheless no
+  longer a guess: P4's own report ("channel member row still has `hidden_at` set") is
+  evidence that Hide **wrote** through this exact call on the simulator, which the §8 note
+  predicted would fail loudly and visibly if either name were wrong. **No new function and
+  no new argument was introduced.**
+- Scope note: the rule is applied to **any** row carrying `hidden_at`, which is the ruling
+  as written. So tapping a row inside "Hidden (n)" also clears it — you opened the chat, so
+  it stops being hidden, and the section's count follows.
+
+### 12.1 Item A did not fire on device — Oct 21, trace and fix
+
+**Device proof (Lu, simulator as ludriv):** chat "9c hide test",
+`4328fca0-2df5-42d3-bc2f-25e81a642bed`, popped-back state
+(`comm_channel_members.hidden_at = 2026-10-21 22:12:46`, later message); tapped from
+Recent, waited, went back; `hidden_at` unchanged; **no Metro error at all**.
+
+**ROOT CAUSE:** the clear was gated on `conversation.hiddenAt`, which the mapper built as
+`row.hidden_at ?? null` (`ChatScreen.tsx:739` before the fix, now `:751`) — collapsing "the column did
+not come back" into "not hidden" — so the one and only failure mode of item A was an early
+`return` that writes nothing and prints nothing, which is exactly what was observed.
+
+#### The full tap path — every link traced, all sound
+
+| step | file:line | what |
+|---|---|---|
+| 1 | `ChatScreen.tsx:2658` | Recent `FlatList data={conversations}` |
+| 2 | `ChatScreen.tsx:2661-2666` | each row wrapped in `SwipeableChatRow` |
+| 3 | `ChatScreen.tsx:302-306` | the wrapper's `onStartShouldSetResponderCapture` returns **false** unless a row is open, so a plain tap is NOT consumed by the swipe wrapper |
+| 4 | `ChatScreen.tsx:2667-2671` | `<ConversationItem onPress={() => handleConversationPress(item)} />` (`:2669`) — the press handler is `ConversationItem`'s own root `TouchableOpacity` (`:443-450`), not a Pressable and not the swipe wrapper |
+| 5 | `ChatScreen.tsx:1915` | `handleConversationPress` navigates, then calls `clearStaleHidden(conversation)` on the next line |
+| 6 | `ChatScreen.tsx:1865` | `setChannelHidden(conversation.id, false)` |
+| — | `ChatScreen.tsx:1834-1851` | **the gate that swallowed it** |
+
+`logError` is **not** the silent one: `utils/logError.ts:47-53` `console.warn`s on every
+call, dev or prod, by design. So an RPC that ran and failed would have printed. Nothing
+printed ⇒ the RPC never ran ⇒ the gate returned early ⇒ `hiddenAt` was falsy at tap time.
+
+#### Where `hiddenAt` comes from, and what the server really returns
+
+`hidden_at` → `get_my_conversations()` → `ChatUnreadContext` (one source, one call,
+`:209`, rows passed through `classifyConversationRows` **by reference** — nothing is
+rebuilt or stripped, `:219-220`, `:313-315`) → `toConversation` (`ChatScreen.tsx:751`) →
+`rowFields` → the card.
+
+**The RPC does return it** (web repo, read-only):
+`thrive-and-score/supabase/migrations/20261019040000_stage3_club_cols.sql:99` —
+`RETURNS TABLE(channel_id, name, channel_type, team_id, team_name, club_id,
+is_direct_message, is_archived, is_muted, last_read_at, member_count,
+last_message_content, last_message_at, last_message_user_id, unread_count, other_user_id,
+other_user_name, other_user_avatar, team_status, **hidden_at**, channel_club_id, club_name,
+club_logo_url)` — 23 columns, `hidden_at` 20th, selected as `mine.hidden_at` at `:138`
+from `comm_channel_members m WHERE m.user_id = auth.uid()`. That is the newest migration
+touching the function (nothing in `migrations/` sorts after `20261019040000`).
+
+`set_channel_hidden(p_channel_id uuid, p_hidden boolean)` —
+`20261018170000_phaseD_hide.sql:160-205`: name and both argument names match the client
+exactly, and **unhiding is unconditional** (`IF p_hidden AND NOT is_channel_hideable(...)`
+— the hideable check is only reached when hiding), ending in
+`SET hidden_at = CASE WHEN p_hidden THEN now() ELSE NULL END`. So the call would have
+cleared the row had it run. **No server change is needed and none was made.**
+
+**Two things could still have made the value falsy at tap time, and the client could not
+tell them apart — which is the defect:**
+
+1. the deployed function is older than the migration file (prod's live body captured by Lu
+   on 2026-10-18 was the **19-column** `stone_b2_s1` version, md5
+   `4a7dac0891d9ed5ac1475387a04b871f`, 2420 chars, **no `hidden_at`** —
+   `20261018170000_phaseD_hide.sql:42-53`), so the column would arrive as `undefined`; or
+2. `hidden_at` is set on a **different member's** row than ludriv's — the RPC only ever
+   returns the caller's own membership, so for ludriv it would legitimately be `null`.
+
+#### The fix
+
+- **Keep the three states.** `hiddenAt: string | null | undefined` (`:67-78`, the field at `:78`), and
+  `ChatScreen.tsx:751` is now `const hiddenAt: string | null | undefined = row.hidden_at;`
+  — no `?? null`. `undefined` = the column never arrived; `null` = the server says not
+  hidden.
+- **Fire on set OR unknown** (`:1845-1851`):
+  `!!hiddenAt || (hiddenAt === undefined && canHideChannelType(channel_type))`. On a
+  correctly migrated server this is identical to before; where the column is missing the
+  clear still runs, and it is safe and idempotent — unhiding is always allowed and
+  `SET hidden_at = NULL` on an already-null row writes the same value. Restricted to
+  hideable kinds so a team or club chat never triggers a pointless write.
+- **One dev-only log at the call site, on BOTH branches** — a tap that does nothing has to
+  say so, or the next device pass is as blind as this one was:
+
+```
+[hide] clear-on-open <channelId> hiddenAt=<value> → rpc ok | rpc error <msg> | skipped (not hidden)
+```
+
+`ChatScreen.tsx:1855-1861` (skip) and `:1867-1881` (after the RPC), both inside
+`if (__DEV__)`, both with an explicit `eslint-disable-next-line no-console` so the file's
+warning set stays at its baseline (`no-console` is `warn` in `.eslintrc.json:28`).
+
+**What the next tap will prove, with no DB query:** `hiddenAt=undefined` ⇒ cause 1, the
+deployed RPC lacks the column (server work, out of scope — and Hidden (n) can never have
+populated either, so every "hidden" chat has really just been sitting in the list);
+`hiddenAt=null` ⇒ cause 2, the timestamp belongs to another member's row;
+`hiddenAt=2026-10-21T22:12:46…` followed by `rpc ok` ⇒ it now works and the old build was
+simply missing these lines. A quick discriminator in the meantime: if "Hidden (1)" has ever
+appeared on device after a Hide, the column does arrive and cause 1 is out.
+
+### 12.2 P5 — the open-chat header, one shape for every chat type
+
+**Device finding (Lu, Oct 21):** on a GROUP chat the header was inverted — title "2
+members", subtitle "9c hide test".
+
+**Cause:** the `teamName` route param is whatever the LIST put on the card's second line.
+`ChatScreen.handleConversationPress` passes `teamName: conversation.displaySubtitle`, and a
+group chat's `displaySubtitle` is `` `${member_count} members` ``. The header's title read
+`teamName || channelName`, so the member count won the title and the group's real name fell
+to the subtitle. The param is therefore both the cause **and** the cure for line 2: the
+count is already in hand, so no query was added. **No list or card code was touched.**
+
+**BEFORE** — at `2d564a6`, `TeamChatRoomScreen.tsx:849` (title) and `:854-860` (subtitle):
+
+```tsx
+<Text style={styles.headerTitle} numberOfLines={1}>
+  {teamName || channelName || 'Team Chat'}
+</Text>
+{teamName || clubName ? (
+  <Text style={styles.headerSubtitle} numberOfLines={1}>
+    {[clubName, teamName ? channelName || 'Team Chat' : null].filter(Boolean).join(' · ')}
+  </Text>
+) : null}
+```
+
+**AFTER** — two computed values at `TeamChatRoomScreen.tsx:259-271`, rendered at `:883`
+and `:888-892`:
+
+```tsx
+const isGroupChat = rowChannelType ? rowChannelType === 'group_dm' : isGroupDm;
+const headerTitleText = isGroupChat
+  ? channelName || 'Group Chat'
+  : teamName || channelName || 'Team Chat';
+const headerSubtitleText = isGroupChat
+  ? [clubName, teamName].filter(Boolean).join(' · ')   // teamName = "N members"
+  : [clubName, teamName ? channelName || 'Team Chat' : null].filter(Boolean).join(' · ');
+```
+
+| chat type | line 1 (title) | line 2 (subtitle) | changed? |
+|---|---|---|---|
+| team chat | team name (`teamName`) | "\<Club\> · \<channel\>" | no — **exactly as today** |
+| club chat | channel name (`teamName` is `''` → `channelName`) | "\<Club\>" | no — same expression |
+| group chat | **GROUP NAME** (`channelName`) | **"\<Club\> · N members"** | **YES — this is P5** |
+| DM | other person's display name | role label | no — `DMChatScreen` **not touched** |
+
+- The kind is read from **`rowChannelType`** first — the channel row's own `channel_type`,
+  read into state at `:189` and set at `:303-307` — and only then from the route param, which arrives
+  `undefined` on a push-opened room. Same precedence the Oct 20 crest gate uses.
+- The club name stays on a group's line 2 because the header **already** showed it there
+  (a group chat hanging off a team resolves a club through the existing
+  `teams(club_id, clubs(...))` embed); the ruling allows the prefix only on that condition,
+  and nothing new is fetched for it.
+- **DM header verified, not changed:** `DMChatScreen.tsx:511-513` titles with
+  `otherDisplayName` = `full_name` → the resolved member name (`:499-502`), never an email,
+  and its subtitle is `formatRoleLabel(otherPerson.role)` (`:572-577`) — context, not the
+  name. Already the ruled shape.
+- Only `headerTitleText`/`headerSubtitleText` were introduced; **no new props and no new
+  state**.

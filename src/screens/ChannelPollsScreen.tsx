@@ -64,6 +64,16 @@ export default function ChannelPollsScreen() {
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
+  /**
+   * P3 (Lu, Oct 21): has the FIRST load resolved? Every poll action -- vote,
+   * close, delete, New Poll -- ends in `fetchPolls()`, which used to set
+   * `loading` true again. The `if (loading)` early return below then threw the
+   * whole list away for a centered spinner and rebuilt it a second later, so
+   * every card jumped. A refetch must never change layout: after the first
+   * load the rows stay exactly where they are and the busy state floats over
+   * them (`refreshOverlay`).
+   */
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [polls, setPolls] = useState<Poll[]>([]);
   const [filter, setFilter] = useState<'all' | 'active' | 'closed'>('all');
   const [votingPollId, setVotingPollId] = useState<string | null>(null);
@@ -136,6 +146,7 @@ export default function ChannelPollsScreen() {
   const fetchPolls = async () => {
     if (!channelId) return;
     setLoading(true);
+    // (loading now only BLOCKS while hasLoadedOnce is false -- see the render)
     try {
       const { data: pollsData, error } = await supabase
         .from('comm_polls')
@@ -248,6 +259,7 @@ export default function ChannelPollsScreen() {
       setPolls([]);
     } finally {
       setLoading(false);
+      setHasLoadedOnce(true);
     }
   };
 
@@ -786,7 +798,9 @@ export default function ChannelPollsScreen() {
     );
   };
 
-  if (loading) {
+  // P3: the blocking spinner is for the FIRST load only. A refetch keeps the
+  // list on screen and shows `refreshOverlay` instead.
+  if (loading && !hasLoadedOnce) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
@@ -880,6 +894,16 @@ export default function ChannelPollsScreen() {
         </TouchableOpacity>
       )}
 
+      <View style={styles.listArea}>
+      {/* P3: refetch busy state, OUT of the flow -- absolute and
+          pointerEvents none, so not one card moves while it is up. Inside the
+          list wrapper so it floats over the cards, not over the header. */}
+      {loading && hasLoadedOnce ? (
+        <View style={styles.refreshOverlay} pointerEvents="none">
+          <ActivityIndicator size="small" color="#8b5cf6" />
+        </View>
+      ) : null}
+
       <FlatList
         data={filteredPolls}
         keyExtractor={(item) => item.id}
@@ -899,6 +923,7 @@ export default function ChannelPollsScreen() {
           </View>
         }
       />
+      </View>
 
       <CreatePollModal
         visible={createVisible}
@@ -963,6 +988,21 @@ const styles = StyleSheet.create({
   },
   filterTabTextActive: {
     color: '#fff',
+  },
+  /* P3: the list wrapper is what the overlay positions against. */
+  listArea: {
+    flex: 1,
+  },
+  /* P3: the refetch indicator floats over the list instead of being inserted
+     above it. `zIndex` keeps it above the cards; it never takes layout space,
+     so a vote or a close cannot move a single row. */
+  refreshOverlay: {
+    position: 'absolute',
+    top: 4,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10,
   },
   /* A2: create button, under the filter tabs. */
   newPollButton: {

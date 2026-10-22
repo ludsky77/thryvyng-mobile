@@ -26,7 +26,10 @@ import { Alert, Linking, Platform } from 'react-native';
  * scheme any more, so the config would be dead weight. If a Google-Maps-first
  * preference is ever wanted back on iOS, that entry becomes a prerequisite.
  */
-export const openInMaps = async (address: string, locationName?: string) => {
+export const openInMaps = async (
+  address: string,
+  locationName?: string | null
+) => {
   const raw = address || locationName || '';
   const query = encodeURIComponent(raw);
 

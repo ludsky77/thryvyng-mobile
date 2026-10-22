@@ -513,7 +513,7 @@ export default function EvaluationDetailScreen({ route, navigation }: any) {
         return;
       }
 
-      setEvaluation(evalData as Evaluation);
+      setEvaluation(evalData as unknown as Evaluation);
 
       const { data: scoresData } = await supabase
         .from('evaluation_scores')

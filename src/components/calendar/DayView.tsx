@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ScrollView,
 } from 'react-native';
+import type { ViewStyle } from 'react-native';
 import { format } from 'date-fns';
 import type { CalendarEvent } from '../../types';
 import { isEventPast } from '../../utils/calendar';
@@ -166,7 +167,7 @@ export function DayView({
     event: CalendarEvent,
     columnIndex: number,
     totalColumns: number
-  ) => {
+  ): ViewStyle => {
     const startMinutes = getMinutesFromTime(event.start_time || '00:00');
     const endMinutes = event.end_time
       ? getMinutesFromTime(event.end_time)

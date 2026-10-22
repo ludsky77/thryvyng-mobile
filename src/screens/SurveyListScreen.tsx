@@ -19,7 +19,7 @@ const ADMIN_ROLES = new Set([
   'platform_admin',
 ]);
 
-const LANG = 'en';
+const LANG: 'en' | 'es' = 'en';
 
 interface SurveyListScreenParams {
   clubId: string;

@@ -287,7 +287,7 @@ export default function TrainingStudioScreen() {
           .order('scheduled_date', { ascending: true })
           .limit(30);
         if (error) throw error;
-        setScheduledSessions((data || []) as ScheduledSession[]);
+        setScheduledSessions((data || []) as unknown as ScheduledSession[]);
       } else {
         const { data: teamsData } = await supabase
           .from('teams')
@@ -307,7 +307,7 @@ export default function TrainingStudioScreen() {
           .order('scheduled_date', { ascending: true })
           .limit(50);
         if (error) throw error;
-        const sessionsData = (data || []) as ScheduledSession[];
+        const sessionsData = (data || []) as unknown as ScheduledSession[];
         const coachIds = [...new Set(sessionsData.map((s) => s.coach_id).filter(Boolean))] as string[];
         if (coachIds.length > 0) {
           const { data: profilesData } = await supabase.from('profiles').select('id, full_name').in('id', coachIds);
@@ -563,7 +563,7 @@ export default function TrainingStudioScreen() {
           .limit(10);
 
         if (error) throw error;
-        setSeasonPlans((data || []) as SeasonPlan[]);
+        setSeasonPlans((data || []) as unknown as SeasonPlan[]);
       } catch (err) {
         console.error('Error fetching season plans:', err);
         setSeasonPlans([]);
@@ -593,7 +593,7 @@ export default function TrainingStudioScreen() {
           .order('age_group', { ascending: true });
 
         if (error) throw error;
-        setCurriculumItems((data || []) as CurriculumItem[]);
+        setCurriculumItems((data || []) as unknown as CurriculumItem[]);
       } catch (err) {
         console.error('Error fetching curriculum:', err);
         setCurriculumItems([]);

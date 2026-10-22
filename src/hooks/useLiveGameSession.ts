@@ -7,7 +7,9 @@ import { Alert } from 'react-native';
 
 export function useLiveGameSession(gameSessionId: string | null) {
   const { user } = useAuth();
-  const heartbeatRef = useRef<ReturnType<typeof setInterval>>();
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | undefined>(
+    undefined
+  );
 
   const [session, setSession] = useState<GameSession | null>(null);
   const [lineup, setLineup] = useState<GameLineup[]>([]);

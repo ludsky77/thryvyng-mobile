@@ -1399,6 +1399,9 @@ const styles = StyleSheet.create({
   saveBtnDisabled: { opacity: 0.7 },
   saveBtnText: { fontSize: 14, fontWeight: '600', color: '#fff' },
   statusPill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  // Referenced at :972 and never defined; empty preserves the unstyled label.
+  // Deliberately not `statusPill` -- that would put the pill padding on the Text.
+  statusPillText: {},
   statusDraft: { backgroundColor: '#f59e0b20' },
   statusPublished: { backgroundColor: '#10b98120' },
   statusDraftText: { color: '#f59e0b', fontSize: 12, fontWeight: '600' },

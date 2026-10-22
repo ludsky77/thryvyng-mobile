@@ -71,7 +71,7 @@ export default function LineupListScreen() {
           .limit(20);
 
         if (error) throw error;
-        setLineups((data || []) as LineupItem[]);
+        setLineups((data || []) as unknown as LineupItem[]);
       } catch (err) {
         console.error('Error fetching lineups:', err);
         setLineups([]);

@@ -37,6 +37,11 @@ const SECTION_HEADER_COLORS: Record<string, string> = {
   'REGRESSIONS': '#ef4444',
 };
 
+// A localized drill field as it comes back from the untyped client: the row
+// values are `unknown`, so `getLocalizedContent<T>` infers `T = unknown`. Same
+// cast idiom already used for `name`/`description` below.
+type LocalizedText = string | string[] | null | undefined;
+
 function toArray(val: string[] | string | null | undefined): string[] {
   if (!val) return [];
   if (Array.isArray(val)) return val.filter(Boolean);
@@ -178,12 +183,12 @@ export default function DrillDetailScreen() {
   const ageMin = drill.age_min as number | string | null | undefined;
   const ageMax = drill.age_max as number | string | null | undefined;
 
-  const equipmentRaw = getLocalizedContent(drill.equipment, drill.equipment_es, language);
+  const equipmentRaw = getLocalizedContent(drill.equipment, drill.equipment_es, language) as LocalizedText;
   const equipment = toArray(equipmentRaw);
-  const coachingPoints = toArray(getLocalizedContent(drill.coaching_points, drill.coaching_points_es, language));
-  const keyQuestions = toArray(getLocalizedContent(drill.key_questions, drill.key_questions_es, language));
-  const progressions = toArray(getLocalizedContent(drill.progressions, drill.progressions_es, language));
-  const regressions = toArray(getLocalizedContent(drill.regressions, drill.regressions_es, language));
+  const coachingPoints = toArray(getLocalizedContent(drill.coaching_points, drill.coaching_points_es, language) as LocalizedText);
+  const keyQuestions = toArray(getLocalizedContent(drill.key_questions, drill.key_questions_es, language) as LocalizedText);
+  const progressions = toArray(getLocalizedContent(drill.progressions, drill.progressions_es, language) as LocalizedText);
+  const regressions = toArray(getLocalizedContent(drill.regressions, drill.regressions_es, language) as LocalizedText);
 
   const ageRange =
     ageMin != null && ageMax != null
@@ -394,6 +399,9 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+  // Referenced by DrillContentSkeleton (:73) and never defined -- empty keeps the
+  // skeleton rendering unchanged. See docs/recon/stage4-types.md, Group D.
+  content: {},
   scrollContent: {
     paddingBottom: 40,
     paddingHorizontal: 16,

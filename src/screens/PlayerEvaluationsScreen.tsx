@@ -63,7 +63,7 @@ export default function PlayerEvaluationsScreen({ route, navigation }: any) {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setEvaluations((data || []) as Evaluation[]);
+      setEvaluations((data || []) as unknown as Evaluation[]);
     } catch (err) {
       console.error('Error fetching evaluations:', err);
     } finally {

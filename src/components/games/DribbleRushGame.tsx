@@ -1650,12 +1650,6 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     borderColor: '#fb923c',
   },
-  passButtonText: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-
   controls: {
     position: 'absolute',
     bottom: 0,

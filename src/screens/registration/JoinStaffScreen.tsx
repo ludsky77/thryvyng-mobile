@@ -236,16 +236,20 @@ export const JoinStaffScreen: React.FC = () => {
         return;
       }
 
+      // The nested `team` embed is inferred as an array by the untyped client;
+      // the runtime shape is the single object InvitationInfo declares.
+      const invite = invitation as unknown as InvitationInfo;
+
       if (__DEV__) {
         console.log(
           '[JoinStaff] Invitation valid:',
           invitation.invited_role,
           'for team:',
-          invitation.team?.name
+          invite.team?.name
         );
       }
 
-      setInvitationInfo(invitation as InvitationInfo);
+      setInvitationInfo(invite);
       setScreenState('valid');
     } catch (err) {
       if (__DEV__) {

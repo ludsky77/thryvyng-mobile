@@ -60,7 +60,7 @@ const DIMENSIONS = [
   { key: 'tactical', label: 'Tactical', icon: 'bulb', color: '#F59E0B' },
   { key: 'psychological', label: 'Mental', icon: 'flash', color: '#EC4899' },
   { key: 'physiological', label: 'Physical', icon: 'barbell', color: '#10B981' },
-];
+] as const;
 
 const AWARDS = [
   { id: '3e5b0a9d-59e5-49a5-8bf3-ff4782ea9091', name: 'Rising Star', tagline: 'Most Improved', color: '#EC4899' },

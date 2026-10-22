@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../../navigation/linking';
 import type { CalendarEvent } from '../../types';
 import { getEventTypeConfig } from '../../types';
 import { openInMaps } from '../../lib/maps';
@@ -36,7 +38,7 @@ function formatDateBadge(dateStr: string): string {
 }
 
 export function EventCard({ event, onRsvp, rsvping = false, onRefetch }: EventCardProps) {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [cantGoModalVisible, setCantGoModalVisible] = useState(false);
   const isCancelled = event.is_cancelled;
   const typeConfig = getEventTypeConfig(event.event_type);

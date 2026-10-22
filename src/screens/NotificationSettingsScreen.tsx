@@ -95,7 +95,8 @@ export default function NotificationSettingsScreen({ navigation }: any) {
         .from('notification_preferences')
         .upsert(
           {
-            user_id: user.id,
+            // `updated` is a full NotificationPreferences row, user_id included --
+            // an explicit user_id here was spread over and never reached the upsert.
             ...updated,
           },
           { onConflict: 'user_id' }

@@ -30,6 +30,8 @@ interface StaffMember {
   user_id: string;
   entity_id: string | null;
   profiles?: Profile | Profile[] | null;
+  // handleStaffPress is called with { ...member, profile: member.profiles } at :216.
+  profile?: Profile | Profile[] | null;
 }
 
 const ROLE_CONFIG: Record<string, { label: string; color: string }> = {

@@ -91,7 +91,7 @@ export default function PlayerDashboard({ playerId, navigation, showLineupWidget
         .single();
 
       if (playerError || !playerData) throw new Error('Player not found');
-      setPlayer(playerData as Player);
+      setPlayer(playerData as unknown as Player);
 
       const teamId = (playerData as any).team_id;
       const today = new Date().toISOString().split('T')[0];
@@ -138,7 +138,7 @@ export default function PlayerDashboard({ playerId, navigation, showLineupWidget
       setTopPlayers((topPlayersResult.data || []) as any);
 
       // Process lineups
-      const lineups = (lineupsResult.data || []) as UpcomingLineup[];
+      const lineups = (lineupsResult.data || []) as unknown as UpcomingLineup[];
       const withMyPlayer = lineups.filter((l) =>
         (l.players || []).some((p) => p.player_id === playerId)
       );

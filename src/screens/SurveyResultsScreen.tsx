@@ -12,7 +12,7 @@ import { Feather } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 
-const LANG = 'en';
+const LANG: 'en' | 'es' = 'en';
 
 interface SurveyResultsParams {
   surveyId: string;

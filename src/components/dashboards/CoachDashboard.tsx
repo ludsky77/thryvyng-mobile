@@ -27,6 +27,8 @@ interface CoachDashboardProps {
 interface Team {
   id: string;
   name: string;
+  // Real `teams` column (see JoinTeamScreen.tsx:61); select('*') returns it.
+  invitation_code?: string | null;
   age_group?: string | null;
   status: string | null;
   club_id: string | null;
@@ -116,6 +118,8 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
       startOfMonth.setHours(0, 0, 0, 0);
 
       // Run all independent queries in parallel
+      // `.then(undefined, fn)` is what `.catch(fn)` desugars to. The builder's own
+      // `then` is typed `PromiseLike`, which has no `.catch` -- same runtime, types fit.
       const [
         countResult,
         playersResult,
@@ -139,20 +143,20 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
           .select('total_amount')
           .eq('team_id', teamId)
           .then((res) => res)
-          .catch(() => ({ data: [] })),
+          .then(undefined, () => ({ data: [] })),
         supabase
           .from('course_enrollments')
           .select('*', { count: 'exact', head: true })
           .eq('team_id', teamId)
           .then((res) => res)
-          .catch(() => ({ count: 0 })),
+          .then(undefined, () => ({ count: 0 })),
         supabase
           .from('referral_transactions')
           .select('player_id, amount, players!player_id(first_name, last_name)')
           .eq('team_id', teamId)
           .gte('created_at', startOfMonth.toISOString())
           .then((res) => res)
-          .catch(() => ({ data: [] })),
+          .then(undefined, () => ({ data: [] })),
         supabase
           .from('cal_events')
           .select('id, title, created_at')
@@ -160,7 +164,7 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
           .order('created_at', { ascending: false })
           .limit(3)
           .then((res) => res)
-          .catch(() => ({ data: [] })),
+          .then(undefined, () => ({ data: [] })),
         supabase
           .from('player_evaluations')
           .select('id, created_at, player:players!player_id(first_name, last_name)')
@@ -168,7 +172,7 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
           .order('created_at', { ascending: false })
           .limit(3)
           .then((res) => res)
-          .catch(() => ({ data: [] })),
+          .then(undefined, () => ({ data: [] })),
       ]);
 
       // Process results

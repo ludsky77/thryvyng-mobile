@@ -17,7 +17,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
-const LANG = 'en';
+const LANG: 'en' | 'es' = 'en';
 
 interface SurveyResponseScreenParams {
   surveyId?: string;

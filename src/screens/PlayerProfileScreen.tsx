@@ -76,7 +76,7 @@ export default function PlayerProfileScreen({ route, navigation }: any) {
         .single();
 
       if (playerError) throw playerError;
-      setPlayer(playerData as Player);
+      setPlayer(playerData as unknown as Player);
 
       const { data: evalData, error: evalError } = await supabase
         .from('player_evaluations')

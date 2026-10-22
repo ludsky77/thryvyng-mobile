@@ -60,7 +60,7 @@ export default function TeamCertificatesScreen({ route, navigation }: any) {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setCertificates((data || []) as Certificate[]);
+      setCertificates((data || []) as unknown as Certificate[]);
     } catch (err) {
       console.error('Error fetching certificates:', err);
     } finally {

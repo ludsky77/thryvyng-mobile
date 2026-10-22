@@ -223,7 +223,7 @@ export default function WellnessParentDashboardScreen() {
             </View>
 
             {conversationStartersEnabled &&
-              engagement?.topics_viewed?.length > 0 && (
+              (engagement?.topics_viewed?.length ?? 0) > 0 && (
                 <View style={styles.suggestionBox}>
                   <Text style={styles.suggestionLabel}>
                     This week's suggestion:
@@ -231,7 +231,7 @@ export default function WellnessParentDashboardScreen() {
                   <Text style={styles.suggestionText}>
                     "{playerName} recently learned about{' '}
                     <Text style={styles.bold}>
-                      {engagement.topics_viewed[0]?.title}
+                      {engagement?.topics_viewed?.[0]?.title}
                     </Text>
                     . You might ask what they found most helpful or if they
                     have any questions!"

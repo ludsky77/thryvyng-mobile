@@ -55,7 +55,7 @@ function formatCategoryName(category: string): string {
     .join(' ');
 }
 
-function getLessonTypeIcon(lessonType: string | null): string {
+function getLessonTypeIcon(lessonType: string | null | undefined): string {
   switch (lessonType?.toLowerCase()) {
     case 'video':
       return '🎬';

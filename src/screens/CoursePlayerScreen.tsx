@@ -24,7 +24,7 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-function getLessonTypeIcon(lessonType: string | null): string {
+function getLessonTypeIcon(lessonType: string | null | undefined): string {
   switch (lessonType?.toLowerCase()) {
     case 'video':
       return '🎬';
@@ -287,7 +287,7 @@ export default function CoursePlayerScreen() {
       lesson_id: currentLesson.id,
       xp_earned: xpEarned,
       completed_at: new Date().toISOString(),
-    }).then(() => {}).catch(() => {});
+    }).then(undefined, () => {});
 
     const total = course.modules?.reduce(
       (sum, m) => sum + (m.lessons?.length || 0),

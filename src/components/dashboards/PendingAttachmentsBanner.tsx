@@ -55,7 +55,7 @@ export const PendingAttachmentsBanner: React.FC = () => {
         if (__DEV__) console.error('[PendingAttachmentsBanner] fetch error:', error);
         return;
       }
-      setAttachments((data || []) as PendingAttachment[]);
+      setAttachments((data || []) as unknown as PendingAttachment[]);
     })();
     return () => {
       cancelled = true;

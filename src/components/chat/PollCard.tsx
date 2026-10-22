@@ -864,11 +864,6 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   votedIndicator: {
-    color: '#22c55e',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  votedIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,

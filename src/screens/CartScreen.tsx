@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/linking';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../lib/supabase';
@@ -18,7 +20,7 @@ import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function CartScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { user, profile } = useAuth();
   const {
     items,
@@ -145,9 +147,9 @@ export default function CartScreen() {
 
         if (result.type === 'success') {
           clearCart();
-          navigation.navigate('CheckoutSuccess' as never, {
+          navigation.navigate('CheckoutSuccess', {
             sessionId: data.session_id,
-          } as never);
+          });
         } else if (result.type === 'cancel') {
           console.log('[Cart] Checkout cancelled by user');
         }
@@ -165,7 +167,7 @@ export default function CartScreen() {
   };
 
   const handleContinueShopping = () => {
-    navigation.navigate('ProductStore' as never);
+    navigation.navigate('ProductStore');
   };
 
   const renderCartItem = ({ item }: { item: (typeof items)[0] }) => (

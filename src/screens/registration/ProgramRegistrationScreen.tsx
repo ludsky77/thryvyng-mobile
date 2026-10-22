@@ -275,7 +275,7 @@ export const ProgramRegistrationScreen: React.FC = () => {
       }
 
       programData.tryout_schedule = programData.tryout_schedule ?? null;
-      setProgram(programData as Program);
+      setProgram(programData as unknown as Program);
 
       // Fetch packages for this program
       const { data: packagesData, error: packagesError } = await supabase

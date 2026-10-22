@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/linking';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -27,7 +29,7 @@ interface Evaluation {
 }
 
 export default function EvaluationsScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { currentRole } = useAuth();
 
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
@@ -89,14 +91,14 @@ export default function EvaluationsScreen() {
   };
 
   const handleViewAllEvaluations = () => {
-    navigation.navigate('PlayerProfile' as never, {
+    navigation.navigate('PlayerProfile', {
       playerId,
       playerName: 'My Evaluations',
-    } as never);
+    });
   };
 
   const handleEvaluationPress = (evaluationId: string) => {
-    navigation.navigate('EvaluationDetail' as never, { evaluationId } as never);
+    navigation.navigate('EvaluationDetail', { evaluationId });
   };
 
   const formatDate = (dateString: string) => {

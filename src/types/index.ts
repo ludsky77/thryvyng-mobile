@@ -319,6 +319,9 @@ export interface Channel {
     team_is_test?: boolean | null;
     season_id?: string | null;
     player_status?: string | null;
+    // Set by AuthContext.tsx:81 for invited-placement roles; read by
+    // roleFilters.ts:23 and PlayerDashboard.tsx:62.
+    placement_status?: string | null;
     team?: UserRoleTeam | null;
     player?: UserRolePlayer | null;
   }

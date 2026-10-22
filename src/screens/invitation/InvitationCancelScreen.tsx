@@ -1,6 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../../navigation/linking';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -9,13 +11,13 @@ interface RouteParams {
 }
 
 export default function InvitationCancelScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute();
   const { token } = (route.params as RouteParams) || {};
 
   const handleRetry = () => {
     if (token) {
-      navigation.navigate('Invitation' as never, { token } as never);
+      navigation.navigate('Invitation', { token });
     } else {
       navigation.goBack();
     }

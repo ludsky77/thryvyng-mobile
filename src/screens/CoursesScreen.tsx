@@ -477,6 +477,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#1e293b',
   },
+  // Referenced by the empty-state header only (:399-405) and never defined, so all
+  // three render unstyled today. Declared empty to keep exactly that rendering --
+  // real values would move pixels. See docs/recon/stage4-types.md, Group D.
+  backButton: {},
+  backButtonIcon: {},
+  headerRight: {},
   headerButton: {
     width: 40,
     height: 40,

@@ -16,7 +16,14 @@ export interface SelectedPlayerParam {
 export type RootStackParamList = {
   // Auth screens
   Welcome: undefined;
-  Login: { mode?: 'signin' | 'signup' } | undefined;
+  // returnTo/returnParams are read at LoginScreen.tsx:137-139 after sign-in.
+  Login:
+    | {
+        mode?: 'signin' | 'signup';
+        returnTo?: string;
+        returnParams?: Record<string, unknown>;
+      }
+    | undefined;
   // Main app screens
   Main: undefined;
   MainTabs: undefined;
@@ -24,6 +31,9 @@ export type RootStackParamList = {
   Notifications: undefined;
   NotificationSettings: undefined;
   EventDetail: { eventId?: string; event?: any; onRefetch?: () => void };
+  // Pushed from EvaluationsScreen; both screens take their route via props.
+  PlayerProfile: { playerId: string; playerName: string };
+  EvaluationDetail: { evaluationId?: string; evaluation_id?: string };
   PreGameSetup: { eventId: string; teamId: string };
   StatsConsole: { sessionId: string };
   LiveSpectator: { sessionId: string };

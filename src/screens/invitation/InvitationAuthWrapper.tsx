@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../../navigation/linking';
 import { useAuth } from '../../contexts/AuthContext';
 import InvitationScreen from './InvitationScreen';
 
@@ -10,7 +12,7 @@ interface RouteParams {
 
 export default function InvitationAuthWrapper() {
   const route = useRoute();
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { token } = route.params as RouteParams;
   const { user, loading: authLoading } = useAuth();
 
@@ -19,13 +21,10 @@ export default function InvitationAuthWrapper() {
   useEffect(() => {
     if (!authLoading) {
       if (!user) {
-        navigation.navigate(
-          'Login' as never,
-          {
+        navigation.navigate('Login', {
             returnTo: 'Invitation',
             returnParams: { token },
-          } as never,
-        );
+          });
       }
       setCheckingAuth(false);
     }

@@ -33,9 +33,16 @@ Notifications.setNotificationHandler({
       | undefined;
     const channelId = data?.channel_id ?? null;
 
+    // shouldShowBanner/shouldShowList are the SDK 54 split of the deprecated
+    // shouldShowAlert, which covered banner + notification centre as one flag.
+    // Each branch mirrors its own shouldShowAlert, so behaviour is unchanged.
+    // Device proof Oct 21 2026, 1.0.17, app open on Home: a chat push DID banner,
+    // i.e. the `true` branch below is what the device already does.
     if (channelId && channelId === activeChannelId) {
       return {
         shouldShowAlert: false,
+        shouldShowBanner: false,
+        shouldShowList: false,
         shouldPlaySound: false,
         shouldSetBadge: true,
       };
@@ -43,6 +50,8 @@ Notifications.setNotificationHandler({
 
     return {
       shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
       shouldPlaySound: true,
       shouldSetBadge: true,
     };

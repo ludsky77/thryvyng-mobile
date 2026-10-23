@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { logError } from '../utils/logError';
 import type { CalendarEvent, EventType } from '../types';
 
 // Table name - matches web app schema
@@ -15,11 +16,51 @@ const EVENTS_TABLE = 'cal_events';
  * events+RSVP read on every mount and keeping a second realtime channel open
  * for results nobody read. `updateRsvp` was a fourth, dead RSVP writer; the
  * one writer now lives in src/utils/rsvp.ts.
+ *
+ * The team comes from the SUBMIT PAYLOAD, not from this closure: the create
+ * form owns the team choice now (CreateEventModal's Team field), so there is
+ * no child -> parent -> re-render round trip before a submit. The `teamId`
+ * argument stays as a fallback for a caller that already knows its one team.
  */
-export function useCalendarEvents(teamId: string | null) {
+
+/**
+ * An insert failure with something true to show the user.
+ *
+ * The old path swallowed every error into `null`, and the form rendered that
+ * as "check your connection" -- so an RLS refusal (creating for a team you
+ * are not staff on) read as a network blip. The real error is logged; the
+ * `userMessage` is what the form is allowed to say.
+ */
+export type UserFacingError = Error & { userMessage: string };
+
+function insertFailure(
+  scope: string,
+  error: unknown,
+  extra: Record<string, unknown>
+): UserFacingError {
+  logError(scope, error, extra);
+
+  const code = (error as { code?: string } | null)?.code;
+  const message = (error as { message?: string } | null)?.message ?? '';
+  // 42501 = insufficient_privilege, which is what the cal_events_insert
+  // policy returns for a team_id with no team_staff row for this user.
+  const refused =
+    code === '42501' || /row-level security/i.test(message);
+
+  const err = new Error(
+    refused
+      ? "You can't create events for this team."
+      : 'Could not create the event. Please try again.'
+  ) as UserFacingError;
+  err.userMessage = err.message;
+  return err;
+}
+
+export function useCalendarEvents(teamId: string | null = null) {
   const { user } = useAuth();
 
   const createEvent = async (payload: {
+    team_id?: string | null;
     title: string;
     event_type: EventType;
     event_date: string;
@@ -34,18 +75,19 @@ export function useCalendarEvents(teamId: string | null) {
     uniform?: string | null;
     notes?: string | null;
   }) => {
-    if (!user || !teamId) return null;
+    const eventTeamId = payload.team_id ?? teamId;
+    if (!user || !eventTeamId) return null;
 
     const { data: team } = await supabase
       .from('teams')
       .select('club_id')
-      .eq('id', teamId)
+      .eq('id', eventTeamId)
       .single();
 
     const { data, error } = await supabase
       .from(EVENTS_TABLE)
       .insert({
-        team_id: teamId,
+        team_id: eventTeamId,
         club_id: team?.club_id || null,
         created_by: user.id,
         title: payload.title,
@@ -66,14 +108,17 @@ export function useCalendarEvents(teamId: string | null) {
       .single();
 
     if (error) {
-      console.error('createEvent error:', error.message);
-      return null;
+      throw insertFailure('useCalendarEvents.createEvent', error, {
+        teamId: eventTeamId,
+        eventType: payload.event_type,
+      });
     }
 
     return data as CalendarEvent;
   };
 
   const createRecurringEvents = async (payload: {
+    team_id?: string | null;
     title: string;
     event_type: string;
     start_time?: string | null;
@@ -89,12 +134,13 @@ export function useCalendarEvents(teamId: string | null) {
     dates: string[];
     recurrence_pattern: string;
   }) => {
-    if (!user || !teamId || payload.dates.length === 0) return null;
+    const eventTeamId = payload.team_id ?? teamId;
+    if (!user || !eventTeamId || payload.dates.length === 0) return null;
 
     const { data: team } = await supabase
       .from('teams')
       .select('club_id')
-      .eq('id', teamId)
+      .eq('id', eventTeamId)
       .single();
 
     const recurrenceGroupId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -103,7 +149,7 @@ export function useCalendarEvents(teamId: string | null) {
     });
 
     const eventsToInsert = payload.dates.map((date) => ({
-      team_id: teamId,
+      team_id: eventTeamId,
       club_id: team?.club_id || null,
       created_by: user.id,
       title: payload.title,
@@ -129,8 +175,11 @@ export function useCalendarEvents(teamId: string | null) {
       .select();
 
     if (error) {
-      console.error('createRecurringEvents error:', error.message);
-      return null;
+      throw insertFailure('useCalendarEvents.createRecurringEvents', error, {
+        teamId: eventTeamId,
+        eventType: payload.event_type,
+        occurrences: payload.dates.length,
+      });
     }
     return data;
   };

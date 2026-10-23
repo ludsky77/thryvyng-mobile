@@ -30,11 +30,12 @@ import { WeekView } from '../components/calendar/WeekView';
 import { DayView } from '../components/calendar/DayView';
 import TeamLegend from '../components/calendar/TeamLegend';
 import { CreateEventModal } from '../components/calendar/CreateEventModal';
+import { EventTypeSheet } from '../components/calendar/EventTypeSheet';
 import { CantGoReasonModal } from '../components/calendar/CantGoReasonModal';
 import { supabase } from '../lib/supabase';
 import { getEventTypeConfig } from '../types';
 import { eventAccent, eventAccentFor } from '../lib/eventColors';
-import type { CalendarEvent } from '../types';
+import type { CalendarEvent, EventType } from '../types';
 import { NotificationBell } from '../components/NotificationBell';
 import CalendarSyncModal from '../components/calendar/CalendarSyncModal';
 import { isEventPast } from '../utils/calendar';
@@ -86,8 +87,7 @@ export default function CalendarScreen({ route, navigation }: any) {
     teams,
     pastTeams,
     loading: teamsLoading,
-    getDefaultTeam,
-    canManageTeam,
+    getTeamsByAccess,
     refetch: refetchTeams,
   } = useUserTeams();
 
@@ -97,7 +97,8 @@ export default function CalendarScreen({ route, navigation }: any) {
   const [pastTeamsExpanded, setPastTeamsExpanded] = useState(false);
   const teamsSelectionInitialized = useRef(false);
   const [createModalVisible, setCreateModalVisible] = useState(false);
-  const [createForTeamId, setCreateForTeamId] = useState<string | null>(null);
+  const [typeSheetVisible, setTypeSheetVisible] = useState(false);
+  const [createEventType, setCreateEventType] = useState<EventType | null>(null);
   const [cantGoEventId, setCantGoEventId] = useState<string | null>(null);
   const [showPreviousEvents, setShowPreviousEvents] = useState(false);
   const [rsvpSubmitting, setRsvpSubmitting] = useState(false);
@@ -115,15 +116,22 @@ export default function CalendarScreen({ route, navigation }: any) {
   const startDate = subMonths(new Date(), 1).toISOString().split('T')[0];
   const endDate = addMonths(new Date(), 6).toISOString().split('T')[0];
 
-  const createTeamId =
-    createForTeamId ||
-    (selectedTeamId !== ALL_TEAMS_ID ? selectedTeamId : null);
   // Create-only hook: this screen does its own fetch below, and the hook's
   // duplicate fetch/realtime/updateRsvp went with the one-writer cleanup.
+  //
+  // No team argument: the create form owns the team choice and sends team_id
+  // in the payload, so there is no setCreateForTeamId -> re-render round trip
+  // between picking a team and submitting.
   const {
     createEvent,
     createRecurringEvents,
-  } = useCalendarEvents(createTeamId);
+  } = useCalendarEvents();
+
+  /** The only list the + may create for. Same condition as the RLS policy. */
+  const staffTeams = useMemo(
+    () => getTeamsByAccess().staffTeams,
+    [getTeamsByAccess]
+  );
 
   const allTeams = useMemo(() => [...teams, ...pastTeams], [teams, pastTeams]);
 
@@ -132,10 +140,14 @@ export default function CalendarScreen({ route, navigation }: any) {
     if (teams.length === 0 && pastTeams.length === 0) return;
 
     if (!selectedTeamId) {
-      const defaultTeam = getDefaultTeam();
+      // Two or more teams -> open on All Teams, not on whichever team the role
+      // switcher or an unordered team_staff read happened to put first. One
+      // team -> that team, so its name is actually on screen (the All Teams
+      // header is generic and TeamLegend is gated on teams.length >= 2).
       setSelectedTeamId(
-        defaultTeam?.id ??
-          (teams.length > 0 ? ALL_TEAMS_ID : pastTeams[0]?.id ?? ALL_TEAMS_ID)
+        teams.length >= 2
+          ? ALL_TEAMS_ID
+          : teams[0]?.id ?? pastTeams[0]?.id ?? ALL_TEAMS_ID
       );
       return;
     }
@@ -152,7 +164,7 @@ export default function CalendarScreen({ route, navigation }: any) {
         }
       }
     }
-  }, [teamsLoading, teams, pastTeams, selectedTeamId, getDefaultTeam]);
+  }, [teamsLoading, teams, pastTeams, selectedTeamId]);
 
   const fetchEvents = useCallback(async () => {
     if (teamsLoading || (teams.length === 0 && pastTeams.length === 0)) return;
@@ -406,35 +418,35 @@ export default function CalendarScreen({ route, navigation }: any) {
       ? 'All Teams'
       : selectedTeam?.name || 'Select Team';
 
-  const canCreate =
-    !isPastTeamSelected &&
-    selectedTeamId !== ALL_TEAMS_ID &&
-    selectedTeamId &&
-    canManageTeam(selectedTeamId);
+  // Staff on at least one active team is the whole gate -- All Teams included.
+  // The form asks which team, and RLS refuses anything staffTeams would not
+  // have offered, so hiding the + in All Teams only hid the feature.
+  const canCreate = staffTeams.length > 0;
 
-  const handleCreatePress = () => {
-    if (selectedTeamId && selectedTeamId !== ALL_TEAMS_ID) {
-      setCreateForTeamId(selectedTeamId);
-      setCreateModalVisible(true);
-    }
-  };
+  /**
+   * Pre-fill the form's Team field only when the calendar is already showing
+   * ONE team this user is staff on. All Teams, a parent-access team and an
+   * archived team all leave it blank rather than pre-filling something the
+   * form would then have to refuse.
+   */
+  const createInitialTeamId =
+    selectedTeamId && staffTeams.some((t) => t.id === selectedTeamId)
+      ? selectedTeamId
+      : null;
 
-  const handleCreateEvent = async (payload: Parameters<typeof createEvent>[0]) => {
-    if (!createForTeamId) return null;
-    return createEvent(payload);
-  };
+  // + opens the type sheet; the form opens once a type is chosen.
+  const handleCreatePress = () => setTypeSheetVisible(true);
 
-  const handleCreateRecurring = async (
-    payload: Parameters<typeof createRecurringEvents>[0]
-  ) => {
-    if (!createForTeamId) return null;
-    return createRecurringEvents(payload);
+  const handleEventTypeChosen = (eventType: EventType) => {
+    setTypeSheetVisible(false);
+    setCreateEventType(eventType);
+    setCreateModalVisible(true);
   };
 
   const handleCreateSuccess = () => {
     fetchEvents();
     setCreateModalVisible(false);
-    setCreateForTeamId(null);
+    setCreateEventType(null);
   };
 
   // First load only. useFocusEffect refetches teams on every focus; blanking a
@@ -1235,14 +1247,23 @@ export default function CalendarScreen({ route, navigation }: any) {
         </TouchableOpacity>
       </Modal>
 
+      <EventTypeSheet
+        visible={typeSheetVisible}
+        onClose={() => setTypeSheetVisible(false)}
+        onSelect={handleEventTypeChosen}
+      />
+
       <CreateEventModal
         visible={createModalVisible}
+        eventType={createEventType ?? 'practice'}
+        teams={staffTeams}
+        initialTeamId={createInitialTeamId}
         onClose={() => {
           setCreateModalVisible(false);
-          setCreateForTeamId(null);
+          setCreateEventType(null);
         }}
-        onSubmit={handleCreateEvent}
-        onCreateRecurring={handleCreateRecurring}
+        onSubmit={createEvent}
+        onCreateRecurring={createRecurringEvents}
         onSuccess={handleCreateSuccess}
       />
 

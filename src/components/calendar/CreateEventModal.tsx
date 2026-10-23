@@ -17,7 +17,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { DateTimeSheet } from '../common/DateTimeSheet';
 import type { EventType } from '../../types';
-import { EVENT_TYPES } from '../../types';
+import { getEventTypeConfig } from '../../types';
+import type { UserTeam } from '../../hooks/useUserTeams';
 import { CollapsibleSection } from '../CollapsibleSection';
 import { notifyTeamOfEvent } from '../../services/eventNotifications';
 
@@ -27,14 +28,6 @@ if (
 ) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
-
-const EVENT_TYPE_ICONS: Record<string, { icon: string; color: string }> = {
-  game: { icon: 'trophy', color: '#06B6D4' },
-  scrimmage: { icon: 'locate', color: '#F97316' },
-  practice: { icon: 'people', color: '#10B981' },
-  other_event: { icon: 'calendar', color: '#8B5CF6' },
-  club_event: { icon: 'business', color: '#3B82F6' },
-};
 
 const VENUE_ICONS: Record<string, { icon: string; color: string }> = {
   home: { icon: 'home', color: '#10B981' },
@@ -149,15 +142,39 @@ type SheetConfig = {
   onDone: (value: Date) => void;
 };
 
-/** The event type a fresh form opens on -- also what the close-reset restores. */
+/**
+ * Neutral value for the mount defaults and the close-reset only.
+ *
+ * The type a form actually opens on is the `eventType` PROP, chosen in
+ * EventTypeSheet before this modal mounts; the on-open effect below re-derives
+ * the times from it. This constant exists so those two resets have something
+ * type-correct to use without reading a prop inside a [visible]-only effect.
+ */
 const INITIAL_EVENT_TYPE: EventType = 'practice';
+
+/**
+ * What the user is told when an insert produces no row.
+ *
+ * The honest reading of every remaining path to it: this account is not staff
+ * on that team (RLS), or no team reached the hook. It is never "your
+ * connection" -- that line sent coaches to reset their wifi over a permission
+ * refusal.
+ */
+const INSERT_REFUSED_MESSAGE = "You can't create events for this team.";
 
 type HomeAway = 'home' | 'away' | 'neutral';
 
 interface CreateEventModalProps {
   visible: boolean;
+  /** Chosen in EventTypeSheet before this opens. Titles the form, fixes the type. */
+  eventType: EventType;
+  /** Teams this user may create for -- getTeamsByAccess().staffTeams, nothing wider. */
+  teams: UserTeam[];
+  /** The team the calendar was filtered to, if it is one of `teams`. */
+  initialTeamId?: string | null;
   onClose: () => void;
   onSubmit: (payload: {
+    team_id: string;
     title: string;
     event_type: EventType;
     event_date: string;
@@ -173,6 +190,7 @@ interface CreateEventModalProps {
     notes?: string | null;
   }) => Promise<unknown>;
   onCreateRecurring?: (payload: {
+    team_id: string;
     title: string;
     event_type: EventType;
     start_time?: string | null;
@@ -235,13 +253,18 @@ function calculateRecurrenceDates(
 
 export function CreateEventModal({
   visible,
+  eventType,
+  teams,
+  initialTeamId,
   onClose,
   onSubmit,
   onCreateRecurring,
   onSuccess,
 }: CreateEventModalProps) {
   const [title, setTitle] = useState('');
-  const [eventType, setEventType] = useState<EventType>(INITIAL_EVENT_TYPE);
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [teamQuery, setTeamQuery] = useState('');
+  const [teamPickerOpen, setTeamPickerOpen] = useState(false);
   const [eventDate, setEventDate] = useState(new Date());
   const [startTime, setStartTime] = useState(getDefaultStartTime);
   const [arrivalTime, setArrivalTime] = useState(() =>
@@ -261,6 +284,7 @@ export function CreateEventModal({
   const [endRepeatDate, setEndRepeatDate] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<{
+    team?: string;
     title?: string;
     eventDate?: string;
     arrivalTime?: string;
@@ -270,6 +294,23 @@ export function CreateEventModal({
   // needed. Only one sheet can be open at a time, and clearing it is a single
   // assignment -- which is also what makes the close-reset below exhaustive.
   const [sheetField, setSheetField] = useState<SheetField | null>(null);
+
+  /** One staff team means no choice to make -- it is shown, not offered. */
+  const soleTeamId = teams.length === 1 ? teams[0].id : null;
+  const selectedTeam = teams.find((t) => t.id === selectedTeamId) ?? null;
+  const teamSearch = teamQuery.trim().toLowerCase();
+  const filteredTeams = teamSearch
+    ? teams.filter((t) => t.name.toLowerCase().includes(teamSearch))
+    : teams;
+  const typeLabel = getEventTypeConfig(eventType).label;
+
+  const chooseTeam = (teamId: string) => {
+    Keyboard.dismiss();
+    setSelectedTeamId(teamId);
+    setTeamPickerOpen(false);
+    setTeamQuery('');
+    setErrors((prev) => ({ ...prev, team: undefined }));
+  };
 
   const openSheet = (field: SheetField) => {
     Keyboard.dismiss();
@@ -313,7 +354,9 @@ export function CreateEventModal({
     if (!visible) {
       const start = getDefaultStartTime();
       setTitle('');
-      setEventType(INITIAL_EVENT_TYPE);
+      setSelectedTeamId(null);
+      setTeamQuery('');
+      setTeamPickerOpen(false);
       setEventDate(new Date());
       setStartTime(start);
       setArrivalTime(getDefaultArrivalTime(start, INITIAL_EVENT_TYPE));
@@ -332,15 +375,53 @@ export function CreateEventModal({
     }
   }, [visible]);
 
+  /**
+   * Seed the Team field each time the form opens.
+   *
+   * One staff team -> that team, no choice offered. Opened while the calendar
+   * was filtered to a team -> that team, changeable. Opened from All Teams ->
+   * blank, and Create stays disabled until one is picked.
+   *
+   * `soleTeamId` is a primitive, deliberately, not `teams`: useUserTeams
+   * refetches on every screen focus and hands back a new array each time, so
+   * depending on that array could wipe a team the user had already chosen.
+   */
+  useEffect(() => {
+    if (!visible) return;
+    setSelectedTeamId(soleTeamId ?? initialTeamId ?? null);
+    setTeamQuery('');
+    setTeamPickerOpen(false);
+  }, [visible, soleTeamId, initialTeamId]);
+
+  /**
+   * Re-derive the times from the chosen type when the form opens.
+   *
+   * START_OFFSETS_BY_TYPE differs per type (practice -10/+75, game -45/+90)
+   * and the type is now fixed before the form mounts, so open is the moment to
+   * apply its row. The mount defaults use the neutral constant, and a user who
+   * edits Start still re-derives through commitStartTime.
+   */
+  useEffect(() => {
+    if (!visible) return;
+    const start = getDefaultStartTime();
+    setStartTime(start);
+    setArrivalTime(getDefaultArrivalTime(start, eventType));
+    setEndTime(getDefaultEndTime(start, eventType));
+  }, [visible, eventType]);
+
   const isGameOrScrimmage = eventType === 'game' || eventType === 'scrimmage';
 
   const validate = (): boolean => {
     const next: {
+      team?: string;
       title?: string;
       eventDate?: string;
       arrivalTime?: string;
       endTime?: string;
     } = {};
+    if (!selectedTeamId) {
+      next.team = 'Pick a team';
+    }
     const finalTitle = isGameOrScrimmage ? opponent : title;
     if (!finalTitle.trim()) {
       next.title = isGameOrScrimmage ? 'Opponent is required' : 'Title is required';
@@ -380,6 +461,9 @@ export function CreateEventModal({
     try {
       const finalTitle = isGameOrScrimmage ? opponent.trim() : title.trim();
       const basePayload = {
+        // Non-null by here: validate() blocks submit without a team and the
+        // Create button is disabled until one is chosen.
+        team_id: selectedTeamId as string,
         title: finalTitle,
         event_type: eventType,
         event_date: formatDateForPayload(eventDate),
@@ -433,11 +517,9 @@ export function CreateEventModal({
           onSuccess?.();
           onClose();
         } else {
-          Alert.alert(
-            'Error',
-            'Failed to create recurring events. Please check your connection and try again.',
-            [{ text: 'OK' }]
-          );
+          // Nothing returned and nothing thrown: the hook refused before the
+          // insert (no team, no session). Not a connection problem.
+          Alert.alert('Error', INSERT_REFUSED_MESSAGE, [{ text: 'OK' }]);
         }
       } else {
         const result = await onSubmit(basePayload);
@@ -453,15 +535,20 @@ export function CreateEventModal({
           onSuccess?.();
           onClose();
         } else {
-          Alert.alert(
-            'Error',
-            'Failed to create event. Please check your connection and try again.',
-            [{ text: 'OK' }]
-          );
+          Alert.alert('Error', INSERT_REFUSED_MESSAGE, [{ text: 'OK' }]);
         }
       }
-    } catch {
-      Alert.alert('Error', 'Something went wrong. Please try again.', [{ text: 'OK' }]);
+    } catch (err) {
+      // useCalendarEvents attaches `userMessage` to the failures it raises, so
+      // an RLS refusal says so in words instead of blaming the network.
+      // Anything else keeps the generic line -- raw Postgres text is not for
+      // users, and the real error is already logged by the hook.
+      const userMessage = (err as { userMessage?: string } | null)?.userMessage;
+      Alert.alert(
+        'Error',
+        userMessage || 'Something went wrong. Please try again.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setSubmitting(false);
     }
@@ -490,6 +577,7 @@ export function CreateEventModal({
     endRepeatDate &&
     recurrenceDates.length > 1;
   const isValid =
+    !!selectedTeamId &&
     (isGameOrScrimmage ? opponent.trim() : title.trim()).length > 0;
   const creating = submitting;
 
@@ -587,7 +675,7 @@ export function CreateEventModal({
             <Text style={styles.cancelText}>Cancel</Text>
           </TouchableOpacity>
 
-          <Text style={styles.modalTitle}>Create Event</Text>
+          <Text style={styles.modalTitle}>New {typeLabel}</Text>
 
           <TouchableOpacity
             onPress={handleCreate}
@@ -614,46 +702,111 @@ export function CreateEventModal({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Event Type - First */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.eventTypeContainer}
-          >
-            {EVENT_TYPES.map((type) => {
-              const config = EVENT_TYPE_ICONS[type.value] || { icon: 'calendar', color: '#8B5CF6' };
-              return (
-                <TouchableOpacity
-                  key={type.value}
+          {/* Team - FIRST field. The type strip that used to sit here is gone:
+              the type is chosen in EventTypeSheet before this form opens. */}
+          <View style={styles.section}>
+            <Text style={styles.label}>Team *</Text>
+
+            {teams.length <= 1 ? (
+              // One staff team: shown, not offered. Zero cannot happen from the
+              // calendar (the + needs a staff team) but reads honestly if it does.
+              <View style={styles.teamStaticRow}>
+                <View
                   style={[
-                    styles.eventTypeButton,
-                    eventType === type.value && {
-                      borderColor: config.color,
-                      backgroundColor: config.color + '20',
-                    },
+                    styles.teamColorDot,
+                    { backgroundColor: selectedTeam?.color || colors.accentDim },
                   ]}
-                  onPress={() => setEventType(type.value)}
+                />
+                <Text style={styles.teamStaticName} numberOfLines={1}>
+                  {selectedTeam?.name || 'No team available'}
+                </Text>
+              </View>
+            ) : (
+              <>
+                <TouchableOpacity
+                  style={[styles.teamRow, errors.team && styles.inputError]}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setTeamPickerOpen((open) => !open);
+                  }}
                   disabled={submitting}
                 >
-                  <View style={styles.eventTypeIconWrap}>
-                    <Ionicons
-                      name={config.icon as any}
-                      size={24}
-                      color={config.color}
+                  {selectedTeam ? (
+                    <View
+                      style={[
+                        styles.teamColorDot,
+                        { backgroundColor: selectedTeam.color || colors.accentDim },
+                      ]}
                     />
-                  </View>
+                  ) : null}
                   <Text
                     style={[
-                      styles.eventTypeLabel,
-                      eventType === type.value && { color: config.color },
+                      styles.teamRowText,
+                      !selectedTeam && styles.teamRowPlaceholder,
                     ]}
+                    numberOfLines={1}
                   >
-                    {type.label}
+                    {selectedTeam?.name || 'Select a team'}
                   </Text>
+                  <Text style={styles.chevron}>{teamPickerOpen ? '▲' : '▼'}</Text>
                 </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+
+                {teamPickerOpen ? (
+                  <View style={styles.teamPickerPanel}>
+                    <TextInput
+                      style={styles.teamSearchInput}
+                      value={teamQuery}
+                      onChangeText={setTeamQuery}
+                      placeholder="Find your team…"
+                      placeholderTextColor={colors.textPlaceholder}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      editable={!submitting}
+                    />
+                    {filteredTeams.length === 0 ? (
+                      <Text style={styles.teamEmptyText}>No team matches that.</Text>
+                    ) : (
+                      filteredTeams.map((team) => (
+                        <TouchableOpacity
+                          key={team.id}
+                          style={[
+                            styles.teamOption,
+                            team.id === selectedTeamId && styles.teamOptionSelected,
+                          ]}
+                          onPress={() => chooseTeam(team.id)}
+                          disabled={submitting}
+                        >
+                          <View
+                            style={[
+                              styles.teamColorDot,
+                              { backgroundColor: team.color || colors.accentDim },
+                            ]}
+                          />
+                          <View style={styles.teamOptionInfo}>
+                            <Text style={styles.teamOptionName} numberOfLines={1}>
+                              {team.name}
+                            </Text>
+                            {team.staff_role ? (
+                              <Text style={styles.teamOptionSub}>
+                                {team.staff_role.replace(/_/g, ' ')}
+                              </Text>
+                            ) : null}
+                          </View>
+                          {team.id === selectedTeamId ? (
+                            <Text style={styles.teamCheckmark}>✓</Text>
+                          ) : null}
+                        </TouchableOpacity>
+                      ))
+                    )}
+                  </View>
+                ) : null}
+
+                {errors.team ? (
+                  <Text style={styles.errorText}>{errors.team}</Text>
+                ) : null}
+              </>
+            )}
+          </View>
 
           {/* Dynamic Fields */}
           {isGameOrScrimmage ? (
@@ -974,28 +1127,98 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 32,
   },
-  eventTypeContainer: {
+  teamStaticRow: {
     flexDirection: 'row',
-    marginBottom: 16,
+    alignItems: 'center',
+    backgroundColor: colors.cardBackground,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
   },
-  eventTypeButton: {
+  teamStaticName: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
+    flex: 1,
+  },
+  teamRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.inputBackground,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+  },
+  teamRowText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 16,
+  },
+  teamRowPlaceholder: {
+    color: colors.textPlaceholder,
+  },
+  teamPickerPanel: {
+    marginTop: 8,
+    backgroundColor: colors.cardBackground,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 8,
+  },
+  teamSearchInput: {
+    backgroundColor: colors.inputBackground,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: colors.text,
+    fontSize: 15,
+    marginBottom: 8,
+  },
+  teamOption: {
+    flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: colors.inputBackground,
-    backgroundColor: colors.cardBackground,
-    marginRight: 10,
-    minWidth: 80,
+    paddingHorizontal: 10,
+    borderRadius: 10,
   },
-  eventTypeIconWrap: {
-    marginBottom: 4,
+  teamOptionSelected: {
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
   },
-  eventTypeLabel: {
+  teamOptionInfo: {
+    flex: 1,
+  },
+  teamOptionName: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  teamOptionSub: {
     color: colors.textMuted,
     fontSize: 12,
-    fontWeight: '600',
+    marginTop: 2,
+    textTransform: 'capitalize',
+  },
+  teamColorDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 10,
+  },
+  teamCheckmark: {
+    color: colors.accent,
+    fontSize: 16,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+  teamEmptyText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
   },
   section: {
     marginBottom: 24,

@@ -21,8 +21,19 @@ function SwipeableRow({ children, onDelete }: { children: React.ReactNode; onDel
 
   const panResponder = useRef(
     PanResponder.create({
+      // Fix 2 (same root as the chat-list swipe rows): claim on the CAPTURE
+      // phase from the 4th pixel, with a stricter ratio because it fires
+      // before the list has decided. The bubble handler below still catches a
+      // drag that only turns out to be horizontal later.
+      onMoveShouldSetPanResponderCapture: (_, g) =>
+        Math.abs(g.dx) > 4 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
       onMoveShouldSetPanResponder: (_, g) =>
         Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy),
+      // Fix 1: the gesture is ours until the finger lifts. RN defaults this to
+      // true when absent (PanResponder.js:550-553), which let the list's
+      // scroll view take the swipe away mid-drag -- and a stolen gesture never
+      // reaches onPanResponderRelease, so the delete could never commit.
+      onPanResponderTerminationRequest: () => false,
       onPanResponderMove: (_, g) => {
         if (g.dx < 0) translateX.setValue(g.dx);
       },

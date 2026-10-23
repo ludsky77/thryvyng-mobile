@@ -157,9 +157,42 @@ interface SwipeAction {
   onPress: () => void;
 }
 
-/** How far the row must travel before the actions latch open. */
+/** How wide the revealed action strip is. */
 const SWIPE_ACTION_WIDTH = 160;
 const SWIPE_ACTION_WIDTH_SINGLE = 80;
+
+/**
+ * How far the row must travel before the actions latch open (fix 4).
+ *
+ * TRAVEL, not a fraction of the strip width. The old test was
+ * `base + dx < -width / 2`, which asked 80px of a DM/group row (Mute + Hide,
+ * 160 wide) but only 40px of a team row (Mute alone, 80 wide) -- so team rows
+ * latched while DM rows sprang back, which is exactly the split that was
+ * reported. One distance for every row now, plus a velocity escape so a fast
+ * flick latches without having to cover the distance.
+ */
+const SWIPE_LATCH_TRAVEL = 40;
+const SWIPE_LATCH_VELOCITY = 0.3;
+
+/**
+ * Is a row being dragged right now? (fix 5)
+ *
+ * ONE ref, owned by the screen (`swipeDragActiveRef` below) and handed to every
+ * row. It is shared rather than per-row on purpose: the responder system grants
+ * ONE responder at a time, so at most one row can be mid-drag, and the LISTS
+ * are what need to read it. They do so in `onScrollBeginDrag`, to tell "the
+ * user started scrolling" (which must close an open row) apart from "the scroll
+ * view twitched inside a swipe already in progress" (which must not -- that
+ * closed the row under the finger opening it). Cleared on BOTH terminal paths,
+ * Release and Terminate, so it cannot stick true and wedge the close trigger
+ * shut.
+ *
+ * A module-level object would have been simpler and is what this started as;
+ * `react-hooks/immutability` rejects writing to one from inside a component,
+ * and it is right to -- a ref is the sanctioned way to hold mutable state that
+ * must not trigger a render.
+ */
+type DragActiveRef = { current: boolean };
 
 /**
  * Swipe-left actions on a chat row (ruling 4).
@@ -179,6 +212,7 @@ function SwipeableChatRow({
   rowKey,
   openKey,
   onOpen,
+  dragActiveRef,
 }: {
   children: React.ReactNode;
   actions: SwipeAction[];
@@ -186,6 +220,8 @@ function SwipeableChatRow({
   /** Which row is currently open; only one at a time. */
   openKey: string | null;
   onOpen: (key: string | null) => void;
+  /** Shared drag flag the lists consult before closing on scroll (fix 5). */
+  dragActiveRef: DragActiveRef;
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const width =
@@ -246,6 +282,17 @@ function SwipeableChatRow({
   useEffect(() => {
     if (isOpen) {
       setRevealed(true);
+      /**
+       * Fix 3: state drives the pixels. This used to `return` here, so the
+       * ONLY thing that could move a row open was its own
+       * onPanResponderRelease -- and a row that remounted (virtualization
+       * recycles it once it leaves the render window) came back at
+       * translateX 0 while `openSwipeKey` still named it: visibly shut, yet
+       * swallowing the next tap through consumeOutsideTap. Settling open here
+       * is idempotent -- after a release the spring is already headed to this
+       * same toValue, so the common path is unchanged.
+       */
+      settle(true);
       return;
     }
     settle(false);
@@ -253,12 +300,38 @@ function SwipeableChatRow({
 
   const panResponder = useRef(
     PanResponder.create({
+      /**
+       * Fix 2: claim on the CAPTURE phase, and claim EARLY.
+       *
+       * Capture runs before the descendants and before the native scroll view
+       * has settled on taking the touch, so a clearly horizontal drag is ours
+       * from the 4th pixel. The RATIO is stricter than the bubble test below
+       * (1.5x, not 1x) precisely because it fires so early: an ambiguous
+       * diagonal is left to the list, and the bubble handler still picks the
+       * drag up later if it turns out horizontal after all.
+       */
+      onMoveShouldSetPanResponderCapture: (_, g) =>
+        Math.abs(g.dx) > 4 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
       // Horizontal intent only, so the FlatList keeps its vertical scroll.
       // A press that never travels horizontally is never claimed, which is
       // why tap-and-hold alone can no longer start a reveal (fix 3).
       onMoveShouldSetPanResponder: (_, g) =>
         Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy),
+      /**
+       * Fix 1: once this row has the gesture, it keeps it until the finger
+       * lifts.
+       *
+       * This is the one line that addresses BOTH reported symptoms. RN
+       * defaults this to true when it is absent
+       * (react-native/Libraries/Interaction/PanResponder.js:550-553), which
+       * let the list's scroll view take the drag away mid-swipe -- that is
+       * the vertical scrolling during a horizontal swipe AND the snap-back,
+       * because a stolen gesture never reaches onPanResponderRelease and
+       * Release is the only path that can latch a row open.
+       */
+      onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
+        dragActiveRef.current = true;
         setRevealed(true);
       },
       onPanResponderMove: (_, g) => {
@@ -267,9 +340,19 @@ function SwipeableChatRow({
         translateX.setValue(Math.min(0, Math.max(-w, base + g.dx)));
       },
       onPanResponderRelease: (_, g) => {
-        const w = widthRef.current;
-        const base = isOpenRef.current ? -w : 0;
-        const shouldOpen = base + g.dx < -w / 2;
+        dragActiveRef.current = false;
+        /**
+         * Fix 4: one travel distance for every row, in both directions.
+         *
+         * A CLOSED row latches open on SWIPE_LATCH_TRAVEL of leftward travel
+         * or a fast leftward flick. An OPEN row STAYS open unless it is
+         * dragged back by that same distance or flicked right. The asymmetry
+         * is the point: an open row released after a 2px jiggle must not read
+         * as "close me", which a bare `dx < -TRAVEL` test would have made it.
+         */
+        const shouldOpen = isOpenRef.current
+          ? !(g.dx > SWIPE_LATCH_TRAVEL || g.vx > SWIPE_LATCH_VELOCITY)
+          : g.dx < -SWIPE_LATCH_TRAVEL || g.vx < -SWIPE_LATCH_VELOCITY;
         settle(shouldOpen);
         // Same value = no state change = the effect above will not re-run,
         // and `settle` has already put the row where it belongs.
@@ -277,8 +360,13 @@ function SwipeableChatRow({
           onOpenRef.current(shouldOpen ? rowKeyRef.current : null);
         }
       },
-      // The list took the gesture over mid-swipe: return to where we were.
-      onPanResponderTerminate: () => settle(isOpenRef.current),
+      // Termination is no longer something the list can ASK for (fix 1), but
+      // it can still arrive unasked -- an unmount, or Android blocking the
+      // native responder -- so the recovery stays.
+      onPanResponderTerminate: () => {
+        dragActiveRef.current = false;
+        settle(isOpenRef.current);
+      },
     })
   ).current;
 
@@ -629,6 +717,12 @@ export default function ChatScreen({ navigation, route }: any) {
   } = useChatUnread();
   /** Which swiped row is open. One at a time, across every tab. */
   const [openSwipeKey, setOpenSwipeKey] = useState<string | null>(null);
+  /**
+   * Is a row mid-drag? (fix 5) Read by both lists' `onScrollBeginDrag` so the
+   * scroll that happens INSIDE a swipe does not close the row being swiped.
+   * A ref, not state: it changes during a gesture and must not render.
+   */
+  const swipeDragActiveRef = useRef(false);
 
   /**
    * The chrome's half of the outside tap (item 5): while a row is open, a tap
@@ -1787,6 +1881,7 @@ export default function ChatScreen({ navigation, route }: any) {
               rowKey={`hidden-${item.id}`}
               openKey={openSwipeKey}
               onOpen={setOpenSwipeKey}
+              dragActiveRef={swipeDragActiveRef}
               actions={[
                 {
                   key: 'unhide',
@@ -2662,6 +2757,7 @@ export default function ChatScreen({ navigation, route }: any) {
               rowKey={item.id}
               openKey={openSwipeKey}
               onOpen={setOpenSwipeKey}
+              dragActiveRef={swipeDragActiveRef}
               actions={swipeActionsFor(item)}
             >
               <ConversationItem
@@ -2673,8 +2769,14 @@ export default function ChatScreen({ navigation, route }: any) {
           )}
           ListHeaderComponent={renderClubChips()}
           ListFooterComponent={renderHiddenSection()}
-          /* Close trigger 2 (fix 4): scrolling closes any open row. */
-          onScrollBeginDrag={() => setOpenSwipeKey(null)}
+          /* Close trigger 2 (fix 4): scrolling closes any open row -- UNLESS
+             the "scroll" is the scroll view twitching inside a swipe already
+             in progress (fix 5), which used to close the row the user was in
+             the middle of opening. */
+          onScrollBeginDrag={() => {
+            if (swipeDragActiveRef.current) return;
+            setOpenSwipeKey(null);
+          }}
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl
@@ -2741,6 +2843,7 @@ export default function ChatScreen({ navigation, route }: any) {
               rowKey={item.id}
               openKey={openSwipeKey}
               onOpen={setOpenSwipeKey}
+              dragActiveRef={swipeDragActiveRef}
               actions={swipeActionsFor(item)}
             >
               <ConversationItem
@@ -2750,8 +2853,14 @@ export default function ChatScreen({ navigation, route }: any) {
               />
             </SwipeableChatRow>
           )}
-          /* Close trigger 2 (fix 4): scrolling closes any open row. */
-          onScrollBeginDrag={() => setOpenSwipeKey(null)}
+          /* Close trigger 2 (fix 4): scrolling closes any open row -- UNLESS
+             the "scroll" is the scroll view twitching inside a swipe already
+             in progress (fix 5), which used to close the row the user was in
+             the middle of opening. */
+          onScrollBeginDrag={() => {
+            if (swipeDragActiveRef.current) return;
+            setOpenSwipeKey(null);
+          }}
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl

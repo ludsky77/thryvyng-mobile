@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   Share,
   Alert,
   Linking,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { Video, ResizeMode } from 'expo-av';
@@ -71,6 +73,132 @@ function renderMessageText(
   });
 }
 
+/**
+ * How far right the bubble travels, and what it takes to fire the reply.
+ *
+ * TRAVEL and VELOCITY, the same pair the chat-list row latches on
+ * (`ChatScreen.tsx`'s `SWIPE_LATCH_TRAVEL` / `SWIPE_LATCH_VELOCITY`), so one
+ * flick feels the same in the list and in a thread. `MAX` is where the bubble
+ * stops being dragged -- a message is not revealing buttons, so there is nothing
+ * behind it to size the limit to; it is just enough travel to read as a gesture.
+ */
+const SWIPE_REPLY_MAX = 72;
+const SWIPE_REPLY_TRAVEL = 44;
+const SWIPE_REPLY_VELOCITY = 0.3;
+
+/**
+ * Swipe-right-to-reply (ruling R3, Lu 2026-10-23): "swipe-right on a message
+ * bubble = Reply (quote fills the composer, same path as today's Reply). Must
+ * not fight vertical scrolling: horizontal activation threshold, fail on
+ * vertical movement. Haptic only if the app already uses one."
+ *
+ * NO HAPTIC. `grep -rn "Haptics|haptic" src` returns nothing and `expo-haptics`
+ * is not a dependency, so the ruling's condition is not met and adding the
+ * package would be a dependency change.
+ *
+ * PanResponder, not react-native-gesture-handler: RNGH is NOT installed (absent
+ * from package.json) and adding it is a dependency plus a native rebuild. This
+ * follows the pattern already proven in this app at
+ * `src/screens/ChatScreen.tsx:197-430` (Stage 3's `SwipeableChatRow`) and
+ * `src/screens/NotificationsScreen.tsx:19-64`, with the two lines that matter
+ * carried over verbatim:
+ *
+ *   * the CAPTURE-phase claim, `|dx| > 4 && |dx| > |dy| * 1.5` -- it runs before
+ *     the descendants and before the native scroll view settles on the touch, so
+ *     a clearly horizontal drag is ours from the 4th pixel while an ambiguous
+ *     diagonal is left to the list. That IS the "fail on vertical movement" R3
+ *     asks for: a vertical drag is never claimed, so the FlatList keeps
+ *     scrolling.
+ *   * `onPanResponderTerminationRequest: () => false` -- RN defaults it to TRUE
+ *     when absent (`PanResponder.js:550-553`), which is what let the list steal
+ *     a swipe mid-gesture and produced both of Stage 3's reported symptoms.
+ *
+ * R4 is safe by construction: the responder is only ever claimed AFTER
+ * horizontal travel, so a plain tap, a long-press and the link/attachment
+ * presses inside the bubble all reach their own handlers untouched.
+ *
+ * `onReply` undefined ⇒ nothing is ever claimed ⇒ the swipe is OFF. That is how
+ * R5 disables swipe-reply in a locked chat: the screen passes no handler.
+ */
+function SwipeToReply({
+  onReply,
+  children,
+}: {
+  onReply?: () => void;
+  children: React.ReactNode;
+}) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  // The responder is built once, so the live handler is read through a ref --
+  // reading it from the closure would pin the FIRST render's value forever.
+  const onReplyRef = useRef(onReply);
+  onReplyRef.current = onReply;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (_, g) =>
+        !!onReplyRef.current &&
+        g.dx > 4 &&
+        Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      // Bubble-phase fallback, stricter on distance and looser on the ratio: a
+      // drag that only turns out horizontal later is still picked up.
+      onMoveShouldSetPanResponder: (_, g) =>
+        !!onReplyRef.current && g.dx > 8 && Math.abs(g.dx) > Math.abs(g.dy),
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderMove: (_, g) => {
+        // Rightward only, and clamped: a leftward drag is not a reply and must
+        // not pull the bubble out of its own column.
+        translateX.setValue(Math.max(0, Math.min(SWIPE_REPLY_MAX, g.dx)));
+      },
+      onPanResponderRelease: (_, g) => {
+        const fired =
+          g.dx > SWIPE_REPLY_TRAVEL || g.vx > SWIPE_REPLY_VELOCITY;
+        // Always spring back: unlike the chat-list row there is nothing to latch
+        // open -- the action happens and the bubble returns.
+        Animated.spring(translateX, {
+          toValue: 0,
+          useNativeDriver: true,
+        }).start();
+        if (fired) onReplyRef.current?.();
+      },
+      // Termination is no longer something the list can ASK for, but it can
+      // still arrive unasked (an unmount, Android blocking the native
+      // responder), so the bubble is put back.
+      onPanResponderTerminate: () => {
+        Animated.spring(translateX, {
+          toValue: 0,
+          useNativeDriver: true,
+        }).start();
+      },
+    })
+  ).current;
+
+  if (!onReply) return <>{children}</>;
+
+  return (
+    <View>
+      {/* The reply arrow revealed under the travelling bubble. Fades in with
+          the drag so the gesture says what it will do before it fires.
+          pointerEvents none: it is a hint, never a target. */}
+      <Animated.View
+        style={[styles.swipeReplyHint, { opacity: translateX.interpolate({
+          inputRange: [0, SWIPE_REPLY_TRAVEL],
+          outputRange: [0, 1],
+          extrapolate: 'clamp',
+        }) }]}
+        pointerEvents="none"
+      >
+        <Feather name="corner-up-left" size={18} color="#A78BFA" />
+      </Animated.View>
+      <Animated.View
+        style={{ transform: [{ translateX }] }}
+        {...panResponder.panHandlers}
+      >
+        {children}
+      </Animated.View>
+    </View>
+  );
+}
+
 export interface ReactionSummary {
   reaction: string;
   count: number;
@@ -126,8 +254,33 @@ interface ChatBubbleProps {
   showSenderInfo?: boolean;
   reactions?: ReactionSummary[];
   replyTo?: { content: string; senderName: string };
+  /**
+   * Long-press on the bubble. Ruling R2: this opens the ONE actions sheet, and
+   * it is now the ONLY thing that does -- the ☺+ icon no longer shares it.
+   */
   onLongPress?: () => void;
+  /**
+   * Tap on the ☺+ icon. Ruling R1 (Lu, 2026-10-23): "tapping the ☺+ icon next
+   * to a message opens the emoji picker IMMEDIATELY ... No menu in between."
+   * Before R1 this icon was wired to `onLongPress`, so on a team/club/group chat
+   * it opened the Actions sheet and a reaction cost two taps through a menu.
+   */
+  onEmojiPress?: () => void;
+  /**
+   * Swipe-right on the bubble = Reply (ruling R3). Undefined turns the gesture
+   * off entirely, which is how a locked chat disables it (R5).
+   */
+  onSwipeReply?: () => void;
+  /**
+   * Tap on the quote block: jump to the quoted message (ruling R9). The screen
+   * owns the scroll, because only the screen knows the list.
+   */
   onReplyPress?: () => void;
+  /**
+   * R9: this message is the one just jumped TO, and should flash for ~1 s. The
+   * screen owns the timer; this prop is only the paint.
+   */
+  highlighted?: boolean;
   onReactionPress?: (reaction: string) => void;
   onShowReactionDetails?: () => void;
   readReceipts?: React.ReactNode;
@@ -145,7 +298,10 @@ export function ChatBubble({
   reactions = [],
   replyTo,
   onLongPress,
+  onEmojiPress,
+  onSwipeReply,
   onReplyPress,
+  highlighted = false,
   onReactionPress,
   onShowReactionDetails,
   readReceipts,
@@ -351,46 +507,23 @@ export function ChatBubble({
           {message.is_edited ? (
             <Text style={styles.editedMarker}>(edited)</Text>
           ) : null}
+          {/* R1: straight to the emoji picker. This used to be
+              `onPress={onLongPress}` -- the same handler as a long-press -- which
+              is why tapping it opened the Actions sheet. */}
           <TouchableOpacity
             style={styles.reactionTrigger}
-            onPress={onLongPress}
+            onPress={onEmojiPress}
           >
             <Feather name="smile" size={14} color="#9CA3AF" />
             <Text style={styles.triggerPlus}>+</Text>
           </TouchableOpacity>
         </View>
 
-        {/* REPLY CHIP - above the bubble and attached to it.
+        {/* BUBBLE - with gap from header.
 
-            It lives in the content column, NOT in the bubble, and stretches to
-            the column's width rather than the bubble's. That is the whole
-            point: inside a short bubble the quote had only a few characters to
-            work with and truncated to "Co... Te...". The column is the row's
-            80%, so the preview gets real room no matter how short the message
-            under it is. */}
-        {replyTo && (
-          <TouchableOpacity
-            style={[
-              styles.replyChip,
-              isOwnMessage ? styles.replyChipOwn : styles.replyChipOther,
-            ]}
-            onPress={onReplyPress}
-            activeOpacity={0.7}
-          >
-            <View style={styles.replyChipBar} />
-            {/* One line, one Text: the nested spans let the sender stay
-                semibold while the PREVIEW is what gets clipped, because it is
-                last on the line. */}
-            <Text style={styles.replyChipText} numberOfLines={1}>
-              Replying to{' '}
-              <Text style={styles.replyChipSender}>{replyTo.senderName}</Text>
-              {' · '}
-              {replyTo.content}
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        {/* BUBBLE - with gap from header */}
+            R3 wraps the bubble, and only the bubble: the swipe target is the
+            message itself, not the header row or the reaction badges. */}
+        <SwipeToReply onReply={onSwipeReply}>
         <TouchableOpacity
           onLongPress={onLongPress}
           delayLongPress={500}
@@ -400,8 +533,79 @@ export function ChatBubble({
             style={[
               styles.bubble,
               isOwnMessage ? styles.ownBubble : styles.otherBubble,
+              // R9's ~1s flash after a jump. A ring rather than a background
+              // swap: the bubble's own colour carries own-vs-other and must not
+              // be the thing that blinks.
+              highlighted && styles.bubbleHighlighted,
             ]}
           >
+            {/* THE QUOTE BLOCK (ruling R9) -- WhatsApp-exact: inside the
+                bubble, above the text, a coloured left bar, the original
+                sender's NAME on its own line and the first 2 lines of the
+                original under it.
+
+                WHY IT MOVED IN HERE, which is also the bug R9 reported ("renders
+                'Replying to…' with no content"). It used to be a chip in the
+                CONTENT COLUMN, one single `numberOfLines={1}` Text reading
+                "Replying to <Name> · <content>", with `alignSelf: 'stretch'` and
+                a comment claiming the column is "the row's 80%". It is not: the
+                column's 80% is a **maxWidth**, so the column SHRINK-WRAPS to its
+                widest child -- which is the bubble. On a short reply that is
+                ~80pt (`styles.bubble.minWidth`), the words "Replying to " plus
+                the sender's name consume the single line on their own, and the
+                preview -- last on that line -- was clipped to the ellipsis. The
+                quote was never missing from the data; it had nowhere to render.
+                Inside the bubble the quote is a SIZING INPUT instead of a
+                starved passenger, and name and content are on separate lines, so
+                neither can eat the other. (Data proof, round 2 recon: the insert
+                writes reply_to_id + reply_to_content + reply_to_sender,
+                `useMessages.ts:436-438`, and the thread reads `select('*')`,
+                `:121-127`.) */}
+            {replyTo && (
+              <TouchableOpacity
+                style={[
+                  styles.quote,
+                  isOwnMessage ? styles.quoteOwn : styles.quoteOther,
+                ]}
+                onPress={onReplyPress}
+                activeOpacity={0.7}
+                // No handler = nothing to jump to (the original is not in the
+                // loaded window). R9: do nothing, and do not look pressable.
+                disabled={!onReplyPress}
+              >
+                <View
+                  style={[
+                    styles.quoteBar,
+                    isOwnMessage ? styles.quoteBarOwn : styles.quoteBarOther,
+                  ]}
+                />
+                <View style={styles.quoteBody}>
+                  <Text
+                    style={[
+                      styles.quoteSender,
+                      isOwnMessage
+                        ? styles.quoteSenderOwn
+                        : styles.quoteSenderOther,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {replyTo.senderName}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.quoteContent,
+                      isOwnMessage
+                        ? styles.quoteContentOwn
+                        : styles.quoteContentOther,
+                    ]}
+                    // R9: the first 2 lines of the original.
+                    numberOfLines={2}
+                  >
+                    {replyTo.content}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
             {renderAttachment()}
             {message.content ? (
               <Text
@@ -421,6 +625,7 @@ export function ChatBubble({
             {isOwnMessage && readReceipts != null && readReceipts}
           </View>
         </TouchableOpacity>
+        </SwipeToReply>
 
         {/* Reactions - OUTSIDE bubble */}
         {reactions.length > 0 && (
@@ -556,6 +761,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
+  // The swipe-to-reply arrow, behind the bubble at its leading edge (R3).
+  swipeReplyHint: {
+    position: 'absolute',
+    left: -4,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
+
   bubble: {
     minWidth: 80,
     maxWidth: '100%',
@@ -566,6 +780,16 @@ const styles = StyleSheet.create({
   ownBubble: {
     backgroundColor: '#8B5CF6',
     borderBottomRightRadius: 4,
+  },
+  // R9's flash, on screen for ~1s. Lu, Oct 25: the first cut rang this in a
+  // warm tone, which was a FOURTH colour the palette does not have -- the rule
+  // is purple accent, grey, red. `#A78BFA` is the accent's light variant and is
+  // already this file's quote bar and swipe hint; the accent's base `#8B5CF6`
+  // could not be used because it IS the own bubble's background, so the ring
+  // would have vanished on half the messages.
+  bubbleHighlighted: {
+    borderWidth: 2,
+    borderColor: '#A78BFA',
   },
   otherBubble: {
     backgroundColor: '#374151',
@@ -594,51 +818,64 @@ const styles = StyleSheet.create({
   },
 
   /**
-   * The reply chip: a compact quote ABOVE the bubble, not inside it.
+   * THE QUOTE BLOCK (R9) -- WhatsApp's shape, inside the bubble.
    *
-   * `alignSelf: 'stretch'` is load-bearing. The chip takes the CONTENT
-   * COLUMN's width (the row's 80%) instead of shrink-wrapping to the bubble,
-   * so a one-word reply still shows a readable preview. Sitting outside the
-   * bubble also returns the bubble to holding only the message text.
-   *
-   * Attached, not floating: 2px below it and a squared bottom edge on the side
-   * the bubble shares, so the chip and bubble read as one unit.
+   * `alignSelf: 'stretch'` so the quote spans the bubble's inner width, and the
+   * bubble's own `maxWidth: '100%'` against the content column's 80% is what
+   * bounds it. `minWidth` is what makes a one-word reply readable: the bubble
+   * grows to the quote instead of the quote shrinking to the bubble, which is
+   * precisely what the old chip could not do.
    */
-  replyChip: {
+  quote: {
     flexDirection: 'row',
     alignSelf: 'stretch',
-    alignItems: 'center',
-    marginBottom: 2,
-    paddingVertical: 5,
-    paddingRight: 10,
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 10,
+    minWidth: 160,
+    marginBottom: 6,
+    borderRadius: 6,
     overflow: 'hidden',
-    backgroundColor: 'rgba(148,163,184,0.14)',
   },
-  // The squared corner faces the bubble's own squared corner.
-  replyChipOwn: {
-    borderBottomLeftRadius: 10,
-    borderBottomRightRadius: 4,
+  // Inside a purple bubble a grey wash disappears, so each side gets its own.
+  quoteOwn: {
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
-  replyChipOther: {
-    borderBottomLeftRadius: 4,
-    borderBottomRightRadius: 10,
+  quoteOther: {
+    backgroundColor: 'rgba(0,0,0,0.22)',
   },
-  replyChipBar: {
+  quoteBar: {
     width: 3,
     alignSelf: 'stretch',
-    marginRight: 8,
+  },
+  quoteBarOwn: {
+    backgroundColor: '#FFFFFF',
+  },
+  quoteBarOther: {
     backgroundColor: '#A78BFA',
   },
-  replyChipText: {
+  quoteBody: {
     flex: 1,
-    color: '#94A3B8',
-    fontSize: 12,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
   },
-  replyChipSender: {
+  quoteSender: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 1,
+  },
+  quoteSenderOwn: {
+    color: '#FFFFFF',
+  },
+  quoteSenderOther: {
     color: '#C4B5FD',
-    fontWeight: '600',
+  },
+  quoteContent: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  quoteContentOwn: {
+    color: 'rgba(255,255,255,0.85)',
+  },
+  quoteContentOther: {
+    color: '#CBD5E1',
   },
 
   videoOverlay: {

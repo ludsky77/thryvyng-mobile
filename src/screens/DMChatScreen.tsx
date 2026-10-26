@@ -28,16 +28,27 @@ import { formatRoleLabel, pickHighestRole } from '../lib/chatHelpers';
 import { formatDayDivider, invertedDayDividerIndices } from '../utils/chatDays';
 import {
   CHAT_FALLBACK_NAME,
+  chatPersonName,
   fetchChatProfileNames,
 } from '../lib/memberNames';
 import { ChatBubble, type ReactionSummary } from '../components/chat/ChatBubble';
-import { ChatInputBar, type AttachmentData } from '../components/chat/ChatInputBar';
+import {
+  ChatInputBar,
+  type AttachmentData,
+  type EditingInfo,
+} from '../components/chat/ChatInputBar';
 import { ReactionPicker } from '../components/chat/ReactionPicker';
+import { MessageActionsSheet } from '../components/chat/MessageActionsModal';
+import { ChatToast, useChatToast } from '../components/chat/ChatToast';
 import {
   CelebrationOverlay,
   type CelebrationType,
 } from '../components/chat/CelebrationOverlay';
 import type { Message } from '../types';
+
+/** R9's flash, and R10's toast text. Same values as TeamChatRoomScreen. */
+const HIGHLIGHT_MS = 1000;
+const COPIED_TOAST = 'Copied';
 
 function getCelebrationType(content: string): CelebrationType | null {
   const lower = (content || '').toLowerCase().trim();
@@ -125,9 +136,24 @@ export default function DMChatScreen({ route, navigation }: any) {
     content: string;
     senderName: string;
   } | null>(null);
+  const [actionsSheetVisible, setActionsSheetVisible] = useState(false);
+  const [actionsSheetMessage, setActionsSheetMessage] =
+    useState<Message | null>(null);
   const [reactionPickerVisible, setReactionPickerVisible] = useState(false);
   const [reactionPickerMessage, setReactionPickerMessage] =
     useState<Message | null>(null);
+  /**
+   * R11: the message being edited, or null. New on this screen -- a DM had no
+   * edit path at all before round 2 (the round-1 recon recorded that as the
+   * reason R2's Edit row was omitted here). R11 rules edit for own messages
+   * inside 5 minutes with no carve-out for DMs, so the wiring lands here too.
+   */
+  const [editing, setEditing] = useState<EditingInfo | null>(null);
+  /** R9: the message a quote-tap just jumped to, flashed for ~1 s. */
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** R10: the in-app "Copied" toast. */
+  const toast = useChatToast();
 
   // Called on mount, on focus, and on each incoming message (via useMessages'
   // onNewMessage). A failed stamp leaves a stale unread badge, so it is logged
@@ -154,6 +180,7 @@ export default function DMChatScreen({ route, navigation }: any) {
     messages,
     loading,
     sendMessage,
+    editMessage,
     toggleReaction,
     refetch,
   } = useMessages(channelId, markChannelRead);
@@ -164,6 +191,16 @@ export default function DMChatScreen({ route, navigation }: any) {
   );
   // Newest first: index 0 renders at the bottom of an inverted list.
   const invertedMessages = useMemo(() => [...messages].reverse(), [messages]);
+  /**
+   * R9: "if the original isn't loaded in the list, do nothing." The thread holds
+   * the newest 100 rows, so a reply to something older has no target. A Set
+   * because the alternative -- scanning the array once per rendered row -- is
+   * 100x100.
+   */
+  const loadedMessageIds = useMemo(
+    () => new Set(messages.map((m) => m.id)),
+    [messages]
+  );
   const { typingUsers, setTyping } = useTypingPresence(channelId);
   // Prefer the membership-gated RPC name over the typist's self-reported one.
   const typingNames = useMemo(
@@ -348,36 +385,90 @@ export default function DMChatScreen({ route, navigation }: any) {
     setReactionPickerVisible(true);
   };
 
-  const startReply = () => {
-    if (reactionPickerMessage) {
-      setReplyingTo({
-        messageId: reactionPickerMessage.id,
-        content:
-          reactionPickerMessage.content?.trim() ||
-          (reactionPickerMessage.attachment_name
-            ? `📎 ${reactionPickerMessage.attachment_name}`
-            : 'Attachment'),
-        // Same resolution order as the bubble renders (memberNames from the
-        // gated RPC first, the profiles join only as fallback). Reading the join
-        // alone made this modal show 'Unknown' on the very screen whose bubble
-        // had the name -- and it is persisted into reply_to_sender, so the last
-        // rung is the ladder's own terminal string, never 'Unknown'.
-        senderName:
-          memberNames.get(reactionPickerMessage.user_id)?.name ||
-          reactionPickerMessage.profile?.full_name ||
-          CHAT_FALLBACK_NAME,
-      });
-    }
-    setReactionPickerMessage(null);
-    setReactionPickerVisible(false);
+  const openActionsSheet = (message: Message) => {
+    setActionsSheetMessage(message);
+    setActionsSheetVisible(true);
   };
 
+  /**
+   * THE reply path. R3 added swipe-right and R2 added the sheet's Reply row to
+   * the picker's Reply button, so the body takes the message rather than reading
+   * one piece of state -- three triggers, one quote.
+   *
+   * Same resolution order as the bubble renders (memberNames from the gated RPC
+   * first, the profiles join only as fallback). Reading the join alone made this
+   * show 'Unknown' on the very screen whose bubble had the name -- and it is
+   * persisted into reply_to_sender, so the last rung is the ladder's own
+   * terminal string, never 'Unknown'.
+   */
+  const beginReply = (message: Message) => {
+    setReplyingTo({
+      messageId: message.id,
+      content:
+        message.content?.trim() ||
+        (message.attachment_name
+          ? `📎 ${message.attachment_name}`
+          : 'Attachment'),
+      senderName:
+        memberNames.get(message.user_id)?.name ||
+        message.profile?.full_name ||
+        CHAT_FALLBACK_NAME,
+    });
+  };
+
+  // `startReply` lived here -- the ☺+ popover's Reply button, removed by R8.
+  // The sheet's Reply row and R3's swipe-right both call `beginReply` directly.
+
+  /**
+   * R11: enter edit mode. The composer prefills and shows the "Editing" strip
+   * with its ✕; saving goes through `useMessages.editMessage`, which scopes the
+   * UPDATE to the author and sets is_edited/edited_at. The 5-minute window is
+   * enforced where the action is OFFERED (the sheet) -- by the time we are here
+   * the user has a live offer.
+   */
+  const handleEditMessage = (messageId: string) => {
+    const target = messages.find((m) => m.id === messageId);
+    if (!target) {
+      logError('DMChat.handleEditMessage', 'message not in loaded window', {
+        messageId,
+      });
+      return;
+    }
+    // Editing and replying are different intents; never both at once.
+    setReplyingTo(null);
+    setEditing({ id: messageId, content: target.content ?? '' });
+  };
+
+  const handleSaveEdit = async (messageId: string, content: string) => {
+    // ChatInputBar alerts off the reason and keeps the draft on failure.
+    return editMessage(messageId, content);
+  };
+
+  /**
+   * R9: tap the quote block -> scroll to the original and flash it ~1 s. Same
+   * shape as TeamChatRoomScreen's. Guarded twice: the bubble gets no handler
+   * when the original is outside the loaded window, and a miss here is a silent
+   * no-op -- R9's "no crash, no empty jump".
+   */
   const scrollToMessageId = (messageId: string) => {
     const index = invertedMessages.findIndex((m) => m.id === messageId);
-    if (index >= 0) {
-      flatListRef.current?.scrollToIndex({ index, animated: true });
-    }
+    if (index < 0) return;
+    flatListRef.current?.scrollToIndex({ index, animated: true });
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    setHighlightedId(messageId);
+    highlightTimerRef.current = setTimeout(
+      () => setHighlightedId(null),
+      HIGHLIGHT_MS
+    );
   };
+
+  // A screen left mid-flash must not come back to a pending timer.
+  useEffect(
+    () => () => {
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    },
+    []
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -437,12 +528,18 @@ export default function DMChatScreen({ route, navigation }: any) {
             // useMessages.withReplyQuoteFallback), so the middle rung resolves
             // the name through the SAME memberNames ladder the bubble below
             // uses. The terminal rung is the ruled fallback, not 'Unknown'.
-            senderName:
+            // R9: "resolved name, 'Thryvyng member' fallback, never an
+            // email". The ladder is unchanged; its RESULT now goes through
+            // `chatPersonName`, the one function that turns an address, a blank
+            // or a non-name into CHAT_FALLBACK_NAME. The write path already did
+            // this (`useMessages.ts:425`); the read path did not.
+            senderName: chatPersonName(
               item.reply_to_sender ??
-              (item.reply_to_user_id
-                ? memberNames.get(item.reply_to_user_id)?.name
-                : undefined) ??
-              CHAT_FALLBACK_NAME,
+                (item.reply_to_user_id
+                  ? memberNames.get(item.reply_to_user_id)?.name
+                  : undefined) ??
+                CHAT_FALLBACK_NAME
+            ),
           }
         : undefined;
 
@@ -474,12 +571,23 @@ export default function DMChatScreen({ route, navigation }: any) {
           showSenderInfo={false}
           reactions={reactionsSummary.length > 0 ? reactionsSummary : undefined}
           replyTo={replyTo}
-          onLongPress={() => openReactionPicker(item)}
+          /* R2: long-press opens the ONE sheet. It used to open the picker,
+             which left this screen with no Reply or Copy on a message at all. */
+          onLongPress={() => openActionsSheet(item)}
+          /* R1: the ☺+ icon goes straight to the emoji picker. */
+          onEmojiPress={() => openReactionPicker(item)}
+          /* R3. A 1-on-1 DM has no announcement mode and no staff
+             (`is_channel_staff` answers nobody for a dm), so there is nothing
+             here for R5 to lock -- the gesture is always on. */
+          onSwipeReply={() => beginReply(item)}
+          /* R9: a handler ONLY when the original is in the loaded window, so
+             a quote with nothing to jump to is not pressable at all. */
           onReplyPress={
-            item.reply_to_id
+            item.reply_to_id && loadedMessageIds.has(item.reply_to_id)
               ? () => scrollToMessageId(item.reply_to_id!)
               : undefined
           }
+          highlighted={highlightedId === item.id}
           onReactionPress={(reaction) => toggleReaction(item.id, reaction)}
         />
         </View>
@@ -615,6 +723,15 @@ export default function DMChatScreen({ route, navigation }: any) {
             contentContainerStyle={styles.messagesList}
             onScroll={handleScroll}
             scrollEventThrottle={16}
+            /* R9: `scrollToIndex` on a row the list has not measured throws
+               without one of these. The quote-tap is the only caller and a
+               missed jump must be silent. */
+            onScrollToIndexFailed={(info) => {
+              flatListRef.current?.scrollToOffset({
+                offset: info.averageItemLength * info.index,
+                animated: true,
+              });
+            }}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -623,6 +740,9 @@ export default function DMChatScreen({ route, navigation }: any) {
               />
             }
           />
+
+            {/* R10: over the thread, clear of the composer. */}
+            <ChatToast message={toast.message} />
 
             {showJumpToBottom && (
               <TouchableOpacity
@@ -650,7 +770,31 @@ export default function DMChatScreen({ route, navigation }: any) {
             setReactionPickerVisible(false);
             setReactionPickerMessage(null);
           }}
-          onReply={startReply}
+        />
+
+        {/* R2/R6: the same sheet the team/club/group screen mounts.
+            Reply + Copy + the emoji row and nothing else, because Edit, Delete
+            and Read History do not exist on a DM today -- this screen's
+            `useMessages` takes no `editMessage`, calls no `soft_delete_message`
+            and has no MessageReadHistory route -- and R2 says to keep what
+            exists, not to add what does not. `isStaff={false}`: a 1-on-1 has no
+            staff, which is also what the server's `is_channel_staff` answers. */}
+        <MessageActionsSheet
+          visible={actionsSheetVisible}
+          onClose={() => {
+            setActionsSheetVisible(false);
+            setActionsSheetMessage(null);
+          }}
+          message={actionsSheetMessage}
+          currentUserId={user?.id || ''}
+          isStaff={false}
+          onCopied={() => toast.show(COPIED_TOAST)}
+          /* R11: Edit is now wired on a DM too. The sheet still decides whether
+             to OFFER it -- own message, inside 5 minutes. */
+          onEdit={handleEditMessage}
+          onReply={() => {
+            if (actionsSheetMessage) beginReply(actionsSheetMessage);
+          }}
         />
 
         <CelebrationOverlay
@@ -673,6 +817,11 @@ export default function DMChatScreen({ route, navigation }: any) {
               : null
           }
           onCancelReply={() => setReplyingTo(null)}
+          /* R11. The bar already owned the prefill, the "Editing" strip and its
+             ✕; this screen simply never handed it an `editing` message. */
+          editing={editing}
+          onCancelEdit={() => setEditing(null)}
+          onSaveEdit={handleSaveEdit}
         />
       </KeyboardAvoidingView>
     </SafeAreaView>

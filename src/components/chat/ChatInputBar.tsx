@@ -18,10 +18,8 @@ import {
   shouldAlertForResult,
   type SendResult,
 } from '../../utils/sendResult';
-import {
-  ANNOUNCEMENT_BANNER_MESSAGE,
-  canSendText,
-} from '../../lib/announcementChannel';
+import { canSendText } from '../../lib/announcementChannel';
+import { LockedChannelNotice } from './LockedChannelNotice';
 
 export interface AttachmentData {
   uri: string;
@@ -58,6 +56,13 @@ interface ChatInputBarProps {
    * is in flight rather than a composer whose first send would be refused.
    */
   isChannelStaff?: boolean;
+  /**
+   * The channel ROW's `channel_type`, for ruling R5's notice copy: a club chat
+   * and a team chat print different sentences. Passed straight to
+   * `LockedChannelNotice`, which owns every one of them; absent, a locked chat
+   * falls back to the sentence this bar printed before R5.
+   */
+  channelKind?: string | null;
   onSendMessage: (
     content: string,
     attachment?: AttachmentData
@@ -117,6 +122,7 @@ function validateAttachment(candidate: {
 export function ChatInputBar({
   allowMemberText = true,
   isChannelStaff,
+  channelKind,
   onSendMessage,
   onPollPress,
   placeholder = 'Type a message...',
@@ -336,13 +342,15 @@ export function ChatInputBar({
   // the database accepted it (docs/recon/phaseD-open-rulings.md § 3). The
   // server now refuses those sends; this is the composer agreeing with it, and
   // the sentence is the one web prints, from the shared module.
+  //
+  // R5 (Lu, 2026-10-23) moved the SENTENCE out of this file and into
+  // `LockedChannelNotice`, because a club chat and a team chat now say different
+  // things and one component must own all of that copy. The GATE is unchanged --
+  // still `canSendText`, still the server's `is_channel_staff` answer behind it.
   if (!canSendText({ allowMemberText, isStaff: isChannelStaff })) {
     return (
       <View style={styles.container}>
-        <View style={styles.announcementBanner}>
-          <Feather name="volume-2" size={18} color="#F59E0B" />
-          <Text style={styles.announcementText}>{ANNOUNCEMENT_BANNER_MESSAGE}</Text>
-        </View>
+        <LockedChannelNotice channelKind={channelKind} />
       </View>
     );
   }
@@ -534,20 +542,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#1F2937',
     borderTopWidth: 1,
     borderTopColor: '#374151',
-  },
-  // The composer's replacement in an announcement channel. Amber icon and muted
-  // text, the same read as web's banner (a Megaphone on bg-muted/50).
-  announcementBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  announcementText: {
-    flex: 1,
-    color: '#9CA3AF',
-    fontSize: 13,
   },
   replyBanner: {
     flexDirection: 'row',

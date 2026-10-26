@@ -28,7 +28,8 @@ import SurveyChatCard from '../components/chat/SurveyChatCard';
 import { ChatBubble, type ReactionSummary } from '../components/chat/ChatBubble';
 import { ChatInputBar, type AttachmentData, type EditingInfo } from '../components/chat/ChatInputBar';
 import { ReactionPicker } from '../components/chat/ReactionPicker';
-import { MessageActionsModal } from '../components/chat/MessageActionsModal';
+import { ChatToast, useChatToast } from '../components/chat/ChatToast';
+import { MessageActionsSheet } from '../components/chat/MessageActionsModal';
 import {
   CelebrationOverlay,
   type CelebrationType,
@@ -41,9 +42,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useChannelMembers } from '../hooks/useChannelMembers';
 import { useChatSenderLabels } from '../hooks/useChatSenderLabels';
-import { CHAT_FALLBACK_NAME } from '../lib/memberNames';
+import { CHAT_FALLBACK_NAME, chatPersonName } from '../lib/memberNames';
 import { isChannelStaff } from '../lib/channelStaff';
-import { allowsMemberText } from '../lib/announcementChannel';
+import { allowsMemberText, canSendText } from '../lib/announcementChannel';
 import { useTypingPresence } from '../hooks/useTypingPresence';
 import { TypingIndicator } from '../components/chat/TypingIndicator';
 import { setActiveChannelId } from '../services/notifications';
@@ -59,6 +60,10 @@ type ChannelClubRow = {
     clubs?: { name?: string | null; logo_url?: string | null } | null;
   } | null;
 };
+
+/** R9's flash, and R10's toast text. */
+const HIGHLIGHT_MS = 1000;
+const COPIED_TOAST = 'Copied';
 
 function getCelebrationType(
   content: string,
@@ -136,8 +141,8 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   const [reactionPickerVisible, setReactionPickerVisible] = useState(false);
   const [reactionPickerMessage, setReactionPickerMessage] =
     useState<Message | null>(null);
-  const [actionsModalVisible, setActionsModalVisible] = useState(false);
-  const [actionsModalMessage, setActionsModalMessage] =
+  const [actionsSheetVisible, setActionsSheetVisible] = useState(false);
+  const [actionsSheetMessage, setActionsSheetMessage] =
     useState<Message | null>(null);
   // The message being edited, or null. Replaces a dead `editingMessageId` that
   // was set and never read.
@@ -155,6 +160,11 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   // while the reader was scrolled up.
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [missedCount, setMissedCount] = useState(0);
+  /** R9: the message a quote-tap just jumped to, flashed for ~1 s. */
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** R10: the in-app "Copied" toast. */
+  const toast = useChatToast();
 
   const [channelTeamId, setChannelTeamId] = useState<string | null>(null);
   /**
@@ -242,6 +252,16 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   const messageIds = messages.map((m) => m.id);
   // Newest first: index 0 renders at the bottom of an inverted list.
   const invertedMessages = useMemo(() => [...messages].reverse(), [messages]);
+  /**
+   * R9: "if the original isn't loaded in the list, do nothing (no crash, no
+   * empty jump)." The thread holds the newest 100 rows (`useMessages` limit), so
+   * a reply to something older has no target. Memoised as a Set because the
+   * alternative -- scanning the array once per rendered row -- is 100x100.
+   */
+  const loadedMessageIds = useMemo(
+    () => new Set(messages.map((m) => m.id)),
+    [messages]
+  );
 
   const isCoach = isStaffInChannel;
 
@@ -502,9 +522,9 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     setShowReactionDetails(true);
   };
 
-  const openActionsModal = (message: Message) => {
-    setActionsModalMessage(message);
-    setActionsModalVisible(true);
+  const openActionsSheet = (message: Message) => {
+    setActionsSheetMessage(message);
+    setActionsSheetVisible(true);
   };
 
   const handleDeleteMessage = async (messageId: string) => {
@@ -531,7 +551,7 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
    * which is author-scoped and sets is_edited/edited_at.
    *
    * The 5-minute window is enforced where the action is offered
-   * (MessageActionsModal); by the time we are here the user has a live offer.
+   * (MessageActionsSheet); by the time we are here the user has a live offer.
    */
   const handleEditMessage = (messageId: string) => {
     const target = messages.find((m) => m.id === messageId);
@@ -576,70 +596,73 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     });
   };
 
-  const handleViewProfile = (userId: string) => {
-    navigation.navigate('UserProfile', { userId });
-  };
+  // `handleViewProfile` lived here. It fed the v1 sheet's "View Profile" row,
+  // which was already removed for want of a registered `UserProfile` route; R2's
+  // row list does not include it either, so the handler went with the prop.
 
-  const openReactionPickerFromActions = () => {
-    setActionsModalVisible(false);
-    if (actionsModalMessage) {
-      setReactionPickerMessage(actionsModalMessage);
-      setReactionPickerVisible(true);
-    }
+  // `openReactionPickerFromActions` lived here -- the sheet's "More" button's
+  // way into the picker. R7 took the emoji row out of the sheet entirely, so the
+  // sheet no longer has any path into the picker: the ☺+ icon is it.
+
+  /**
+   * THE reply path. R3 added a third trigger (swipe-right) to the two that
+   * existed -- the sheet's Reply row and the picker's Reply button -- and the
+   * two were already byte-identical copies of this body reading two different
+   * pieces of state. One function now, taking the message, so a fourth trigger
+   * cannot introduce a fourth quote-resolution order.
+   *
+   * The senderName ladder is the one the bubble renders with (memberNames from
+   * the gated RPC first, the profiles join only as fallback). Reading the join
+   * alone made the sheet show 'Unknown' on the very screen whose bubble had the
+   * name -- and this string is PERSISTED into reply_to_sender, so the last rung
+   * is the one ruled fallback: an 'Unknown' here was written to the database and
+   * outlived every later display fix.
+   */
+  const beginReply = (message: Message) => {
+    setReplyingTo({
+      messageId: message.id,
+      content:
+        message.content?.trim() ||
+        (message.attachment_name
+          ? `📎 ${message.attachment_name}`
+          : 'Attachment'),
+      senderName:
+        memberNames.get(message.user_id)?.name ||
+        (message as any).profiles?.full_name ||
+        message.profile?.full_name ||
+        CHAT_FALLBACK_NAME,
+    });
   };
 
   const startReplyFromActions = () => {
-    if (actionsModalMessage) {
-      setReplyingTo({
-        messageId: actionsModalMessage.id,
-        content:
-          actionsModalMessage.content?.trim() ||
-          (actionsModalMessage.attachment_name
-            ? `📎 ${actionsModalMessage.attachment_name}`
-            : 'Attachment'),
-        // Same resolution order as the bubble renders (memberNames from the
-        // gated RPC first, the profiles join only as fallback). Reading the join
-        // alone made this modal show 'Unknown' on the very screen whose bubble
-        // had the name. This string is PERSISTED into reply_to_sender, so the
-        // last rung is the one ruled fallback -- 'Unknown' here was written to
-        // the database and outlived every later display fix.
-        senderName:
-          memberNames.get(actionsModalMessage.user_id)?.name ||
-          (actionsModalMessage as any).profiles?.full_name ||
-          actionsModalMessage.profile?.full_name ||
-          CHAT_FALLBACK_NAME,
-      });
-    }
-    setActionsModalVisible(false);
+    if (actionsSheetMessage) beginReply(actionsSheetMessage);
+    setActionsSheetVisible(false);
   };
 
-  const startReply = () => {
-    if (reactionPickerMessage) {
-      setReplyingTo({
-        messageId: reactionPickerMessage.id,
-        content:
-          reactionPickerMessage.content?.trim() ||
-          (reactionPickerMessage.attachment_name
-            ? `📎 ${reactionPickerMessage.attachment_name}`
-            : 'Attachment'),
-        // memberNames first, join as fallback -- see startReplyFromActions.
-        // Also persisted into reply_to_sender.
-        senderName:
-          memberNames.get(reactionPickerMessage.user_id)?.name ||
-          (reactionPickerMessage as any).profiles?.full_name ||
-          reactionPickerMessage.profile?.full_name ||
-          CHAT_FALLBACK_NAME,
-      });
-    }
-    setReactionPickerMessage(null);
-    setReactionPickerVisible(false);
-  };
+  // `startReply` lived here. It was the ☺+ popover's Reply button, which R8
+  // removed: "remove the 'Reply' button from the popover." The two remaining
+  // paths to a quote are the sheet's Reply row and R3's swipe-right, both of
+  // which call `beginReply` directly.
 
+  /**
+   * R9: tap the quote block -> scroll to the original and flash it ~1 s.
+   *
+   * Guarded twice on purpose. The bubble is handed NO handler at all when the
+   * original is outside the loaded window (so the block is not even pressable),
+   * and this still re-checks the index, because the window can shift between the
+   * render that drew the quote and the tap that follows it. A miss is a silent
+   * no-op -- R9's "no crash, no empty jump".
+   */
   const scrollToMessageId = (messageId: string) => {
     const index = invertedMessages.findIndex((m) => m.id === messageId);
-    if (index >= 0) {
-      flatListRef.current?.scrollToIndex({ index, animated: true });
-    }
+    if (index < 0) return;
+    flatListRef.current?.scrollToIndex({ index, animated: true });
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    setHighlightedId(messageId);
+    highlightTimerRef.current = setTimeout(
+      () => setHighlightedId(null),
+      HIGHLIGHT_MS
+    );
   };
 
   /**
@@ -662,6 +685,33 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     }
     return isStaffHere === true;
   }, [channelType, isStaffHere]);
+
+  /**
+   * May THIS person post in THIS chat? Ruling R5 (Lu, 2026-10-23): in a locked
+   * chat (`allow_member_text === false`) a non-staff member gets the notice
+   * instead of the composer, Reply is hidden from the sheet and swipe-reply is
+   * disabled -- while reactions stay available.
+   *
+   * It is the SAME predicate the composer uses (`canSendText`) over the SAME two
+   * inputs, so the sheet, the swipe and the input bar cannot disagree about one
+   * chat. `isStaffHere` is the server's `is_channel_staff` and NOT
+   * `isStaffInChannel` (the label RPC's "team staff anywhere in this club"):
+   * replying is a send, and the send gate must be the one `msg_insert` asks.
+   * `undefined` = not answered yet = not staff, so a locked chat opens with
+   * Reply hidden rather than offering a reply the server would refuse.
+   */
+  const canReplyHere = canSendText({
+    allowMemberText,
+    isStaff: isStaffHere,
+  });
+
+  // A screen left mid-flash must not come back to a pending timer.
+  useEffect(
+    () => () => {
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    },
+    []
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -758,12 +808,21 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
             // useMessages.withReplyQuoteFallback), so the middle rung resolves
             // the name through the SAME memberNames ladder the bubble below
             // uses rather than printing the fallback over a person who has one.
-            senderName:
+            // R9: "the original sender's name (resolved name, 'Thryvyng
+            // member' fallback, never an email)". The ladder is unchanged; what
+            // is new is that its result goes through `chatPersonName`, which is
+            // the one function that turns an address, a blank or a non-name into
+            // CHAT_FALLBACK_NAME. The WRITE path already did this
+            // (`useMessages.ts:425`); the READ path did not, so a profile whose
+            // full_name is an email -- or an old row whose persisted
+            // reply_to_sender is one -- printed the address in the quote.
+            senderName: chatPersonName(
               item.reply_to_sender ??
-              (item.reply_to_user_id
-                ? memberNames.get(item.reply_to_user_id)?.name
-                : undefined) ??
-              CHAT_FALLBACK_NAME,
+                (item.reply_to_user_id
+                  ? memberNames.get(item.reply_to_user_id)?.name
+                  : undefined) ??
+                CHAT_FALLBACK_NAME
+            ),
           }
         : undefined;
 
@@ -804,12 +863,17 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           showSenderInfo={true}
           reactions={reactionsSummary.length > 0 ? reactionsSummary : undefined}
           replyTo={replyTo}
-          onLongPress={() => openActionsModal(item)}
+          onLongPress={() => openActionsSheet(item)}
+          onEmojiPress={() => openReactionPicker(item)}
+          onSwipeReply={canReplyHere ? () => beginReply(item) : undefined}
+          /* R9: a handler ONLY when the original is in the loaded window, so
+             a quote with nothing to jump to is not pressable at all. */
           onReplyPress={
-            item.reply_to_id
+            item.reply_to_id && loadedMessageIds.has(item.reply_to_id)
               ? () => scrollToMessageId(item.reply_to_id!)
               : undefined
           }
+          highlighted={highlightedId === item.id}
           onReactionPress={(reaction) => toggleReaction(item.id, reaction)}
           onShowReactionDetails={() =>
             handleShowReactionDetails(
@@ -922,6 +986,16 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           contentContainerStyle={styles.messagesList}
           onScroll={handleScroll}
           scrollEventThrottle={16}
+          /* R9: `scrollToIndex` on a row the list has not measured throws
+             without one of these. The quote-tap is the only caller and a missed
+             jump must be silent, so this resolves to the nearest offset and
+             leaves the thread where the user can see it. */
+          onScrollToIndexFailed={(info) => {
+            flatListRef.current?.scrollToOffset({
+              offset: info.averageItemLength * info.index,
+              animated: true,
+            });
+          }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           refreshControl={
@@ -932,6 +1006,10 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
             />
           }
         />
+
+          {/* R10: over the thread, under nothing. Inside `listWrapper` so it
+              sits above the messages and clear of the composer. */}
+          <ChatToast message={toast.message} />
 
           {showJumpToBottom && (
             <TouchableOpacity
@@ -956,6 +1034,10 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
         <ChatInputBar
           allowMemberText={allowMemberText}
           isChannelStaff={isStaffHere}
+          /* R5: the notice's copy depends on the chat's kind. The ROW's
+             channel_type first -- the route param arrives undefined on a
+             push-opened room, the same reason the header crest reads the row. */
+          channelKind={rowChannelType ?? channelType ?? null}
           onSendMessage={handleSendMessage}
           onTypingChange={setTyping}
           onPollPress={canUserCreatePoll ? () => setPollModalVisible(true) : undefined}
@@ -1001,7 +1083,6 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           setReactionPickerVisible(false);
           setReactionPickerMessage(null);
         }}
-        onReply={startReply}
       />
 
       <CelebrationOverlay
@@ -1017,21 +1098,21 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
         nameFor={(userId) => memberNames.get(userId)?.name}
       />
 
-      <MessageActionsModal
-        visible={actionsModalVisible}
+      <MessageActionsSheet
+        visible={actionsSheetVisible}
         onClose={() => {
-          setActionsModalVisible(false);
-          setActionsModalMessage(null);
+          setActionsSheetVisible(false);
+          setActionsSheetMessage(null);
         }}
-        message={actionsModalMessage}
+        message={actionsSheetMessage}
         currentUserId={user?.id || ''}
         isStaff={isStaffInChannel}
+        canReply={canReplyHere}
+        onCopied={() => toast.show(COPIED_TOAST)}
         onEdit={handleEditMessage}
         onDelete={handleDeleteMessage}
         onReply={startReplyFromActions}
-        onAddReaction={openReactionPickerFromActions}
         onViewReadHistory={handleViewReadHistory}
-        onViewProfile={handleViewProfile}
       />
     </SafeAreaView>
   );

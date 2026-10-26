@@ -34,7 +34,10 @@ import { EventTypeSheet } from '../components/calendar/EventTypeSheet';
 import { CantGoReasonModal } from '../components/calendar/CantGoReasonModal';
 import { supabase } from '../lib/supabase';
 import { EVENT_ACCENT_PAST } from '../lib/eventColors';
-import EventTypeChip, { isTitleRedundant } from '../components/calendar/EventTypeChip';
+import EventTypeChip, {
+  eventTitleBits,
+  VsOpponent,
+} from '../components/calendar/EventTypeChip';
 import { resolveTeamColor } from '../constants/teamColors';
 import type { CalendarEvent, EventType } from '../types';
 import { NotificationBell } from '../components/NotificationBell';
@@ -499,13 +502,14 @@ export default function CalendarScreen({ route, navigation }: any) {
     const eventPast = isEventPast(event);
     const teamColor = resolveTeamColor(event.team);
     const frameColor = eventPast ? EVENT_ACCENT_PAST : teamColor;
-    // R-H: hide a title that merely repeats the chip, but never on a
-    // cancelled event (see EventTypeChip.isTitleRedundant).
-    const showTitle =
-      !!event.is_cancelled || !isTitleRedundant(event.title, event.event_type);
+    // R-H/R-K: what the line under the headline carries -- "vs Rapids", a
+    // title, or neither. One helper, shared with the pills and the detail
+    // header, so the three cannot disagree about a game's name.
+    const { opponent, title } = eventTitleBits(event);
+    // R-L: its own line, spelled out, never squeezed onto the time row.
     const arrive =
       !event.is_all_day && event.arrival_time
-        ? format(parseISO(`2000-01-01T${event.arrival_time}`), 'h:mm')
+        ? format(parseISO(`2000-01-01T${event.arrival_time}`), 'h:mm a')
         : null;
 
     return (
@@ -549,11 +553,13 @@ export default function CalendarScreen({ route, navigation }: any) {
               </View>
             ) : null}
 
-            {/* R-H: grey chip, then the title -- only when it adds anything.
-                The chip holds its width; the title is what ellipsizes. */}
+            {/* R-H: grey chip, then what the event is -- "vs Rapids" (R-K)
+                and/or a title, each only when it adds something. The chip
+                holds its width; the title is what ellipsizes. */}
             <View style={styles.cardMetaRow}>
               <EventTypeChip eventType={event.event_type} />
-              {showTitle ? (
+              {opponent ? <VsOpponent name={opponent} /> : null}
+              {title ? (
                 <Text
                   style={[
                     styles.eventTitle,
@@ -562,21 +568,24 @@ export default function CalendarScreen({ route, navigation }: any) {
                   numberOfLines={1}
                   ellipsizeMode="tail"
                 >
-                  {event.title}
+                  {title}
                 </Text>
               ) : null}
             </View>
 
-            {/* Time, then the arrival that actually gets people there. The
-                time used to be purple -- the same colour as the location
-                link below it, which made it read as tappable. Purple is now
-                the location's alone. */}
+            {/* The time window, then the arrival that actually gets people
+                there. R-L: arrival is its OWN line -- inline as
+                "· arrive 4:45" it was the first thing to be clipped on a
+                narrow phone, and it is the one number nobody can guess.
+                The time is not purple: that is the location link's alone. */}
             <Text style={styles.eventTime} numberOfLines={1}>
               {formatEventTimeRange(event)}
-              {arrive ? (
-                <Text style={styles.eventArrive}>{` · arrive ${arrive}`}</Text>
-              ) : null}
             </Text>
+            {arrive ? (
+              <Text style={styles.eventArrive} numberOfLines={1}>
+                {`Arrive ${arrive}`}
+              </Text>
+            ) : null}
 
             {(event.location_name || event.location_address) && (
               <TouchableOpacity
@@ -1382,9 +1391,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 2,
   },
+  // R-L: a line of its own under the time window.
   eventArrive: {
     color: '#94a3b8',
-    fontWeight: '400',
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 2,
   },
   // No underline (device review: too cluttered). The affordance is the accent
   // colour plus the pin and chevron flanking it; the venue text stays clean.

@@ -224,3 +224,104 @@ grep -rn "#3B82F6\|#2563EB\|#60A5FA" EventDetailScreen → 0
 5. Tap a card → the detail leaf, strip and frame are the SAME colour as the
    card tapped, and the type chip is the same grey chip.
 6. A cancelled event: the title is still there, struck through, on card and pill.
+
+---
+
+# Fix round B — after Lu's device pass (2026-10-26)
+
+Status: **BUILT, static proof only. Device pending.**
+Rulings R-H′ (detail header hierarchy), R-K (opponent "vs"), R-L (arrival line),
+R-M (team colour in chat). No schema, migration, dependency, env, auth/RLS or
+DB access. Part 1 + round A are commit `f327f63`; ledger rows for both are
+appended at the end of `docs/ledger.md`.
+
+## R-K first: where the opponent actually lives
+
+**It is a real column.** `CalendarEvent.opponent: string | null`
+(`src/types/index.ts:205`) on `cal_events`. Nothing was invented, and no other
+field is read.
+
+Two facts about it decide the whole rule:
+
+1. **It is written for `game` and `scrimmage` ONLY.** Both forms gate on
+   `isGameOrScrimmage` (`CreateEventModal.tsx:412`, `:476`;
+   `EditEventModal.tsx:147`, `:191`) and write `opponent: null` for every other
+   type. **A TOURNAMENT therefore has no opponent in the column**, even though
+   R-K lists it — its only route is a title that starts with "vs".
+2. **The same forms also store the opponent AS THE TITLE** for those two types:
+   `const finalTitle = isGameOrScrimmage ? opponent : title`
+   (`CreateEventModal.tsx:425`, `EditEventModal.tsx:151`/`:179`). So a game's
+   title IS its opponent string, usually with no "vs" on it.
+
+Hence the implementation in `EventTypeChip.tsx`: `eventOpponent()` takes the
+column when present, else a "vs"/"vs."-prefixed title, and **strips a leading
+"vs" from either** so `VsOpponent` cannot render "vs vs Rapids".
+`eventTitleBits()` then drops a title that IS the opponent — which is the normal
+case for a game — so one game renders `⚽ Game  vs Rapids`, not
+`⚽ Game  vs Rapids  Rapids`.
+
+## What changed
+
+| File | Change |
+|---|---|
+| `src/components/calendar/EventTypeChip.tsx` | Gained `eventOpponent()`, `eventTitleBits()` (the one shared "what goes on the line under the headline" decision) and `VsOpponent` — the muted "vs": lowercase, letter-spaced 1.2, in the chip's own grey at **70% alpha** rather than `opacity` on a nested `<Text>`, which RN does not inherit reliably across a Text tree. Two variants, `card` and `pill`. |
+| `src/screens/CalendarScreen.tsx` | R-K on the list card (chip · "vs X" · title, each only when it adds something) and **R-L**: the time window is one line and `Arrive 4:45 PM` is its own line beneath it. The inline `· arrive 4:45` run is gone, and the time is now spelled with its meridiem (`h:mm a`). |
+| `src/components/calendar/EventPill.tsx` | R-K in the pill (`vs` variant), between the time and the team name. R-I's order is unchanged: time and team never shrink, the title ellipsizes first, and it is now also dropped when it only repeats the opponent. |
+| `src/screens/EventDetailScreen.tsx` | **R-H′**: the header reads in the list card's order — team name as the 20pt/800 headline (`numberOfLines={2}`, dot on the first line), then "vs X", then the title at 15pt only when it earns it. Team name and title have traded sizes (it was a 20pt title over a 14pt grey team line, which for a game put the bare opponent string on top). |
+| `src/screens/ChatScreen.tsx` *(chat list)* | **R-M(a)**: `getChannelColor`'s two team arms replaced by `resolveTeamColor(team ?? { id: team_id })` — this is the recon's chat read site §1/§5b, and it retires the hardcoded `#5B7BB5`. The card's 4pt left bar already existed; what changed is the colour a team channel feeds it. A **team dot** now sits before the name on team cards (`isTeamChannel = !!(team_id \|\| team)`). DM, group-DM, club/announcement and name-based arms are **untouched**. |
+| `src/screens/TeamChatRoomScreen.tsx` *(chat room header)* | **R-M(b)**: the team dot before the header title and a **2pt accent line** in the team colour directly under the header. `teams.color` was added to the embed this screen **already** makes for the club crest (one extra column, no new query, no new round trip) and `teamAccent` is null until that read lands, so the header never flashes a guessed colour. A DM, a club chat and a group chat have no `team_id`, so none of them grows either element. |
+
+## Judgment calls
+
+1. **R-L on the detail screen: no change was needed, and none was made.** The
+   detail already prints `Arrive 4:45 PM` as its own `<Text>` with the start/end
+   window beneath it, untruncated (`EventDetailScreen.tsx:1337`). What differs
+   from R-L's wording is the ORDER: the detail leads with Arrive, by the earlier
+   F1 ruling ("arrival is the number that gets people there on time, so it
+   leads"). Inverting it would undo a device-verified choice to satisfy a
+   sentence aimed at the list card's truncation. **NEEDS LU:** say so and the
+   detail flips to window-then-Arrive.
+2. **Tournaments get a "vs" line only from a "vs"-prefixed title**, because the
+   forms never write `opponent` for them (see above). Not a gap in this code —
+   a gap in what the create form stores. Fixing it properly means letting the
+   create/edit form write `opponent` for `tournament`, which is the FORBIDDEN
+   create-event form.
+3. **The detail screen's NAV BAR still shows the raw `event.title`**
+   (`headerTitle`, `:1017`), so for a game it reads "Rapids". That is the
+   screen's title bar, not the header card R-H′ names, and it was left alone.
+4. **R-M keyed team channels on `team_id`, not on `channel_type === 'team'`.**
+   A team's coach-lounge or staff thread hangs off a team and is one of its
+   channels; `team_id` is also the only test the list has for a row whose embed
+   did not come back. Consequence: such a channel now wears the team's colour
+   where it used to get `#7B6BAD` from the name-based arm. DMs, club and
+   announcement channels have no `team_id` and are untouched, as R-M requires.
+5. **Cancelled events still always show their title**, from round A, and now the
+   "vs" line gives way instead of repeating it.
+
+## Checks (static only)
+
+```
+npx tsc --noEmit | grep -c "error TS"            → 5  (= baseline, 0 new, all in components/games/)
+eslint <6 changed files>                          → 0 errors (245 warnings, pre-existing classes)
+npx expo export --platform ios                    → "Exported: dist", exit 0
+grep -rn "arrive" CalendarScreen + EventDetail    → no inline "· arrive" form left (3 hits: 2 comments, 1 const)
+grep -rln "resolveTeamColor" chat screens          → 2 files (ChatScreen.tsx, TeamChatRoomScreen.tsx)
+tail -3 docs/ledger.md                             → the two appended rows
+```
+
+## Device pass for this round
+
+1. A game: card reads team name, then `⚽ Game  vs Rapids` — **no** second
+   "Rapids" after it. Same on the pill and on the detail header.
+2. A tournament: chip `🏆 Tournament`; a "vs" line ONLY if its title starts
+   with "vs" (expected: no line — see judgment call 2).
+3. An event with an arrival time: the window on one line, `Arrive 4:45 PM`
+   on the next, nothing clipped at 375pt.
+4. Detail header: team name big on top, dot on the first line of a name that
+   wraps, "vs X" under it, no stray bare title.
+5. Chat list: a TEAM card's left bar and its new dot are the SAME colour as
+   that team's calendar cards. A DM, a club chat and an announcement channel
+   look exactly as before — no dot, no colour change.
+6. Chat room: open a team chat → dot before the title and a 2pt line under the
+   header in the team's colour. Open a DM → neither. Bubbles, composer and
+   sending unchanged.

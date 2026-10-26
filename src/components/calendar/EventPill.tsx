@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import type { CalendarEvent } from '../../types';
-import EventTypeChip, { isTitleRedundant } from './EventTypeChip';
+import EventTypeChip, { eventTitleBits, VsOpponent } from './EventTypeChip';
 import { resolveTeamColor, tint } from '../../constants/teamColors';
 import { isEventPast } from '../../utils/calendar';
 
@@ -20,11 +20,12 @@ export type CalendarEventWithTeam = CalendarEvent & {
  * A past event keeps its team's colour and loses half its opacity -- greying it
  * out entirely would have made "whose team" unreadable on the Previous rows.
  *
- * Ruling R-I sets who gives way when ~275pt of row has to hold four things:
- * the time and the TEAM NAME never shrink, the title shrinks and ellipsizes
- * first, and a title that merely repeats the chip is dropped altogether (R-H).
- * The pill clips its own overflow, so a pathologically long team name is cut
- * by the pill rather than spilling across the day's row.
+ * Ruling R-I sets who gives way when ~275pt of row has to hold chip, time,
+ * opponent/title and team: the time and the TEAM NAME never shrink, the title
+ * shrinks and ellipsizes first, and a title that merely repeats the chip or the
+ * opponent is dropped altogether (R-H/R-K). The pill clips its own overflow, so
+ * a pathologically long team name is cut by the pill rather than spilling
+ * across the day's row.
  */
 function formatPillTime(event: CalendarEvent): string {
   if (event.is_all_day || !event.start_time) return 'All Day';
@@ -47,10 +48,10 @@ export default function EventPill({
   const teamColor = resolveTeamColor(event.team);
   const past = isEventPast(event);
   const teamName = event.team?.name;
-  // R-H, same rule as the list card: a cancelled event keeps its title, since
-  // the strike-through on it is the only cancellation cue a pill carries.
-  const showTitle =
-    !!event.is_cancelled || !isTitleRedundant(event.title, event.event_type);
+  // R-H/R-K, the same helper the list card and the detail header use: a
+  // cancelled event keeps its title (the strike-through on it is a pill's only
+  // cancellation cue), a game shows "vs Rapids" instead of repeating it.
+  const { opponent, title } = eventTitleBits(event);
 
   return (
     <TouchableOpacity
@@ -66,7 +67,8 @@ export default function EventPill({
       <Text style={styles.time} numberOfLines={1}>
         {formatPillTime(event)}
       </Text>
-      {showTitle ? (
+      {opponent ? <VsOpponent name={opponent} variant="pill" /> : null}
+      {title ? (
         <Text
           style={[
             styles.title,
@@ -75,7 +77,7 @@ export default function EventPill({
           numberOfLines={1}
           ellipsizeMode="tail"
         >
-          {event.title}
+          {title}
         </Text>
       ) : null}
       {showTeam && teamName ? (

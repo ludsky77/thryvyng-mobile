@@ -19,7 +19,10 @@ import { openInMaps } from '../lib/maps';
 // copies text (WelcomeScreen, JoinTeamScreen, InviteCoParentModal). No new dep.
 import * as Clipboard from 'expo-clipboard';
 import DateBadge, { accentAlpha } from '../components/calendar/DateBadge';
-import EventTypeChip from '../components/calendar/EventTypeChip';
+import EventTypeChip, {
+  eventTitleBits,
+  VsOpponent,
+} from '../components/calendar/EventTypeChip';
 import RsvpPill from '../components/calendar/RsvpPill';
 import ResponsesBar from '../components/calendar/ResponsesBar';
 import type { CalendarEvent } from '../types';
@@ -1195,6 +1198,10 @@ export default function EventDetailScreen({ route, navigation }: any) {
     const teamColor = resolveTeamColor(
       (event as any).team ?? { id: event.team_id }
     );
+    // R-H'/R-K: the same helper the list card and the pills use, so one game
+    // is named the same way on all three.
+    const { opponent, title } = eventTitleBits(event);
+    const teamName = (event as any).team?.name as string | undefined;
 
     return (
     <View style={[
@@ -1222,26 +1229,36 @@ export default function EventDetailScreen({ route, navigation }: any) {
         />
 
         <View style={styles.headerContent}>
-          {/* Title Row with Edit */}
+          {/* R-H' (device pass, Oct 26): the header reads in the same order
+              as the list card it was opened from -- TEAM NAME as the headline,
+              then "vs Rapids" (R-K) and/or the title, each only when it says
+              something the chip below has not. It used to lead with the title,
+              which for a game was the bare opponent string ("Rapids") sitting
+              above the team in grey. */}
           <View style={styles.titleRow}>
             <View style={styles.titleAndTeam}>
-              <Text 
-                style={[
-                  styles.eventTitle,
-                  event.is_cancelled && styles.eventTitleCancelled
-                ]} 
-                numberOfLines={2}
-              >
-                {event.title}
-              </Text>
-              {(event as any).team?.name && (
+              {teamName ? (
                 <View style={styles.teamNameRow}>
                   <View style={[styles.teamDot, { backgroundColor: teamColor }]} />
                   <Text style={styles.teamNameText} numberOfLines={2}>
-                    {(event as any).team.name}
+                    {teamName}
                   </Text>
                 </View>
-              )}
+              ) : null}
+              {opponent ? (
+                <VsOpponent name={opponent} style={styles.eventOpponent} />
+              ) : null}
+              {title ? (
+                <Text
+                  style={[
+                    styles.eventTitle,
+                    event.is_cancelled && styles.eventTitleCancelled
+                  ]}
+                  numberOfLines={2}
+                >
+                  {title}
+                </Text>
+              ) : null}
             </View>
             {isManager && (
               <TouchableOpacity
@@ -1847,25 +1864,35 @@ const styles = StyleSheet.create({
   teamNameRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginTop: 4,
   },
   teamDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-    // (14pt line box - 8pt dot) / 2, so it sits on the cap height.
-    marginTop: 5,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    marginRight: 7,
+    // (24pt line box - 9pt dot) / 2, so it sits on the headline's cap height.
+    marginTop: 7,
   },
+  // R-H': the headline. Was 14pt grey under a 20pt title; they have traded
+  // places, matching the list card.
   teamNameText: {
-    color: '#9CA3AF',
-    fontSize: 14,
-  },
-  eventTitle: {
-    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
     color: '#fff',
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: '800',
+    lineHeight: 24,
+  },
+  // R-K: "vs Rapids" under the headline, in the list card's voice.
+  eventOpponent: {
+    marginTop: 3,
+    fontSize: 16,
+  },
+  eventTitle: {
+    color: '#e2e8f0',
+    fontSize: 15,
+    fontWeight: '600',
+    marginTop: 3,
     marginRight: 8,
   },
   eventTitleCancelled: {

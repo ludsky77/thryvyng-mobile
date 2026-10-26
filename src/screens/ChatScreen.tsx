@@ -49,6 +49,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useChatUnread } from '../contexts/ChatUnreadContext';
 import type { ConversationRow } from '../utils/unreadRule';
 import { logError } from '../utils/logError';
+import { resolveTeamColor } from '../constants/teamColors';
 
 interface EnrichedConversation {
   id: string;
@@ -108,12 +109,19 @@ interface EnrichedConversation {
   name?: string;
 }
 
+/**
+ * Ruling R-M (Lu, 2026-10-26): a TEAM channel wears its team's assigned colour
+ * -- the same `resolveTeamColor` the calendar uses, so a team's card here and
+ * its event cards there are the same hue. `team_id` is the seed when the embed
+ * has no colour, which is what the hardcoded `#5B7BB5` used to paper over.
+ * DMs, group DMs, club and announcement channels keep the colours below
+ * untouched: R-M changed team channels only.
+ */
 function getChannelColor(conversation: EnrichedConversation): string {
-  if (conversation.team?.color) {
-    return conversation.team.color;
-  }
-  if (conversation.team_id) {
-    return '#5B7BB5';
+  if (conversation.team || conversation.team_id) {
+    return resolveTeamColor(
+      conversation.team ?? { id: conversation.team_id }
+    );
   }
   if (conversation.displayType === 'dm' || conversation.channel_type === 'dm') {
     return '#8B6BAD';
@@ -459,6 +467,13 @@ function ConversationItem({
   dimmed?: boolean;
 }) {
   const borderColor = getChannelColor(conversation);
+  /**
+   * R-M: a team channel, and only a team channel, carries the team dot before
+   * its name. `team_id` is the test -- a DM and a club or announcement channel
+   * have none, so they are untouched, while a team's coach lounge or staff
+   * thread does hang off a team and is one of its channels.
+   */
+  const isTeamChannel = !!(conversation.team_id || conversation.team);
 
   /**
    * The crest belongs to a CLUB's own chats, and only to those (Lu, Oct 20
@@ -519,9 +534,8 @@ function ConversationItem({
     }
 
     // Team: Show colored circle with team icon or first letter
-    const teamColor = conversation.team?.color || borderColor;
     return (
-      <View style={[styles.badgeCircle, { backgroundColor: teamColor }]}>
+      <View style={[styles.badgeCircle, { backgroundColor: borderColor }]}>
         <Text style={styles.badgeTeamIcon}>⚽</Text>
       </View>
     );
@@ -564,6 +578,11 @@ function ConversationItem({
               never a bare number (fix 5, Oct 20): the member count moved to
               line 3 where it reads as "2 members". A row with no messages has
               no time, and getTimeAgo returns '' for that. */}
+          {isTeamChannel ? (
+            <View
+              style={[styles.chatTeamDot, { backgroundColor: borderColor }]}
+            />
+          ) : null}
           <Text
             style={[
               styles.conversationName,
@@ -3026,6 +3045,9 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  // R-M: the 4pt left bar was already here; what changed is the colour a team
+  // channel passes into `borderLeftColor` (resolveTeamColor, see
+  // getChannelColor).
   conversationCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3035,6 +3057,14 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 12,
     borderLeftWidth: 4,
+  },
+  // R-M: the team dot, before the channel name on a team card only.
+  chatTeamDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 7,
+    flexShrink: 0,
   },
   /* P4: the ONE dim. Applied for the Past tab (`pastTeam`) and for rows
      rendered inside the "Hidden (n)" section (`dimmed`) -- never from a row's

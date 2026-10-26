@@ -49,6 +49,7 @@ import { useTypingPresence } from '../hooks/useTypingPresence';
 import { TypingIndicator } from '../components/chat/TypingIndicator';
 import { setActiveChannelId } from '../services/notifications';
 import type { Message } from '../types';
+import { resolveTeamColor } from '../constants/teamColors';
 
 /**
  * The shape of the club embed added to this screen's `comm_channels` read for
@@ -57,6 +58,8 @@ import type { Message } from '../types';
  */
 type ChannelClubRow = {
   teams?: {
+    /** R-M: the team's assigned colour, for the header dot and accent line. */
+    color?: string | null;
     clubs?: { name?: string | null; logo_url?: string | null } | null;
   } | null;
 };
@@ -167,6 +170,8 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   const toast = useChatToast();
 
   const [channelTeamId, setChannelTeamId] = useState<string | null>(null);
+  /** R-M: the row value of `teams.color`; resolved for render below. */
+  const [channelTeamHex, setChannelTeamHex] = useState<string | null>(null);
   /**
    * Phase D slice 4b. `allowMemberText` is the chat's own
    * comm_channels.allow_member_text, read through
@@ -289,6 +294,17 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
         .filter(Boolean)
         .join(' · ');
 
+  /**
+   * R-M: the room's team colour, or null when the room has no team. Gated on
+   * `channelTeamId`, which the effect above sets ONLY from a channel row that
+   * has a `team_id` -- a DM, a club chat and a group chat all leave it null,
+   * so none of them grows a dot or an accent line. It stays null until that
+   * read lands, so the header never flashes a guessed colour.
+   */
+  const teamAccent = channelTeamId
+    ? resolveTeamColor({ id: channelTeamId, color: channelTeamHex })
+    : null;
+
   useEffect(() => {
     const checkStaffPermission = async () => {
       if (!channelId || !user?.id) {
@@ -300,7 +316,10 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
         const { data: channelData } = await supabase
           .from('comm_channels')
           .select(
-            'team_id, channel_type, allow_member_text, teams(club_id, clubs(name, logo_url))'
+            // R-M adds `color` to the embed this screen already makes -- the
+            // header's dot and accent line need the team's own colour, and a
+            // second query for one column would be the wrong trade.
+            'team_id, channel_type, allow_member_text, teams(club_id, color, clubs(name, logo_url))'
           )
           .eq('id', channelId)
           .single();
@@ -320,6 +339,9 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           (channelData as ChannelClubRow | null)?.teams?.clubs ?? null;
         setClubName(clubRow?.name ?? null);
         setClubLogoUrl(clubRow?.logo_url ?? null);
+        setChannelTeamHex(
+          (channelData as ChannelClubRow | null)?.teams?.color ?? null
+        );
         // Read from the ROW, not from the route param: `channelType` arrives
         // undefined on a push-opened room, so it cannot carry the crest gate.
         setRowChannelType(
@@ -328,6 +350,7 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
         );
         if (!channelData?.team_id) {
           setChannelTeamId(null);
+          setChannelTeamHex(null);
           setPermissionsLoaded(true);
           return;
         }
@@ -943,6 +966,12 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
                 style={styles.headerCrest}
               />
             ) : null}
+            {/* R-M: the team dot before the name, a team chat only. */}
+            {teamAccent ? (
+              <View
+                style={[styles.headerTeamDot, { backgroundColor: teamAccent }]}
+              />
+            ) : null}
             <Text style={styles.headerTitle} numberOfLines={1}>
               {headerTitleText}
             </Text>
@@ -968,6 +997,13 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           <Feather name="more-vertical" size={22} color="#fff" />
         </TouchableOpacity>
       </View>
+
+      {/* R-M: a 2pt line in the team's colour, directly under the header. The
+          whole of the subtle version of "this room belongs to that team" --
+          bubbles, composer and send path are untouched. */}
+      {teamAccent ? (
+        <View style={[styles.headerTeamAccent, { backgroundColor: teamAccent }]} />
+      ) : null}
 
       {/* Chat Area with Keyboard Handling */}
       <KeyboardAvoidingView
@@ -1186,6 +1222,16 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     paddingHorizontal: 12,
+  },
+  // R-M: the team dot, and the 2pt accent line under the whole header.
+  headerTeamDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    flexShrink: 0,
+  },
+  headerTeamAccent: {
+    height: 2,
   },
   // Large and bold: the team name is what identifies the room.
   headerTitleRow: {

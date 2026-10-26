@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
+  ScrollView,
 } from 'react-native';
 import {
   format,
@@ -17,33 +18,36 @@ import {
   isToday,
 } from 'date-fns';
 import type { CalendarEvent } from '../../types';
-import { isEventPast } from '../../utils/calendar';
-import { eventAccentFor } from '../../lib/eventColors';
-
-type CalendarEventWithTeam = CalendarEvent & { team?: { color?: string } };
+import EventPill, { CalendarEventWithTeam, TeamDots } from './EventPill';
 
 interface MonthViewProps {
   currentDate: Date;
-  events: CalendarEvent[];
+  events: CalendarEventWithTeam[];
+  /** Fired so the screen's date follows the grid; it does NOT change view. */
   onDayPress: (date: Date) => void;
   onEventPress: (event: CalendarEvent) => void;
   onPrevMonth: () => void;
   onNextMonth: () => void;
+  /** Off when the calendar is already filtered to one team. */
+  showTeamNames?: boolean;
 }
 
-const MAX_VISIBLE_EVENTS = 2;
+/**
+ * Ruling R-D: a month cell carries TEAM-COLOUR DOTS -- up to three, then "+n"
+ * -- and tapping a day opens that day's pills UNDER the grid. The old cell
+ * crammed two full-width event chips with title text into a ~50pt box, which
+ * is what made every month cell unreadable at 375pt; and tapping a day left
+ * the month entirely for the Day view.
+ */
+const MAX_DOTS = 3;
 
-function getEventIcon(eventType: string): string {
-  switch (eventType?.toLowerCase()) {
-    case 'game':
-      return '🏆';
-    case 'tournament':
-      return '🎯';
-    case 'meeting':
-      return '👥';
-    default:
-      return '⚽';
-  }
+function dayKey(date: Date): string {
+  return format(date, 'yyyy-MM-dd');
+}
+
+function minutesOf(timeStr: string | null): number {
+  const [h, m] = (timeStr || '00:00').split(':').map((s) => parseInt(s || '0', 10));
+  return h * 60 + m;
 }
 
 export function MonthView({
@@ -53,19 +57,48 @@ export function MonthView({
   onEventPress,
   onPrevMonth,
   onNextMonth,
+  showTeamNames = true,
 }: MonthViewProps) {
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
   const calendarStart = startOfWeek(monthStart);
   const calendarEnd = endOfWeek(monthEnd);
+  const monthKey = format(currentDate, 'yyyy-MM');
 
-  const getEventsForDate = (date: Date) => {
-    return events.filter((event) => {
-      const eventDate = event.event_date;
-      if (!eventDate) return false;
-      const eventDay = new Date(eventDate + 'T12:00:00');
-      return isSameDay(eventDay, date);
+  const [selectedDay, setSelectedDay] = useState<Date>(currentDate);
+
+  // Changing month keeps the selection on a day the grid is actually showing:
+  // today when the new month is this one, otherwise the 1st. A selection that
+  // is ALREADY in the new month survives -- which is what happens when the day
+  // tapped was a trailing cell (tap Nov 1 from October: the grid follows to
+  // November and Nov 1 stays selected, instead of snapping to the 1st).
+  useEffect(() => {
+    setSelectedDay((prev) => {
+      if (isSameMonth(prev, monthStart)) return prev;
+      const today = new Date();
+      return isSameMonth(today, monthStart) ? today : monthStart;
     });
+    // monthKey, not monthStart: a new Date object every render would loop.
+  }, [monthKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** One pass over the range, not one filter per cell. */
+  const eventsByDate = useMemo(() => {
+    const byDate = new Map<string, CalendarEventWithTeam[]>();
+    events.forEach((event) => {
+      if (!event.event_date) return;
+      const bucket = byDate.get(event.event_date);
+      if (bucket) bucket.push(event);
+      else byDate.set(event.event_date, [event]);
+    });
+    byDate.forEach((list) =>
+      list.sort((a, b) => minutesOf(a.start_time) - minutesOf(b.start_time))
+    );
+    return byDate;
+  }, [events]);
+
+  const handleDayPress = (date: Date) => {
+    setSelectedDay(date);
+    onDayPress(date);
   };
 
   const renderDays = () => {
@@ -74,9 +107,10 @@ export function MonthView({
 
     while (day <= calendarEnd) {
       const currentDay = new Date(day);
-      const dayEvents = getEventsForDate(currentDay);
+      const dayEvents = eventsByDate.get(dayKey(currentDay)) || [];
       const isCurrentMonth = isSameMonth(currentDay, currentDate);
       const isCurrentDay = isToday(currentDay);
+      const isSelected = isSameDay(currentDay, selectedDay);
 
       days.push(
         <TouchableOpacity
@@ -85,8 +119,9 @@ export function MonthView({
             styles.dayCell,
             !isCurrentMonth && styles.dayCellOutside,
             isCurrentDay && styles.dayCellToday,
+            isSelected && styles.dayCellSelected,
           ]}
-          onPress={() => onDayPress(currentDay)}
+          onPress={() => handleDayPress(currentDay)}
           activeOpacity={0.7}
         >
           <Text
@@ -95,40 +130,11 @@ export function MonthView({
               !isCurrentMonth && styles.dayNumberOutside,
               isCurrentDay && styles.dayNumberToday,
             ]}
+            numberOfLines={1}
           >
             {format(currentDay, 'd')}
           </Text>
-
-          <View style={styles.eventsContainer}>
-            {dayEvents.slice(0, MAX_VISIBLE_EVENTS).map((event) => {
-              const past = isEventPast(event);
-              return (
-              <TouchableOpacity
-                key={event.id}
-                style={[
-                  styles.eventChip,
-                  {
-                    // Was the TEAM colour -- games rendered blue here.
-                    backgroundColor: eventAccentFor(event.event_type, past),
-                    opacity: past ? 0.5 : 1,
-                  },
-                ]}
-                onPress={() => onEventPress(event)}
-              >
-                <Text style={styles.eventChipText} numberOfLines={1}>
-                  {getEventIcon(event.event_type)} {event.title}
-                </Text>
-              </TouchableOpacity>
-            );
-            })}
-            {dayEvents.length > MAX_VISIBLE_EVENTS && (
-              <TouchableOpacity onPress={() => onDayPress(currentDay)}>
-                <Text style={styles.moreEvents}>
-                  +{dayEvents.length - MAX_VISIBLE_EVENTS} more
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          <TeamDots events={dayEvents} max={MAX_DOTS} size={6} />
         </TouchableOpacity>
       );
 
@@ -138,31 +144,55 @@ export function MonthView({
     return days;
   };
 
+  const selectedEvents = eventsByDate.get(dayKey(selectedDay)) || [];
+
   return (
-    <View style={styles.container}>
-      {/* Month Header */}
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator
+    >
       <View style={styles.monthHeader}>
         <TouchableOpacity onPress={onPrevMonth} style={styles.navButton}>
           <Text style={styles.navButtonText}>‹</Text>
         </TouchableOpacity>
-        <Text style={styles.monthTitle}>{format(currentDate, 'MMMM yyyy')}</Text>
+        <Text style={styles.monthTitle} numberOfLines={1}>
+          {format(currentDate, 'MMMM yyyy')}
+        </Text>
         <TouchableOpacity onPress={onNextMonth} style={styles.navButton}>
           <Text style={styles.navButtonText}>›</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Weekday Headers */}
       <View style={styles.weekdayHeader}>
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-          <Text key={d} style={styles.weekdayText}>
+          <Text key={d} style={styles.weekdayText} numberOfLines={1}>
             {d}
           </Text>
         ))}
       </View>
 
-      {/* Calendar Grid */}
       <View style={styles.calendarGrid}>{renderDays()}</View>
-    </View>
+
+      {/* The tapped day, under the grid. */}
+      <View style={styles.dayPanel}>
+        <Text style={styles.dayPanelTitle} numberOfLines={1}>
+          {format(selectedDay, 'EEEE, MMM d')}
+        </Text>
+        {selectedEvents.length === 0 ? (
+          <Text style={styles.dayPanelEmpty}>No events</Text>
+        ) : (
+          selectedEvents.map((event) => (
+            <EventPill
+              key={event.id}
+              event={event}
+              onPress={onEventPress}
+              showTeam={showTeamNames}
+            />
+          ))
+        )}
+      </View>
+    </ScrollView>
   );
 }
 
@@ -170,6 +200,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a2e',
+  },
+  scrollContent: {
+    paddingBottom: 100,
   },
   monthHeader: {
     flexDirection: 'row',
@@ -190,6 +223,9 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
+    flexShrink: 1,
+    minWidth: 0,
+    textAlign: 'center',
   },
   weekdayHeader: {
     flexDirection: 'row',
@@ -200,6 +236,7 @@ const styles = StyleSheet.create({
   },
   weekdayText: {
     flex: 1,
+    minWidth: 0,
     textAlign: 'center',
     color: '#666',
     fontSize: 12,
@@ -210,12 +247,16 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     padding: 4,
   },
+  // Percentage width, not a fixed one: the cell has to hold at 375pt and wider.
   dayCell: {
     width: '14.28%',
-    minHeight: 70,
-    padding: 2,
+    minHeight: 46,
+    paddingTop: 4,
+    paddingBottom: 6,
+    paddingHorizontal: 2,
     borderWidth: 0.5,
     borderColor: '#2a2a4e',
+    alignItems: 'center',
   },
   dayCellOutside: {
     backgroundColor: '#151525',
@@ -223,12 +264,16 @@ const styles = StyleSheet.create({
   dayCellToday: {
     backgroundColor: 'rgba(139, 92, 246, 0.2)',
   },
+  dayCellSelected: {
+    borderWidth: 1.5,
+    borderColor: '#8b5cf6',
+  },
   dayNumber: {
     color: '#fff',
     fontSize: 12,
     fontWeight: '500',
     textAlign: 'center',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   dayNumberOutside: {
     color: '#444',
@@ -237,22 +282,20 @@ const styles = StyleSheet.create({
     color: '#a78bfa',
     fontWeight: '700',
   },
-  eventsContainer: {
-    flex: 1,
+  dayPanel: {
+    paddingHorizontal: 12,
+    paddingTop: 14,
   },
-  eventChip: {
-    borderRadius: 3,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    marginBottom: 2,
-  },
-  eventChipText: {
-    color: '#fff',
-    fontSize: 10,
-  },
-  moreEvents: {
+  dayPanelTitle: {
     color: '#9CA3AF',
-    fontSize: 9,
-    marginTop: 2,
+    fontSize: 13,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  dayPanelEmpty: {
+    color: '#4b5563',
+    fontSize: 13,
   },
 });

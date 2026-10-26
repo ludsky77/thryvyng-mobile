@@ -33,8 +33,9 @@ import { CreateEventModal } from '../components/calendar/CreateEventModal';
 import { EventTypeSheet } from '../components/calendar/EventTypeSheet';
 import { CantGoReasonModal } from '../components/calendar/CantGoReasonModal';
 import { supabase } from '../lib/supabase';
-import { getEventTypeConfig } from '../types';
-import { eventAccent, eventAccentFor, EVENT_ACCENT_PAST } from '../lib/eventColors';
+import { EVENT_ACCENT_PAST } from '../lib/eventColors';
+import EventTypeChip, { isTitleRedundant } from '../components/calendar/EventTypeChip';
+import { resolveTeamColor } from '../constants/teamColors';
 import type { CalendarEvent, EventType } from '../types';
 import { NotificationBell } from '../components/NotificationBell';
 import CalendarSyncModal from '../components/calendar/CalendarSyncModal';
@@ -46,11 +47,12 @@ import { Ionicons } from '@expo/vector-icons';
 
 type ViewMode = 'list' | 'month' | 'week' | 'day';
 
+/** Ruling R-E: List · Day · Week · Month -- narrowest span first. */
 const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
   { value: 'list', label: 'List' },
-  { value: 'month', label: 'Month' },
-  { value: 'week', label: 'Week' },
   { value: 'day', label: 'Day' },
+  { value: 'week', label: 'Week' },
+  { value: 'month', label: 'Month' },
 ];
 
 const ALL_TEAMS_ID = 'ALL_TEAMS';
@@ -65,22 +67,6 @@ function formatEventTimeRange(event: { start_time?: string | null; end_time?: st
     return `${start} – ${end}`;
   }
   return start;
-}
-
-function getEventTypeLabel(eventType: string): string {
-  switch (eventType?.toLowerCase()) {
-    case 'game': return 'GAME';
-    case 'practice': return 'PRACTICE';
-    case 'tournament': return 'TOURNAMENT';
-    case 'meeting': return 'MEETING';
-    case 'party': return 'PARTY';
-    case 'scrimmage': return 'SCRIMMAGE';
-    case 'tryout': return 'TRYOUT';
-    case 'camp': return 'CAMP';
-    case 'other_event': return 'OTHER';
-    case 'club_event': return 'CLUB';
-    default: return 'EVENT';
-  }
 }
 
 export default function CalendarScreen({ route, navigation }: any) {
@@ -489,16 +475,34 @@ export default function CalendarScreen({ route, navigation }: any) {
    * opening the event -- exactly what the removed `willStrip` did below the
    * card.
    *
-   * No type chip here: the title, the leaf and the frame colour already carry
-   * the type. The detail screen keeps its chip.
+   * Ruling R-A moved the CARD's colour from the event type to the TEAM: the
+   * leaf, the 5pt strip and the 2pt frame are the team's assigned colour, so
+   * two events of different types on one team match, and the same game on two
+   * teams does not. The type is not a hue at all -- it is the grey
+   * EventTypeChip. A past event still greys out (EVENT_ACCENT_PAST), the one
+   * state that outranks identity.
+   *
+   * Ruling R-H set the hierarchy (device pass, Oct 26): the TEAM NAME is the
+   * headline -- the largest text on the card, up to two lines, and no longer
+   * hidden outside All Teams, because a card has to say whose team it is even
+   * when the calendar is filtered to one. Under it, the chip and a title that
+   * is only shown when it says something the chip does not: "Practice" on a
+   * practice is dropped. A CANCELLED event keeps its title either way -- the
+   * strike-through on it is the card's only cancellation cue.
+   *
+   * Also used BY THE DAY VIEW (R-D), passed in as renderEventCard.
    */
   const renderEventListCard = (
     event: CalendarEvent & { team?: UserTeam; rsvp_counts?: any; user_rsvp?: any }
   ) => {
     const eventDate = parseISO(event.event_date + 'T12:00:00');
     const eventPast = isEventPast(event);
-    const accent = eventAccent(event.event_type);
-    const frameColor = eventPast ? EVENT_ACCENT_PAST : accent;
+    const teamColor = resolveTeamColor(event.team);
+    const frameColor = eventPast ? EVENT_ACCENT_PAST : teamColor;
+    // R-H: hide a title that merely repeats the chip, but never on a
+    // cancelled event (see EventTypeChip.isTitleRedundant).
+    const showTitle =
+      !!event.is_cancelled || !isTitleRedundant(event.title, event.event_type);
     const arrive =
       !event.is_all_day && event.arrival_time
         ? format(parseISO(`2000-01-01T${event.arrival_time}`), 'h:mm')
@@ -510,7 +514,7 @@ export default function CalendarScreen({ route, navigation }: any) {
         style={[
           styles.eventCard,
           {
-            // F1 frame, kept: 2pt in the event's own colour at 50% plus a 5pt
+            // F1 frame, kept: 2pt in the TEAM's colour at 50% plus a 5pt
             // solid left strip in the same colour. All four corners now use
             // the card radius -- the 8pt left corners were left over from the
             // clipped full-height date block and no longer had a reason.
@@ -531,33 +535,37 @@ export default function CalendarScreen({ route, navigation }: any) {
           <DateBadge date={eventDate} variant="list" color={frameColor} />
 
           <View style={styles.eventDetails}>
-            {selectedTeamId === ALL_TEAMS_ID && event.team && (
+            {/* R-H headline: the team, big, two lines, never cut short. The
+                dot sits on the first line (centring it lands it between the
+                two lines of a name that wraps). */}
+            {event.team ? (
               <View style={styles.eventTeamBadge}>
                 <View
-                  style={[
-                    styles.teamDot,
-                    { backgroundColor: event.team.color || '#8b5cf6' },
-                  ]}
+                  style={[styles.teamDot, { backgroundColor: teamColor }]}
                 />
-                <Text style={styles.eventTeamName} numberOfLines={1}>
+                <Text style={styles.eventTeamName} numberOfLines={2}>
                   {event.team.name}
                 </Text>
               </View>
-            )}
+            ) : null}
 
-            <Text
-              style={[
-                styles.eventTitle,
-                event.is_cancelled && {
-                  textDecorationLine: 'line-through',
-                  color: '#64748b',
-                },
-              ]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {event.title}
-            </Text>
+            {/* R-H: grey chip, then the title -- only when it adds anything.
+                The chip holds its width; the title is what ellipsizes. */}
+            <View style={styles.cardMetaRow}>
+              <EventTypeChip eventType={event.event_type} />
+              {showTitle ? (
+                <Text
+                  style={[
+                    styles.eventTitle,
+                    event.is_cancelled && styles.eventTitleCancelled,
+                  ]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {event.title}
+                </Text>
+              ) : null}
+            </View>
 
             {/* Time, then the arrival that actually gets people there. The
                 time used to be purple -- the same colour as the location
@@ -669,9 +677,12 @@ export default function CalendarScreen({ route, navigation }: any) {
               <View style={styles.allTeamsIndicator}>
                 <Text style={styles.allTeamsIcon}>👥</Text>
               </View>
-            ) : selectedTeam?.color ? (
+            ) : selectedTeam ? (
               <View
-                style={[styles.teamColorDot, { backgroundColor: selectedTeam.color }]}
+                style={[
+                  styles.teamColorDot,
+                  { backgroundColor: resolveTeamColor(selectedTeam) },
+                ]}
               />
             ) : null}
             <Text style={styles.teamSelectorText} numberOfLines={1}>
@@ -693,39 +704,26 @@ export default function CalendarScreen({ route, navigation }: any) {
             </TouchableOpacity>
           )}
         </View>
-        {/* Row 2: List / Month / Week / Day toggle */}
+        {/* Row 2: R-E order -- List / Day / Week / Month. The inline style
+            objects this row used to carry are back in the StyleSheet, which
+            is what the five orphaned viewToggle/viewButton keys were for. */}
         <View style={styles.toolbarRow2}>
-          <View
-            style={{
-              flexDirection: 'row',
-              backgroundColor: '#374151',
-              borderRadius: 8,
-              padding: 4,
-              marginHorizontal: 16,
-              marginVertical: 8,
-            }}
-          >
+          <View style={styles.viewToggle}>
             {VIEW_OPTIONS.map(({ value, label }) => (
               <TouchableOpacity
                 key={value}
                 onPress={() => setViewMode(value)}
-                style={{
-                  flex: 1,
-                  paddingVertical: 8,
-                  paddingHorizontal: 4,
-                  borderRadius: 6,
-                  backgroundColor:
-                    viewMode === value ? '#8B5CF6' : 'transparent',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
+                style={[
+                  styles.viewButton,
+                  viewMode === value && styles.viewButtonActive,
+                ]}
               >
                 <Text
-                  style={{
-                    color: viewMode === value ? '#FFFFFF' : '#9CA3AF',
-                    fontSize: 13,
-                    fontWeight: viewMode === value ? '600' : '400',
-                  }}
+                  style={[
+                    styles.viewButtonText,
+                    viewMode === value && styles.viewButtonTextActive,
+                  ]}
+                  numberOfLines={1}
                 >
                   {label}
                 </Text>
@@ -746,8 +744,11 @@ export default function CalendarScreen({ route, navigation }: any) {
         const userTeamsForLegend = teams.map((t) => ({
           id: t.id,
           name: t.name,
-          color: t.color || '#8b5cf6',
+          color: resolveTeamColor(t),
         }));
+        // R-A: the pills and dots in Week/Month already carry the team colour;
+        // the NAME is only worth the room when more than one team is in view.
+        const showTeamNames = selectedTeamId === ALL_TEAMS_ID;
         return (
           <>
             <View
@@ -813,10 +814,10 @@ export default function CalendarScreen({ route, navigation }: any) {
         <MonthView
           events={events}
           currentDate={currentDate}
-          onDayPress={(date) => {
-            setCurrentDate(date);
-            setViewMode('day');
-          }}
+          // R-D: tapping a day opens its pills UNDER the grid; it no longer
+          // leaves for the Day view. The date still travels up, so switching
+          // to Day afterwards lands on the day that was tapped.
+          onDayPress={(date) => setCurrentDate(date)}
           onEventPress={(event) =>
             navigation.navigate('EventDetail', {
               event,
@@ -829,6 +830,7 @@ export default function CalendarScreen({ route, navigation }: any) {
           onNextMonth={() =>
             setCurrentDate((d) => addMonths(d, 1))
           }
+          showTeamNames={showTeamNames}
         />
       ) : viewMode === 'week' ? (
         <WeekView
@@ -843,17 +845,14 @@ export default function CalendarScreen({ route, navigation }: any) {
             setCurrentDate(date);
             setViewMode('day');
           }}
+          showTeamNames={showTeamNames}
         />
       ) : viewMode === 'day' ? (
                 <DayView
                   events={events}
-                  onEventPress={(event) =>
-                    navigation.navigate('EventDetail', {
-                      event,
-                      onRefetch: fetchEvents,
-                    })
-                  }
                   initialDate={currentDate}
+                  // R-D: the Day view shows THE list card, not a copy of it.
+                  renderEventCard={renderEventListCard}
                 />
               ) : null}
             </View>
@@ -936,7 +935,7 @@ export default function CalendarScreen({ route, navigation }: any) {
                   <View
                     style={[
                       styles.teamColorDot,
-                      { backgroundColor: team.color || '#8b5cf6' },
+                      { backgroundColor: resolveTeamColor(team) },
                     ]}
                   />
                   <View style={styles.teamOptionInfo}>
@@ -991,7 +990,7 @@ export default function CalendarScreen({ route, navigation }: any) {
                         <View
                           style={[
                             styles.teamColorDot,
-                            { backgroundColor: team.color || '#8b5cf6' },
+                            { backgroundColor: resolveTeamColor(team) },
                           ]}
                         />
                         <View style={styles.teamOptionInfo}>
@@ -1153,6 +1152,8 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+    // (21pt line box - 8pt dot) / 2, so it sits on the headline's cap height.
+    marginTop: 6,
   },
   allTeamsIndicator: {
     width: 24,
@@ -1175,39 +1176,37 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 10,
   },
+  // R-G: the toggle spans the toolbar instead of sizing to its labels, so
+  // four tabs each get a quarter and 'Month' cannot clip at 375pt.
   viewToggle: {
     flexDirection: 'row',
-    flex: 1,
-    backgroundColor: '#3a3a5e',
+    alignSelf: 'stretch',
+    backgroundColor: '#374151',
     borderRadius: 8,
-    padding: 2,
+    padding: 4,
+    marginHorizontal: 16,
+    marginVertical: 8,
   },
   viewButton: {
     flex: 1,
-    paddingHorizontal: 6,
-    paddingVertical: 6,
+    minWidth: 0,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
     borderRadius: 6,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   viewButtonActive: {
-    backgroundColor: '#8b5cf6',
+    backgroundColor: '#8B5CF6',
   },
   viewButtonText: {
-    color: '#888',
+    color: '#9CA3AF',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '400',
   },
   viewButtonTextActive: {
-    color: '#fff',
-  },
-  placeholderView: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  placeholderText: {
-    color: '#9CA3AF',
-    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
   createButton: {
     width: 40,
@@ -1338,22 +1337,44 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minWidth: 0,
   },
-  eventTeamBadge: {
+  // R-H: chip first, then the title -- the row under the headline.
+  cardMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
-    gap: 6,
+    marginBottom: 3,
+    gap: 8,
+    minWidth: 0,
   },
+  // R-H headline. flex-start so the dot keeps to the first line of a name
+  // that wraps to two.
+  eventTeamBadge: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginBottom: 3,
+    minWidth: 0,
+  },
+  // The largest type on the card, at 17 against the title's 14. flexShrink
+  // stays 1 so two lines WRAP inside the card instead of overflowing it --
+  // numberOfLines={2} is what keeps the name whole (R-H).
   eventTeamName: {
-    color: '#e9d5ff',
-    fontSize: 14,
-    fontWeight: '700',
+    color: '#f5f3ff',
+    fontSize: 17,
+    fontWeight: '800',
+    lineHeight: 21,
+    flexShrink: 1,
+    minWidth: 0,
   },
   eventTitle: {
-    color: '#fff',
-    fontSize: 15,
+    color: '#e2e8f0',
+    fontSize: 14,
     fontWeight: '600',
-    marginBottom: 2,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  eventTitleCancelled: {
+    textDecorationLine: 'line-through',
+    color: '#64748b',
   },
   eventTime: {
     color: '#fff',
@@ -1380,96 +1401,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flexShrink: 1,
   },
-  eventCardWrap: {
-    marginBottom: 10,
-  },
-  cardTypeBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    marginTop: 4,
-    marginBottom: 2,
-  },
-  cardTypeBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  attendanceNoReply: {
-    color: '#64748b',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  // The "Will you be there?" strip that used to sit under the card is gone
-  // (H1 moved the answer into the card's footer), and so are its 9 styles --
-  // including the only green and red left in this file.
-  attendancePreview: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  // One step up from 12 so the counts read at a glance without dominating the
-  // card. Weight was already '600'; only the size moved.
-  attendanceGoing: {
-    color: '#C4B5FD',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  attendanceDivider: {
-    color: '#6B7280',
-    fontSize: 14,
-    marginHorizontal: 6,
-  },
-  attendanceNotGoing: {
-    color: '#A78BFA',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  rsvpSection: {
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-  },
-  rsvpBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#3a3a5e',
-  },
-  rsvpYes: {
-    backgroundColor: 'rgba(139, 92, 246, 0.2)',
-  },
-  rsvpNo: {
-    backgroundColor: 'rgba(76, 29, 149, 0.2)',
-  },
-  rsvpBadgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  rsvpButtons: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  rsvpBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  rsvpBtnYes: {
-    backgroundColor: 'rgba(139, 92, 246, 0.3)',
-  },
-  rsvpBtnNo: {
-    backgroundColor: 'rgba(76, 29, 149, 0.3)',
-  },
-  rsvpBtnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
+  // Deleted here: the 20 style keys the recon found orphaned -- the old inline
+  // RSVP buttons (10), the attendance preview (5), the old type badge (2),
+  // eventCardWrap (1) and the placeholder view (2). The five view-toggle keys
+  // are the exception: the R-E tab row uses them again.
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',

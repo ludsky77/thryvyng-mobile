@@ -18,9 +18,8 @@ import { openInMaps } from '../lib/maps';
 // expo-clipboard is already a project dependency and is how the rest of the app
 // copies text (WelcomeScreen, JoinTeamScreen, InviteCoParentModal). No new dep.
 import * as Clipboard from 'expo-clipboard';
-import { getEventTypeConfig } from '../types';
-import { eventAccent } from '../lib/eventColors';
 import DateBadge, { accentAlpha } from '../components/calendar/DateBadge';
+import EventTypeChip from '../components/calendar/EventTypeChip';
 import RsvpPill from '../components/calendar/RsvpPill';
 import ResponsesBar from '../components/calendar/ResponsesBar';
 import type { CalendarEvent } from '../types';
@@ -41,6 +40,8 @@ import {
   type StatusSource,
 } from '../utils/attendanceResolver';
 import { upsertRsvp } from '../utils/rsvp';
+import { resolveTeamColor } from '../constants/teamColors';
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 function formatTime(time: string | null): string {
@@ -487,7 +488,6 @@ export default function EventDetailScreen({ route, navigation }: any) {
     }
   }, [event?.id, event?.team_id, isStaff, fetchNonResponders]);
 
-  const typeConfig = event ? getEventTypeConfig(event.event_type) : getEventTypeConfig('other_event');
 
   /**
    * Attribute every RSVP to at most one player on this team.
@@ -1178,15 +1178,33 @@ export default function EventDetailScreen({ route, navigation }: any) {
    * tab renders the SAME card with no footer, so the two tabs cannot drift
    * apart the way a separate banner did.
    */
-  const renderEventCard = (footer: React.ReactNode = null) => (
+  const renderEventCard = (footer: React.ReactNode = null) => {
+    /**
+     * Ruling R-J: the detail card speaks the LIST CARD's colour language --
+     * leaf, 5pt strip and frame in the team's colour, the type as the same
+     * grey chip. There is no event-type colour left on this screen: the
+     * previous `eventAccent(event.event_type)` painted a game's leaf green
+     * here while the list card beside it had just gone team-coloured, so
+     * tapping a card changed its colour.
+     *
+     * `team` arrives on the route param from the calendar and is re-embedded
+     * by this screen's own fetch; `team_id` is the fallback seed so the colour
+     * is still the team's own on the very first frame from a screen that
+     * navigated here without the embed.
+     */
+    const teamColor = resolveTeamColor(
+      (event as any).team ?? { id: event.team_id }
+    );
+
+    return (
     <View style={[
       styles.eventCard,
       // F1 frame: a 2pt border at 50% so it reads as a frame, plus a
       // 5pt solid left strip in the same colour. Both are real borders,
       // so they follow the card's radius without any extra element.
       {
-        borderColor: accentAlpha(eventAccent(event.event_type), 0.5),
-        borderLeftColor: eventAccent(event.event_type),
+        borderColor: accentAlpha(teamColor, 0.5),
+        borderLeftColor: teamColor,
       },
       event.is_cancelled && styles.mainCardCancelled
     ]}>
@@ -1198,9 +1216,9 @@ export default function EventDetailScreen({ route, navigation }: any) {
         <DateBadge
           date={new Date(event.event_date + 'T12:00:00')}
           variant="tag"
-          // Was the TEAM colour, so a game's date block rendered blue
-          // here while the list card rendered it green.
-          color={eventAccent(event.event_type)}
+          // R-J: the team's colour, same as the list card's leaf. Its weekday
+          // band is that colour darkened 12%, which DateBadge does itself.
+          color={teamColor}
         />
 
         <View style={styles.headerContent}>
@@ -1218,8 +1236,10 @@ export default function EventDetailScreen({ route, navigation }: any) {
               </Text>
               {(event as any).team?.name && (
                 <View style={styles.teamNameRow}>
-                  <View style={[styles.teamDot, { backgroundColor: (event as any).team?.color || '#5B7BB5' }]} />
-                  <Text style={styles.teamNameText}>{(event as any).team.name}</Text>
+                  <View style={[styles.teamDot, { backgroundColor: teamColor }]} />
+                  <Text style={styles.teamNameText} numberOfLines={2}>
+                    {(event as any).team.name}
+                  </Text>
                 </View>
               )}
             </View>
@@ -1236,11 +1256,10 @@ export default function EventDetailScreen({ route, navigation }: any) {
 
           {/* Badges */}
           <View style={styles.badgesRow}>
-            <View style={[styles.typeBadge, { backgroundColor: eventAccent(event.event_type) + '33' }]}>
-              <Text style={[styles.typeBadgeText, { color: eventAccent(event.event_type) }]}>
-                {typeConfig.icon} {typeConfig.label.toUpperCase()}
-              </Text>
-            </View>
+            {/* R-J: the SAME chip the list card and the pills render. It was
+                a tinted badge in the event type's own colour -- the last
+                event-type hue on this screen. */}
+            <EventTypeChip eventType={event.event_type} />
             {(event.recurrence_group_id || event.is_recurring) && (
               <View style={styles.recurringBadge}>
                 <Text style={styles.recurringBadgeText}>🔄 Recurring</Text>
@@ -1381,7 +1400,8 @@ export default function EventDetailScreen({ route, navigation }: any) {
         </>
       ) : null}
     </View>
-  );
+    );
+  };
 
   /**
    * Details-tab-only half of the card: the answer control, the headcount and
@@ -1873,16 +1893,8 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
-  typeBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  typeBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
+  // typeBadge / typeBadgeText deleted with the event-type hue they carried:
+  // the type is EventTypeChip now (R-J).
   recurringBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,

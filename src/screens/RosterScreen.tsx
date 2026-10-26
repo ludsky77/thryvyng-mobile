@@ -18,41 +18,8 @@ import { useAuth } from '../contexts/AuthContext';
 import PlayerAvatar from '../components/PlayerAvatar';
 import RemovePlayerFromTeamModal from '../components/RemovePlayerFromTeamModal';
 import { mapJoinError } from '../lib/joinErrors';
+import { resolveTeamColor } from '../constants/teamColors';
 
-const TEAM_COLOR_PALETTE = [
-  { hex: '#5B7BB5', name: 'Soft Blue' },
-  { hex: '#5BA5B5', name: 'Sky' },
-  { hex: '#4A8BAD', name: 'Ocean' },
-  { hex: '#6B8BA5', name: 'Steel' },
-  { hex: '#7B9BC5', name: 'Periwinkle' },
-  { hex: '#5B8B9B', name: 'Slate' },
-  { hex: '#6BADC5', name: 'Arctic' },
-  { hex: '#4B7B9B', name: 'Denim' },
-  { hex: '#5BA58C', name: 'Seafoam' },
-  { hex: '#8BAD6B', name: 'Sage' },
-  { hex: '#6B9B7B', name: 'Forest' },
-  { hex: '#4A9B8B', name: 'Teal' },
-  { hex: '#7BAD8B', name: 'Mint' },
-  { hex: '#5B8B6B', name: 'Moss' },
-  { hex: '#8BC5A5', name: 'Jade' },
-  { hex: '#6B9B6B', name: 'Fern' },
-  { hex: '#C4976D', name: 'Caramel' },
-  { hex: '#B57B7B', name: 'Coral' },
-  { hex: '#C4A57B', name: 'Sand' },
-  { hex: '#AD7B5B', name: 'Copper' },
-  { hex: '#C5A58B', name: 'Tan' },
-  { hex: '#B59B7B', name: 'Wheat' },
-  { hex: '#D4A574', name: 'Peach' },
-  { hex: '#C48B6B', name: 'Terracotta' },
-  { hex: '#8B6BAD', name: 'Lavender' },
-  { hex: '#AD7B94', name: 'Rose' },
-  { hex: '#9B6B9B', name: 'Orchid' },
-  { hex: '#7B6BAD', name: 'Grape' },
-  { hex: '#B58BAD', name: 'Mauve' },
-  { hex: '#9B7BB5', name: 'Violet' },
-  { hex: '#AD6B8B', name: 'Berry' },
-  { hex: '#8B7B9B', name: 'Plum' },
-];
 
 interface Team {
   id: string;
@@ -79,9 +46,6 @@ export default function RosterScreen({ route, navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [showColorPicker, setShowColorPicker] = useState(false);
-  const [selectedColor, setSelectedColor] = useState('#5B7BB5');
-  const [isSavingColor, setIsSavingColor] = useState(false);
   const [isStaffInTeam, setIsStaffInTeam] = useState(false);
   const [rosterError, setRosterError] = useState('');
   const [contactPlayer, setContactPlayer] = useState<Player | null>(null);
@@ -153,7 +117,6 @@ export default function RosterScreen({ route, navigation }: any) {
       if (teamError) throw teamError;
       const teamObj = teamData as Team;
       setTeam(teamObj);
-      setSelectedColor(teamObj?.color || '#5B7BB5');
 
       // SECURITY DEFINER RPC: RLS on `players` hides teammates from parents and
       // players, so a direct select renders an empty roster for them.
@@ -203,26 +166,6 @@ export default function RosterScreen({ route, navigation }: any) {
   const handleRefresh = () => {
     setRefreshing(true);
     fetchData();
-  };
-
-  const handleColorSelect = async (colorHex: string) => {
-    if (!team?.id) return;
-    setSelectedColor(colorHex);
-    setIsSavingColor(true);
-    try {
-      const { error } = await supabase
-        .from('teams')
-        .update({ color: colorHex })
-        .eq('id', team.id);
-      if (error) throw error;
-      setTeam((prev) => (prev ? { ...prev, color: colorHex } : null));
-    } catch (err) {
-      console.error('Error updating team color:', err);
-      Alert.alert('Error', 'Failed to update team color');
-      setSelectedColor(team?.color || '#5B7BB5');
-    } finally {
-      setIsSavingColor(false);
-    }
   };
 
   /** tel:/sms: want digits only, keeping a leading + when the number carries one. */
@@ -394,7 +337,7 @@ export default function RosterScreen({ route, navigation }: any) {
     );
   };
 
-  const teamColor = team?.color || '#8b5cf6';
+  const teamColor = resolveTeamColor(team);
 
   if (loading) {
     return (
@@ -512,7 +455,7 @@ export default function RosterScreen({ route, navigation }: any) {
                     firstName={player.first_name}
                     lastName={player.last_name}
                     size={50}
-                    teamColor={team?.color || '#8B6BAD'}
+                    teamColor={teamColor}
                   />
                   <View style={styles.playerInfo}>
                     <Text style={styles.playerName}>
@@ -576,55 +519,21 @@ export default function RosterScreen({ route, navigation }: any) {
               </TouchableOpacity>
             </View>
 
+            {/* Team Color -- READ ONLY. This sheet held the second of the
+                app's two 32-swatch pickers (byte-identical palettes, two
+                separate `teams.update({ color })` writers). A DB trigger now
+                assigns the colour; the swatch is here so staff can see what
+                the team wears. */}
             <View style={styles.settingSection}>
-              <TouchableOpacity
-                style={styles.settingRow}
-                onPress={() => setShowColorPicker(!showColorPicker)}
-                disabled={isSavingColor}
-              >
+              <View style={styles.settingRow}>
                 <Text style={styles.settingLabel}>Team Color</Text>
                 <View style={styles.settingValueContainer}>
-                  <Text style={styles.colorName}>
-                    {TEAM_COLOR_PALETTE.find((c) => c.hex === selectedColor)
-                      ?.name || 'Custom'}
-                  </Text>
                   <View
-                    style={[
-                      styles.colorPreview,
-                      { backgroundColor: selectedColor },
-                    ]}
+                    style={[styles.colorPreview, { backgroundColor: teamColor }]}
                   />
-                  <Text style={styles.settingArrow}>
-                    {showColorPicker ? '▲' : '▼'}
-                  </Text>
                 </View>
-              </TouchableOpacity>
-
-              {showColorPicker && (
-                <View style={styles.colorPickerContainer}>
-                  <View style={styles.colorGrid}>
-                    {TEAM_COLOR_PALETTE.map((color) => (
-                      <TouchableOpacity
-                        key={color.hex}
-                        style={[
-                          styles.colorOption,
-                          { backgroundColor: color.hex },
-                          selectedColor === color.hex &&
-                            styles.colorOptionSelected,
-                        ]}
-                        onPress={() => handleColorSelect(color.hex)}
-                        disabled={isSavingColor}
-                      />
-                    ))}
-                  </View>
-                  <View style={styles.colorPickerLabels}>
-                    <Text style={styles.colorPickerLabel}>Blues</Text>
-                    <Text style={styles.colorPickerLabel}>Greens</Text>
-                    <Text style={styles.colorPickerLabel}>Warm</Text>
-                    <Text style={styles.colorPickerLabel}>Purples</Text>
-                  </View>
-                </View>
-              )}
+              </View>
+              <Text style={styles.colorCaption}>Color assigned by Thryvyng</Text>
             </View>
           </View>
         </TouchableOpacity>
@@ -664,7 +573,7 @@ export default function RosterScreen({ route, navigation }: any) {
                     firstName={contactPlayer.first_name}
                     lastName={contactPlayer.last_name}
                     size={64}
-                    teamColor={team?.color || '#8B6BAD'}
+                    teamColor={teamColor}
                   />
                   <View style={styles.drawerPlayerInfo}>
                     <Text style={styles.playerName}>
@@ -907,10 +816,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  colorName: {
-    color: '#9CA3AF',
-    fontSize: 14,
-    marginRight: 10,
+  colorCaption: {
+    color: '#6B7280',
+    fontSize: 12,
+    marginTop: 10,
   },
   colorPreview: {
     width: 28,
@@ -919,41 +828,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#fff',
     marginRight: 8,
-  },
-  settingArrow: {
-    color: '#9CA3AF',
-    fontSize: 12,
-  },
-  colorPickerContainer: {
-    backgroundColor: 'rgba(55, 65, 81, 0.5)',
-    borderRadius: 12,
-    padding: 12,
-    marginTop: 12,
-  },
-  colorGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  colorOption: {
-    width: 36,
-    height: 36,
-    borderRadius: 6,
-    marginBottom: 8,
-  },
-  colorOptionSelected: {
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  colorPickerLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 8,
-    paddingHorizontal: 8,
-  },
-  colorPickerLabel: {
-    color: '#6B7280',
-    fontSize: 11,
   },
   actionButtonsRow: {
     flexDirection: 'row',

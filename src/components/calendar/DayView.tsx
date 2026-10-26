@@ -6,108 +6,70 @@ import {
   StyleSheet,
   ScrollView,
 } from 'react-native';
-import type { ViewStyle } from 'react-native';
-import { format } from 'date-fns';
+import { format, isToday } from 'date-fns';
 import type { CalendarEvent } from '../../types';
-import { isEventPast } from '../../utils/calendar';
-import { eventAccentFor } from '../../lib/eventColors';
+import { CalendarEventWithTeam, TeamDots } from './EventPill';
 
-type CalendarEventWithTeam = CalendarEvent & {
-  team?: { color?: string; name?: string };
-};
-
-interface DayViewProps {
-  events: CalendarEventWithTeam[];
-  onEventPress: (event: CalendarEvent) => void;
+/**
+ * Generic over the event so the card renderer keeps the caller's own richer
+ * event type (its `team` is a UserTeam, not just a colour) instead of being
+ * handed back a widened one.
+ */
+interface DayViewProps<E extends CalendarEventWithTeam> {
+  events: E[];
   initialDate?: Date;
+  /**
+   * The list card (ruling R-D: "the existing H1 cards"). It is passed in
+   * rather than rebuilt here so the Day view and the List view are literally
+   * the same card -- same leaf, same frame, same footer RSVP pill, same single
+   * write path -- and cannot drift the way the two list renderers once did.
+   */
+  renderEventCard: (event: E) => React.ReactNode;
 }
 
-const HOUR_HEIGHT = 60;
-const START_HOUR = 6;
-const END_HOUR = 22;
-
-function getEventIcon(eventType: string): string {
-  switch (eventType?.toLowerCase()) {
-    case 'game': return '🏆';
-    case 'tournament': return '🎯';
-    case 'practice': return '⚽';
-    case 'meeting': return '👥';
-    case 'scrimmage': return '🏆';
-    default: return '📅';
-  }
-}
-
-function getEventDisplayTitle(event: CalendarEvent): string {
-  const eventType = (event.event_type || 'event').toUpperCase();
-  if (event.event_type?.toLowerCase() === 'game' || event.event_type?.toLowerCase() === 'scrimmage') {
-    return `${eventType} vs ${event.opponent || event.title}`;
-  }
-  return event.title;
-}
-
-/** Parse "HH:mm" to minutes since midnight */
-function getMinutesFromTime(timeStr: string): number {
-  const [h, m] = timeStr.split(':').map((s) => parseInt(s || '0', 10));
+/**
+ * Ruling R-D: Day is a SEVEN-DAY STRIP with team-colour dots over the H1 cards.
+ * The 6am-10pm time grid is gone: it put a 16-hour canvas on screen to show
+ * two events, pushed an evening game below the fold, and sized every block by
+ * duration instead of by what it had to say.
+ */
+function minutesOf(timeStr: string | null): number {
+  const [h, m] = (timeStr || '00:00').split(':').map((s) => parseInt(s || '0', 10));
   return h * 60 + m;
 }
 
-function formatHourLabel(hour: number): string {
-  if (hour === 0) return '12 AM';
-  if (hour === 12) return '12 PM';
-  if (hour < 12) return `${hour} AM`;
-  return `${hour - 12} PM`;
-}
-
-function formatTimeLabel(timeStr: string): string {
-  const [h, m] = timeStr.split(':');
-  const hour = parseInt(h || '0', 10);
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  const hour12 = hour % 12 || 12;
-  return `${hour12}:${m || '00'} ${ampm}`;
-}
-
 function eventsOverlap(a: CalendarEvent, b: CalendarEvent): boolean {
-  const aStart = getMinutesFromTime(a.start_time || '00:00');
-  const aEnd = a.end_time
-    ? getMinutesFromTime(a.end_time)
-    : aStart + 60;
-  const bStart = getMinutesFromTime(b.start_time || '00:00');
-  const bEnd = b.end_time ? getMinutesFromTime(b.end_time) : bStart + 60;
+  const aStart = minutesOf(a.start_time);
+  const aEnd = a.end_time ? minutesOf(a.end_time) : aStart + 60;
+  const bStart = minutesOf(b.start_time);
+  const bEnd = b.end_time ? minutesOf(b.end_time) : bStart + 60;
   return aStart < bEnd && bStart < aEnd;
 }
 
-function groupOverlappingEvents(events: CalendarEvent[]): CalendarEvent[][] {
-  if (events.length === 0) return [];
-
-  const sorted = [...events].sort(
-    (a, b) =>
-      getMinutesFromTime(a.start_time || '00:00') -
-      getMinutesFromTime(b.start_time || '00:00')
-  );
-
-  const groups: CalendarEvent[][] = [];
-  let currentGroup: CalendarEvent[] = [sorted[0]];
-
-  for (let i = 1; i < sorted.length; i++) {
-    const event = sorted[i];
-    const overlapsWithGroup = currentGroup.some((e) => eventsOverlap(e, event));
-
-    if (overlapsWithGroup) {
-      currentGroup.push(event);
-    } else {
-      groups.push(currentGroup);
-      currentGroup = [event];
+/** Any two timed events sharing a minute. Drives the conflict banner only. */
+function hasOverlap(events: CalendarEvent[]): boolean {
+  const timed = events.filter((e) => !e.is_all_day && e.start_time);
+  for (let i = 0; i < timed.length; i++) {
+    for (let j = i + 1; j < timed.length; j++) {
+      if (eventsOverlap(timed[i], timed[j])) return true;
     }
   }
-  groups.push(currentGroup);
-  return groups;
+  return false;
 }
 
-export function DayView({
+function startOfWeekSunday(date: Date): Date {
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate() - date.getDay()
+  );
+}
+
+export function DayView<E extends CalendarEventWithTeam>({
   events,
-  onEventPress,
   initialDate,
-}: DayViewProps) {
+  renderEventCard,
+}: DayViewProps<E>) {
   const [currentDate, setCurrentDate] = useState(
     () => initialDate || new Date()
   );
@@ -137,130 +99,36 @@ export function DayView({
     );
   };
 
-  const dateStr = format(currentDate, 'yyyy-MM-dd');
-  const dayEvents = useMemo(
-    () =>
-      events
-        .filter((event) => event.event_date === dateStr)
-        .sort(
-          (a, b) =>
-            getMinutesFromTime(a.start_time || '00:00') -
-            getMinutesFromTime(b.start_time || '00:00')
-        ),
-    [events, dateStr]
-  );
-
-  const overlapGroups = useMemo(
-    () => groupOverlappingEvents(dayEvents),
-    [dayEvents]
-  );
-  const hasOverlaps = overlapGroups.some((group) => group.length > 1);
-
-  const hours = Array.from(
-    { length: END_HOUR - START_HOUR + 1 },
-    (_, i) => START_HOUR + i
-  );
-
-  const totalGridHeight = hours.length * HOUR_HEIGHT;
-
-  const getEventStyle = (
-    event: CalendarEvent,
-    columnIndex: number,
-    totalColumns: number
-  ): ViewStyle => {
-    const startMinutes = getMinutesFromTime(event.start_time || '00:00');
-    const endMinutes = event.end_time
-      ? getMinutesFromTime(event.end_time)
-      : startMinutes + 60;
-    const duration = endMinutes - startMinutes;
-
-    const gridStartMinutes = START_HOUR * 60;
-    const top = ((startMinutes - gridStartMinutes) / 60) * HOUR_HEIGHT;
-    const height = Math.max((duration / 60) * HOUR_HEIGHT, 40);
-
-    const gapPercent = 1;
-    const totalGaps = (totalColumns - 1) * gapPercent;
-    const availableWidth = 100 - totalGaps;
-    const columnWidth = availableWidth / totalColumns;
-    const left = columnIndex * (columnWidth + gapPercent);
-
-    return {
-      position: 'absolute' as const,
-      top,
-      height,
-      left: `${left}%`,
-      width: `${columnWidth}%`,
-    };
-  };
-
-  const renderEvents = () => {
-    return overlapGroups.flatMap((group) => {
-      const totalColumns = group.length;
-      const useCompactLayout = totalColumns >= 4;
-      return group.map((event, columnIndex) => {
-        const past = isEventPast(event);
-        return (
-          <TouchableOpacity
-            key={event.id}
-            style={[
-              getEventStyle(event, columnIndex, totalColumns),
-              styles.dayEventBlock,
-              {
-                // Was the TEAM colour -- games rendered blue here.
-                backgroundColor: eventAccentFor(event.event_type, past),
-                opacity: past ? 0.5 : 1,
-              },
-            ]}
-            onPress={() => onEventPress(event)}
-            activeOpacity={0.8}
-          >
-            {useCompactLayout ? (
-              <>
-                <Text style={styles.eventTitleCompact} numberOfLines={1}>
-                  {getEventIcon(event.event_type)} {event.title}
-                </Text>
-                <Text style={styles.eventTimeCompact}>
-                  {event.is_all_day
-                    ? 'All Day'
-                    : formatTimeLabel(event.start_time || '00:00')}
-                </Text>
-              </>
-            ) : (
-              <>
-                <Text style={styles.eventTitle} numberOfLines={1}>
-                  {getEventIcon(event.event_type)} {getEventDisplayTitle(event)}
-                </Text>
-                {(event as CalendarEventWithTeam).team?.name && (
-                  <Text style={styles.eventTeam} numberOfLines={1}>
-                    {(event as CalendarEventWithTeam).team?.name}
-                  </Text>
-                )}
-                <Text style={styles.eventTime}>
-                  {event.is_all_day
-                    ? 'All Day'
-                    : event.end_time
-                      ? `${formatTimeLabel(event.start_time || '00:00')} – ${formatTimeLabel(event.end_time)}`
-                      : formatTimeLabel(event.start_time || '00:00')}
-                </Text>
-                {(event.home_away || event.uniform) && (
-                  <View style={styles.eventMeta}>
-                    {event.home_away && (
-                      <Text style={styles.eventVenue}>
-                        {event.home_away === 'home' ? '🏠 HOME' : event.home_away === 'away' ? '🚗 AWAY' : '📍 NEUTRAL'}
-                      </Text>
-                    )}
-                    {event.uniform && (
-                      <Text style={styles.eventUniform}>👕 {event.uniform}</Text>
-                    )}
-                  </View>
-                )}
-              </>
-            )}
-          </TouchableOpacity>
-        );
-      });
+  /** One pass over the range: the strip needs all seven days, not just one. */
+  const eventsByDate = useMemo(() => {
+    const byDate = new Map<string, E[]>();
+    events.forEach((event) => {
+      if (!event.event_date) return;
+      const bucket = byDate.get(event.event_date);
+      if (bucket) bucket.push(event);
+      else byDate.set(event.event_date, [event]);
     });
-  };
+    byDate.forEach((list) =>
+      list.sort((a, b) => minutesOf(a.start_time) - minutesOf(b.start_time))
+    );
+    return byDate;
+  }, [events]);
+
+  const weekDays = useMemo(() => {
+    const start = startOfWeekSunday(currentDate);
+    return Array.from({ length: 7 }, (_, i) => {
+      const date = new Date(start);
+      date.setDate(date.getDate() + i);
+      return date;
+    });
+  }, [currentDate]);
+
+  const dayEvents = useMemo(
+    () => eventsByDate.get(format(currentDate, 'yyyy-MM-dd')) || [],
+    [eventsByDate, currentDate]
+  );
+
+  const conflict = useMemo(() => hasOverlap(dayEvents), [dayEvents]);
 
   return (
     <View style={styles.container}>
@@ -274,10 +142,10 @@ export function DayView({
           <Text style={styles.navButtonText}>‹</Text>
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerDate}>
+          <Text style={styles.headerDate} numberOfLines={1}>
             {format(currentDate, 'EEEE, MMM d')}
           </Text>
-          <Text style={styles.headerCount}>
+          <Text style={styles.headerCount} numberOfLines={1}>
             {dayEvents.length} event{dayEvents.length !== 1 ? 's' : ''}
           </Text>
         </View>
@@ -290,14 +158,45 @@ export function DayView({
         </TouchableOpacity>
       </View>
 
-      {/* Conflict warning banner */}
-      {hasOverlaps && showConflictBanner && (
+      {/* R-D: the 7-day strip, dots and all. */}
+      <View style={styles.strip}>
+        {weekDays.map((date) => {
+          const selected = format(date, 'yyyy-MM-dd') === format(currentDate, 'yyyy-MM-dd');
+          const today = isToday(date);
+          return (
+            <TouchableOpacity
+              key={date.getTime()}
+              style={[styles.stripDay, selected && styles.stripDaySelected]}
+              onPress={() => setCurrentDate(date)}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[styles.stripAbbr, today && styles.stripAbbrToday]}
+                numberOfLines={1}
+              >
+                {format(date, 'EEEEE')}
+              </Text>
+              <Text
+                style={[styles.stripNum, today && styles.stripNumToday]}
+                numberOfLines={1}
+              >
+                {format(date, 'd')}
+              </Text>
+              <TeamDots
+                events={eventsByDate.get(format(date, 'yyyy-MM-dd')) || []}
+                max={3}
+                size={5}
+              />
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {conflict && showConflictBanner && (
         <View style={styles.conflictBanner}>
-          <View style={styles.conflictBannerContent}>
-            <Text style={styles.conflictBannerText}>
-              ⚠️ Schedule conflict detected
-            </Text>
-          </View>
+          <Text style={styles.conflictBannerText} numberOfLines={2}>
+            ⚠️ Schedule conflict detected
+          </Text>
           <TouchableOpacity
             style={styles.conflictBannerClose}
             onPress={() => setShowConflictBanner(false)}
@@ -307,43 +206,19 @@ export function DayView({
         </View>
       )}
 
-      {/* Time grid */}
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={{ paddingBottom: 24 }}
-        showsVerticalScrollIndicator={true}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator
       >
-        <View style={styles.gridRow}>
-          {/* Time labels column */}
-          <View style={styles.timeColumn}>
-            {hours.map((hour) => (
-              <View
-                key={hour}
-                style={[styles.hourCell, { height: HOUR_HEIGHT }]}
-              >
-                <Text style={styles.hourLabel}>
-                  {formatHourLabel(hour)}
-                </Text>
-              </View>
-            ))}
+        {dayEvents.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyIcon}>📭</Text>
+            <Text style={styles.emptyText}>No events this day</Text>
           </View>
-
-          {/* Events area */}
-          <View style={[styles.eventsColumn, { minHeight: totalGridHeight }]}>
-            {/* Hour grid lines */}
-            {hours.map((hour) => (
-              <View
-                key={hour}
-                style={[
-                  styles.hourLine,
-                  { height: HOUR_HEIGHT },
-                ]}
-              />
-            ))}
-            {/* Events positioned absolutely */}
-            {renderEvents()}
-          </View>
-        </View>
+        ) : (
+          dayEvents.map((event) => renderEventCard(event))
+        )}
       </ScrollView>
     </View>
   );
@@ -375,6 +250,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   headerCenter: {
+    flex: 1,
+    minWidth: 0,
     alignItems: 'center',
   },
   headerDate: {
@@ -387,6 +264,41 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
   },
+  // Seven equal columns, no fixed widths: holds at 375pt and wider (R-G).
+  strip: {
+    flexDirection: 'row',
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  stripDay: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderRadius: 10,
+    gap: 2,
+  },
+  stripDaySelected: {
+    backgroundColor: 'rgba(139, 92, 246, 0.22)',
+  },
+  stripAbbr: {
+    color: '#9CA3AF',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  stripAbbrToday: {
+    color: '#c4b5fd',
+  },
+  stripNum: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  stripNumToday: {
+    color: '#c4b5fd',
+  },
   conflictBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -395,20 +307,20 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 16,
     marginHorizontal: 16,
-    marginBottom: 8,
+    marginTop: 8,
     borderRadius: 8,
-  },
-  conflictBannerContent: {
-    flex: 1,
+    gap: 8,
   },
   conflictBannerText: {
     color: '#EF4444',
     fontSize: 13,
     fontWeight: '500',
+    flexShrink: 1,
+    minWidth: 0,
   },
   conflictBannerClose: {
     padding: 4,
-    marginLeft: 8,
+    flexShrink: 0,
   },
   conflictBannerCloseText: {
     color: '#EF4444',
@@ -418,77 +330,21 @@ const styles = StyleSheet.create({
   scroll: {
     flex: 1,
   },
-  gridRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 8,
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 100,
   },
-  timeColumn: {
-    width: 50,
+  emptyWrap: {
+    alignItems: 'center',
+    paddingVertical: 50,
   },
-  hourCell: {
-    justifyContent: 'flex-start',
+  emptyIcon: {
+    fontSize: 44,
+    marginBottom: 10,
   },
-  hourLabel: {
-    color: '#9CA3AF',
-    fontSize: 11,
-    marginTop: -6,
-  },
-  eventsColumn: {
-    flex: 1,
-    position: 'relative',
-    borderLeftWidth: 1,
-    borderLeftColor: 'rgba(255,255,255,0.1)',
-  },
-  hourLine: {
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.1)',
-  },
-  dayEventBlock: {
-    borderRadius: 6,
-    padding: 10,
-    overflow: 'hidden',
-  },
-  eventTitle: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 3,
-  },
-  eventTeam: {
-    color: 'rgba(255, 255, 255, 0.85)',
-    fontSize: 12,
-    fontWeight: '500',
-    marginBottom: 2,
-  },
-  eventTime: {
-    color: 'rgba(255, 255, 255, 0.9)',
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  eventMeta: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 2,
-  },
-  eventVenue: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  eventUniform: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  eventTitleCompact: {
-    color: 'white',
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  eventTimeCompact: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 9,
+  emptyText: {
+    color: '#888',
+    fontSize: 15,
   },
 });

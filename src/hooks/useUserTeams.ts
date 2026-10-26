@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { TeamLifecycleFacts } from '../utils/unreadRule';
+import { resolveTeamColor } from '../constants/teamColors';
 
 export interface UserTeam {
   id: string;
@@ -43,23 +44,17 @@ function bucketTeams(allTeams: UserTeam[]): { active: UserTeam[]; past: UserTeam
   return { active, past };
 }
 
-// Team colors for "All Teams" view
-const TEAM_COLORS = [
-  '#8b5cf6', // Purple
-  '#10b981', // Green
-  '#f59e0b', // Orange
-  '#3b82f6', // Blue
-  '#ef4444', // Red
-  '#ec4899', // Pink
-  '#14b8a6', // Teal
-  '#f97316', // Orange
-];
-
+/**
+ * The positional palette that used to live here is GONE. It was an 8-hex array
+ * indexed by the team's POSITION in this user's list, so one team wore
+ * different colours for two parents and changed colour when the list's
+ * membership changed. Colour is now the DB's `teams.color`, resolved by team id
+ * (src/constants/teamColors.ts): the same team colour for everyone, everywhere.
+ */
 function mapTeamFromRow(
   teamsRow: any,
   access_type: 'staff' | 'parent' | 'player',
-  extras: Partial<UserTeam>,
-  colorIndex: number
+  extras: Partial<UserTeam>
 ): UserTeam {
   return {
     id: teamsRow.id,
@@ -69,7 +64,7 @@ function mapTeamFromRow(
     club_id: teamsRow.club_id,
     club_name: teamsRow.clubs?.name || null,
     access_type,
-    color: teamsRow.color || TEAM_COLORS[colorIndex % TEAM_COLORS.length],
+    color: resolveTeamColor(teamsRow),
     team_status: teamsRow.team_status ?? null,
     is_test: teamsRow.is_test ?? null,
     season_id: teamsRow.season_id ?? null,
@@ -108,7 +103,6 @@ export function useUserTeams() {
 
     try {
       const teamMap = new Map<string, UserTeam>();
-      let colorIndex = 0;
 
       // 1. Fetch teams from team_staff (coach/manager access)
       const { data: staffData, error: staffError } = await supabase
@@ -145,8 +139,7 @@ export function useUserTeams() {
             mapTeamFromRow(
               item.teams,
               'staff',
-              { staff_role: item.staff_role },
-              colorIndex++
+              { staff_role: item.staff_role }
             )
           );
         }
@@ -195,8 +188,7 @@ export function useUserTeams() {
                 {
                   player_id: item.id,
                   player_name: `${item.first_name} ${item.last_name}`,
-                },
-                colorIndex++
+                }
               )
             );
           }
@@ -263,8 +255,7 @@ export function useUserTeams() {
               {
                 player_id: player.id,
                 player_name: `${player.first_name} ${player.last_name}`,
-              },
-              colorIndex++
+              }
             )
           );
         }
@@ -321,8 +312,7 @@ export function useUserTeams() {
                   {
                     player_id: item.id,
                     player_name: `${item.first_name} ${item.last_name}`,
-                  },
-                  colorIndex++
+                  }
                 )
               );
             }

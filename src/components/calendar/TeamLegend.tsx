@@ -1,10 +1,16 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { resolveTeamColor } from '../../constants/teamColors';
 
 interface Team {
   id: string;
   name: string;
-  color: string;
+  /**
+   * The team's assigned colour. Optional and resolved here (R-A): it used to be
+   * a required string whose only producer was the caller's own purple fallback,
+   * and a null row rendered a transparent dot.
+   */
+  color?: string | null;
 }
 
 interface TeamLegendProps {
@@ -32,7 +38,10 @@ const TeamLegend: React.FC<TeamLegendProps> = ({
               {teams.slice(0, 6).map((team) => (
                 <View
                   key={team.id}
-                  style={[styles.colorDot, { backgroundColor: team.color }]}
+                  style={[
+                    styles.colorDot,
+                    { backgroundColor: resolveTeamColor(team) },
+                  ]}
                 />
               ))}
               {teams.length > 6 && (
@@ -57,7 +66,10 @@ const TeamLegend: React.FC<TeamLegendProps> = ({
               onPress={() => onTeamPress(team.id)}
             >
               <View
-                style={[styles.teamColorBox, { backgroundColor: team.color }]}
+                style={[
+                  styles.teamColorBox,
+                  { backgroundColor: resolveTeamColor(team) },
+                ]}
               />
               <Text style={styles.teamName} numberOfLines={1}>
                 {team.name}

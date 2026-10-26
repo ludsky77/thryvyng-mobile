@@ -20,6 +20,7 @@ import PendingSurveyBanner from '../surveys/PendingSurveyBanner';
 import { PendingAttachmentsBanner } from './PendingAttachmentsBanner';
 import { slugify } from '../../utils/slugify';
 import * as Clipboard from 'expo-clipboard';
+import { resolveTeamColor } from '../../constants/teamColors';
 
 interface PlayerDashboardProps {
   playerId: string | null;
@@ -238,7 +239,7 @@ export default function PlayerDashboard({ playerId, navigation, showLineupWidget
           firstName={player.first_name}
           lastName={player.last_name}
           size={64}
-          teamColor={player.teams?.color || '#8b5cf6'}
+          teamColor={resolveTeamColor(player.teams)}
         />
         <View style={styles.playerInfo}>
           <Text

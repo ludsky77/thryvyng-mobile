@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,41 +15,8 @@ import {
   fetchTeamMemberNames,
 } from '../lib/memberNames';
 import { useAuth } from '../contexts/AuthContext';
+import { resolveTeamColor } from '../constants/teamColors';
 
-const TEAM_COLOR_PALETTE = [
-  { hex: '#5B7BB5', name: 'Soft Blue' },
-  { hex: '#5BA5B5', name: 'Sky' },
-  { hex: '#4A8BAD', name: 'Ocean' },
-  { hex: '#6B8BA5', name: 'Steel' },
-  { hex: '#7B9BC5', name: 'Periwinkle' },
-  { hex: '#5B8B9B', name: 'Slate' },
-  { hex: '#6BADC5', name: 'Arctic' },
-  { hex: '#4B7B9B', name: 'Denim' },
-  { hex: '#5BA58C', name: 'Seafoam' },
-  { hex: '#8BAD6B', name: 'Sage' },
-  { hex: '#6B9B7B', name: 'Forest' },
-  { hex: '#4A9B8B', name: 'Teal' },
-  { hex: '#7BAD8B', name: 'Mint' },
-  { hex: '#5B8B6B', name: 'Moss' },
-  { hex: '#8BC5A5', name: 'Jade' },
-  { hex: '#6B9B6B', name: 'Fern' },
-  { hex: '#C4976D', name: 'Caramel' },
-  { hex: '#B57B7B', name: 'Coral' },
-  { hex: '#C4A57B', name: 'Sand' },
-  { hex: '#AD7B5B', name: 'Copper' },
-  { hex: '#C5A58B', name: 'Tan' },
-  { hex: '#B59B7B', name: 'Wheat' },
-  { hex: '#D4A574', name: 'Peach' },
-  { hex: '#C48B6B', name: 'Terracotta' },
-  { hex: '#8B6BAD', name: 'Lavender' },
-  { hex: '#AD7B94', name: 'Rose' },
-  { hex: '#9B6B9B', name: 'Orchid' },
-  { hex: '#7B6BAD', name: 'Grape' },
-  { hex: '#B58BAD', name: 'Mauve' },
-  { hex: '#9B7BB5', name: 'Violet' },
-  { hex: '#AD6B8B', name: 'Berry' },
-  { hex: '#8B7B9B', name: 'Plum' },
-];
 
 interface Player {
   id: string;
@@ -85,9 +51,6 @@ export default function TeamDetailScreen({ route, navigation }: any) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showColorPicker, setShowColorPicker] = useState(false);
-  const [selectedColor, setSelectedColor] = useState('#5B7BB5');
-  const [isSavingColor, setIsSavingColor] = useState(false);
   const [isStaffInTeam, setIsStaffInTeam] = useState(false);
 
   useEffect(() => {
@@ -136,7 +99,6 @@ export default function TeamDetailScreen({ route, navigation }: any) {
 
       if (teamRes.data) {
         setTeam(teamRes.data as any);
-        setSelectedColor((teamRes.data as any).color || '#5B7BB5');
       }
 
       setPlayers((playersRes.data || []) as Player[]);
@@ -161,22 +123,6 @@ export default function TeamDetailScreen({ route, navigation }: any) {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const handleColorSelect = async (colorHex: string) => {
-    if (!team?.id) return;
-    setSelectedColor(colorHex);
-    setIsSavingColor(true);
-    try {
-      const { error } = await supabase.from('teams').update({ color: colorHex }).eq('id', team.id);
-      if (error) throw error;
-      setTeam((prev) => (prev ? { ...prev, color: colorHex } : null));
-    } catch {
-      Alert.alert('Error', 'Failed to update team color');
-      setSelectedColor(team?.color || '#5B7BB5');
-    } finally {
-      setIsSavingColor(false);
-    }
-  };
-
   if (loading) {
     return (
       <View style={[styles.container, styles.centered]}>
@@ -187,7 +133,7 @@ export default function TeamDetailScreen({ route, navigation }: any) {
   }
 
   const displayName = team?.name ?? teamName ?? 'Team';
-  const teamColor = team?.color || '#8b5cf6';
+  const teamColor = resolveTeamColor(team);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -272,51 +218,23 @@ export default function TeamDetailScreen({ route, navigation }: any) {
         )}
       </View>
 
-      {/* Team Color (staff only) */}
+      {/* Team Color -- READ ONLY. The 32-swatch picker and the
+          `teams.update({ color })` behind it are gone: a DB trigger assigns
+          every team a colour from the 24-hex palette, and this screen was one
+          of only two places in either app that could overwrite it. The swatch
+          stays so staff can see what the team wears on the calendar. */}
       {isStaffInTeam && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>
             <Ionicons name="color-palette" size={15} color="#8b5cf6" />{'  '}Team Color
           </Text>
-          <TouchableOpacity
-            style={styles.settingRow}
-            onPress={() => setShowColorPicker(!showColorPicker)}
-            disabled={isSavingColor}
-          >
-            <Text style={styles.settingLabel}>Current Color</Text>
+          <View style={styles.settingRow}>
+            <Text style={styles.settingLabel}>Team color</Text>
             <View style={styles.settingValueContainer}>
-              <Text style={styles.colorName}>
-                {TEAM_COLOR_PALETTE.find((c) => c.hex === selectedColor)?.name || 'Custom'}
-              </Text>
-              <View style={[styles.colorPreview, { backgroundColor: selectedColor }]} />
-              <Ionicons name={showColorPicker ? 'chevron-up' : 'chevron-down'} size={14} color="#9CA3AF" />
+              <View style={[styles.colorPreview, { backgroundColor: teamColor }]} />
             </View>
-          </TouchableOpacity>
-
-          {showColorPicker && (
-            <View style={styles.colorPickerContainer}>
-              <View style={styles.colorGrid}>
-                {TEAM_COLOR_PALETTE.map((color) => (
-                  <TouchableOpacity
-                    key={color.hex}
-                    style={[
-                      styles.colorOption,
-                      { backgroundColor: color.hex },
-                      selectedColor === color.hex && styles.colorOptionSelected,
-                    ]}
-                    onPress={() => handleColorSelect(color.hex)}
-                    disabled={isSavingColor}
-                  />
-                ))}
-              </View>
-              <View style={styles.colorPickerLabels}>
-                <Text style={styles.colorPickerLabel}>Blues</Text>
-                <Text style={styles.colorPickerLabel}>Greens</Text>
-                <Text style={styles.colorPickerLabel}>Warm</Text>
-                <Text style={styles.colorPickerLabel}>Purples</Text>
-              </View>
-            </View>
-          )}
+          </View>
+          <Text style={styles.colorCaption}>Color assigned by Thryvyng</Text>
         </View>
       )}
     </ScrollView>
@@ -399,7 +317,7 @@ const styles = StyleSheet.create({
   },
   settingLabel: { color: '#D1D5DB', fontSize: 15 },
   settingValueContainer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  colorName: { color: '#9CA3AF', fontSize: 13 },
+  colorCaption: { color: '#6B7280', fontSize: 12, marginTop: 10 },
   colorPreview: {
     width: 22,
     height: 22,
@@ -407,15 +325,4 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'white',
   },
-  colorPickerContainer: {
-    backgroundColor: 'rgba(55,65,81,0.4)',
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 8,
-  },
-  colorGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  colorOption: { width: '11.5%', aspectRatio: 1, borderRadius: 6, marginBottom: 8 },
-  colorOptionSelected: { borderWidth: 2, borderColor: 'white', transform: [{ scale: 1.1 }] },
-  colorPickerLabels: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 4 },
-  colorPickerLabel: { color: '#6B7280', fontSize: 10 },
 });

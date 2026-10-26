@@ -13,6 +13,7 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserTeams } from '../../hooks/useUserTeams';
+import { resolveTeamColor } from '../../constants/teamColors';
 
 interface CalendarSyncModalProps {
   visible: boolean;
@@ -182,7 +183,7 @@ const CalendarSyncModal: React.FC<CalendarSyncModalProps> = ({ visible, onClose 
                         <View
                           style={[
                             styles.teamColorDot,
-                            { backgroundColor: team.color || '#5B7BB5' },
+                            { backgroundColor: resolveTeamColor(team) },
                           ]}
                         />
                         <Text style={styles.calendarName} numberOfLines={1}>

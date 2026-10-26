@@ -10,6 +10,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import PlayerAvatar from '../components/PlayerAvatar';
+import { resolveTeamColor } from '../constants/teamColors';
 
 const ROLE_LABELS: Record<string, string> = {
   head_coach: 'Head Coach',
@@ -133,7 +134,7 @@ export default function TeamsScreen({ navigation }: any) {
           lastName: player?.last_name,
           photoUrl: player?.photo_url ?? null,
           jerseyNumber: player?.jersey_number ?? null,
-          teamColor: (player as any)?.teams?.color || '#5B7BB5',
+          teamColor: resolveTeamColor((player as any)?.teams),
         });
       }
 
@@ -204,7 +205,7 @@ export default function TeamsScreen({ navigation }: any) {
           firstName={k.firstName}
           lastName={k.lastName}
           size={44}
-          teamColor={k.teamColor || '#5B7BB5'}
+          teamColor={k.teamColor}
         />
         <View style={styles.cardContent}>
           <Text style={styles.cardTitle}>{k.playerName}</Text>

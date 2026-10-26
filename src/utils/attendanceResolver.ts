@@ -199,6 +199,56 @@ export function resolveEffectiveStatus(
  * is how many of those answers a coach supplied -- the muted line under the
  * strip, and the only place the override is visible as a number.
  */
+/**
+ * THE one no-reply rule, round 3 (Lu, Oct 26). Every surface that shows a
+ * no-reply number must come through here.
+ *
+ * `noReply = rostered active players - (going + can't go)`. It is a SUBTRACTION
+ * from the roster, not a tally of rows, because a player who never answered
+ * has no RSVP row at all -- counting rows is what made the calendar list card
+ * show "? 0" for an event where 11 players had not replied.
+ *
+ * Floored at 0: an answer from somebody no longer on the roster still counts
+ * as an answer, so going + cantGo can exceed the roster size.
+ */
+export function noReplyFromRoster(
+  rosterSize: number,
+  going: number,
+  cantGo: number
+): number {
+  return Math.max(0, rosterSize - (going + cantGo));
+}
+
+/**
+ * The canonical headcount for ONE event: what the Responses bar draws, what
+ * the reminder button counts, and what the calendar list card's "?" should
+ * read once it can see a roster size.
+ *
+ * `rosterResults` are the resolved verdicts for the rostered players -- that
+ * list's length IS the roster size. `extraResults` are answers from users not
+ * mapped to a roster player; they move `going`/`cantGo` but never add to the
+ * roster, which is why `noReply` is derived rather than counted.
+ */
+export function eventHeadcount(
+  rosterResults: EffectiveStatusResult[],
+  extraResults: EffectiveStatusResult[] = []
+): {
+  going: number;
+  cantGo: number;
+  noReply: number;
+  markedByCoach: number;
+  rosterSize: number;
+} {
+  const s = summarizeEffective([...rosterResults, ...extraResults]);
+  return {
+    going: s.going,
+    cantGo: s.cantGo,
+    markedByCoach: s.markedByCoach,
+    rosterSize: rosterResults.length,
+    noReply: noReplyFromRoster(rosterResults.length, s.going, s.cantGo),
+  };
+}
+
 export function summarizeEffective(
   results: EffectiveStatusResult[]
 ): { going: number; cantGo: number; noReply: number; markedByCoach: number } {

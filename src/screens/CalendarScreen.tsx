@@ -34,10 +34,12 @@ import { EventTypeSheet } from '../components/calendar/EventTypeSheet';
 import { CantGoReasonModal } from '../components/calendar/CantGoReasonModal';
 import { supabase } from '../lib/supabase';
 import { getEventTypeConfig } from '../types';
-import { eventAccent, eventAccentFor } from '../lib/eventColors';
+import { eventAccent, eventAccentFor, EVENT_ACCENT_PAST } from '../lib/eventColors';
 import type { CalendarEvent, EventType } from '../types';
 import { NotificationBell } from '../components/NotificationBell';
 import CalendarSyncModal from '../components/calendar/CalendarSyncModal';
+import DateBadge, { accentAlpha } from '../components/calendar/DateBadge';
+import RsvpPill from '../components/calendar/RsvpPill';
 import { isEventPast } from '../utils/calendar';
 import { openInMaps } from '../lib/maps';
 import { Ionicons } from '@expo/vector-icons';
@@ -473,6 +475,169 @@ export default function CalendarScreen({ route, navigation }: any) {
     );
   }
 
+  /**
+   * Design "H1 - footer pill" (Lu, Oct 26): ONE list-card renderer for both
+   * groups, so the Previous group and the main group can no longer drift. The
+   * old pair had diverged -- only the main copy showed the arrive time, the
+   * type chip and the "?" count, and only the Previous copy still carried a
+   * round ✓/✗ pair that its own `eventPast` branch made unreachable.
+   *
+   * Layout: a header row (leaf badge + team line / title / meta / location)
+   * that is the card's tap target, then a hairline, then a footer row with the
+   * counts and the RSVP pill INSIDE the same frame. The footer sits outside
+   * the header's TouchableOpacity, so tapping the pill answers instead of
+   * opening the event -- exactly what the removed `willStrip` did below the
+   * card.
+   *
+   * No type chip here: the title, the leaf and the frame colour already carry
+   * the type. The detail screen keeps its chip.
+   */
+  const renderEventListCard = (
+    event: CalendarEvent & { team?: UserTeam; rsvp_counts?: any; user_rsvp?: any }
+  ) => {
+    const eventDate = parseISO(event.event_date + 'T12:00:00');
+    const eventPast = isEventPast(event);
+    const accent = eventAccent(event.event_type);
+    const frameColor = eventPast ? EVENT_ACCENT_PAST : accent;
+    const arrive =
+      !event.is_all_day && event.arrival_time
+        ? format(parseISO(`2000-01-01T${event.arrival_time}`), 'h:mm')
+        : null;
+
+    return (
+      <View
+        key={event.id}
+        style={[
+          styles.eventCard,
+          {
+            // F1 frame, kept: 2pt in the event's own colour at 50% plus a 5pt
+            // solid left strip in the same colour. All four corners now use
+            // the card radius -- the 8pt left corners were left over from the
+            // clipped full-height date block and no longer had a reason.
+            borderColor: accentAlpha(frameColor, 0.5),
+            borderLeftColor: frameColor,
+          },
+          event.is_cancelled && styles.eventCardCancelled,
+          eventPast && styles.eventCardPast,
+        ]}
+      >
+        <TouchableOpacity
+          style={styles.cardHeaderRow}
+          activeOpacity={0.8}
+          onPress={() =>
+            navigation.navigate('EventDetail', { event, onRefetch: fetchEvents })
+          }
+        >
+          <DateBadge date={eventDate} variant="list" color={frameColor} />
+
+          <View style={styles.eventDetails}>
+            {selectedTeamId === ALL_TEAMS_ID && event.team && (
+              <View style={styles.eventTeamBadge}>
+                <View
+                  style={[
+                    styles.teamDot,
+                    { backgroundColor: event.team.color || '#8b5cf6' },
+                  ]}
+                />
+                <Text style={styles.eventTeamName} numberOfLines={1}>
+                  {event.team.name}
+                </Text>
+              </View>
+            )}
+
+            <Text
+              style={[
+                styles.eventTitle,
+                event.is_cancelled && {
+                  textDecorationLine: 'line-through',
+                  color: '#64748b',
+                },
+              ]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {event.title}
+            </Text>
+
+            {/* Time, then the arrival that actually gets people there. The
+                time used to be purple -- the same colour as the location
+                link below it, which made it read as tappable. Purple is now
+                the location's alone. */}
+            <Text style={styles.eventTime} numberOfLines={1}>
+              {formatEventTimeRange(event)}
+              {arrive ? (
+                <Text style={styles.eventArrive}>{` · arrive ${arrive}`}</Text>
+              ) : null}
+            </Text>
+
+            {(event.location_name || event.location_address) && (
+              <TouchableOpacity
+                // Its own tap zone: the venue opens Maps, the rest of the card
+                // opens the event. stopPropagation keeps the card's onPress
+                // from firing underneath this one.
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  openInMaps(event.location_address || '', event.location_name);
+                }}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.eventLocationRow}
+              >
+                <Ionicons name="location" size={13} color="#8b5cf6" />
+                <Text style={styles.eventLocation} numberOfLines={1}>
+                  {event.location_name || event.location_address}
+                </Text>
+                <Ionicons name="chevron-forward" size={13} color="#8b5cf6" />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {eventPast ? (
+            <View style={styles.pastEventBadge}>
+              <Text style={styles.pastEventText}>Past</Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
+
+        <View style={styles.cardFooterDivider} />
+
+        <View style={styles.cardFooterRow}>
+          {/* Counts come from the single aggregate read above. */}
+          <View style={styles.footerCounts}>
+            <Text style={styles.footerCount}>
+              ✓ <Text style={styles.footerCountNum}>{event.rsvp_counts?.yes ?? 0}</Text>
+            </Text>
+            <Text style={styles.footerCount}>
+              ✕ <Text style={styles.footerCountNum}>{event.rsvp_counts?.no ?? 0}</Text>
+            </Text>
+            <Text style={styles.footerCount}>
+              ? <Text style={styles.footerCountNum}>{event.rsvp_counts?.pending ?? 0}</Text>
+            </Text>
+          </View>
+
+          {/* Same writer the removed "Will you be there?" strip used:
+              handleRsvp(event.id, ...) -> upsertRsvp, and can't-go still
+              opens the shared reason sheet via setCantGoEventId. */}
+          {!eventPast && (
+            <RsvpPill
+              compact
+              style={styles.footerPill}
+              status={event.user_rsvp?.status}
+              disabled={rsvpSubmitting}
+              onGoing={() =>
+                event.user_rsvp?.status === 'yes'
+                  ? handleRsvp(event.id, 'pending')
+                  : handleRsvp(event.id, 'yes')
+              }
+              onCantGo={() => setCantGoEventId(event.id)}
+            />
+          )}
+        </View>
+      </View>
+    );
+  };
+
+
   return (
     <View style={styles.container}>
       {teamsLoading && hasAnyTeam ? (
@@ -628,191 +793,7 @@ export default function CalendarScreen({ route, navigation }: any) {
                     {showPreviousEvents && (
                       <>
                         <Text style={styles.groupTitle}>{group.title}</Text>
-                        {group.data.map((event) => {
-                          const eventDate = parseISO(
-                            event.event_date + 'T12:00:00'
-                          );
-                          const eventPast = isEventPast(event);
-                          const accent = eventAccent(event.event_type);
-                          return (
-                            <TouchableOpacity
-                              key={event.id}
-                              style={[
-                                styles.eventCard,
-                                {
-                                  // Every type now carries an accent, so
-                                  // practice is no longer the odd one out.
-                                  borderLeftWidth: 4,
-                                  borderLeftColor: eventPast ? '#4B5563' : accent,
-                                  borderTopLeftRadius: 8,
-                                  borderBottomLeftRadius: 8,
-                                },
-                                event.is_cancelled && styles.eventCardCancelled,
-                                eventPast && styles.eventCardPast,
-                              ]}
-                              onPress={() =>
-                                navigation.navigate('EventDetail', {
-                                  event,
-                                  onRefetch: fetchEvents,
-                                })
-                              }
-                            >
-                              <View
-                                style={[
-                                  styles.eventDateBlock,
-                                  // Full-colour block, by event type. Team
-                                  // identity still reads from the team badge
-                                  // and dot in the details column.
-                                  {
-                                    backgroundColor: eventPast
-                                      ? '#4B5563'
-                                      : accent,
-                                  },
-                                ]}
-                              >
-                                <Text style={styles.eventTypeLabel}>
-                                  {getEventTypeLabel(event.event_type)}
-                                </Text>
-                                <Text
-                                  style={styles.eventDateBlockDow}
-                                  numberOfLines={1}
-                                >
-                                  {format(eventDate, 'EEE')}
-                                </Text>
-                                <Text
-                                  style={styles.eventDateBlockDay}
-                                  numberOfLines={1}
-                                >
-                                  {format(eventDate, 'd')}
-                                </Text>
-                                <Text
-                                  style={styles.eventDateBlockMonth}
-                                  numberOfLines={1}
-                                >
-                                  {format(eventDate, 'MMM')}
-                                </Text>
-                              </View>
-                              <View style={styles.eventDetails}>
-                                {selectedTeamId === ALL_TEAMS_ID && event.team && (
-                                  <View style={styles.eventTeamBadge}>
-                                    <View
-                                      style={[
-                                        styles.teamDot,
-                                        {
-                                          backgroundColor:
-                                            event.team.color || '#8b5cf6',
-                                        },
-                                      ]}
-                                    />
-                                    <Text style={styles.eventTeamName}>
-                                      {event.team.name}
-                                    </Text>
-                                  </View>
-                                )}
-                                <Text
-                                  style={[
-                                    styles.eventTitle,
-                                    event.is_cancelled && {
-                                      textDecorationLine: 'line-through',
-                                      color: '#64748b',
-                                    },
-                                  ]}
-                                >
-                                  {event.title}
-                                </Text>
-                                <Text style={styles.eventTime}>
-                                  {formatEventTimeRange(event)}
-                                </Text>
-                                {(event.location_name || event.location_address) && (
-                                  <TouchableOpacity
-                                    // Its own tap zone: the venue opens Maps,
-                                    // the rest of the card opens the event.
-                                    // stopPropagation keeps the card's onPress
-                                    // from firing underneath this one.
-                                    onPress={(e) => {
-                                      e.stopPropagation?.();
-                                      openInMaps(
-                                        event.location_address || '',
-                                        event.location_name
-                                      );
-                                    }}
-                                    activeOpacity={0.7}
-                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                    style={styles.eventLocationRow}
-                                  >
-                                    <Ionicons
-                                      name="location"
-                                      size={13}
-                                      color="#8b5cf6"
-                                    />
-                                    <Text
-                                      style={styles.eventLocation}
-                                      numberOfLines={1}
-                                    >
-                                      {event.location_name || event.location_address}
-                                    </Text>
-                                    <Ionicons
-                                      name="chevron-forward"
-                                      size={13}
-                                      color="#8b5cf6"
-                                    />
-                                  </TouchableOpacity>
-                                )}
-                                {((event.rsvp_counts?.yes ?? 0) > 0 || (event.rsvp_counts?.no ?? 0) > 0) && (
-                                  <View style={styles.attendancePreview}>
-                                    <Text style={styles.attendanceGoing}>
-                                      ✓ {event.rsvp_counts?.yes ?? 0}
-                                    </Text>
-                                    <Text style={styles.attendanceDivider}>·</Text>
-                                    <Text style={styles.attendanceNotGoing}>
-                                      ✗ {event.rsvp_counts?.no ?? 0}
-                                    </Text>
-                                  </View>
-                                )}
-                              </View>
-                              <View style={styles.rsvpSection}>
-                                {eventPast ? (
-                                  <View style={styles.pastEventBadge}>
-                                    <Text style={styles.pastEventText}>Past</Text>
-                                  </View>
-                                ) : event.user_rsvp &&
-                                  (event.user_rsvp.status === 'yes' ||
-                                    event.user_rsvp.status === 'no') ? (
-                                  <View
-                                    style={[
-                                      styles.rsvpBadge,
-                                      event.user_rsvp.status === 'yes' && styles.rsvpYes,
-                                      event.user_rsvp.status === 'no' && styles.rsvpNo,
-                                    ]}
-                                  >
-                                    <Text style={styles.rsvpBadgeText}>
-                                      {event.user_rsvp.status === 'yes'
-                                        ? '✓ Going'
-                                        : '✗ Can\'t Go'}
-                                    </Text>
-                                  </View>
-                                ) : (
-                                  <View style={styles.rsvpButtons}>
-                                    <TouchableOpacity
-                                      style={[styles.rsvpBtn, styles.rsvpBtnYes]}
-                                      onPress={() => handleRsvp(event.id, 'yes')}
-                                      disabled={rsvpSubmitting}
-                                    >
-                                      <Text style={styles.rsvpBtnText}>✓</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                      style={[styles.rsvpBtn, styles.rsvpBtnNo]}
-                                      onPress={() => setCantGoEventId(event.id)}
-                                      disabled={rsvpSubmitting}
-                                    >
-                                      <Text style={styles.rsvpBtnText}>✗</Text>
-                                    </TouchableOpacity>
-                                  </View>
-                                )}
-                              </View>
-                            </TouchableOpacity>
-                          );
-                        })}
+                        {group.data.map(renderEventListCard)}
                       </>
                     )}
                   </View>
@@ -821,223 +802,7 @@ export default function CalendarScreen({ route, navigation }: any) {
               return (
                 <View key={groupIndex} style={styles.eventGroup}>
                   <Text style={styles.groupTitle}>{group.title}</Text>
-                  {group.data.map((event) => {
-                  const eventDate = parseISO(
-                    event.event_date + 'T12:00:00'
-                  );
-                  const eventPast = isEventPast(event);
-                  const accent = eventAccent(event.event_type);
-                  return (
-                    <View key={event.id} style={styles.eventCardWrap}>
-                    <TouchableOpacity
-                      style={[
-                        styles.eventCard,
-                        {
-                          borderLeftWidth: 4,
-                          borderLeftColor: eventPast ? '#4B5563' : accent,
-                          borderTopLeftRadius: 8,
-                          borderBottomLeftRadius: 8,
-                        },
-                        event.is_cancelled && styles.eventCardCancelled,
-                        eventPast && styles.eventCardPast,
-                      ]}
-                      onPress={() =>
-                        navigation.navigate('EventDetail', {
-                          event,
-                          onRefetch: fetchEvents,
-                        })
-                      }
-                    >
-                      {/* Date block - full colour, by event type */}
-                      <View
-                        style={[
-                          styles.eventDateBlock,
-                          {
-                            backgroundColor: eventPast
-                              ? '#4B5563'
-                              : accent,
-                          },
-                        ]}
-                      >
-                        <Text style={styles.eventTypeLabel}>
-                          {getEventTypeLabel(event.event_type)}
-                        </Text>
-                        <Text
-                          style={styles.eventDateBlockDow}
-                          numberOfLines={1}
-                        >
-                          {format(eventDate, 'EEE')}
-                        </Text>
-                        <Text
-                          style={styles.eventDateBlockDay}
-                          numberOfLines={1}
-                        >
-                          {format(eventDate, 'd')}
-                        </Text>
-                        <Text
-                          style={styles.eventDateBlockMonth}
-                          numberOfLines={1}
-                        >
-                          {format(eventDate, 'MMM')}
-                        </Text>
-                      </View>
-
-                      {/* Event details */}
-                      <View style={styles.eventDetails}>
-                        {selectedTeamId === ALL_TEAMS_ID && event.team && (
-                          <View style={styles.eventTeamBadge}>
-                            <View
-                              style={[
-                                styles.teamDot,
-                                {
-                                  backgroundColor:
-                                    event.team.color || '#8b5cf6',
-                                },
-                              ]}
-                            />
-                            <Text style={styles.eventTeamName}>
-                              {event.team.name}
-                            </Text>
-                          </View>
-                        )}
-                        <Text
-                          style={[
-                            styles.eventTitle,
-                            event.is_cancelled && {
-                              textDecorationLine: 'line-through',
-                              color: '#64748b',
-                            },
-                          ]}
-                        >
-                          {event.title}
-                        </Text>
-                        {(() => {
-                          const cfg = getEventTypeConfig(event.event_type);
-                          // Label from EVENT_TYPES, colour from eventAccent --
-                          // the badge used to take cyan from EVENT_TYPES while
-                          // the block beside it was green.
-                          const badgeColor = eventAccent(event.event_type);
-                          return (
-                            <View style={[styles.cardTypeBadge, { backgroundColor: badgeColor + '33' }]}>
-                              <Text style={[styles.cardTypeBadgeText, { color: badgeColor }]}>
-                                {cfg.label.toUpperCase()}
-                              </Text>
-                            </View>
-                          );
-                        })()}
-                        <Text style={styles.eventTime}>
-                          {formatEventTimeRange(event)}
-                          {!event.is_all_day && event.arrival_time
-                            ? ` (arrive ${format(
-                                parseISO(`2000-01-01T${event.arrival_time}`),
-                                'h:mm a'
-                              )})`
-                            : ''}
-                        </Text>
-                        {(event.location_name || event.location_address) && (
-                          <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation?.();
-                              openInMaps(
-                                event.location_address || '',
-                                event.location_name
-                              );
-                            }}
-                            activeOpacity={0.7}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            style={styles.eventLocationRow}
-                          >
-                            <Ionicons name="location" size={13} color="#8b5cf6" />
-                            <Text style={styles.eventLocation} numberOfLines={1}>
-                              {event.location_name || event.location_address}
-                            </Text>
-                            <Ionicons
-                              name="chevron-forward"
-                              size={13}
-                              color="#8b5cf6"
-                            />
-                          </TouchableOpacity>
-                        )}
-                        {/* Counts come from the single aggregate read above. */}
-                        <View style={styles.attendancePreview}>
-                          <Text style={styles.attendanceGoing}>
-                            ✓ {event.rsvp_counts?.yes ?? 0}
-                          </Text>
-                          <Text style={styles.attendanceDivider}>·</Text>
-                          <Text style={styles.attendanceNotGoing}>
-                            ✗ {event.rsvp_counts?.no ?? 0}
-                          </Text>
-                          <Text style={styles.attendanceDivider}>·</Text>
-                          <Text style={styles.attendanceNoReply}>
-                            ? {event.rsvp_counts?.pending ?? 0}
-                          </Text>
-                        </View>
-                      </View>
-
-                      {eventPast ? (
-                        <View style={styles.rsvpSection}>
-                          <View style={styles.pastEventBadge}>
-                            <Text style={styles.pastEventText}>Past</Text>
-                          </View>
-                        </View>
-                      ) : null}
-                    </TouchableOpacity>
-                    {/* Bottom strip: outside the card's touchable so tapping a
-                        button answers instead of opening the event. */}
-                    {!eventPast && (
-                      <View style={styles.willStrip}>
-                        <Text style={styles.willStripLabel}>
-                          {event.user_rsvp?.status === 'yes'
-                            ? "✓ You're going"
-                            : event.user_rsvp?.status === 'no'
-                              ? '✗ Not going'
-                              : 'Will you be there?'}
-                        </Text>
-                        <View style={styles.willStripButtons}>
-                          <TouchableOpacity
-                            style={[
-                              styles.willStripBtn,
-                              event.user_rsvp?.status === 'no' && styles.willStripBtnNoActive,
-                            ]}
-                            onPress={() => setCantGoEventId(event.id)}
-                            disabled={rsvpSubmitting}
-                          >
-                            <Text
-                              style={[
-                                styles.willStripBtnText,
-                                event.user_rsvp?.status === 'no' && styles.willStripBtnTextActive,
-                              ]}
-                            >
-                              ✗
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[
-                              styles.willStripBtn,
-                              event.user_rsvp?.status === 'yes' && styles.willStripBtnYesActive,
-                            ]}
-                            onPress={() =>
-                              event.user_rsvp?.status === 'yes'
-                                ? handleRsvp(event.id, 'pending')
-                                : handleRsvp(event.id, 'yes')
-                            }
-                            disabled={rsvpSubmitting}
-                          >
-                            <Text
-                              style={[
-                                styles.willStripBtnText,
-                                event.user_rsvp?.status === 'yes' && styles.willStripBtnTextActive,
-                              ]}
-                            >
-                              ✓
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    )}
-                    </View>
-                  );
-                })}
+                  {group.data.map(renderEventListCard)}
               </View>
             );
             })
@@ -1499,14 +1264,57 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     letterSpacing: 0.5,
   },
+  // H1: the card is a COLUMN now -- header row, hairline, footer row -- so the
+  // footer pill lives inside the same frame as the event it answers for.
   eventCard: {
-    flexDirection: 'row',
     backgroundColor: '#2a2a4e',
     borderRadius: 12,
     marginBottom: 10,
-    overflow: 'hidden',
-    minHeight: 80,
+    // F1 frame. No `overflow: 'hidden'` any more: the date badge is an inset
+    // tag now, nothing reaches the corners, and clipping ate its glow.
+    borderWidth: 2,
+    borderLeftWidth: 5,
   },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    minHeight: 80,
+    // Round 3: +4pt of air above the footer hairline.
+    paddingBottom: 4,
+  },
+  cardFooterDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginHorizontal: 12,
+  },
+  cardFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  // Round 3: the pill holds its measured width; only the counts compress.
+  footerPill: {
+    flexShrink: 0,
+  },
+  // Round 3: "Can't go" was clipped past the card's right edge at 375pt. The
+  // counts give way, the pill never does.
+  footerCounts: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 1,
+    gap: 10,
+  },
+  footerCount: {
+    color: '#94a3b8',
+    fontSize: 13,
+  },
+  footerCountNum: {
+    color: '#e2e8f0',
+    fontWeight: '700',
+  },
+
   eventCardCancelled: {
     opacity: 0.5,
   },
@@ -1523,46 +1331,6 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     fontSize: 12,
     fontWeight: '500',
-  },
-  eventDateBlock: {
-    width: 85,
-    minWidth: 85,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-    borderRightWidth: 1,
-    borderRightColor: 'rgba(255,255,255,0.2)',
-  },
-  eventTypeLabel: {
-    color: 'white',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    marginBottom: 2,
-  },
-  eventDateBlockDow: {
-    color: 'rgba(255, 255, 255, 0.85)',
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.2,
-    marginBottom: 1,
-  },
-  eventDateBlockDay: {
-    color: 'white',
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginVertical: 1,
-  },
-  eventDateBlockMonth: {
-    color: 'rgba(255, 255, 255, 0.85)',
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.2,
-    marginTop: 1,
   },
   eventDetails: {
     flex: 1,
@@ -1588,9 +1356,14 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   eventTime: {
-    color: '#8b5cf6',
+    color: '#fff',
     fontSize: 13,
+    fontWeight: '600',
     marginBottom: 2,
+  },
+  eventArrive: {
+    color: '#94a3b8',
+    fontWeight: '400',
   },
   // No underline (device review: too cluttered). The affordance is the accent
   // colour plus the pin and chevron flanking it; the venue text stays clean.
@@ -1628,52 +1401,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  willStrip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#16213e',
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    marginTop: -8,
-  },
-  willStripLabel: {
-    color: '#94a3b8',
-    fontSize: 13,
-    fontWeight: '600',
-    flex: 1,
-  },
-  willStripButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  willStripBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: '#334155',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  willStripBtnYesActive: {
-    backgroundColor: '#22c55e',
-    borderColor: '#22c55e',
-  },
-  willStripBtnNoActive: {
-    backgroundColor: '#ef4444',
-    borderColor: '#ef4444',
-  },
-  willStripBtnText: {
-    color: '#94a3b8',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  willStripBtnTextActive: {
-    color: '#fff',
-  },
+  // The "Will you be there?" strip that used to sit under the card is gone
+  // (H1 moved the answer into the card's footer), and so are its 9 styles --
+  // including the only green and red left in this file.
   attendancePreview: {
     flexDirection: 'row',
     alignItems: 'center',

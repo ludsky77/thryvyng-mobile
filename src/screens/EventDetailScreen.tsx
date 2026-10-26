@@ -20,6 +20,9 @@ import { openInMaps } from '../lib/maps';
 import * as Clipboard from 'expo-clipboard';
 import { getEventTypeConfig } from '../types';
 import { eventAccent } from '../lib/eventColors';
+import DateBadge, { accentAlpha } from '../components/calendar/DateBadge';
+import RsvpPill from '../components/calendar/RsvpPill';
+import ResponsesBar from '../components/calendar/ResponsesBar';
 import type { CalendarEvent } from '../types';
 import { EditEventModal } from '../components/calendar/EditEventModal';
 import { CantGoReasonModal } from '../components/calendar/CantGoReasonModal';
@@ -29,8 +32,8 @@ import PlayerAvatar from '../components/PlayerAvatar';
 import { GameEntryButton } from '../components/game-stats/GameEntryButton';
 import { isEventPast } from '../utils/calendar';
 import {
+  eventHeadcount,
   resolveEffectiveStatus,
-  summarizeEffective,
   type CoachStatus,
   type EffectiveStatus,
   type EffectiveStatusResult,
@@ -47,33 +50,6 @@ function formatTime(time: string | null): string {
   const ampm = hour >= 12 ? 'PM' : 'AM';
   const hour12 = hour % 12 || 12;
   return `${hour12}:${m || '00'} ${ampm}`;
-}
-
-function formatDateParts(dateStr: string): { day: string; date: string; month: string } {
-  const d = new Date(dateStr + 'T12:00:00');
-  const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-  return {
-    day: days[d.getDay()],
-    date: String(d.getDate()),
-    month: months[d.getMonth()],
-  };
-}
-
-function getEventTypeLabel(eventType: string): string {
-  switch (eventType?.toLowerCase()) {
-    case 'game': return 'GAME';
-    case 'practice': return 'PRACTICE';
-    case 'tournament': return 'TOURNAMENT';
-    case 'meeting': return 'MEETING';
-    case 'party': return 'PARTY';
-    case 'scrimmage': return 'SCRIMMAGE';
-    case 'tryout': return 'TRYOUT';
-    case 'camp': return 'CAMP';
-    case 'other_event': return 'OTHER';
-    case 'club_event': return 'CLUB';
-    default: return 'EVENT';
-  }
 }
 
 /**
@@ -103,21 +79,6 @@ function shortName(full: string | null | undefined): string | null {
   if (parts.length === 0) return null;
   if (parts.length === 1) return parts[0];
   return `${parts[0]} ${parts[parts.length - 1].charAt(0).toUpperCase()}.`;
-}
-
-/** "TUE" -> "Tue". formatDateParts returns upper case for the date block. */
-function titleCase(s: string): string {
-  return s ? s.charAt(0) + s.slice(1).toLowerCase() : s;
-}
-
-/** "4:00 PM" + "5:30 PM" -> "4:00–5:30 PM"; keeps both when they differ. */
-function timeRangeLabel(start: string | null, end: string | null): string {
-  const a = formatTime(start);
-  if (!a) return '';
-  const b = formatTime(end);
-  if (!b) return a;
-  const ma = a.slice(-2);
-  return ma === b.slice(-2) ? `${a.slice(0, -3)}–${b}` : `${a}–${b}`;
 }
 
 /**
@@ -527,7 +488,6 @@ export default function EventDetailScreen({ route, navigation }: any) {
   }, [event?.id, event?.team_id, isStaff, fetchNonResponders]);
 
   const typeConfig = event ? getEventTypeConfig(event.event_type) : getEventTypeConfig('other_event');
-  const dateParts = event ? formatDateParts(event.event_date) : { day: '', date: '', month: '' };
 
   /**
    * Attribute every RSVP to at most one player on this team.
@@ -674,18 +634,31 @@ export default function EventDetailScreen({ route, navigation }: any) {
    * plus every responder nobody could pin to a player -- they answered, so
    * they count.
    */
+  /**
+   * Round 3: the ONE headcount on this screen. Both the Responses bar and the
+   * reminder button's number read it, so they cannot disagree the way they did
+   * on Lu's phone (bar said 11, button said 19) -- the button counted USER
+   * ACCOUNTS from `nonResponders` (team staff plus BOTH parent emails per
+   * player plus player-role users), a different population from the roster.
+   */
   const headcounts = useMemo(() => {
-    const verdicts: EffectiveStatusResult[] = [
-      ...roster.map((e) => ({
-        status: e.status,
-        source: e.source,
-        at: e.at,
-        reason: e.reason,
-      })),
-      ...resolvedRsvps.unmapped.map((u) => u.resolved),
-    ];
-    const s = summarizeEffective(verdicts);
-    return { going: s.going, cant: s.cantGo, noReply: s.noReply, markedByCoach: s.markedByCoach };
+    const rosterVerdicts: EffectiveStatusResult[] = roster.map((e) => ({
+      status: e.status,
+      source: e.source,
+      at: e.at,
+      reason: e.reason,
+    }));
+    const h = eventHeadcount(
+      rosterVerdicts,
+      resolvedRsvps.unmapped.map((u) => u.resolved)
+    );
+    return {
+      going: h.going,
+      cant: h.cantGo,
+      noReply: h.noReply,
+      markedByCoach: h.markedByCoach,
+      rosterSize: h.rosterSize,
+    };
   }, [roster, resolvedRsvps]);
 
   /** The one player this user speaks for, or null when staff / ambiguous. */
@@ -1198,6 +1171,310 @@ export default function EventDetailScreen({ route, navigation }: any) {
     );
   }
 
+  /**
+   * The event's own card. F1 (Lu, Oct 26): on the Details tab it carries
+   * EVERYTHING about the event -- header, detail rows, then the RSVP pill, the
+   * headcount and the staff reminders, handed in as `footer`. The Attendance
+   * tab renders the SAME card with no footer, so the two tabs cannot drift
+   * apart the way a separate banner did.
+   */
+  const renderEventCard = (footer: React.ReactNode = null) => (
+    <View style={[
+      styles.eventCard,
+      // F1 frame: a 2pt border at 50% so it reads as a frame, plus a
+      // 5pt solid left strip in the same colour. Both are real borders,
+      // so they follow the card's radius without any extra element.
+      {
+        borderColor: accentAlpha(eventAccent(event.event_type), 0.5),
+        borderLeftColor: eventAccent(event.event_type),
+      },
+      event.is_cancelled && styles.mainCardCancelled
+    ]}>
+      {/* Header: the date leaf sits beside the title / team / chips
+          only. It is a fixed-size tile, so it never stretches to
+          whatever height the detail rows below add up to. The type
+          lives in the chip beside the title, not in the leaf. */}
+      <View style={styles.cardHeader}>
+        <DateBadge
+          date={new Date(event.event_date + 'T12:00:00')}
+          variant="tag"
+          // Was the TEAM colour, so a game's date block rendered blue
+          // here while the list card rendered it green.
+          color={eventAccent(event.event_type)}
+        />
+
+        <View style={styles.headerContent}>
+          {/* Title Row with Edit */}
+          <View style={styles.titleRow}>
+            <View style={styles.titleAndTeam}>
+              <Text 
+                style={[
+                  styles.eventTitle,
+                  event.is_cancelled && styles.eventTitleCancelled
+                ]} 
+                numberOfLines={2}
+              >
+                {event.title}
+              </Text>
+              {(event as any).team?.name && (
+                <View style={styles.teamNameRow}>
+                  <View style={[styles.teamDot, { backgroundColor: (event as any).team?.color || '#5B7BB5' }]} />
+                  <Text style={styles.teamNameText}>{(event as any).team.name}</Text>
+                </View>
+              )}
+            </View>
+            {isManager && (
+              <TouchableOpacity
+                style={styles.editButton}
+                onPress={() => setEditModalVisible(true)}
+              >
+                <Ionicons name="pencil" size={16} color="#8b5cf6" />
+                <Text style={styles.editButtonText}>Edit</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Badges */}
+          <View style={styles.badgesRow}>
+            <View style={[styles.typeBadge, { backgroundColor: eventAccent(event.event_type) + '33' }]}>
+              <Text style={[styles.typeBadgeText, { color: eventAccent(event.event_type) }]}>
+                {typeConfig.icon} {typeConfig.label.toUpperCase()}
+              </Text>
+            </View>
+            {(event.recurrence_group_id || event.is_recurring) && (
+              <View style={styles.recurringBadge}>
+                <Text style={styles.recurringBadgeText}>🔄 Recurring</Text>
+              </View>
+            )}
+            {event.is_cancelled && (
+              <View style={styles.cancelledBadge}>
+                <Text style={styles.cancelledBadgeText}>❌ CANCELLED</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Cancelled Reason */}
+          {event.is_cancelled && event.cancelled_reason && (
+            <View style={styles.cancelledReasonBox}>
+              <Text style={styles.cancelledReasonText}>
+                Reason: {event.cancelled_reason}
+              </Text>
+            </View>
+          )}
+        </View>
+      </View>
+
+      <View style={styles.cardDivider} />
+
+      {/* Detail rows, full width -- no left gutter under the tag. */}
+      <View style={styles.cardBody}>
+        {/* Location */}
+        {(event.location_name || event.location_address) && (
+          <TouchableOpacity
+            style={styles.infoRow}
+            onPress={handleOpenMaps}
+            onLongPress={handleCopyAddress}
+            delayLongPress={350}
+          >
+            <Ionicons name="location-outline" size={18} color="#8b5cf6" />
+            <View style={styles.infoContent}>
+              {event.location_name && (
+                <Text style={styles.infoTitle}>{event.location_name}</Text>
+              )}
+              {event.location_address && (
+                <Text style={styles.infoSubtitle}>{event.location_address}</Text>
+              )}
+              {addressCopied ? (
+                <Text style={styles.copiedHint}>✓ Address copied</Text>
+              ) : (
+                <Text style={styles.tapHint}>
+                  Tap to open in Maps · hold to copy
+                </Text>
+              )}
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {/* ------------------------------------------------------------
+            MAP PREVIEW PLACEHOLDER
+            Reserved for the static/interactive map of location_address.
+            Intentionally empty for now: no map dependency is installed
+            and none is added by this change. Drop the map component in
+            here; the surrounding layout already accounts for its height.
+           ------------------------------------------------------------ */}
+        {event.location_address ? (
+          <View style={styles.mapPlaceholder} />
+        ) : null}
+
+        {/* Time -- arrival is the number that gets people there on time,
+            so it leads and the start/end window sits under it. */}
+        <View style={styles.infoRow}>
+          <Ionicons name="time-outline" size={18} color="#8b5cf6" />
+          <View style={styles.infoContent}>
+            {event.is_all_day ? (
+              <Text style={styles.infoTitle}>All Day</Text>
+            ) : event.arrival_time ? (
+              <>
+                <Text style={styles.arriveTitle}>
+                  Arrive {formatTime(event.arrival_time)}
+                </Text>
+                <Text style={styles.infoSubtitle}>
+                  {formatTime(event.start_time)}
+                  {event.end_time ? ` to ${formatTime(event.end_time)}` : ''}
+                </Text>
+              </>
+            ) : (
+              <Text style={styles.infoTitle}>
+                {formatTime(event.start_time)}
+                {event.end_time ? ` to ${formatTime(event.end_time)}` : ''}
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {/* Venue (for games) */}
+        {event.home_away && (
+          <View style={styles.infoRow}>
+            <Ionicons name="flag-outline" size={18} color="#8b5cf6" />
+            <View style={styles.infoContent}>
+              <View
+                style={[
+                  styles.venueBadge,
+                  event.home_away === 'home' && { backgroundColor: '#5BA58C' },
+                  event.home_away === 'away' && { backgroundColor: '#B57B7B' },
+                  event.home_away === 'neutral' && { backgroundColor: '#6b7280' },
+                ]}
+              >
+                <Text style={styles.venueBadgeText}>
+                  {event.home_away.toUpperCase()}
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Uniform */}
+        {event.uniform && (
+          <View style={styles.infoRow}>
+            <Ionicons name="shirt-outline" size={18} color="#8b5cf6" />
+            <View style={styles.infoContent}>
+              <Text style={styles.infoTitle}>{event.uniform}</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Notes */}
+        {event.notes && (
+          <View style={styles.infoRow}>
+            <Ionicons name="document-text-outline" size={18} color="#8b5cf6" />
+            <View style={styles.infoContent}>
+              <Text style={styles.infoSubtitle}>{event.notes}</Text>
+            </View>
+          </View>
+        )}
+      </View>
+
+      {footer ? (
+        <>
+          <View style={styles.cardDivider} />
+          {footer}
+        </>
+      ) : null}
+    </View>
+  );
+
+  /**
+   * Details-tab-only half of the card: the answer control, the headcount and
+   * the staff reminders. All three used to be separate cards stacked below the
+   * event card; F1 moves them inside it. Same state, same single writer, same
+   * visibility rules -- only the container changed.
+   */
+  const detailsCardFooter = (
+    <View style={styles.cardFooter}>
+      {/* Will you be there? -- same control and state as the season
+          list; the segmented pill replaces the round ✓/✗ buttons and
+          calls the SAME handleRsvp -> upsertRsvp path. */}
+      {!isEventPast(event) && (
+        <View style={styles.rsvpSection}>
+          {/* Caption OVER the control, not beside it: the question at 16pt
+              bold on one line squeezed the pill into three wrapped lines. */}
+          <Text style={styles.rsvpLabel} numberOfLines={1}>
+            Will you be there?
+          </Text>
+          <RsvpPill
+            stretch
+            status={myRsvp?.status}
+            disabled={rsvpLoading}
+            // Tapping an active "going" undoes it back to pending.
+            onGoing={() =>
+              myRsvp?.status === 'yes' ? handleRsvp('pending') : handleRsvp('yes')
+            }
+            onCantGo={() => setCantGoModalVisible(true)}
+          />
+          {myRsvp?.status === 'no' && myRsvp.decline_reason ? (
+            <Text style={styles.myReasonText}>“{myRsvp.decline_reason}”</Text>
+          ) : null}
+        </View>
+      )}
+
+      {/* Headcount. Counts only -- the per-player list and all coach
+          marking live on the Attendance tab. Both read the SAME
+          resolver verdicts, so the bar and the rows cannot disagree. */}
+      <ResponsesBar
+        rosterCount={roster.length}
+        going={headcounts.going}
+        cant={headcounts.cant}
+        noReply={headcounts.noReply}
+        markedByCoach={headcounts.markedByCoach}
+      />
+
+      {/* Staff reminders. Gate is unchanged: staff only, future
+          events only -- the same `isStaff` + `!isEventPast` pair that
+          guarded the two stacked buttons below. */}
+      {isStaff && !isEventPast(event) && (
+        <View style={styles.remindRow}>
+          <TouchableOpacity
+            style={[
+              styles.remindPrimary,
+              (nonResponders.length === 0 || reminderSent) &&
+                styles.reminderButtonDisabled,
+            ]}
+            onPress={handleSendReminder}
+            disabled={nonResponders.length === 0 || reminderSending || reminderSent}
+          >
+            {reminderSending ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.remindPrimaryText} numberOfLines={1}>
+                {reminderSent
+                  ? '🔔 Reminder sent'
+                  : headcounts.noReply === 0
+                    ? '🔔 All responded'
+                    : `🔔 Remind ${headcounts.noReply}`}
+              </Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.remindOutline,
+              remindingTeam && styles.reminderButtonDisabled,
+            ]}
+            onPress={handleRemindTeam}
+            disabled={remindingTeam}
+          >
+            {remindingTeam ? (
+              <ActivityIndicator size="small" color="#8b5cf6" />
+            ) : (
+              <Text style={styles.remindOutlineText} numberOfLines={1}>
+                Remind team
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -1234,18 +1511,11 @@ export default function EventDetailScreen({ route, navigation }: any) {
 
       {isStaff && activeTab === 'attendance' ? (
         <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-          <View style={styles.attBanner}>
-            <Ionicons name="calendar" size={14} color="#a78bfa" />
-            <Text style={styles.attBannerText} numberOfLines={1}>
-              {`${titleCase(dateParts.day)}, ${titleCase(dateParts.month)} ${dateParts.date}`}
-              {` · ${typeConfig.label}`}
-              {event.is_all_day
-                ? ' · All Day'
-                : event.start_time
-                  ? ` · ${timeRangeLabel(event.start_time, event.end_time)}`
-                  : ''}
-            </Text>
-          </View>
+          {/* F1: the Attendance tab gets the SAME framed card as Details,
+              header + detail rows only -- no answer control, no headcount, no
+              reminders. It replaces the one-line `attBanner` strip, which
+              repeated the date/type/time in its own format and could drift. */}
+          {renderEventCard()}
           <Text style={styles.attHeading}>Mark who showed up</Text>
           {roster.length === 0 ? (
             <Text style={styles.rosterEmptyText}>No players on this team</Text>
@@ -1368,288 +1638,7 @@ export default function EventDetailScreen({ route, navigation }: any) {
       ) : (
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
           {/* Main Event Card */}
-          <View style={[
-            styles.eventCard,
-            event.is_cancelled && styles.mainCardCancelled
-          ]}>
-            {/* Left section: Team color background */}
-            <View
-              style={[
-                styles.dateSection,
-                // Was the TEAM colour, so a game's date block rendered blue
-                // here while the list card rendered it green.
-                { backgroundColor: eventAccent(event.event_type) },
-              ]}
-            >
-              <Text style={styles.eventTypeLabel}>
-                {getEventTypeLabel(event.event_type)}
-              </Text>
-              <Text style={styles.dayName}>{dateParts.day}</Text>
-              <Text style={styles.dateNumber}>{dateParts.date}</Text>
-              <Text style={styles.monthName}>{dateParts.month}</Text>
-            </View>
-
-            {/* Right section: Event details */}
-            <View style={styles.eventDetails}>
-              {/* Title Row with Edit */}
-              <View style={styles.titleRow}>
-                <View style={styles.titleAndTeam}>
-                  <Text 
-                    style={[
-                      styles.eventTitle,
-                      event.is_cancelled && styles.eventTitleCancelled
-                    ]} 
-                    numberOfLines={2}
-                  >
-                    {event.title}
-                  </Text>
-                  {(event as any).team?.name && (
-                    <View style={styles.teamNameRow}>
-                      <View style={[styles.teamDot, { backgroundColor: (event as any).team?.color || '#5B7BB5' }]} />
-                      <Text style={styles.teamNameText}>{(event as any).team.name}</Text>
-                    </View>
-                  )}
-                </View>
-                {isManager && (
-                  <TouchableOpacity
-                    style={styles.editButton}
-                    onPress={() => setEditModalVisible(true)}
-                  >
-                    <Ionicons name="pencil" size={16} color="#8b5cf6" />
-                    <Text style={styles.editButtonText}>Edit</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              {/* Badges */}
-              <View style={styles.badgesRow}>
-                <View style={[styles.typeBadge, { backgroundColor: eventAccent(event.event_type) + '33' }]}>
-                  <Text style={[styles.typeBadgeText, { color: eventAccent(event.event_type) }]}>
-                    {typeConfig.icon} {typeConfig.label.toUpperCase()}
-                  </Text>
-                </View>
-                {(event.recurrence_group_id || event.is_recurring) && (
-                  <View style={styles.recurringBadge}>
-                    <Text style={styles.recurringBadgeText}>🔄 Recurring</Text>
-                  </View>
-                )}
-                {event.is_cancelled && (
-                  <View style={styles.cancelledBadge}>
-                    <Text style={styles.cancelledBadgeText}>❌ CANCELLED</Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Cancelled Reason */}
-              {event.is_cancelled && event.cancelled_reason && (
-                <View style={styles.cancelledReasonBox}>
-                  <Text style={styles.cancelledReasonText}>
-                    Reason: {event.cancelled_reason}
-                  </Text>
-                </View>
-              )}
-
-              {/* Location */}
-              {(event.location_name || event.location_address) && (
-                <TouchableOpacity
-                  style={styles.infoRow}
-                  onPress={handleOpenMaps}
-                  onLongPress={handleCopyAddress}
-                  delayLongPress={350}
-                >
-                  <Ionicons name="location-outline" size={18} color="#8b5cf6" />
-                  <View style={styles.infoContent}>
-                    {event.location_name && (
-                      <Text style={styles.infoTitle}>{event.location_name}</Text>
-                    )}
-                    {event.location_address && (
-                      <Text style={styles.infoSubtitle}>{event.location_address}</Text>
-                    )}
-                    {addressCopied ? (
-                      <Text style={styles.copiedHint}>✓ Address copied</Text>
-                    ) : (
-                      <Text style={styles.tapHint}>
-                        Tap to open in Maps · hold to copy
-                      </Text>
-                    )}
-                  </View>
-                </TouchableOpacity>
-              )}
-
-              {/* ------------------------------------------------------------
-                  MAP PREVIEW PLACEHOLDER
-                  Reserved for the static/interactive map of location_address.
-                  Intentionally empty for now: no map dependency is installed
-                  and none is added by this change. Drop the map component in
-                  here; the surrounding layout already accounts for its height.
-                 ------------------------------------------------------------ */}
-              {event.location_address ? (
-                <View style={styles.mapPlaceholder} />
-              ) : null}
-
-              {/* Time -- arrival is the number that gets people there on time,
-                  so it leads and the start/end window sits under it. */}
-              <View style={styles.infoRow}>
-                <Ionicons name="time-outline" size={18} color="#8b5cf6" />
-                <View style={styles.infoContent}>
-                  {event.is_all_day ? (
-                    <Text style={styles.infoTitle}>All Day</Text>
-                  ) : event.arrival_time ? (
-                    <>
-                      <Text style={styles.arriveTitle}>
-                        Arrive {formatTime(event.arrival_time)}
-                      </Text>
-                      <Text style={styles.infoSubtitle}>
-                        {formatTime(event.start_time)}
-                        {event.end_time ? ` to ${formatTime(event.end_time)}` : ''}
-                      </Text>
-                    </>
-                  ) : (
-                    <Text style={styles.infoTitle}>
-                      {formatTime(event.start_time)}
-                      {event.end_time ? ` to ${formatTime(event.end_time)}` : ''}
-                    </Text>
-                  )}
-                </View>
-              </View>
-
-              {/* Venue (for games) */}
-              {event.home_away && (
-                <View style={styles.infoRow}>
-                  <Ionicons name="flag-outline" size={18} color="#8b5cf6" />
-                  <View style={styles.infoContent}>
-                    <View
-                      style={[
-                        styles.venueBadge,
-                        event.home_away === 'home' && { backgroundColor: '#5BA58C' },
-                        event.home_away === 'away' && { backgroundColor: '#B57B7B' },
-                        event.home_away === 'neutral' && { backgroundColor: '#6b7280' },
-                      ]}
-                    >
-                      <Text style={styles.venueBadgeText}>
-                        {event.home_away.toUpperCase()}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              )}
-
-              {/* Uniform */}
-              {event.uniform && (
-                <View style={styles.infoRow}>
-                  <Ionicons name="shirt-outline" size={18} color="#8b5cf6" />
-                  <View style={styles.infoContent}>
-                    <Text style={styles.infoTitle}>{event.uniform}</Text>
-                  </View>
-                </View>
-              )}
-
-              {/* Notes */}
-              {event.notes && (
-                <View style={styles.infoRow}>
-                  <Ionicons name="document-text-outline" size={18} color="#8b5cf6" />
-                  <View style={styles.infoContent}>
-                    <Text style={styles.infoSubtitle}>{event.notes}</Text>
-                  </View>
-                </View>
-              )}
-            </View>
-          </View>
-
-          {/* Will you be there? -- same control and state as the season list. */}
-          {!isEventPast(event) && (
-            <View style={styles.willCard}>
-              <View style={styles.willRow}>
-                <Text style={styles.willLabel}>
-                  {myRsvp?.status === 'yes'
-                    ? "✓ You're going"
-                    : myRsvp?.status === 'no'
-                      ? '✗ Not going'
-                      : 'Will you be there?'}
-                </Text>
-                <View style={styles.willButtons}>
-                  <TouchableOpacity
-                    style={[
-                      styles.willBtn,
-                      myRsvp?.status === 'no' && styles.willBtnNoActive,
-                    ]}
-                    onPress={() => setCantGoModalVisible(true)}
-                    disabled={rsvpLoading}
-                  >
-                    <Text
-                      style={[
-                        styles.willBtnText,
-                        myRsvp?.status === 'no' && styles.willBtnTextActive,
-                      ]}
-                    >
-                      ✗
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.willBtn,
-                      myRsvp?.status === 'yes' && styles.willBtnYesActive,
-                    ]}
-                    // Tapping an active "going" undoes it back to pending.
-                    onPress={() =>
-                      myRsvp?.status === 'yes' ? handleRsvp('pending') : handleRsvp('yes')
-                    }
-                    disabled={rsvpLoading}
-                  >
-                    <Text
-                      style={[
-                        styles.willBtnText,
-                        myRsvp?.status === 'yes' && styles.willBtnTextActive,
-                      ]}
-                    >
-                      ✓
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-              {myRsvp?.status === 'no' && myRsvp.decline_reason ? (
-                <Text style={styles.myReasonText}>“{myRsvp.decline_reason}”</Text>
-              ) : null}
-            </View>
-          )}
-
-          {/* Headcount strip. Counts only -- the per-player list and all coach
-              marking live on the Attendance tab. Both read the SAME resolver
-              verdicts, so the strip and the rows can no longer disagree: this
-              used to count raw RSVP rows, which meant a coach mark never moved
-              it and a duplicate row counted one player twice. */}
-          <View style={styles.responsesCard}>
-            <Text style={styles.responsesTitle}>📊 Responses</Text>
-            <View style={styles.responsesRow}>
-              <View style={styles.responseItem}>
-                <Text style={styles.responseCount}>{headcounts.going}</Text>
-                <Text style={styles.responseLabel}>Going</Text>
-              </View>
-              <View style={styles.responseItem}>
-                <Text style={styles.responseCount}>{headcounts.cant}</Text>
-                <Text style={styles.responseLabel}>Can't go</Text>
-              </View>
-              <View style={styles.responseItem}>
-                <Text style={styles.responseCount}>{headcounts.noReply}</Text>
-                <Text style={styles.responseLabel}>No reply</Text>
-              </View>
-            </View>
-
-            {/* How much of the count above is the coach's own doing, rather
-                than the family's. Muted because it is provenance, not a
-                fourth bucket -- these rows are already counted in Going and
-                Can't go. */}
-            {headcounts.markedByCoach > 0 ? (
-              <Text style={styles.responsesCoachNote}>
-                {headcounts.markedByCoach} marked by coach
-              </Text>
-            ) : null}
-
-            {/* The per-player list used to be duplicated here. It now lives
-                only on the Attendance tab, where the coach can actually act on
-                it -- two copies of the same roster, one of them read-only, was
-                the de-dupe this removes. */}
-          </View>
+          {renderEventCard(detailsCardFooter)}
 
           {/* Game entry - for game events */}
           {event.event_type === 'game' && event.team_id && (
@@ -1698,71 +1687,21 @@ export default function EventDetailScreen({ route, navigation }: any) {
             </TouchableOpacity>
           )}
 
-          {/* RSVP Buttons - hidden for past events */}
+          {/* Past notice, and the reason sheet the card's "Can't go" opens.
+              The two stacked reminder buttons that used to sit here are the
+              same handlers now rendered inside the card footer. */}
           {isEventPast(event) ? (
             <View style={styles.pastEventNotice}>
               <Text style={styles.pastEventNoticeText}>This event has passed</Text>
             </View>
           ) : (
-            <>
-              <CantGoReasonModal
-                visible={cantGoModalVisible}
-                onClose={() => setCantGoModalVisible(false)}
-                onSkip={handleCantGoSkip}
-                onSubmit={handleCantGoSubmit}
-                submitting={rsvpLoading}
-              />
-
-              {isStaff && (
-                <TouchableOpacity
-                  style={[
-                    styles.reminderButton,
-                    (nonResponders.length === 0 || reminderSent) && styles.reminderButtonDisabled,
-                  ]}
-                  onPress={handleSendReminder}
-                  disabled={nonResponders.length === 0 || reminderSending || reminderSent}
-                >
-                  {reminderSending ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <>
-                      <Feather
-                        name={reminderSent ? 'check' : 'bell'}
-                        size={18}
-                        color="#fff"
-                      />
-                      <Text style={styles.reminderButtonText}>
-                        {reminderSent
-                          ? 'Reminder Sent'
-                          : nonResponders.length === 0
-                            ? 'All Responded'
-                            : `Remind ${nonResponders.length} to RSVP`}
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              )}
-
-              {isStaff && (
-                <TouchableOpacity
-                  style={[
-                    styles.remindTeamButton,
-                    remindingTeam && styles.reminderButtonDisabled,
-                  ]}
-                  onPress={handleRemindTeam}
-                  disabled={remindingTeam}
-                >
-                  {remindingTeam ? (
-                    <ActivityIndicator size="small" color="#8b5cf6" />
-                  ) : (
-                    <>
-                      <Feather name="bell" size={18} color="#8b5cf6" />
-                      <Text style={styles.remindTeamButtonText}>Remind Team</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              )}
-            </>
+            <CantGoReasonModal
+              visible={cantGoModalVisible}
+              onClose={() => setCantGoModalVisible(false)}
+              onSkip={handleCantGoSkip}
+              onSubmit={handleCantGoSubmit}
+              submitting={rsvpLoading}
+            />
           )}
 
         <View style={styles.bottomPadding} />
@@ -1838,52 +1777,38 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   eventCard: {
-    flexDirection: 'row',
     backgroundColor: '#1F2937',
     borderRadius: 12,
-    overflow: 'hidden',
+    // F1 frame; both colours come from the event type at the call site. No
+    // `overflow: 'hidden'` any more -- it clipped the date badge's glow, and
+    // nothing in the card reaches the corners now.
+    borderWidth: 2,
+    borderLeftWidth: 5,
     marginHorizontal: 16,
     marginTop: 16,
   },
   mainCardCancelled: {
     opacity: 0.6,
   },
-  dateSection: {
-    width: 80,
-    paddingVertical: 20,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-  },
-  eventTypeLabel: {
-    color: 'white',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    marginBottom: 2,
-  },
-  dayName: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    opacity: 0.9,
-  },
-  dateNumber: {
-    color: 'white',
-    fontSize: 36,
-    fontWeight: 'bold',
-    marginVertical: 2,
-  },
-  monthName: {
-    color: 'white',
-    fontSize: 12,
-    textTransform: 'uppercase',
-    opacity: 0.9,
-  },
-  eventDetails: {
-    flex: 1,
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     padding: 16,
+    gap: 12,
+  },
+  headerContent: {
+    flex: 1,
+  },
+  cardDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginHorizontal: 16,
+  },
+  cardBody: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    // Round 3: +4pt of air above the footer hairline.
+    paddingBottom: 8,
   },
 
   // Title Row
@@ -1897,9 +1822,11 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
+  // Dot on the FIRST line: centring it put the dot between the two lines of a
+  // team name that wraps.
   teamNameRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginTop: 4,
   },
   teamDot: {
@@ -1907,6 +1834,8 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     marginRight: 6,
+    // (14pt line box - 8pt dot) / 2, so it sits on the cap height.
+    marginTop: 5,
   },
   teamNameText: {
     color: '#9CA3AF',
@@ -1943,7 +1872,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 16,
   },
   typeBadge: {
     paddingHorizontal: 10,
@@ -2003,7 +1931,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
     padding: 10,
     borderRadius: 8,
-    marginBottom: 12,
+    marginTop: 12,
     borderLeftWidth: 3,
     borderLeftColor: '#ef4444',
   },
@@ -2117,74 +2045,57 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: '#fff',
   },
-  willCard: {
-    backgroundColor: '#1e293b',
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginBottom: 12,
+  // F1: the card's lower half. The three cards these replaced
+  // (willCard / responsesCard / the two stacked reminder buttons) are gone,
+  // and so are their styles.
+  cardFooter: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: 14,
+    paddingBottom: 16,
+    gap: 16,
   },
-  willRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  rsvpSection: {
+    gap: 8,
   },
-  willLabel: {
-    color: '#e2e8f0',
+  rsvpLabel: {
+    color: '#94a3b8',
     fontSize: 14,
     fontWeight: '600',
-    flex: 1,
   },
-  willButtons: {
+  remindRow: {
     flexDirection: 'row',
     gap: 10,
   },
-  willBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#334155',
+  remindPrimary: {
+    flex: 1,
+    backgroundColor: '#8b5cf6',
+    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  willBtnYesActive: {
-    backgroundColor: '#22c55e',
-    borderColor: '#22c55e',
-  },
-  willBtnNoActive: {
-    backgroundColor: '#ef4444',
-    borderColor: '#ef4444',
-  },
-  willBtnText: {
-    color: '#94a3b8',
-    fontSize: 17,
+  remindPrimaryText: {
+    color: '#fff',
+    fontSize: 13,
     fontWeight: '700',
   },
-  willBtnTextActive: {
-    color: '#fff',
+  remindOutline: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#8b5cf6',
+    paddingVertical: 11,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  remindOutlineText: {
+    color: '#8b5cf6',
+    fontSize: 13,
+    fontWeight: '700',
   },
   // Purple accent family, matching the icon/accent colour used across the app.
-  attBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginHorizontal: 16,
-    marginTop: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: 'rgba(139, 92, 246, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.35)',
-  },
-  attBannerText: {
-    flex: 1,
-    color: '#c4b5fd',
-    fontSize: 12,
-    fontWeight: '600',
-  },
   attReason: {
     color: '#94a3b8',
     fontSize: 12,
@@ -2300,42 +2211,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
     marginHorizontal: 16,
-  },
-  responsesCard: {
-    backgroundColor: '#1e293b',
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 12,
-    padding: 16,
-  },
-  responsesTitle: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  responsesRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  responseItem: {
-    alignItems: 'center',
-  },
-  responseCount: {
-    color: '#FFFFFF',
-    fontSize: 28,
-    fontWeight: '700',
-  },
-  responseLabel: {
-    color: '#E9D5FF',
-    fontSize: 13,
-    marginTop: 4,
-  },
-  responsesCoachNote: {
-    color: '#94a3b8',
-    fontSize: 12,
-    marginTop: 12,
-    textAlign: 'center',
   },
 
   // Lineup Section
@@ -2491,44 +2366,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
-  remindTeamButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: '#8b5cf6',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    marginTop: 10,
-    marginHorizontal: 16,
-    gap: 8,
-  },
-  remindTeamButtonText: {
-    color: '#8b5cf6',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  reminderButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#8b5cf6',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    marginTop: 16,
-    marginHorizontal: 16,
-    gap: 8,
-  },
+  // F1 kept only the shared disabled tone; the two stacked reminder buttons
+  // and their styles are gone, replaced by `remindPrimary` / `remindOutline`.
   reminderButtonDisabled: {
     backgroundColor: '#475569',
-  },
-  reminderButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
   },
 
   // Attendance

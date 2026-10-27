@@ -325,3 +325,283 @@ tail -3 docs/ledger.md                             → the two appended rows
 6. Chat room: open a team chat → dot before the title and a 2pt line under the
    header in the team's colour. Open a DM → neither. Bubbles, composer and
    sending unchanged.
+
+---
+
+# Polish round 1 — event form + palette v2 (2026-10-26)
+
+Status: **BUILT, static proof only. Nothing seen on a device or simulator.**
+Rulings R-N … R-R, plus the palette resync. No schema, migration, dependency,
+env, auth/RLS or DB access was touched.
+
+## Files changed (5 source + 2 docs)
+
+| File | Change |
+|---|---|
+| `src/constants/teamColors.ts` | `TEAM_COLOR_PALETTE` → the DB's **32** colours, in trigger order, commented in three groups (boys 1–16, girls 17–28, coed 29–32). The header's "24-hex palette (migration `20261026120913`)" now names `20261026141431` as the source of truth and says the old one was superseded. Nothing else in the file moved: `resolveTeamColor` still hashes the team id and still modulos by the array length, which is now 32. |
+| `src/components/common/DateTimeSheet.tsx` | **R-N.** New optional prop `showWeekdayInTitle`. When set on a `mode="date"` sheet the iOS header reads `` `${label} · ${weekday}` `` — "Date · Thursday" — computed from `draft`, the same state the wheel writes, so it tracks the spinner with no second piece of state. |
+| `src/components/calendar/CreateEventModal.tsx` | **R-N** flag on the Date row's sheet. **R-P** venue row: `VENUE_ICONS` lost its colour column (away was `#EF4444`), selected = `colors.accentDim` fill + white icon and label, unselected = card surface + muted. **R-R** `arrivalHint()` + the `subHint` line. R-N's date row and R-O's time rows were **already compliant** — this form has had `formatDateDisplay` / `formatTimeDisplay` since the sheet rewrite. |
+| `src/components/calendar/EditEventModal.tsx` | All five rulings. **R-O** the single `formatTime` split in two (`formatTimeForPayload` for the three payload fields, `formatTimeDisplay` for the four rows and the section summary) — this form was the one showing "18:00". **R-N** `formatDateDisplay` replaces two `toLocaleDateString()` calls, plus the sheet flag. **R-Q** the horizontal `ScrollView` is a `View`, chips are `flex: 1` with `gap: 8`, padding 16→4 and label 12→11pt, icon kept at 22pt. **R-P** selected chip and selected venue are brand purple + white label; `type.color` and the `#22c55e`/`#ef4444`/`#6b7280` venue fills are no longer read. **R-R** the same hint. |
+| `src/components/calendar/EventTypeSheet.tsx` | **R-P.** The icon map lost its colour column (`#F97316` scrimmage, `#06B6D4` game, `#10B981` practice, `#3B82F6` club). Every glyph is brand purple on a 13% purple tile; the glyph is what distinguishes a row. |
+| `docs/ledger.md` | Fix round B → `VERIFIED-DEVICE`, commit `dd9060f`, Lu's phone 2026-10-26, 5/5 on Lu's word. One new row for this prompt, `BUILT`. |
+
+## Judgment calls
+
+1. **"Create + edit share the form" is not true in this repo.** They are two
+   independent components — `CreateEventModal.tsx` (1397 lines) and
+   `EditEventModal.tsx` (~930) — that duplicate every helper they have in
+   common. Each ruling was therefore applied twice. Most of the work landed in
+   the **edit** form, which is where the 24-hour rows, the scrolling chip strip
+   and the green/red venue fills all were; the create form had already been
+   modernised by the sheet rewrite and needed only R-P and R-R. `arrivalHint()`
+   is consequently a **deliberate copy** in both files: a shared util would be
+   a new file, and SCOPE named the files this task may touch.
+2. **`showWeekdayInTitle` is opt-in, not automatic for every date sheet.**
+   `DateTimeSheet` has a third host, `CreatePollModal`, which FORBIDDEN put out
+   of bounds. Making the weekday automatic would have changed that form's
+   header without touching its file. Side effect of this change on the poll
+   form: **nothing**.
+3. **`club_event` is off the edit form's chip row** so R-Q's "four chips" is
+   literally four. It is the one type nobody may create — `EventTypeSheet`
+   holds it back for the Club Events phase — so the edit form offering it was
+   already inconsistent with the create flow. A row that already **is** a
+   `club_event` still gets its chip (five chips, tighter than the ruling), the
+   alternative being a chip row with nothing selected.
+4. **"Other Event" is displayed as "Other"** on that row, per R-Q's own
+   wording ("no clipped 'Other'"). The value and the label in `EVENT_TYPES`
+   are untouched — this is a display-only short label, local to the form.
+5. **Red survives on validation only, and green on the Save/Create action.**
+   R-P's literal clause is "no amber/orange/red fills or borders anywhere in
+   this form", which would also take the `#ef4444` error border and error text.
+   Those are the form's only validation cue, so they were kept and are flagged
+   for Lu rather than removed silently. `#22c55e` likewise stays on the header
+   Save/Create text and the Uncancel button: green is not in R-P's prohibition
+   list and neither control is a chip. **NEEDS LU** if the ruling was meant
+   literally.
+
+## R-Q arithmetic (computed, not measured)
+
+At 375pt: `scrollContent` padding 16×2 → 343 available; `gap: 8` ×3 → 24; each
+chip `(343 − 24) / 4` = **79.75pt**, inner width 67.75pt after 4pt padding and
+2pt borders. Longest label is "Scrimmage" (9 chars at 11pt/600 ≈ 55pt) —
+**INFERRED**, from character-width estimation, not from a rendered measurement.
+The emoji stays 22pt, per the ruling's order of sacrifice.
+
+## What a device pass has to look at
+
+1. Date row reads "Thu, Oct 29, 2026" in **both** forms.
+2. Open the date sheet and spin the wheel: the header reads "Date · Thursday"
+   and the weekday changes with the spinner, before Done is pressed.
+3. All four time rows in **both** forms read like "6:00 PM". Save an edit and
+   confirm the event's time is unchanged (the payload is still 24-hour).
+4. Arrival hint: "45 min before start" on a game, "10 min before start" on a
+   practice, "same as start" when arrival is dragged onto start, and gone (with
+   the red line in its place) when arrival is dragged past start.
+5. Edit form at 375pt: four chips — 🏆 Game, ⚽ Scrimmage, 🏃 Practice,
+   📅 Other — all fully visible, no sideways scroll, no clipping.
+6. Selected chip and selected venue are purple with a white label; unselected
+   are the neutral card surface. No orange, amber or red anywhere but the
+   validation line.
+7. The New Event sheet's five rows all read in purple.
+8. Android: the native date/time dialog still opens and dismissing it still
+   clears the row's chevron.
+
+---
+
+# Polish round 1b (2026-10-26)
+
+Status: **BUILT, static proof only. Nothing seen on a device or simulator.**
+Three items: R-S sheet dismissal, R-R's third state, and the helper lift.
+No schema, migration, dependency, env, auth/RLS or DB access was touched.
+
+## 1. R-S — what the dismissal paths did, and what they do now
+
+**Audited first, as asked.** `src/components/common/DateTimeSheet.tsx`, before
+this change:
+
+| Path | Handler | Verdict |
+|---|---|---|
+| Done | `onPress={() => onDone(draft)}` | correct — commit + close |
+| Cancel button | `onPress={onCancel}` at **:147** | correct |
+| Backdrop tap | `onPress={onCancel}` at **:139** | **already exactly Cancel.** No silent commit, and none was possible: the wheel writes a local `draft` and only `onDone` hands it to the host |
+| Swipe down | **none** | **the path did not exist.** The iOS branch is a plain absolutely-positioned `View` — no `<Modal>`, no `PanResponder`, no bottom-sheet library — so a downward drag landed on nothing. Not a silent commit; not a dismissal either |
+| Android dismiss | `event.type === 'dismissed'` → `onCancel()` | correct |
+
+Fixed:
+
+- **Swipe down → Cancel.** A `PanResponder` on a new grab area (drag handle +
+  header row), driving an `Animated.Value` on the sheet's `translateY`.
+  Release past **80pt** or a flick over **0.6** velocity calls the cancel
+  handler; anything shorter springs back; a terminated gesture springs back.
+  Handler at **`src/components/common/DateTimeSheet.tsx:153`**
+  (`onPanResponderRelease` → `handleCancel()` at **:156**).
+- **One cancel, not four.** New `handleCancel` at **:136** — `setDraft(value)`,
+  reset the drag, then `onCancel()`. The Cancel button (**:235**), the backdrop
+  (**:218**), the swipe (**:156**) and the Android dismiss (**:196**) all route
+  through it. The explicit `setDraft(value)` is belt-and-braces today, since
+  every host unmounts this component rather than toggling `visible`, but it
+  makes "Cancel restores the previous value" true *inside this file* rather
+  than true only because of how the callers happen to mount it.
+
+Judgment call: the responder is mounted on the **grab area only**, never the
+sheet as a whole, because the spinner underneath needs its own vertical drags.
+It claims the touch on **move** (`dy > 6`, and more vertical than horizontal),
+not on start, so taps on Cancel and Done still reach the buttons.
+
+## 2. R-R — the third state
+
+`arrivalHint` used to return `null` when arrival sat after start, which meant
+the one state that needs explaining was the one state with no explanation until
+the form was submitted. It now returns a value for every input:
+
+| start − arrival | text | tone |
+|---|---|---|
+| > 0 | `"45 min before start"` | muted |
+| 0 | `"same as start"` | muted |
+| < 0 | `"after start — check this"` | error |
+
+`tone` is a semantic token, not a hex — the util is shared and knows neither
+form's palette. Each form maps `'error'` onto `#ef4444`, the colour its own
+`errorText` already uses, via a new `subHintError` style.
+
+Note: after a **failed submit** with arrival after start, both this live cue and
+the validation line ("Arrival must be before start time") show at once. That is
+intended — the hint is live and explains the row, the error is the verdict on
+the submit — but it is two red lines, so it is flagged here for Lu.
+
+## 3. The helper lift
+
+New **`src/utils/eventFormFormat.ts`**: `formatTimeDisplay`,
+`formatDateDisplay`, `arrivalHint`, plus the `ArrivalHint` / `ArrivalHintTone`
+types. Both forms import all three and define none. No behaviour change beyond
+item 2.
+
+The payload serializers were deliberately **left local** to each form
+(`formatDateForPayload` / `formatDate`, `formatTimeForPayload`): they produce
+`YYYY-MM-DD` and 24-hour strings for the `event_date` / `start_time` /
+`arrival_time` / `end_time` columns, and putting them beside the display
+formatters in a shared file is how a 24-hour string ends up in a row and a
+12-hour string ends up in the database.
+
+## What a device pass has to look at
+
+1. Open the date sheet, spin the wheel, **tap the backdrop** — the row keeps its
+   old value.
+2. Same, but **swipe the sheet down** — same outcome, and the sheet follows the
+   finger on the way down.
+3. Swipe down only a little and let go — the sheet springs back and the draft
+   is still where the wheel left it.
+4. Drag on the **spinner itself** — the wheel turns and the sheet does not move.
+5. Tap Cancel, then Done, on the same sheet — both still work (the responder
+   must not be swallowing taps).
+6. Arrival hint reads all three states; drag arrival past start and the line
+   turns red before any submit.
+7. Android: the native dialog still opens, and dismissing it still clears the
+   row's chevron.
+
+---
+
+# Polish round 1c — R-T, the merged "Starts" row (2026-10-26)
+
+Status: **BUILT, static proof only. Nothing seen on a device or simulator.**
+No schema, migration, dependency, env, auth/RLS or DB access was touched.
+The poll form was not opened: `'datetime'` is opt-in, exactly as
+`showWeekdayInTitle` is.
+
+## Blocked check, run first — NOT blocked
+
+`@react-native-community/datetimepicker` **8.6.0**, and
+`node_modules/@react-native-community/datetimepicker/src/index.d.ts:4-5`:
+
+```
+type IOSMode     = 'date' | 'time' | 'datetime' | 'countdown';
+type AndroidMode = 'date' | 'time';
+```
+
+iOS has the combined wheel. **Android does not** — so R-T's sequential
+date-then-time dialogs are not a nicety, they are the only Android path, and
+the component owns that split rather than its hosts.
+
+## What changed
+
+| File | Change |
+|---|---|
+| `src/utils/eventFormFormat.ts` | `formatStartsDisplay(date, time)` → `"Wed, Oct 28 · 6:00 PM"` — **no year**, deliberately: the row is a glance, and the section summary above it still carries `formatDateDisplay` with the year. Also `withDateOf(date, time)`, the date-parts-of-one, clock-of-the-other helper both forms needed. |
+| `src/components/common/DateTimeSheet.tsx` | `DateTimeSheetMode` gains `'datetime'`. iOS passes it straight to the spinner. **Android** gets a new branch above the single-step one: two dialogs in sequence, `key={step}` to force a fresh instance (flipping `mode` on a live instance is not a reliable way to open the second dialog), the first dialog's answer parked in `draft` and **nothing** handed to the host until the second settles. A dismiss at either step calls `handleCancel`. `androidStep` resets on open and on cancel. |
+| `src/components/calendar/CreateEventModal.tsx` | Row merged; `SheetField` `'start'` → `'starts'`; new `commitStarts`; `startOfToday()` replaces `new Date()` as the date floor. |
+| `src/components/calendar/EditEventModal.tsx` | Same merge. Starts' Done sets the day and the start time and re-dates arrival/end — **not** a cascade; see below. |
+
+## Where the cascade fires for Starts
+
+**`src/components/calendar/CreateEventModal.tsx:370`** — `commitStarts`, which
+calls `setEventDate(selected)` and then `commitStartTime(selected)` **once**.
+Because `selected` comes off the combined wheel it carries the day *and* the
+time, so the per-type offset helpers (`getDefaultArrivalTime` /
+`getDefaultEndTime`, both `new Date(selected)` ± minutes) land arrival and end
+on the chosen day for free. That is R-T's "the date part must also move
+arrival/end to the same date", satisfied without a second code path.
+
+The **edit** form has no cascade and still has none (its own header comment has
+said so since the sheet rewrite: re-deriving times on an event the team has
+already been notified about is not a silent change to make). It honours the
+same date clause with `withDateOf`, which moves arrival's and end's **calendar
+day** and leaves the clock reading the user chose alone.
+
+## Judgment calls
+
+1. **All-day keeps a date-only row.** R-T is silent on all-day, and an all-day
+   event has a day and no start time (`start_time: null` in the payload). A
+   single merged row would have left it with no way to say which day it is on.
+   So: All Day off → the `Starts` row and the combined wheel; All Day on → a
+   `Date` row and the date-only sheet, with R-N's live weekday header. `'date'`
+   therefore survives in `SheetField` in both forms.
+2. **`minimumDate` is now midnight today, not `new Date()`.** On a date-only
+   wheel those are the same thing. On a **combined** wheel, `new Date()` is also
+   a *time* floor — it would refuse 4:00 PM today at 6:00 PM, which this form
+   has always allowed and which its own validation still allows (the submit
+   check compares both dates at midnight: "Date cannot be in the past"). The
+   edit form still passes no floor at all, as before — past events are
+   legitimately edited.
+3. **No `showWeekdayInTitle` on the Starts sheet.** The weekday is in the
+   wheel's own left-hand column, which is the whole point of R-T; spelling it
+   out in the header too would say it twice. The sheet title is plain `"Starts"`.
+4. **The payload was not touched.** `event_date` (`YYYY-MM-DD`) and
+   `start_time` (24-hour) are still written separately from two pieces of
+   state. The merge is a UI shape; `withDateOf` only assembles the one Date the
+   wheel needs.
+
+## FOUND — a contradiction inside R-T, resolved toward today's behaviour
+
+R-T says the cascade fires "**exactly as they fire today** on the Start time
+sheet", and then glosses that as "*no re-stamp when the user already set
+arrival/end*". Those two are not the same rule. Today's create-form cascade is
+**unconditional** — `commitStartTime` re-derives arrival and end on every Done,
+and the function's own comment says so deliberately ("the user can override
+arrival or end afterwards, and re-committing start intentionally re-derives
+them").
+
+Taken the main clause over the parenthetical: **behaviour is unchanged**, and
+the only thing 1c changed about the cascade is that it now fires once for a
+day-and-time commit instead of needing two sheets. Adding dirty-tracking would
+be a new behaviour with its own edge cases (does picking the same arrival time
+count as "set"?), and it is not what "exactly as today" asks for. **NEEDS LU**
+if the parenthetical was the intent.
+
+## What a device pass has to look at
+
+1. iOS, create form: the row reads `Starts` / "Wed, Oct 28 · 6:00 PM"; tapping
+   it opens ONE wheel with the day in the left column and 5-minute steps.
+2. Done on that wheel: the row updates, and arrival and end move with it by the
+   type's offsets (game −45/+90, practice −10/+75) **once** — not twice, and
+   not to yesterday.
+3. Cancel, backdrop and swipe-down on the Starts sheet: **both** the day and
+   the time are left as they were (R-S).
+4. Arrival and End rows still open time-only wheels, still read 12-hour, and
+   the R-R hint still shows all three states.
+5. Turn All Day on: the row becomes `Date`, opens the date-only wheel, and the
+   header still reads "Date · Wednesday" live.
+6. Save, then reopen in the edit form: the same day and time come back, and the
+   event in the calendar did not move.
+7. **Android:** tapping Starts shows the date dialog, then the time dialog;
+   cancelling at either step leaves the row untouched; completing both commits
+   once.

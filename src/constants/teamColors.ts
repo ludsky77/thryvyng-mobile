@@ -3,9 +3,10 @@
  * lives (tint for fills, darken for the badge band).
  *
  * A team's colour is assigned in the DATABASE: a trigger sets `teams.color`
- * from the 24-hex palette below (migration 20261026120913, web repo). Clients
- * never choose a colour -- the two 32-swatch pickers this file replaced are
- * gone, and the app now renders the assigned colour read-only.
+ * from the 32-hex palette below (migration 20261026141431, web repo, which
+ * superseded the 24-hex 20261026120913). Clients never choose a colour -- the
+ * two 32-swatch pickers this file replaced are gone, and the app now renders
+ * the assigned colour read-only.
  *
  * `resolveTeamColor` is therefore a READ helper, not a chooser. Its palette arm
  * is a safety net for a row written before the trigger existed: it is keyed on
@@ -24,35 +25,49 @@
  */
 
 /**
- * The 24 colours the DB trigger assigns, in trigger order. Kept here so the
+ * The 32 colours the DB trigger assigns, in trigger order. Kept here so the
  * app can name the palette it is rendering (and so the read-only swatch has
  * something to fall back on); the app never writes a value from it.
+ *
+ * palette v2 by gender — boys 1–16, girls 17–28, coed 29–32; source of truth =
+ * DB migration 20261026141431 (web repo)
  */
 export const TEAM_COLOR_PALETTE: readonly string[] = [
+  // boys 1-16
   '#5A7FC4',
-  '#4A9A9A',
   '#5E9E7E',
-  '#8E9E57',
-  '#BF9E58',
-  '#C98A62',
-  '#C97579',
-  '#C2708F',
-  '#9A7BC4',
-  '#7A7FC9',
-  '#7B8FA8',
-  '#A8907A',
-  '#4A5F93',
-  '#357A80',
+  '#4A9A9A',
+  '#3F6BB0',
   '#4F7F5F',
-  '#7A8A3E',
-  '#A8883A',
-  '#A65F3E',
-  '#9E4F5C',
-  '#8A5A82',
-  '#6F5AA6',
+  '#58A6B5',
+  '#4A5F93',
+  '#6FB39A',
+  '#7A7FC9',
+  '#357A80',
+  '#6FA3D1',
+  '#3E6B5E',
   '#55698A',
-  '#8A6E58',
+  '#6E8F74',
+  '#5C7BA6',
+  '#7B8FA8',
+  // girls 17-28
+  '#B5629A',
+  '#9A7BC4',
+  '#C2708F',
+  '#A99BD6',
+  '#A6497A',
+  '#B07FC0',
+  '#C97579',
+  '#8A5A82',
+  '#D48FA6',
+  '#9E4F5C',
+  '#A87B98',
+  '#6F5AA6',
+  // coed 29-32
   '#8C8C7A',
+  '#8A8F99',
+  '#9A8A80',
+  '#8A6E58',
 ];
 
 const HEX6 = /^#[0-9A-Fa-f]{6}$/;

@@ -21,6 +21,13 @@ import { EVENT_TYPES } from '../../types';
 import { CollapsibleSection } from '../CollapsibleSection';
 import { confirmAndNotifyTeam } from '../../lib/eventChangeNotify';
 import { diffEventFields } from '../../lib/eventChangeSummary';
+import {
+  arrivalHint,
+  formatDateDisplay,
+  formatStartsDisplay,
+  formatTimeDisplay,
+  withDateOf,
+} from '../../utils/eventFormFormat';
 
 if (
   Platform.OS === 'android' &&
@@ -57,20 +64,47 @@ function formatDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function formatTime(d: Date): string {
+/** For the API payload - 24-hour, zero-padded, what the `time` columns take. */
+function formatTimeForPayload(d: Date): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
+
+/**
+ * R-Q: the chip row is a fixed four-across grid, so it has to BE four chips at
+ * 375pt. 'club_event' is the one EVENT_TYPES entry nobody may create -- it is
+ * held back in EventTypeSheet's UNRELEASED_EVENT_TYPES for the Club Events
+ * phase -- so it is off this row too.
+ *
+ * Unless the event being edited already IS one: hiding its chip would leave
+ * the row with nothing selected and no way back. Those rows get a fifth chip,
+ * tighter than the ruling's four, which is the better of the two wrongs.
+ */
+const UNRELEASED_EVENT_TYPE: EventType = 'club_event';
+
+/** R-Q: "Other Event" cannot fit a quarter of 375pt. "Other" can. */
+const SHORT_TYPE_LABELS: Partial<Record<EventType, string>> = {
+  other_event: 'Other',
+};
 
 type HomeAway = 'home' | 'away' | 'neutral';
 
 /** Which field's overlay sheet is open, if any. */
-type SheetField = 'date' | 'start' | 'arrival' | 'end';
+/**
+ * R-T merged the Date row and the Start Time row into one 'starts' field on a
+ * combined date+time wheel. 'date' stays for the all-day case, which has a day
+ * and no start time -- see CreateEventModal's note on the same type.
+ */
+type SheetField = 'date' | 'starts' | 'arrival' | 'end';
 
 /** Uniform shape for the open sheet's props, so every branch is assignable. */
 type SheetConfig = {
   label: string;
   value: Date;
-  mode: 'date' | 'time';
+  mode: 'date' | 'time' | 'datetime';
+  /** R-T, the Starts sheet only: 5-minute steps on the combined wheel. */
+  minuteInterval?: 5;
+  /** R-N, the all-day Date row's sheet only. See DateTimeSheet's prop. */
+  showWeekdayInTitle?: boolean;
   onDone: (value: Date) => void;
 };
 
@@ -145,6 +179,11 @@ export function EditEventModal({
   }, [visible, event]);
 
   const isGameOrScrimmage = eventType === 'game' || eventType === 'scrimmage';
+  const arrivalCue = arrivalHint(arrivalTime, startTime);
+  const typeChoices = EVENT_TYPES.filter(
+    (type) =>
+      type.value !== UNRELEASED_EVENT_TYPE || eventType === UNRELEASED_EVENT_TYPE
+  );
 
   const validate = (): boolean => {
     const next: { title?: string; arrivalTime?: string; endTime?: string } = {};
@@ -182,9 +221,9 @@ export function EditEventModal({
         title: finalTitle,
         event_type: eventType,
         event_date: formatDate(eventDate),
-        start_time: isAllDay ? null : formatTime(startTime),
-        arrival_time: isAllDay ? null : formatTime(arrivalTime),
-        end_time: isAllDay ? null : formatTime(endTime),
+        start_time: isAllDay ? null : formatTimeForPayload(startTime),
+        arrival_time: isAllDay ? null : formatTimeForPayload(arrivalTime),
+        end_time: isAllDay ? null : formatTimeForPayload(endTime),
         is_all_day: isAllDay,
         location_name: locationName.trim() || null,
         location_address: locationAddress.trim() || null,
@@ -242,8 +281,15 @@ export function EditEventModal({
    * NO CASCADE HERE, deliberately. The edit form has never re-derived arrival
    * or end from start (only the create form did), and silently adding that
    * would rewrite times on an existing event that the team has already been
-   * notified about. Start's Done commits start and closes, like every other
-   * field.
+   * notified about. Starts' Done commits the day and the start time and
+   * closes, like every other field.
+   *
+   * R-T's "the date part must move arrival and end to the same date" is still
+   * honoured, and is NOT that cascade: `withDateOf` moves their CALENDAR DAY
+   * and leaves the clock reading the user chose alone. Only the clock reading
+   * reaches the payload, so this is invisible there -- it keeps the three
+   * Dates from disagreeing about which day they are on, which is what the
+   * R-R hint and the validation both read.
    */
   const sheetConfig: SheetConfig | null = (() => {
     switch (sheetField) {
@@ -254,18 +300,27 @@ export function EditEventModal({
           label: 'Date',
           value: eventDate,
           mode: 'date' as const,
+          showWeekdayInTitle: true,
           onDone: (d: Date) => {
             setEventDate(d);
             setSheetField(null);
           },
         };
-      case 'start':
+      case 'starts':
         return {
-          label: 'Start Time',
-          value: startTime,
-          mode: 'time' as const,
+          label: 'Starts',
+          // The wheel needs ONE Date carrying both halves of what the form
+          // keeps in two pieces of state.
+          value: withDateOf(eventDate, startTime),
+          mode: 'datetime' as const,
+          // No showWeekdayInTitle: the combined wheel already shows the
+          // weekday in its left-hand column.
+          minuteInterval: 5 as const,
           onDone: (d: Date) => {
+            setEventDate(d);
             setStartTime(d);
+            setArrivalTime((prev) => withDateOf(d, prev));
+            setEndTime((prev) => withDateOf(d, prev));
             setSheetField(null);
           },
         };
@@ -335,37 +390,34 @@ export function EditEventModal({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Event Type */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.eventTypeContainer}
-          >
-            {EVENT_TYPES.map((type) => (
-              <TouchableOpacity
-                key={type.value}
-                style={[
-                  styles.eventTypeButton,
-                  eventType === type.value && {
-                    borderColor: type.color,
-                    backgroundColor: type.color + '20',
-                  },
-                ]}
-                onPress={() => setEventType(type.value)}
-                disabled={submitting}
-              >
-                <Text style={styles.eventTypeIcon}>{type.icon}</Text>
-                <Text
+          {/* Event Type -- R-Q: a row, not a sideways scroll. */}
+          <View style={styles.eventTypeContainer}>
+            {typeChoices.map((type) => {
+              const isSelected = eventType === type.value;
+              return (
+                <TouchableOpacity
+                  key={type.value}
                   style={[
-                    styles.eventTypeLabel,
-                    eventType === type.value && { color: type.color },
+                    styles.eventTypeButton,
+                    isSelected && styles.eventTypeButtonSelected,
                   ]}
+                  onPress={() => setEventType(type.value)}
+                  disabled={submitting}
                 >
-                  {type.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+                  <Text style={styles.eventTypeIcon}>{type.icon}</Text>
+                  <Text
+                    style={[
+                      styles.eventTypeLabel,
+                      isSelected && styles.eventTypeLabelSelected,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {SHORT_TYPE_LABELS[type.value] ?? type.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
 
           {/* Dynamic Fields */}
           {isGameOrScrimmage ? (
@@ -389,9 +441,6 @@ export function EditEventModal({
                     style={[
                       styles.venueButton,
                       venue === v && styles.venueButtonSelected,
-                      venue === v && v === 'home' && { backgroundColor: '#22c55e' },
-                      venue === v && v === 'away' && { backgroundColor: '#ef4444' },
-                      venue === v && v === 'neutral' && { backgroundColor: '#6b7280' },
                     ]}
                     onPress={() => setVenue(venue === v ? '' : v)}
                     disabled={submitting}
@@ -441,40 +490,54 @@ export function EditEventModal({
           {/* Date & Time */}
           <CollapsibleSection
             title="Date & Time"
-            summary={`${eventDate.toLocaleDateString()}${isAllDay ? ' • All Day' : ` • ${formatTime(startTime)} - ${formatTime(endTime)}`}`}
+            summary={`${formatDateDisplay(eventDate)}${isAllDay ? ' • All Day' : ` • ${formatTimeDisplay(startTime)} - ${formatTimeDisplay(endTime)}`}`}
             defaultExpanded={false}
           >
-            <TouchableOpacity
-              style={styles.subCollapsible}
-              onPress={() => openSheet('date')}
-              disabled={submitting}
-            >
-              <Text style={styles.subLabel}>Date</Text>
-              <Text style={styles.subValue}>{eventDate.toLocaleDateString()}</Text>
-              <Text style={styles.chevron}>{sheetField === 'date' ? '▲' : '▼'}</Text>
-            </TouchableOpacity>
+            {/* R-T: one row for the day and the start time together -- unless the
+                event is all-day, which has a day and no time. */}
+            {isAllDay ? (
+              <TouchableOpacity
+                style={styles.subCollapsible}
+                onPress={() => openSheet('date')}
+                disabled={submitting}
+              >
+                <Text style={styles.subLabel}>Date</Text>
+                <Text style={styles.subValue}>{formatDateDisplay(eventDate)}</Text>
+                <Text style={styles.chevron}>{sheetField === 'date' ? '▲' : '▼'}</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.subCollapsible}
+                onPress={() => openSheet('starts')}
+                disabled={submitting}
+              >
+                <Text style={styles.subLabel}>Starts</Text>
+                <Text style={styles.subValue}>
+                  {formatStartsDisplay(eventDate, startTime)}
+                </Text>
+                <Text style={styles.chevron}>{sheetField === 'starts' ? '▲' : '▼'}</Text>
+              </TouchableOpacity>
+            )}
 
             {!isAllDay && (
               <>
-                <TouchableOpacity
-                  style={styles.subCollapsible}
-                  onPress={() => openSheet('start')}
-                  disabled={submitting}
-                >
-                  <Text style={styles.subLabel}>Start Time</Text>
-                  <Text style={styles.subValue}>{formatTime(startTime)}</Text>
-                  <Text style={styles.chevron}>{sheetField === 'start' ? '▲' : '▼'}</Text>
-                </TouchableOpacity>
-
                 <TouchableOpacity
                   style={styles.subCollapsible}
                   onPress={() => openSheet('arrival')}
                   disabled={submitting}
                 >
                   <Text style={styles.subLabel}>Arrival Time</Text>
-                  <Text style={styles.subValue}>{formatTime(arrivalTime)}</Text>
+                  <Text style={styles.subValue}>{formatTimeDisplay(arrivalTime)}</Text>
                   <Text style={styles.chevron}>{sheetField === 'arrival' ? '▲' : '▼'}</Text>
                 </TouchableOpacity>
+                <Text
+                  style={[
+                    styles.subHint,
+                    arrivalCue.tone === 'error' && styles.subHintError,
+                  ]}
+                >
+                  {arrivalCue.text}
+                </Text>
                 {errors.arrivalTime ? (
                   <Text style={styles.errorText}>{errors.arrivalTime}</Text>
                 ) : null}
@@ -485,7 +548,7 @@ export function EditEventModal({
                   disabled={submitting}
                 >
                   <Text style={styles.subLabel}>End Time</Text>
-                  <Text style={styles.subValue}>{formatTime(endTime)}</Text>
+                  <Text style={styles.subValue}>{formatTimeDisplay(endTime)}</Text>
                   <Text style={styles.chevron}>{sheetField === 'end' ? '▲' : '▼'}</Text>
                 </TouchableOpacity>
                 {errors.endTime ? (
@@ -601,6 +664,8 @@ export function EditEventModal({
             label={sheetConfig.label}
             value={sheetConfig.value}
             mode={sheetConfig.mode}
+            minuteInterval={sheetConfig.minuteInterval}
+            showWeekdayInTitle={sheetConfig.showWeekdayInTitle}
             onCancel={() => setSheetField(null)}
             onDone={sheetConfig.onDone}
           />
@@ -652,27 +717,41 @@ const styles = StyleSheet.create({
   },
   eventTypeContainer: {
     flexDirection: 'row',
+    gap: 8,
     marginBottom: 16,
   },
   eventTypeButton: {
+    // R-Q: a quarter of the row each, so four chips fit 375pt with no sideways
+    // scroll. The 16pt side padding and the 80pt floor the old scrolling strip
+    // carried are what pushed "Other Event" off-screen; the icon keeps its
+    // size, per the ruling's order of sacrifice.
+    flex: 1,
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
     borderRadius: 12,
     borderWidth: 2,
     borderColor: colors.inputBackground,
     backgroundColor: colors.cardBackground,
-    marginRight: 10,
-    minWidth: 80,
+  },
+  eventTypeButtonSelected: {
+    // R-P: brand purple fill, white label. The per-type hues in EVENT_TYPES
+    // (cyan, orange, green, purple, blue) are no longer read by this row -- the
+    // emoji is the only thing distinguishing one chip from another.
+    backgroundColor: colors.accentDim,
+    borderColor: colors.accentDim,
   },
   eventTypeIcon: {
-    fontSize: 24,
+    fontSize: 22,
     marginBottom: 4,
   },
   eventTypeLabel: {
     color: colors.textMuted,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
+  },
+  eventTypeLabelSelected: {
+    color: '#ffffff',
   },
   section: {
     marginBottom: 24,
@@ -715,7 +794,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   venueButtonSelected: {
-    borderColor: 'transparent',
+    // R-P: one brand-purple fill for whichever venue is chosen; the
+    // green/red/grey home/away/neutral trio is gone.
+    backgroundColor: colors.accentDim,
+    borderColor: colors.accentDim,
   },
   venueText: {
     color: colors.textMuted,
@@ -746,6 +828,22 @@ const styles = StyleSheet.create({
   chevron: {
     color: colors.accent,
     fontSize: 12,
+  },
+  subHint: {
+    // R-N/R-R: right-aligned so it sits under the VALUE it explains, not under
+    // the row's label. The row above owns an 8pt bottom margin, so this line is
+    // pulled up into it and pays the same gap back underneath.
+    color: colors.textMuted,
+    fontSize: 11,
+    textAlign: 'right',
+    marginTop: -4,
+    marginRight: 10,
+    marginBottom: 8,
+  },
+  subHintError: {
+    // R-R's third state, in the colour this form's validation lines already
+    // use (errorText below) rather than a second red.
+    color: '#ef4444',
   },
   allDayRow: {
     flexDirection: 'row',

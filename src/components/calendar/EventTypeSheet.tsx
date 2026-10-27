@@ -29,15 +29,25 @@ import type { EventType } from '../../types';
  * itself a full-screen Modal -- see DateTimeSheet's header comment.
  */
 
-const EVENT_TYPE_ICONS: Record<string, { icon: string; color: string }> = {
-  game: { icon: 'trophy', color: '#06B6D4' },
-  scrimmage: { icon: 'locate', color: '#F97316' },
-  practice: { icon: 'people', color: '#10B981' },
-  other_event: { icon: 'calendar', color: '#8B5CF6' },
-  club_event: { icon: 'business', color: '#3B82F6' },
+/**
+ * One glyph per type. R-P took the colour column these rows used to carry
+ * (cyan, orange, green, purple, blue): a row here is a control, and controls in
+ * this form are brand purple -- so every glyph reads purple on a purple tint,
+ * and the glyph itself is what tells one row from the next.
+ */
+const EVENT_TYPE_ICONS: Record<string, string> = {
+  game: 'trophy',
+  scrimmage: 'locate',
+  practice: 'people',
+  other_event: 'calendar',
+  club_event: 'business',
 };
 
-const FALLBACK_ICON = { icon: 'calendar', color: '#8B5CF6' };
+const FALLBACK_ICON = 'calendar';
+
+/** Brand purple, and the same hue at 13% for the glyph's rounded tile. */
+const ICON_COLOR = '#a78bfa';
+const ICON_WRAP_BG = 'rgba(167, 139, 250, 0.13)';
 
 /**
  * Types nobody may create yet (R7, Lu 2026-10-23).
@@ -98,7 +108,7 @@ export function EventTypeSheet({
           <Text style={styles.subtitle}>What are you adding?</Text>
 
           {CREATABLE_EVENT_TYPES.map((type) => {
-            const config = EVENT_TYPE_ICONS[type.value] || FALLBACK_ICON;
+            const icon = EVENT_TYPE_ICONS[type.value] || FALLBACK_ICON;
             return (
               <TouchableOpacity
                 key={type.value}
@@ -107,17 +117,8 @@ export function EventTypeSheet({
                 accessibilityRole="button"
                 accessibilityLabel={`New ${type.label}`}
               >
-                <View
-                  style={[
-                    styles.iconWrap,
-                    { backgroundColor: config.color + '20' },
-                  ]}
-                >
-                  <Ionicons
-                    name={config.icon as any}
-                    size={22}
-                    color={config.color}
-                  />
+                <View style={styles.iconWrap}>
+                  <Ionicons name={icon as any} size={22} color={ICON_COLOR} />
                 </View>
                 <Text style={styles.rowLabel}>{type.label}</Text>
                 <Ionicons name="chevron-forward" size={18} color="#888888" />
@@ -181,6 +182,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   iconWrap: {
+    backgroundColor: ICON_WRAP_BG,
     width: 38,
     height: 38,
     borderRadius: 10,

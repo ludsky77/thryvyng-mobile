@@ -21,6 +21,13 @@ import { getEventTypeConfig } from '../../types';
 import type { UserTeam } from '../../hooks/useUserTeams';
 import { CollapsibleSection } from '../CollapsibleSection';
 import { notifyTeamOfEvent } from '../../services/eventNotifications';
+import {
+  arrivalHint,
+  formatDateDisplay,
+  formatStartsDisplay,
+  formatTimeDisplay,
+  withDateOf,
+} from '../../utils/eventFormFormat';
 
 if (
   Platform.OS === 'android' &&
@@ -29,11 +36,19 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const VENUE_ICONS: Record<string, { icon: string; color: string }> = {
-  home: { icon: 'home', color: '#10B981' },
-  away: { icon: 'car', color: '#EF4444' },
-  neutral: { icon: 'scale-outline', color: '#6B7280' },
+/**
+ * The venue glyphs. R-P took their hues: a venue chip is brand purple when it
+ * is selected and a neutral surface when it is not, so the icon no longer
+ * carries a colour of its own. Away used to be #EF4444, which read as an
+ * error rather than a choice.
+ */
+const VENUE_ICONS: Record<string, string> = {
+  home: 'home',
+  away: 'car',
+  neutral: 'scale-outline',
 };
+
+const FALLBACK_VENUE_ICON = 'ellipse';
 
 const colors = {
   background: '#1a1a2e',
@@ -60,23 +75,19 @@ function formatTimeForPayload(d: Date): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-/** For UI display - 12-hour with AM/PM */
-function formatTimeDisplay(d: Date): string {
-  return d.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
-}
-
-/** For UI display - "Fri, Feb 13, 2026" */
-function formatDateDisplay(d: Date): string {
-  return d.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
+/**
+ * Midnight today. The date floor for both date-bearing sheets.
+ *
+ * `new Date()` was the old Date row's minimumDate, which was fine for a
+ * date-only wheel. R-T's combined wheel would read it as a TIME floor too and
+ * refuse 4:00 PM today at 6:00 PM, which the form has always allowed -- and
+ * which its own validation still allows: the submit check compares both dates
+ * at midnight ("Date cannot be in the past").
+ */
+function startOfToday(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
 }
 
 function addMonths(d: Date, n: number): Date {
@@ -130,15 +141,28 @@ function getDefaultEndTime(start: Date, eventType: EventType): Date {
 }
 
 /** Which field's overlay sheet is open, if any. */
-type SheetField = 'date' | 'start' | 'arrival' | 'end' | 'endRepeat';
+/**
+ * R-T merged the Date row and the Start Time row into one 'starts' field on a
+ * combined date+time wheel.
+ *
+ * 'date' did NOT go away with them: an all-day event has a date and no start
+ * time, so when the All Day switch is on the form still needs a date-only row
+ * and a date-only sheet. R-T is silent on all-day; dropping the row would have
+ * left an all-day event with no way to say which day it is on.
+ */
+type SheetField = 'date' | 'starts' | 'arrival' | 'end' | 'endRepeat';
 
 /** Uniform shape for the open sheet's props, so every branch is assignable. */
 type SheetConfig = {
   label: string;
   value: Date;
-  mode: 'date' | 'time';
+  mode: 'date' | 'time' | 'datetime';
   minimumDate?: Date;
   maximumDate?: Date;
+  /** R-T, the Starts sheet only: 5-minute steps on the combined wheel. */
+  minuteInterval?: 5;
+  /** R-N, the all-day Date row's sheet only. See DateTimeSheet's prop. */
+  showWeekdayInTitle?: boolean;
   onDone: (value: Date) => void;
 };
 
@@ -331,6 +355,21 @@ export function CreateEventModal({
     setStartTime(selected);
     setArrivalTime(getDefaultArrivalTime(selected, eventType));
     setEndTime(getDefaultEndTime(selected, eventType));
+  };
+
+  /**
+   * R-T: the merged Starts sheet's Done. ONE call, so the cascade fires once
+   * for a change that carries both a day and a time -- not once for the date
+   * and again for the time.
+   *
+   * `selected` comes off the combined wheel, so it carries BOTH. Handing that
+   * whole Date to commitStartTime is also what satisfies R-T's "the date part
+   * must move arrival and end to the same date": the two offset helpers derive
+   * from `new Date(selected)`, so they land on the chosen day for free.
+   */
+  const commitStarts = (selected: Date) => {
+    setEventDate(selected);
+    commitStartTime(selected);
   };
 
   useEffect(() => {
@@ -576,6 +615,7 @@ export function CreateEventModal({
     selectedDays.length > 0 &&
     endRepeatDate &&
     recurrenceDates.length > 1;
+  const arrivalCue = arrivalHint(arrivalTime, startTime);
   const isValid =
     !!selectedTeamId &&
     (isGameOrScrimmage ? opponent.trim() : title.trim()).length > 0;
@@ -601,19 +641,27 @@ export function CreateEventModal({
           label: 'Date',
           value: eventDate,
           mode: 'date' as const,
-          minimumDate: new Date(),
+          minimumDate: startOfToday(),
+          showWeekdayInTitle: true,
           onDone: (d: Date) => {
             setEventDate(d);
             setSheetField(null);
           },
         };
-      case 'start':
+      case 'starts':
         return {
-          label: 'Start Time',
-          value: startTime,
-          mode: 'time' as const,
+          label: 'Starts',
+          // The wheel needs ONE Date carrying both halves of what the form
+          // keeps in two pieces of state.
+          value: withDateOf(eventDate, startTime),
+          mode: 'datetime' as const,
+          minimumDate: startOfToday(),
+          // R-T. No showWeekdayInTitle: on the combined wheel the weekday is
+          // already in the left-hand column, so spelling it out in the header
+          // would say it twice.
+          minuteInterval: 5 as const,
           onDone: (d: Date) => {
-            commitStartTime(d);
+            commitStarts(d);
             setSheetField(null);
           },
         };
@@ -825,7 +873,7 @@ export function CreateEventModal({
               <Text style={[styles.label, styles.inputTop]}>Venue</Text>
               <View style={styles.venueContainer}>
                 {(['home', 'away', 'neutral'] as const).map((v) => {
-                  const config = VENUE_ICONS[v] || { icon: 'ellipse', color: '#6B7280' };
+                  const icon = VENUE_ICONS[v] || FALLBACK_VENUE_ICON;
                   const isSelected = venue === v;
                   return (
                     <TouchableOpacity
@@ -833,15 +881,14 @@ export function CreateEventModal({
                       style={[
                         styles.venueButton,
                         isSelected && styles.venueButtonSelected,
-                        isSelected && { backgroundColor: config.color },
                       ]}
                       onPress={() => setVenue(venue === v ? '' : v)}
                       disabled={submitting}
                     >
                       <Ionicons
-                        name={config.icon as any}
+                        name={icon as any}
                         size={18}
-                        color={isSelected ? '#fff' : config.color}
+                        color={isSelected ? '#fff' : colors.textMuted}
                       />
                       <Text style={[styles.venueText, isSelected && { color: '#fff' }]}>
                         {v === 'home' ? 'Home' : v === 'away' ? 'Away' : 'Neutral'}
@@ -892,31 +939,37 @@ export function CreateEventModal({
             summary={`${formatDateDisplay(eventDate)}${isAllDay ? ' • All Day' : ` • ${formatTimeDisplay(startTime)} - ${formatTimeDisplay(endTime)}`}`}
             defaultExpanded={true}
           >
-            <TouchableOpacity
-              style={styles.subCollapsible}
-              onPress={() => openSheet('date')}
-              disabled={submitting}
-            >
-              <Text style={styles.subLabel}>Date</Text>
-              <Text style={styles.subValue}>{formatDateDisplay(eventDate)}</Text>
-              <Text style={styles.chevron}>{sheetField === 'date' ? '▲' : '▼'}</Text>
-            </TouchableOpacity>
+            {/* R-T: one row for the day and the start time together -- unless the
+                event is all-day, which has a day and no time. */}
+            {isAllDay ? (
+              <TouchableOpacity
+                style={styles.subCollapsible}
+                onPress={() => openSheet('date')}
+                disabled={submitting}
+              >
+                <Text style={styles.subLabel}>Date</Text>
+                <Text style={styles.subValue}>{formatDateDisplay(eventDate)}</Text>
+                <Text style={styles.chevron}>{sheetField === 'date' ? '▲' : '▼'}</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.subCollapsible}
+                onPress={() => openSheet('starts')}
+                disabled={submitting}
+              >
+                <Text style={styles.subLabel}>Starts</Text>
+                <Text style={styles.subValue}>
+                  {formatStartsDisplay(eventDate, startTime)}
+                </Text>
+                <Text style={styles.chevron}>{sheetField === 'starts' ? '▲' : '▼'}</Text>
+              </TouchableOpacity>
+            )}
             {errors.eventDate ? (
               <Text style={styles.errorText}>{errors.eventDate}</Text>
             ) : null}
 
             {!isAllDay && (
               <>
-                <TouchableOpacity
-                  style={styles.subCollapsible}
-                  onPress={() => openSheet('start')}
-                  disabled={submitting}
-                >
-                  <Text style={styles.subLabel}>Start Time</Text>
-                  <Text style={styles.subValue}>{formatTimeDisplay(startTime)}</Text>
-                  <Text style={styles.chevron}>{sheetField === 'start' ? '▲' : '▼'}</Text>
-                </TouchableOpacity>
-
                 <TouchableOpacity
                   style={styles.subCollapsible}
                   onPress={() => openSheet('arrival')}
@@ -926,6 +979,14 @@ export function CreateEventModal({
                   <Text style={styles.subValue}>{formatTimeDisplay(arrivalTime)}</Text>
                   <Text style={styles.chevron}>{sheetField === 'arrival' ? '▲' : '▼'}</Text>
                 </TouchableOpacity>
+                <Text
+                  style={[
+                    styles.subHint,
+                    arrivalCue.tone === 'error' && styles.subHintError,
+                  ]}
+                >
+                  {arrivalCue.text}
+                </Text>
                 {errors.arrivalTime ? (
                   <Text style={styles.errorText}>{errors.arrivalTime}</Text>
                 ) : null}
@@ -1078,6 +1139,8 @@ export function CreateEventModal({
             mode={sheetConfig.mode}
             minimumDate={sheetConfig.minimumDate}
             maximumDate={sheetConfig.maximumDate}
+            minuteInterval={sheetConfig.minuteInterval}
+            showWeekdayInTitle={sheetConfig.showWeekdayInTitle}
             onCancel={() => setSheetField(null)}
             onDone={sheetConfig.onDone}
           />
@@ -1265,7 +1328,10 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   venueButtonSelected: {
-    borderColor: 'transparent',
+    // R-P: one brand-purple fill for whichever venue is chosen; the
+    // green/red/grey home/away/neutral trio is gone.
+    backgroundColor: colors.accentDim,
+    borderColor: colors.accentDim,
   },
   venueText: {
     color: colors.textMuted,
@@ -1296,6 +1362,22 @@ const styles = StyleSheet.create({
   chevron: {
     color: colors.accent,
     fontSize: 12,
+  },
+  subHint: {
+    // R-N/R-R: right-aligned so it sits under the VALUE it explains, not under
+    // the row's label. The row above owns an 8pt bottom margin, so this line
+    // is pulled up into it and pays the same gap back underneath.
+    color: colors.textMuted,
+    fontSize: 11,
+    textAlign: 'right',
+    marginTop: -4,
+    marginRight: 10,
+    marginBottom: 8,
+  },
+  subHintError: {
+    // R-R's third state, in the colour this form's validation lines already
+    // use (errorText below) rather than a second red.
+    color: '#ef4444',
   },
   allDayRow: {
     flexDirection: 'row',

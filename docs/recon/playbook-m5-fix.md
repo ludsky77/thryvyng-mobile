@@ -280,3 +280,139 @@ Found while in this file, all left alone:
 * **The featured card is the only full-width card on the screen.** If the
   redesign makes the course cards full width too, the band height (120) and
   the card's `marginHorizontal` (16) should come from one place.
+
+---
+
+## 6. Follow-up round, 2026-10-30 (HEAD `00d48f2`) — five items
+
+Appended after the M5-fix commit. Items 1, 3 and 4 close things this document
+itself raised; item 2 closes the one honest gap in § 2.
+
+### 6.1 RECUR-MAX = 12 months — 1 cap raised, 1 default deliberately NOT
+
+**Ruling:** Lu, Oct 30 — 12 months, replacing the 2-month cap.
+
+The 2-month limit was encoded in **two** places in
+`src/components/calendar/CreateEventModal.tsx`, and nowhere else.
+`EditEventModal.tsx` has no recurrence code at all, and the sweep
+(`grep -rn addMonths` + `"2 months"` + `endRepeat` across `src/`) found no
+third site — **well under the 10-site stop rule.**
+
+| Site | Was | Now |
+|---|---|---|
+| the End Repeat picker's cap (`:715`) | `addMonths(eventDate, 2)` | **`addMonths(eventDate, RECUR_MAX_MONTHS)` = 12** |
+| the End Repeat pre-fill (`:405`) | `max.setMonth(+2)`, a local named `max` | `addMonths(eventDate, RECUR_DEFAULT_MONTHS)` — **still 2** |
+
+Both numbers are now named constants with the reasoning on them
+(`RECUR_MAX_MONTHS` `:104`, `RECUR_DEFAULT_MONTHS` `:118`).
+
+**Why the default was left at 2, and why that is Lu's call and not this
+room's.** Before today the two were the same number because the pre-fill
+simply took the maximum — the local was literally named `max`. Raising both
+would mean a coach who never opens End Repeat silently creates **a year** of
+events instead of two months: for a twice-weekly practice that is ~104 rows
+instead of ~17, from a form they did not touch. The ruling was about the cap,
+so the cap moved and the default did not. **NEEDS LU: should the pre-fill stay
+2 months, or follow the cap?**
+
+**FOUND, out of scope, and it bites this ruling:
+`src/screens/CalendarScreen.tsx:108` fetches `−1 month … +6 months`.** A
+series that now runs 12 months out will create events the calendar screen does
+not display past month 6. It is a one-character change (`6` → `13`), but it
+widens every calendar fetch for every user, so it is a decision, not a sweep.
+**Not changed here.**
+
+### 6.2 The launch switch left the feature folder
+
+`src/features/pac-playbook/launch.ts` → **`src/constants/playbookLaunch.ts`**,
+beside the app's other constants (`eventTypes.ts`, `teamColors.ts`). Moved
+with `git mv`; the file's two exports and their semantics are untouched, so
+the release procedure is still one line.
+
+Four importers repointed: `AppNavigator.tsx:17`, `PlayerDashboard.tsx:24`,
+`CoursesScreen.tsx:20`, `ClubHubScreen.tsx:12`, plus the four prose mentions
+of the old path in those files. `grep -rn "pac-playbook/launch" src` now
+matches only the moved file's own history note.
+
+**§ 2's honest gap is closed. The lazy grep is clean:**
+
+```
+$ grep -rn "pac-playbook" src/navigation src/app app
+src/navigation/AppNavigator.tsx:80:  ? lazy(() => import('../features/pac-playbook/dev/PlaybookDevHarness'))
+src/navigation/AppNavigator.tsx:83:// feature hangs off: nothing under `src/features/pac-playbook/` (outside
+src/navigation/AppNavigator.tsx:88:const PlaybookScreen = lazy(() => import('../features/pac-playbook/PlaybookScreen'));
+src/navigation/AppNavigator.tsx:341:          Suspense, so nothing under `src/features/pac-playbook/` is evaluated
+```
+
+**Four hits: two dynamic imports, two comments. Zero top-level imports** —
+the rule is now readable off a grep instead of argued in prose.
+`MIRROR.md` never named the file, so it needed no edit.
+
+### 6.3 The chevron reaches the loading and error states
+
+Both states rendered before the header, so a book that would not open left the
+reader with the tab bar and nothing else — exactly the trap § 2 flagged. They
+now go through one `stateFrame()` helper in `PlaybookScreen.tsx` that wraps
+them in the same single-row header the cover wears: crest, `PAC Playbook`, the
+chevron. No search and no home (there is no book to search or go home to), and
+`topInset` moved from the page to the header, so the gradient runs under the
+status bar as it does everywhere else.
+
+One supporting change in `PlaybookHeader.tsx`: the subtitle `<Text>` is now
+skipped when `sub` is empty, which these two states are — an empty `Text`
+still holds a line of height.
+
+### 6.4 Courses safe area, and the duplicate title
+
+`styles.container` had no top inset, so the header row was drawn at y 0 behind
+the status bar; the old hero's `paddingTop: 56` hid how close that was, and
+halving the hero exposed it. **Fixed with the pattern the sibling HomeStack
+screens already use** — `SafeAreaView edges={['top']}` from
+`react-native-safe-area-context` (`ClubHubScreen.tsx:69`, and GamesHub /
+TrainingStudio), applied to both the main return and the empty-state return.
+The bottom edge is deliberately not claimed; that is the tab bar's.
+
+The duplicate **"Course Library"** is gone from the header row in both returns
+— the hero below already prints it. The back button and the row's height are
+unchanged; `styles.headerTitle` lost its last reference and was deleted with
+it (`react-native/no-unused-styles` would otherwise have flagged it).
+
+**Look: `m5-looks/04-courses-safe-area.png`** — the back arrow clear of the
+status bar, "Course Library" printed once.
+
+### 6.5 Chat links — read-only, FOUND
+
+Full record in **`docs/recon/chat-links-check.md`**. Short version: chat
+message text is already linkified in one place, `ChatBubble.tsx:43–73`, used
+by both chat screens, covering `https://`, `http://` and bare `www.` (upgraded
+to https). **`thryvyng://` is NOT matched**, so an in-app deep link pasted into
+chat is dead text. No code was changed.
+
+### 6.6 Gates for this round
+
+| Gate | Result |
+|---|---|
+| `npx tsc --noEmit` | **5 = baseline**, 0 in any touched file |
+| `ESLINT_USE_FLAT_CONFIG=false npx eslint <8 touched files>` | **0 errors** |
+| `npx expo export --platform ios` | **exit 0** |
+| mirror | `git diff --stat` lists no file in MIRROR.md's ten |
+
+**Reached the same way as § 4, with the same limits.** The Courses shot used a
+temporary `Courses: 'courses-shot'` path inside the `__DEV__` linking block;
+it is **removed** (`grep -rn "TEMP-M5B-SHOT\|courses-shot" src` returns
+nothing, and `git diff` on `linking.ts` is empty). **No tap, swipe or
+keystroke happened in this round either** — so the chevron on the error state,
+the 12-month picker and the Courses back button are all still Lu's to press.
+
+### 6.7 Still open after this round
+
+* **The three Playbook panels — Positions, Formation, Movement — are
+  UNVERIFIED by Lu.** Built in M3, never looked at on a device or a phone; the
+  movement panel's drag and its frame rate remain UNKNOWN.
+* **The cover art stays whole-and-centred (option A).** The full-width
+  `xMidYMax slice` alternative in § 1 was not taken and the question is still
+  Lu's.
+* **The End Repeat pre-fill** (§ 6.1) and **the calendar's +6-month fetch
+  window** (§ 6.1) both need a ruling.
+* Everything in § 4 "Owed to Lu's finger" and § 5 COURSES-REDESIGN is
+  unchanged, minus the safe-area and duplicate-title items 6.4 just closed.

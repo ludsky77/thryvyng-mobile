@@ -127,9 +127,13 @@ export function PlaybookHeader({
       <Text style={styles.title} numberOfLines={1}>
         {title}
       </Text>
-      <Text style={styles.sub} numberOfLines={1}>
-        {sub}
-      </Text>
+      {/* Empty on the loading and error states, which have no book to name
+          yet — an empty Text would still hold a line of height. */}
+      {sub ? (
+        <Text style={styles.sub} numberOfLines={1}>
+          {sub}
+        </Text>
+      ) : null}
     </View>
   );
 

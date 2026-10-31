@@ -12,12 +12,13 @@ import {
   Alert,
   useWindowDimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, G, Path } from 'react-native-svg';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { playbookVisible } from '../features/pac-playbook/launch';
+import { playbookVisible } from '../constants/playbookLaunch';
 
 const FILTER_OPTIONS = [
   { key: 'All Courses', dbValue: 'all', color: '#1e293b' },
@@ -304,7 +305,7 @@ export default function CoursesScreen({ navigation }: any) {
           the five categories, so a category filter hides it exactly as that
           filter hides a course outside the chosen category. `playbookVisible`
           comes first, so until the launch switch flips the tile is absent
-          (src/features/pac-playbook/launch.ts). */}
+          (src/constants/playbookLaunch.ts). */}
       {showPlaybook && (
         <TouchableOpacity
           style={styles.playbookCard}
@@ -484,7 +485,7 @@ export default function CoursesScreen({ navigation }: any) {
   // about a list that has one row in it.
   if (filteredCourses.length === 0 && !showPlaybook && !loading) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backButton}
@@ -492,7 +493,7 @@ export default function CoursesScreen({ navigation }: any) {
           >
             <Text style={styles.backButtonIcon}>←</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Course Library</Text>
+          {/* No title here: the hero below already names the screen. */}
           <View style={styles.headerRight} />
         </View>
         <ScrollView
@@ -514,13 +515,20 @@ export default function CoursesScreen({ navigation }: any) {
             </Text>
           </View>
         </ScrollView>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
+    /* SAFE AREA — Lu, Oct 30. The header row used to be drawn at y 0, under
+       the status bar; the old hero's `paddingTop: 56` hid how close it was
+       and halving the hero exposed it. `SafeAreaView edges={['top']}` from
+       `react-native-safe-area-context` is the pattern the sibling HomeStack
+       screens use (`ClubHubScreen.tsx:69`, and GamesHub / TrainingStudio);
+       the bottom edge is the tab bar's and is deliberately not claimed. */
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Header. No title: the hero below already prints "Course Library",
+          and the screen was saying it twice. */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.headerButton}
@@ -528,7 +536,6 @@ export default function CoursesScreen({ navigation }: any) {
         >
           <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Course Library</Text>
         <View style={styles.headerButton} />
       </View>
       <FlatList
@@ -550,7 +557,7 @@ export default function CoursesScreen({ navigation }: any) {
         }
         showsVerticalScrollIndicator={false}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -579,11 +586,6 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  headerTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
   },
   listHeaderStyle: {
     marginBottom: 8,

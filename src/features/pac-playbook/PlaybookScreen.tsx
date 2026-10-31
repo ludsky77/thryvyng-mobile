@@ -286,28 +286,56 @@ function Reader({ card: cardParam, onExit, offline }: PlaybookScreenProps) {
 
   /* ------------------------------------------------------------- the states */
 
-  if (loading)
-    return (
-      <View style={[pbk.page, { paddingTop: insets.top }]}>
-        <View style={[pbk.col, pbk.state]}>
-          <ActivityIndicator color={color.green} />
-          <Text style={pbk.note}>{es ? 'Abriendo el playbook…' : 'Opening the playbook…'}</Text>
-        </View>
+  /**
+   * Loading and error wear the header too — Lu, Oct 30. They used to render
+   * bare, above the tab bar and nothing else, so a book that would not open
+   * left the reader with no way back to where it was opened from. They now
+   * carry the same chrome as the cover: the crest, `PAC Playbook` and the
+   * chevron, in the header's single row. There is no book yet, so there is no
+   * subtitle and no search or home — the header draws neither when it is
+   * handed null, and it drops the subtitle line when it is empty.
+   *
+   * `topInset` goes to the header rather than to the page, as on every other
+   * screen, so the gradient runs under the status bar instead of starting
+   * below it.
+   */
+  const stateFrame = (children: React.ReactNode) => (
+    <View style={pbk.page}>
+      <View style={pbk.col}>
+        <PlaybookHeader
+          title="PAC Playbook"
+          sub=""
+          back={null}
+          onExit={onExit}
+          crestUrl={crest?.logo_url}
+          crestAlt={crest?.name}
+          topInset={insets.top}
+          onSearch={null}
+          onHome={null}
+        />
+        <View style={[pbk.col, pbk.state]}>{children}</View>
       </View>
+    </View>
+  );
+
+  if (loading)
+    return stateFrame(
+      <>
+        <ActivityIndicator color={color.green} />
+        <Text style={pbk.note}>{es ? 'Abriendo el playbook…' : 'Opening the playbook…'}</Text>
+      </>
     );
 
   if (error || !content)
-    return (
-      <View style={[pbk.page, { paddingTop: insets.top }]}>
-        <View style={[pbk.col, pbk.state]}>
-          <Text style={pbk.note}>
-            {es
-              ? 'No pudimos abrir el playbook. Revisa tu conexión e inténtalo de nuevo.'
-              : "We couldn't open the playbook. Check your connection and try again."}
-          </Text>
-          <Btn variant="ghost" label={es ? 'Reintentar' : 'Try again'} onPress={reload} />
-        </View>
-      </View>
+    return stateFrame(
+      <>
+        <Text style={pbk.note}>
+          {es
+            ? 'No pudimos abrir el playbook. Revisa tu conexión e inténtalo de nuevo.'
+            : "We couldn't open the playbook. Check your connection and try again."}
+        </Text>
+        <Btn variant="ghost" label={es ? 'Reintentar' : 'Try again'} onPress={reload} />
+      </>
     );
 
   const { book } = content;

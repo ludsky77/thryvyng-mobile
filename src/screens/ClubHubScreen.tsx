@@ -9,7 +9,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { playbookVisible } from '../features/pac-playbook/launch';
+import { playbookVisible } from '../constants/playbookLaunch';
 
 interface HubCard {
   id: string;
@@ -38,7 +38,7 @@ export default function ClubHubScreen() {
     // Oct 28-29: players and parents enter from the dashboard and the course
     // list, staff from Club Hub). One more card in this array, lazy-routed, so
     // none of the book is in this screen's bundle. Hidden until release by the
-    // launch switch (src/features/pac-playbook/launch.ts).
+    // launch switch (src/constants/playbookLaunch.ts).
     ...(playbookVisible
       ? [
           {

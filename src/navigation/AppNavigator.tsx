@@ -13,8 +13,9 @@ import { useRegistration } from '../contexts/RegistrationContext';
 import { FamilyCheckoutProvider } from '../contexts/FamilyCheckoutContext';
 import { linking, type RootStackParamList } from './linking';
 // Two constants, no feature code — the Playbook's launch switch. See
-// src/features/pac-playbook/launch.ts for why it is a leaf module.
-import { playbookVisible } from '../features/pac-playbook/launch';
+// src/constants/playbookLaunch.ts for why it is a leaf module, and why it
+// lives with the app's constants rather than with the feature.
+import { playbookVisible } from '../constants/playbookLaunch';
 import { addNotificationListeners } from '../services/notifications';
 import {
   JoinTeamScreen,

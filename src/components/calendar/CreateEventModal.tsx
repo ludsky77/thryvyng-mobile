@@ -96,6 +96,27 @@ function addMonths(d: Date, n: number): Date {
   return out;
 }
 
+/**
+ * RECUR-MAX — how far past the first event a recurring practice or club event
+ * may repeat. **Lu, 2026-10-30: 12 months, replacing the 2-month cap**, so a
+ * coach can set a series up for a whole season in one pass.
+ */
+const RECUR_MAX_MONTHS = 12;
+
+/**
+ * What End Repeat is PRE-FILLED with when the first weekday is picked — a
+ * starting value the coach overrides, NOT the cap.
+ *
+ * **It is deliberately still 2 while RECUR-MAX is 12.** Before Oct 30 these
+ * were the same number because the default simply took the maximum; raising
+ * both would mean a coach who never opens End Repeat silently creates a
+ * year's worth of events (~100 for a twice-weekly practice) instead of ~17.
+ * Opening the picker now offers the full 12 months. Which number the default
+ * should be is Lu's, and it is recorded as a question in
+ * `docs/recon/playbook-m5-fix.md` § 6 — not decided here.
+ */
+const RECUR_DEFAULT_MONTHS = 2;
+
 function getDefaultStartTime(): Date {
   const d = new Date();
   d.setHours(16, 0, 0, 0); // 4:00 PM
@@ -381,9 +402,8 @@ export function CreateEventModal({
 
   useEffect(() => {
     if (selectedDays.length > 0 && !endRepeatDate) {
-      const max = new Date(eventDate);
-      max.setMonth(max.getMonth() + 2);
-      setEndRepeatDate(formatDateForPayload(max));
+      // A pre-filled starting value, not the cap — see RECUR_DEFAULT_MONTHS.
+      setEndRepeatDate(formatDateForPayload(addMonths(new Date(eventDate), RECUR_DEFAULT_MONTHS)));
     } else if (selectedDays.length === 0) {
       setEndRepeatDate('');
     }
@@ -692,7 +712,7 @@ export function CreateEventModal({
           value: endRepeatDate ? new Date(endRepeatDate) : minEndRepeatDate,
           mode: 'date' as const,
           minimumDate: minEndRepeatDate,
-          maximumDate: addMonths(new Date(eventDate), 2),
+          maximumDate: addMonths(new Date(eventDate), RECUR_MAX_MONTHS),
           onDone: (d: Date) => {
             setEndRepeatDate(formatDateForPayload(d));
             setSheetField(null);

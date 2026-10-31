@@ -21,7 +21,7 @@ import { PendingAttachmentsBanner } from './PendingAttachmentsBanner';
 import { slugify } from '../../utils/slugify';
 import * as Clipboard from 'expo-clipboard';
 import { resolveTeamColor } from '../../constants/teamColors';
-import { playbookVisible } from '../../features/pac-playbook/launch';
+import { playbookVisible } from '../../constants/playbookLaunch';
 
 interface PlayerDashboardProps {
   playerId: string | null;
@@ -406,7 +406,7 @@ export default function PlayerDashboard({ playerId, navigation, showLineupWidget
 
       {/* 📖 PAC PLAYBOOK — the club's tactical manual, its own lazy route, so
           none of the book is in this screen's bundle. Hidden until release by
-          the launch switch (src/features/pac-playbook/launch.ts). The web puts
+          the launch switch (src/constants/playbookLaunch.ts). The web puts
           the same card in the same place, between the lineup widget and
           My Courses (web PlayerDashboard.tsx:436-452). */}
       {playbookVisible && (

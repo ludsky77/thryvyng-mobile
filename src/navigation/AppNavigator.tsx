@@ -326,6 +326,40 @@ function HomeStack() {
       <Stack.Screen name="Courses" options={{ headerShown: false }}>
         {(props) => <LazyScreen component={CoursesScreen} {...props} />}
       </Stack.Screen>
+      {/* The PAC Playbook reader. It sits IN HomeStack, beside Courses, and
+          not on the root stack — Lu, Oct 27: "back/home at every point". A
+          root-stack screen covers the tab navigator, so the reader had no
+          Home / Chat / Calendar / Profile bar and no way out but the in-book
+          back, which the cover does not have. All three of its doors are in
+          this stack already (the player dashboard, the Courses featured card
+          and Club Hub), so one registration still serves all three and a
+          push from any of them keeps the tab bar on screen.
+
+          THE LAZY BOUNDARY IS UNMOVED: the component is still the module-level
+          `lazy()` at the top of this file, reached through `LazyScreen` +
+          Suspense, so nothing under `src/features/pac-playbook/` is evaluated
+          until this route is navigated to (proved in docs/recon/playbook-m4.md
+          § 5). `card` is the web's `?card=`, the only real route param;
+          `offline` is the __DEV__ harness's and the real route never passes
+          it. `onExit` is the app's own back, drawn as a chevron on the cover
+          — it pops this stack, so the reader returns to whichever door opened
+          it. Gated on the launch switch: until PLAYBOOK_LIVE is flipped, a
+          store build has no Playbook route at all. */}
+      {playbookVisible ? (
+        <Stack.Screen name="Playbook" options={{ headerShown: false }}>
+          {(props: any) => (
+            <LazyScreen
+              component={PlaybookScreen}
+              card={props.route?.params?.card}
+              onExit={() =>
+                props.navigation?.canGoBack()
+                  ? props.navigation.goBack()
+                  : props.navigation?.navigate('Dashboard')
+              }
+            />
+          )}
+        </Stack.Screen>
+      ) : null}
       <Stack.Screen name="CourseDetail" options={{ title: 'Course' }}>
         {(props) => <LazyScreen component={CourseDetailScreen} {...props} />}
       </Stack.Screen>
@@ -842,22 +876,6 @@ function RootStackNavigator() {
       {__DEV__ && PlaybookDevHarnessScreen ? (
         <RootStack.Screen name="PlaybookDev" options={{ headerShown: false }}>
           {(props) => <LazyScreen component={PlaybookDevHarnessScreen} {...props} />}
-        </RootStack.Screen>
-      ) : null}
-      {/* The PAC Playbook reader. It lives on the ROOT stack, not in a tab
-          stack, because its three entry points sit in different places (the
-          player dashboard and the course list in HomeStack, Club Hub in
-          HomeStack too but reached from a coach's own dashboard) and a
-          navigate() from any of them bubbles up to here — one registration,
-          not one per stack. `card` is the web's `?card=`, the only real route
-          param; `offline` is the __DEV__ harness's and the real route never
-          passes it. Gated on the launch switch: until PLAYBOOK_LIVE is
-          flipped, a store build has no Playbook route at all. */}
-      {playbookVisible ? (
-        <RootStack.Screen name="Playbook" options={{ headerShown: false }}>
-          {(props: any) => (
-            <LazyScreen component={PlaybookScreen} card={props.route?.params?.card} />
-          )}
         </RootStack.Screen>
       ) : null}
       <RootStack.Screen

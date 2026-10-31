@@ -85,15 +85,23 @@ export type RootStackParamList = {
   // A param-list entry is a type, erased at compile time; the runtime gate is
   // on the `config.screens` entry below and on the navigator's own.
   PlaybookDev: undefined;
-  // The PAC Playbook reader (M4). `card` is the web's `?card=` — open the
-  // book on that card instead of the cover; everything else about where you
-  // are in the book is the reader's own state, never a route param.
-  // The path below is `__DEV__` ONLY, the same three-gate pattern as
-  // `PlaybookDev`: a production bundle has no URL into the reader, so the
-  // launch switch stays the only thing that decides whether the book is
-  // reachable. In dev it is how the reader is opened at all on a machine
-  // where a simulator cannot be tapped. A real, release-time path is M5's,
-  // and it must be gated on `playbookVisible`, not on `__DEV__`.
+  // The PAC Playbook reader. `card` is the web's `?card=` — open the book on
+  // that card instead of the cover; everything else about where you are in
+  // the book is the reader's own state, never a route param.
+  //
+  // THE ROUTE NOW LIVES IN HomeStack, not on this stack (Lu, Oct 27:
+  // "back/home at every point" — a root screen covers the tab bar). The entry
+  // stays here because HomeStack is untyped and every caller does
+  // `navigation.navigate('Playbook')` against this list; a nested navigate
+  // resolves the same way. The deep-link path below moved WITH the route, to
+  // Main → HomeTab → Playbook.
+  //
+  // That path is `__DEV__` ONLY, the same three-gate pattern as `PlaybookDev`:
+  // a production bundle has no URL into the reader, so the launch switch stays
+  // the only thing that decides whether the book is reachable. In dev it is
+  // how the reader is opened at all on a machine where a simulator cannot be
+  // tapped. A real, release-time path must be gated on `playbookVisible`, not
+  // on `__DEV__`.
   Playbook: { card?: string } | undefined;
   // Fallback
   NotFound: undefined;
@@ -152,7 +160,9 @@ export const linking: LinkingOptions<RootStackParamList> = {
         ? {
             PlaybookDev: 'playbook-dev',
             // thryvyng://playbook  ·  thryvyng://playbook?card=F3
-            Playbook: 'playbook',
+            // Nested, because the reader is a HomeStack screen behind the
+            // Home tab now — the tab bar has to stay on screen with it.
+            Main: { screens: { HomeTab: { screens: { Playbook: 'playbook' } } } },
           }
         : {}),
       NotFound: '*',

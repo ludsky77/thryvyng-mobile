@@ -12,6 +12,15 @@
  * and not fetched as a string. The prototype's `stroke` / `opacity` /
  * `stroke-dasharray` values are unchanged.
  *
+ * HALF HEIGHT — Lu's phone look, 2026-10-30. The sketch block above the title
+ * ate the top of the cover, so the art is drawn at HALF its height (150 → 75)
+ * and the two chalk strips that sat above it are gone (`PlaybookScreen.tsx`
+ * drops the cover's top doodle band). **Not one coordinate moved and nothing
+ * is cut:** the viewBox is trimmed to the drawing's own bounds and the whole
+ * sketch — the players, the arrows, the run and the goal at the bottom —
+ * scales down inside it. The arithmetic for why it cannot ALSO stay full
+ * width is in `docs/recon/playbook-m5-fix.md` § 1.
+ *
  * `div.cover` wraps its own footer on the web, which is why the cover has no
  * foot doodle band and puts both of its marks in the top band
  * (`doodleArt.ts`, `ZONES.cover = { top: 2, foot: 0 }`). Mobile inherits that
@@ -53,10 +62,18 @@ const STEPS = {
   ],
 } as const;
 
-/** `.cover-art` — the prototype's chalk pitch sketch, :778. */
+/**
+ * `.cover-art` — the prototype's chalk pitch sketch, :778, at half height.
+ *
+ * `height` 150 → 75 and the viewBox is tightened from `0 0 340 150` to the
+ * ink's real bounding box (`6 12 328 130`: x 10…330, y ~16…140, plus a 4-unit
+ * margin), which is the only trimming available — the art fills its old box.
+ * With `preserveAspectRatio` left at its default the sketch keeps its aspect
+ * and centres, so every stroke survives the halving.
+ */
 function CoverArt() {
   return (
-    <Svg width="100%" height={150} viewBox="0 0 340 150" style={{ opacity: 0.9 }}>
+    <Svg width="100%" height={75} viewBox="6 12 328 130" style={{ opacity: 0.9 }}>
       <G fill="none" stroke="#e8ecf2" strokeLinecap="round" strokeLinejoin="round" opacity={0.5}>
         <Path d="M10 140 L330 140" strokeWidth={1} />
         <Path d="M120 140 L120 112 L220 112 L220 140" strokeWidth={1} />

@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Circle, G, Path } from 'react-native-svg';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { playbookVisible } from '../features/pac-playbook/launch';
@@ -26,6 +27,43 @@ const FILTER_OPTIONS = [
   { key: 'Club House', dbValue: 'club_house', color: '#F59E0B' },
   { key: 'Parents Corner', dbValue: 'parents_corner', color: '#EC4899' },
 ] as const;
+
+/**
+ * The featured card's chalk sketch — a run on goal, as the reader's own cover
+ * draws it. Written out here rather than imported from
+ * `src/features/pac-playbook/`: this screen may touch the launch switch (two
+ * constants, a leaf by design) and nothing else of that feature, or opening
+ * the course list would evaluate the reader's module graph and the lazy
+ * boundary would be gone. Colours are the playbook theme's own, by value:
+ * board `#0b1220`, chalk `#e8ecf2` (src/features/pac-playbook/theme.ts:65,73).
+ */
+function PlaybookChalkMark() {
+  return (
+    <Svg width={190} height={84} viewBox="0 0 220 96">
+      <G
+        fill="none"
+        stroke="#e8ecf2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity={0.55}
+      >
+        {/* the goal line, the frame and the six-yard box */}
+        <Path d="M8 88 L212 88" strokeWidth={1} />
+        <Path d="M78 88 L78 62 L142 62 L142 88" strokeWidth={1.4} />
+        <Path d="M98 88 L98 76 L122 76 L122 88" strokeWidth={1} />
+        {/* two of ours, one of theirs */}
+        <Circle cx={36} cy={34} r={7} strokeWidth={1.6} />
+        <Circle cx={146} cy={26} r={7} strokeWidth={1.6} />
+        <Path d="M96 18 l10 10 m0 -10 l-10 10" strokeWidth={1.6} />
+        {/* the pass, and the run that finishes it */}
+        <Path d="M44 31 C 78 20, 112 18, 138 23" strokeWidth={1.3} strokeDasharray="4 4" />
+        <Path d="M132 19 l7 4 -7 4" strokeWidth={1.3} />
+        <Path d="M142 34 C 134 48, 124 56, 112 60" strokeWidth={1.3} />
+        <Path d="M118 55 l-7 6 2 -9" strokeWidth={1.3} />
+      </G>
+    </Svg>
+  );
+}
 
 function getCategoryGradient(category: string): [string, string] {
   const gradients: Record<string, [string, string]> = {
@@ -213,12 +251,14 @@ export default function CoursesScreen({ navigation }: any) {
         end={{ x: 1, y: 1 }}
         style={styles.banner}
       >
-        <Text style={styles.bannerIcon}>📚</Text>
+        {/* HALF HEIGHT — Lu's phone look, Oct 30: title, one line, the three
+            counts. The 📚 glyph (32pt + 8 margin) is gone, the description is
+            one short line instead of two long ones, and the paddings are cut.
+            ~236pt → ~118pt. The line is NOT given `numberOfLines`: short
+            enough to sit on one row at the 375pt floor, and free to wrap
+            rather than clip if it ever does not (rule R-G). */}
         <Text style={styles.bannerTitle}>Course Library</Text>
-        <Text style={styles.bannerSubtitle}>
-          Expand your skills with expert-led courses. Track your progress and
-          earn XP as you learn.
-        </Text>
+        <Text style={styles.bannerSubtitle}>Expert-led courses. Earn XP as you learn.</Text>
         <View style={styles.statsRowBanner}>
           <Text style={styles.statBanner}>
             {/* The Playbook tile counts, so the banner cannot disagree with
@@ -267,20 +307,34 @@ export default function CoursesScreen({ navigation }: any) {
           (src/features/pac-playbook/launch.ts). */}
       {showPlaybook && (
         <TouchableOpacity
-          style={styles.playbookTile}
+          style={styles.playbookCard}
           onPress={() => navigation.navigate('Playbook')}
-          activeOpacity={0.8}
+          activeOpacity={0.85}
         >
-          <Text style={styles.playbookTileIcon}>📖</Text>
-          <View style={styles.playbookTileText}>
-            <Text style={styles.cardTitle}>PAC Playbook</Text>
-            <Text style={styles.cardDescription}>
-              Your club&apos;s tactical manual: how we see the game, how we play
-              it and how we think.
-            </Text>
-            <Text style={styles.playbookTileFree}>Free</Text>
+          {/* A FEATURED CARD, not a list row — Lu's ruling of Oct 30, option A.
+              Same family as the course cards below: `#1e293b` box, 12pt
+              radius, a banded top over `cardContent`. What differs is what
+              the book is — the band is the reader's own chalkboard instead of
+              a category gradient, and it is full width, above the grid. */}
+          <View style={styles.playbookBand}>
+            <PlaybookChalkMark />
           </View>
-          <Ionicons name="chevron-forward" size={20} color="#8B5CF6" />
+          <View style={styles.cardContent}>
+            <View style={styles.playbookRow}>
+              <View style={styles.playbookRowText}>
+                <Text style={styles.cardTitle}>PAC Playbook</Text>
+                {/* ONE LINE, and short enough to stay one at the 375pt
+                    floor: 39 characters at 13pt is ~246pt against the ~285pt
+                    the row leaves beside the chevron. No `numberOfLines`, so
+                    it wraps rather than clips if it ever runs over (R-G). */}
+                <Text style={styles.cardDescription}>
+                  How we see the game and how we play it.
+                </Text>
+                <Text style={styles.playbookTileFree}>Free</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={22} color="#8B5CF6" />
+            </View>
+          </View>
         </TouchableOpacity>
       )}
     </>
@@ -549,26 +603,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   banner: {
-    paddingTop: 56,
-    paddingBottom: 24,
+    paddingTop: 20,
+    paddingBottom: 16,
     paddingHorizontal: 20,
     marginBottom: 16,
   },
-  bannerIcon: {
-    fontSize: 32,
-    marginBottom: 8,
-  },
   bannerTitle: {
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: '700',
     color: '#fff',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   bannerSubtitle: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.9)',
     lineHeight: 20,
-    marginBottom: 16,
+    marginBottom: 10,
   },
   statsRowBanner: {
     flexDirection: 'row',
@@ -604,25 +654,31 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
   },
-  // The Playbook tile — the same dark card as a course card, laid out as a row
-  // because it has no cover image, with the violet left edge the reader's own
-  // header carries.
-  playbookTile: {
+  // The Playbook FEATURED CARD (Lu, Oct 30, option A). The box is the course
+  // card's own — `#1e293b`, 12pt radius, `overflow:'hidden'` so the band
+  // follows the corners — at full width above the grid, and the band on top
+  // is the reader's chalkboard where a course has its category gradient.
+  playbookCard: {
     backgroundColor: '#1e293b',
     borderRadius: 12,
     marginHorizontal: 16,
     marginBottom: 16,
-    padding: 14,
+    overflow: 'hidden',
+  },
+  playbookBand: {
+    height: 120,
+    backgroundColor: '#0b1220',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1f2b44',
+  },
+  playbookRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: '#8B5CF6',
   },
-  playbookTileIcon: {
-    fontSize: 28,
-  },
-  playbookTileText: {
+  playbookRowText: {
     flex: 1,
   },
   playbookTileFree: {

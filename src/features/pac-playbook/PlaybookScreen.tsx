@@ -122,6 +122,16 @@ export interface PlaybookOffline {
 export interface PlaybookScreenProps {
   /** The web's `?card=`; `linking.ts` types it as `Playbook: { card?: string }`. */
   card?: string;
+  /**
+   * Leave the book and go back to whatever opened it — the dashboard card,
+   * the Courses featured card or the Club Hub card (Lu, Oct 27: "back/home at
+   * every point"). The ROUTE owns this, not the reader: the navigator hands
+   * down its own `goBack`, so the reader never imports react-navigation and
+   * the `__DEV__` harness, which has nowhere to go back to, simply omits it.
+   * Drawn as a chevron on the cover's header only; every other screen already
+   * has the in-book back in that spot.
+   */
+  onExit?: () => void;
   offline?: PlaybookOffline;
 }
 
@@ -137,7 +147,7 @@ export default function PlaybookScreen(props: PlaybookScreenProps) {
   );
 }
 
-function Reader({ card: cardParam, offline }: PlaybookScreenProps) {
+function Reader({ card: cardParam, onExit, offline }: PlaybookScreenProps) {
   const { currentRole } = useAuth();
   const { lang, t } = useLang();
   const es = lang === 'es';
@@ -503,8 +513,19 @@ function Reader({ card: cardParam, offline }: PlaybookScreenProps) {
     progress.viewer === 'parent' && (nav.screen === 'card' || nav.screen === 'chapter');
 
   /* The chalk sketches for this page. `doodlePlan` is pure and keyed off
-   * `pageKey`, so the same page always carries the same marks. */
-  const sketches = doodlePlan(doodle, pageKey);
+   * `pageKey`, so the same page always carries the same marks.
+   *
+   * THE COVER DRAWS NO BAND — Lu's phone look, 2026-10-30. `ZONES.cover` is
+   * `{ top: 2 }`, and for the seed `cover:cover` the pool hands it `press`
+   * (the goal mouth) and `corner` (the corner arc and its flag) — the "box"
+   * and the "flag/corner" in Lu's note. Stacked over `CoverArt` they made one
+   * sketch block tall enough to push the title off the first screen. The plan
+   * is MIRRORED (`doodleArt.ts`, byte-identical to web `c772111`), so it is
+   * not edited: the cover simply does not draw what it is handed, and the
+   * cover's own art — now half height — is the one sketch it carries. Every
+   * other screen is untouched. */
+  const plan = doodlePlan(doodle, pageKey);
+  const sketches = doodle === 'cover' ? { ...plan, top: [] } : plan;
   const strength = Number(STRENGTH[strengthPreset(offline?.dz ?? '')]);
 
   return (
@@ -514,6 +535,8 @@ function Reader({ card: cardParam, offline }: PlaybookScreenProps) {
           title={title}
           sub={sub}
           back={back}
+          /* Only where there is no in-book back — the cover. */
+          onExit={!back ? onExit : null}
           crestUrl={crest?.logo_url}
           crestAlt={crest?.name}
           topInset={insets.top}

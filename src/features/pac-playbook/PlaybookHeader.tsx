@@ -69,6 +69,7 @@ export function PlaybookHeader({
   title,
   sub,
   back,
+  onExit,
   crestUrl,
   crestAlt,
   onSearch,
@@ -78,6 +79,15 @@ export function PlaybookHeader({
   title: string;
   sub: string;
   back?: HeaderBack | null;
+  /**
+   * LEAVE THE BOOK — the app's own back, not the reader's (Lu, Oct 27:
+   * "back/home at every point"). It is drawn ONLY on the header that has no
+   * in-book `back`, which is the cover and nothing else, and it is a CHEVRON
+   * WITH NO LABEL so that header stays the web's single row (rule R-G: the
+   * arithmetic is in the render comment). The route owns where it goes; this
+   * layer only draws the control.
+   */
+  onExit?: (() => void) | null;
   crestUrl?: string | null;
   crestAlt?: string | null;
   onSearch?: (() => void) | null;
@@ -97,6 +107,18 @@ export function PlaybookHeader({
       <Text style={styles.hbtnLabel} numberOfLines={1}>
         {back.label}
       </Text>
+    </Pressable>
+  ) : null;
+
+  const exitBtn = onExit ? (
+    <Pressable
+      onPress={onExit}
+      accessibilityRole="button"
+      accessibilityLabel={lang === 'es' ? 'Salir del playbook' : 'Leave the playbook'}
+      hitSlop={8}
+      style={({ pressed }) => [styles.hbtn, styles.hbtnExit, pressed && styles.hbtnPressed]}
+    >
+      <Icon name="back" />
     </Pressable>
   ) : null;
 
@@ -193,7 +215,16 @@ export function PlaybookHeader({
           {titleCell}
         </>
       ) : (
+        /* The single row, plus the app's own back. R-G at the 375pt floor:
+         * 375 − 24 (paddingHorizontal 12 x2) = 351pt of content box; the
+         * chevron takes 30 (18pt icon + 6pt padding each side), the crest 32,
+         * the EN/ES control ~74, and three 8pt gaps 24 — leaving the title
+         * cell ~191pt against the ~118pt "PAC Playbook" needs at 18pt
+         * extrabold. 73pt over, so nothing is squeezed and the cover keeps
+         * the web's one row. A LABEL on this button would not fit: "Courses"
+         * alone is ~60pt and the two-row header would be back. */
         <>
+          {exitBtn}
           <Crest url={crestUrl} alt={crestAlt} />
           {titleCell}
           {searchBtn}
@@ -276,6 +307,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.control,
   },
   hbtnBack: { maxWidth: 132 },
+  /** The chevron-only leave-the-book button: no label, so no `maxWidth`. */
+  hbtnExit: { marginLeft: -space.px4 },
   hbtnPressed: { backgroundColor: 'rgba(255, 255, 255, 0.15)' },
   hbtnLabel: { color: '#fff', fontWeight: fw.bold, fontSize: fs.lead, flexShrink: 1 },
 

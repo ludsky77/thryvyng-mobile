@@ -81,6 +81,10 @@ export type RootStackParamList = {
   CurriculumDetail: { curriculum: any };
   LineupList: { teamId?: string; clubId?: string };
   LineupEditor: { lineupId: string; teamId: string };
+  // __DEV__ ONLY — the M2 Playbook board harness (PLAYBOOK-DEV-HARNESS).
+  // A param-list entry is a type, erased at compile time; the runtime gate is
+  // on the `config.screens` entry below and on the navigator's own.
+  PlaybookDev: undefined;
   // Fallback
   NotFound: undefined;
 };
@@ -132,6 +136,9 @@ export const linking: LinkingOptions<RootStackParamList> = {
       ProductStore: 'store',
       ProductDetail: 'product/:productId',
       Cart: 'cart',
+      // __DEV__ ONLY. Metro folds `__DEV__` to a literal, so in a production
+      // bundle this spread is `...{}` and the path does not exist.
+      ...(__DEV__ ? { PlaybookDev: 'playbook-dev' } : {}),
       NotFound: '*',
     },
   },

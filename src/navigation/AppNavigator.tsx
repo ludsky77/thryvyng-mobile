@@ -69,6 +69,12 @@ const MessageReadHistoryScreen = lazy(
   () => import('../screens/MessageReadHistoryScreen')
 );
 const RosterScreen = lazy(() => import('../screens/RosterScreen'));
+// __DEV__ ONLY — the M2 Playbook board harness (PLAYBOOK-DEV-HARNESS in
+// docs/ledger.md). `__DEV__` is a compile-time constant Metro folds, so in a
+// production bundle this is `null` and the dynamic import is never emitted.
+const PlaybookDevHarnessScreen = __DEV__
+  ? lazy(() => import('../features/pac-playbook/dev/PlaybookDevHarness'))
+  : null;
 const CreateEvaluationScreen = lazy(() => import('../screens/CreateEvaluationScreen'));
 const EvaluationRosterScreen = lazy(() => import('../screens/EvaluationRosterScreen'));
 const TeamStaffScreen = lazy(() => import('../screens/TeamStaffScreen'));
@@ -823,6 +829,11 @@ function RootStackNavigator() {
       <RootStack.Screen name="NotificationSettings" options={{ headerShown: false }}>
         {(props) => <LazyScreen component={NotificationSettingsScreen} {...props} />}
       </RootStack.Screen>
+      {__DEV__ && PlaybookDevHarnessScreen ? (
+        <RootStack.Screen name="PlaybookDev" options={{ headerShown: false }}>
+          {(props) => <LazyScreen component={PlaybookDevHarnessScreen} {...props} />}
+        </RootStack.Screen>
+      ) : null}
       <RootStack.Screen
         name="NotFound"
         component={NotFoundScreen}

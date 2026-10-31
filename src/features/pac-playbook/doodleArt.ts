@@ -1,6 +1,6 @@
 /**
  * mirror to thryvyng-mobile (M1) — ONE declared diff: the strengthPreset
- * DEV-flag line (import.meta.env.DEV → __DEV__). Everything else byte-identical.
+ * DEV-flag line (Vite's `env.DEV` test → `__DEV__`). Everything else byte-identical.
  * (2026-10-30)
  *
  * THE POOL — 13 marks, and the football anchor each one carries
@@ -200,7 +200,7 @@ export const STRENGTH: Record<1 | 2 | 3, string> = { 1: '0.22', 2: '0.40', 3: '0
  * DEV ONLY: `?dz=1|2|3` previews a preset, so the three can be compared on
  * the real page (`/playbook?dz=3`, and alongside `?card=`).
  *
- * The whole lookup sits inside `if (import.meta.env.DEV)`. Vite replaces that
+ * The whole lookup sits inside the Vite DEV-flag `if` on the line below. Vite replaces that
  * with `false` in a production build and the branch — the literal `'dz'`
  * included — is dropped by dead-code elimination, so the parameter does not
  * exist in the shipped chunk. Proven by grep in the build, not assumed.

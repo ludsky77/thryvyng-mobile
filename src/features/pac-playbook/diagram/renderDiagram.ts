@@ -34,6 +34,69 @@ export const esc = (s: unknown): string =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
+/**
+ * DIAGRAM-LABEL-FIT (2026-10-30). A labelled box sizes to its label: the
+ * declared width is a MINIMUM, and the box grows to fit the text, centred on
+ * the element's declared x. The allowance is per character of the label as
+ * drawn (font-size 4.2, weight 800, letter-spacing .3): measured in Chrome at
+ * 3.43 viewBox units/char for the system UI stack ("RECUPERAR", -apple-system)
+ * and 3.39 for Archivo, so 3.5 covers both platforms with slack, and the 6 of
+ * padding is 3 clear units each side. Pure arithmetic, no DOM, no font metrics.
+ */
+export const BOX_CHAR_W = 3.5;
+export const BOX_PAD_X = 6;
+export function boxWidth(declared: number | undefined, label: string): number {
+  return Math.max(declared || 30, label.length * BOX_CHAR_W + BOX_PAD_X);
+}
+
+/** A labelled box's rect in viewBox units, as render() draws it. */
+export type BoxRect = { x0: number; x1: number; y0: number; y1: number };
+
+/**
+ * DIAGRAM-ARROW-UNDER-BOX (2026-10-30, same root as DIAGRAM-LABEL-FIT). Boxes
+ * paint over passes and runs, and a box sized to its label can now reach past
+ * the pass endpoint that used to touch its edge, hiding the arrowhead. So a
+ * pass or run whose END lies inside a box rect is shortened along its own
+ * last segment: the tip stops at the box edge minus `headLen` (the arrowhead's
+ * length, geometry.ts head()). One whose START lies inside a box begins at
+ * the edge, so the shaft does not paint under the box. Seed data untouched;
+ * a segment wholly inside a box, or too short to shorten, is left as it is.
+ */
+export function clearBoxes(pts: Point[], rects: BoxRect[], headLen: number): Point[] {
+  if (pts.length < 2 || !rects.length) return pts;
+  const inside = (q: Point, r: BoxRect) => q[0] > r.x0 && q[0] < r.x1 && q[1] > r.y0 && q[1] < r.y1;
+  // t along P→Q where the line crosses each slab, as entry/exit parameters.
+  const slab = (p: number, d: number, lo: number, hi: number): [number, number] => {
+    if (d === 0) return [-Infinity, Infinity];
+    const a = (lo - p) / d;
+    const b = (hi - p) / d;
+    return a < b ? [a, b] : [b, a];
+  };
+  const out = pts.slice();
+  const n = out.length;
+  const endRect = rects.find((r) => inside(out[n - 1], r));
+  if (endRect) {
+    const [px, py] = out[n - 2];
+    const [qx, qy] = out[n - 1];
+    const dx = qx - px;
+    const dy = qy - py;
+    const len = Math.hypot(dx, dy);
+    const tIn = Math.max(slab(px, dx, endRect.x0, endRect.x1)[0], slab(py, dy, endRect.y0, endRect.y1)[0]);
+    const keep = tIn * len - headLen; // shaft length left after the trim
+    if (len > 0 && tIn > 0 && tIn <= 1 && keep > 0) out[n - 1] = [px + (dx / len) * keep, py + (dy / len) * keep];
+  }
+  const startRect = rects.find((r) => inside(out[0], r));
+  if (startRect) {
+    const [px, py] = out[0];
+    const [qx, qy] = out[1];
+    const dx = qx - px;
+    const dy = qy - py;
+    const tOut = Math.min(slab(px, dx, startRect.x0, startRect.x1)[1], slab(py, dy, startRect.y0, startRect.y1)[1]);
+    if (tOut > 0 && tOut < 1) out[0] = [px + dx * tOut, py + dy * tOut];
+  }
+  return out;
+}
+
 const chalkLine = (d: string, w: number, op: number) =>
   `<path d="${d}" stroke="${CLR.chalk}" stroke-width="${w}" fill="none" opacity="${op}"/>`;
 
@@ -118,6 +181,15 @@ export function render(d: Diagram, tt: number | null, opts?: RenderOptions): str
   let o = bd;
   const E = d.elements || [];
 
+  const boxLabel = (el: DiagramElement): string => (es && el.text_es ? el.text_es : el.text) || '';
+  const boxRects: BoxRect[] = E.filter((el) => el.type === 'box').map((el) => {
+    const bw = boxWidth(el.w, boxLabel(el));
+    const bh = el.h || 9;
+    const x = el.x ?? 0;
+    const y = el.y ?? 0;
+    return { x0: x - bw / 2, x1: x + bw / 2, y0: y - bh / 2, y1: y + bh / 2 };
+  });
+
   // zones, then cones, then lines, then everything that sits on top — the
   // prototype's paint order, which is what keeps dots above their own runs.
   E.forEach((el) => {
@@ -141,10 +213,15 @@ export function render(d: Diagram, tt: number | null, opts?: RenderOptions): str
     if (['pass', 'run', 'reference', 'option'].indexOf(el.type) < 0 || el.hidden) return;
     const p = el.type === 'reference' ? 1 : prog(el);
     if (p <= 0) return;
-    const pts: Point[] = el.points || [
+    const wgt =
+      el.weight ||
+      (el.type === 'pass' ? 0.8 : el.type === 'run' ? 0.7 : el.type === 'option' ? 0.7 : 0.5);
+    const raw: Point[] = el.points || [
       [10, 10],
       [30, 30],
     ];
+    const pts =
+      el.type === 'pass' || el.type === 'run' ? clearBoxes(raw, boxRects, 2.2 + wgt * 0.6) : raw;
     const { pts: pp, end } = partial(pts, p);
     const c = el.type === 'reference' ? CLR.them : col(el) || CLR.us;
     const path = 'M ' + pp.map((q) => q.join(' ')).join(' L ');
@@ -162,9 +239,6 @@ export function render(d: Diagram, tt: number | null, opts?: RenderOptions): str
             ? 0.2
             : 0.55
           : (el.opacity ?? 1);
-    const wgt =
-      el.weight ||
-      (el.type === 'pass' ? 0.8 : el.type === 'run' ? 0.7 : el.type === 'option' ? 0.7 : 0.5);
     const sel = o0.sel === el.id;
     if (sel)
       o += `<path d="M ${pts.map((q) => q.join(' ')).join(' L ')}" stroke="#ffd166" stroke-width="${wgt * 4}" fill="none" opacity=".3"/>`;
@@ -211,9 +285,9 @@ export function render(d: Diagram, tt: number | null, opts?: RenderOptions): str
     } else if (el.type === 'badge') {
       o += `${hl}<circle data-el="${el.id}" cx="${el.x}" cy="${el.y}" r="3.2" fill="#0b1220" stroke="${CLR.us}" stroke-width="0.7"/><text x="${el.x}" y="${(el.y ?? 0) + 1.4}" text-anchor="middle" font-size="3.6" font-weight="800" fill="${CLR.ink}" pointer-events="none">${esc(el.text || '')}</text>`;
     } else if (el.type === 'box') {
-      const bw = el.w || 30;
+      const txt = boxLabel(el);
+      const bw = boxWidth(el.w, txt);
       const bh = el.h || 9;
-      const txt = es && el.text_es ? el.text_es : el.text;
       o += `${hl}<rect data-el="${el.id}" x="${(el.x ?? 0) - bw / 2}" y="${(el.y ?? 0) - bh / 2}" width="${bw}" height="${bh}" rx="2.2" fill="#172031" stroke="${col(el) || '#3a4556'}" stroke-width="0.6"/><text x="${el.x}" y="${(el.y ?? 0) + 1.5}" text-anchor="middle" font-size="4.2" font-weight="800" letter-spacing=".3" fill="${col(el) || CLR.ink}" pointer-events="none">${esc(txt || '')}</text>`;
     } else if (el.type === 'label') {
       o += `${hl}<text data-el="${el.id}" x="${el.x}" y="${el.y}" text-anchor="middle" font-size="${el.size || 4}" font-weight="700" fill="${col(el) || CLR.chalk}">${esc(es && el.text_es ? el.text_es : el.text || '')}</text>`;

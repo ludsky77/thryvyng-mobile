@@ -87,74 +87,120 @@ export function PlaybookHeader({
 }) {
   const { lang, setLang, t } = useLang();
 
+  const backBtn = back ? (
+    <Pressable
+      onPress={back.go}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.hbtn, styles.hbtnBack, pressed && styles.hbtnPressed]}
+    >
+      <Icon name="back" />
+      <Text style={styles.hbtnLabel} numberOfLines={1}>
+        {back.label}
+      </Text>
+    </Pressable>
+  ) : null;
+
+  const titleCell = (
+    <View style={back ? styles.titleCellWide : styles.titleCell}>
+      <Text style={styles.title} numberOfLines={1}>
+        {title}
+      </Text>
+      <Text style={styles.sub} numberOfLines={1}>
+        {sub}
+      </Text>
+    </View>
+  );
+
+  const searchBtn = onSearch ? (
+    <Pressable
+      onPress={onSearch}
+      accessibilityRole="button"
+      accessibilityLabel={lang === 'es' ? 'Buscar' : 'Search'}
+      style={({ pressed }) => [styles.hbtn, pressed && styles.hbtnPressed]}
+    >
+      <Icon name="search" />
+    </Pressable>
+  ) : null;
+
+  const homeBtn = onHome ? (
+    <Pressable
+      onPress={onHome}
+      accessibilityRole="button"
+      accessibilityLabel={t('home')}
+      style={({ pressed }) => [styles.hbtn, pressed && styles.hbtnPressed]}
+    >
+      <Icon name="home" />
+    </Pressable>
+  ) : null;
+
+  const segCtl = (
+    <View style={styles.seg} accessibilityRole="radiogroup" accessibilityLabel="Language">
+      {(['en', 'es'] as Lang[]).map((l) => (
+        <Pressable
+          key={l}
+          onPress={() => setLang(l)}
+          accessibilityRole="radio"
+          accessibilityState={{ selected: lang === l }}
+          style={[styles.segBtn, lang === l && styles.segBtnOn]}
+        >
+          <Text style={[styles.segLabel, lang === l && styles.segLabelOn]}>
+            {l.toUpperCase()}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+
   return (
     <LinearGradient
       colors={[color.violet2, color.violet]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 0.18 }}
-      style={[styles.hdr, { paddingTop: topInset + space.px10 }]}
+      style={[back ? styles.hdrStack : styles.hdr, { paddingTop: topInset + space.px10 }]}
     >
       {back ? (
-        <Pressable
-          onPress={back.go}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.hbtn, styles.hbtnBack, pressed && styles.hbtnPressed]}
-        >
-          <Icon name="back" />
-          <Text style={styles.hbtnLabel} numberOfLines={1}>
-            {back.label}
-          </Text>
-        </Pressable>
+        /* RULE R-G (ledger, Oct 26: text never overflows its container), and
+         * the close of `PLAYBOOK-HEADER-TITLE-TRUNCATES`.
+         *
+         * The web's header is ONE row, and at phone width five things cannot
+         * share it: a back button capped at 132pt, the title, search, home and
+         * the EN/ES control. On a 375pt screen that leaves the title cell
+         * ~47pt and "PAC Playbook" needs ~118pt at 18pt extrabold, so the
+         * title read "PAC Pl…" — a two-character book title, which is what the
+         * M3 looks caught (`docs/recon/m3-looks/05-card.png`).
+         *
+         * R-G's own remedies are "shortened, wrapped deliberately, or given
+         * numberOfLines with a layout that cannot clip". Shortening is not
+         * available: every candidate — the title, the back label (often a
+         * chapter name), the language control — is already as short as it
+         * reads. So the row is WRAPPED DELIBERATELY: the chrome keeps row one
+         * in the web's own order (back left, search / home / EN-ES right) and
+         * the title block takes row two at the full column width, where
+         * "PAC Playbook" and the chapter subtitle both fit whole with room
+         * over. Nothing is cut and nothing moved sides.
+         *
+         * With NO back label there is no squeeze (crest 32pt + title + the
+         * control fits at 375pt), so that header is the web's single row,
+         * untouched — which is the cover and nothing else. */
+        <>
+          <View style={styles.chromeRow}>
+            {backBtn}
+            <View style={styles.spacer} />
+            {searchBtn}
+            {homeBtn}
+            {segCtl}
+          </View>
+          {titleCell}
+        </>
       ) : (
-        <Crest url={crestUrl} alt={crestAlt} />
+        <>
+          <Crest url={crestUrl} alt={crestAlt} />
+          {titleCell}
+          {searchBtn}
+          {homeBtn}
+          {segCtl}
+        </>
       )}
-
-      <View style={styles.titleCell}>
-        <Text style={styles.title} numberOfLines={1}>
-          {title}
-        </Text>
-        <Text style={styles.sub} numberOfLines={1}>
-          {sub}
-        </Text>
-      </View>
-
-      {onSearch ? (
-        <Pressable
-          onPress={onSearch}
-          accessibilityRole="button"
-          accessibilityLabel={lang === 'es' ? 'Buscar' : 'Search'}
-          style={({ pressed }) => [styles.hbtn, pressed && styles.hbtnPressed]}
-        >
-          <Icon name="search" />
-        </Pressable>
-      ) : null}
-
-      {onHome ? (
-        <Pressable
-          onPress={onHome}
-          accessibilityRole="button"
-          accessibilityLabel={t('home')}
-          style={({ pressed }) => [styles.hbtn, pressed && styles.hbtnPressed]}
-        >
-          <Icon name="home" />
-        </Pressable>
-      ) : null}
-
-      <View style={styles.seg} accessibilityRole="radiogroup" accessibilityLabel="Language">
-        {(['en', 'es'] as Lang[]).map((l) => (
-          <Pressable
-            key={l}
-            onPress={() => setLang(l)}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: lang === l }}
-            style={[styles.segBtn, lang === l && styles.segBtnOn]}
-          >
-            <Text style={[styles.segLabel, lang === l && styles.segLabelOn]}>
-              {l.toUpperCase()}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
     </LinearGradient>
   );
 }
@@ -171,6 +217,25 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(0, 0, 0, 0.25)',
   },
 
+  /** The same box, stacked — rule R-G's two rows. See the comment in render. */
+  hdrStack: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: space.px6,
+    paddingHorizontal: space.px12,
+    paddingBottom: space.px10,
+    borderBottomWidth: lineWidth.hairline,
+    borderBottomColor: 'rgba(0, 0, 0, 0.25)',
+  },
+  /** Row one of the stacked header: `.hdr`'s own row, minus the title. */
+  chromeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.px8,
+  },
+  /** What holds the chrome apart when the title is not between it. */
+  spacer: { flex: 1 },
+
   crest: {
     width: control.crest,
     height: control.crest,
@@ -186,6 +251,8 @@ const styles = StyleSheet.create({
   crestText: { fontWeight: fw.extrabold, fontSize: fs.micro, color: color.violet2 },
 
   titleCell: { flex: 1, minWidth: 0 },
+  /** Row two of the stacked header: the title block, the whole column wide. */
+  titleCellWide: { width: '100%' },
   title: {
     fontWeight: fw.extrabold,
     fontSize: fs.headerTitle,

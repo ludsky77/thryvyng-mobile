@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { playbookVisible } from '../features/pac-playbook/launch';
 
 const FILTER_OPTIONS = [
   { key: 'All Courses', dbValue: 'all', color: '#1e293b' },
@@ -198,6 +199,11 @@ export default function CoursesScreen({ navigation }: any) {
 
   const totalXp = filteredCourses.reduce((sum, c) => sum + (c.totalXp ?? 0), 0);
 
+  // The Playbook tile's own visibility, read in two places below — the tile
+  // itself and the banner's course count, so the count cannot disagree with
+  // what is on screen (the web does the same at CourseCatalog.tsx:341).
+  const showPlaybook = playbookVisible && selectedFilter === 'All Courses';
+
   const listHeader = (
     <>
       {/* Header Banner */}
@@ -215,7 +221,9 @@ export default function CoursesScreen({ navigation }: any) {
         </Text>
         <View style={styles.statsRowBanner}>
           <Text style={styles.statBanner}>
-            {filteredCourses.length} Courses
+            {/* The Playbook tile counts, so the banner cannot disagree with
+                what is on screen — the web's CourseCatalog.tsx:341 rule. */}
+            {filteredCourses.length + (showPlaybook ? 1 : 0)} Courses
           </Text>
           <Text style={styles.statBanner}>0 Students</Text>
           <Text style={styles.statBanner}>{totalXp.toLocaleString()} XP</Text>
@@ -249,6 +257,32 @@ export default function CoursesScreen({ navigation }: any) {
           ))}
         </View>
       </View>
+
+      {/* The PAC Playbook — not a course row, so it is written by hand rather
+          than fetched. Mirrors the web's synthetic catalog tile
+          (web CourseCatalog.tsx:176-186): it is free and it belongs to none of
+          the five categories, so a category filter hides it exactly as that
+          filter hides a course outside the chosen category. `playbookVisible`
+          comes first, so until the launch switch flips the tile is absent
+          (src/features/pac-playbook/launch.ts). */}
+      {showPlaybook && (
+        <TouchableOpacity
+          style={styles.playbookTile}
+          onPress={() => navigation.navigate('Playbook')}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.playbookTileIcon}>📖</Text>
+          <View style={styles.playbookTileText}>
+            <Text style={styles.cardTitle}>PAC Playbook</Text>
+            <Text style={styles.cardDescription}>
+              Your club&apos;s tactical manual: how we see the game, how we play
+              it and how we think.
+            </Text>
+            <Text style={styles.playbookTileFree}>Free</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#8B5CF6" />
+        </TouchableOpacity>
+      )}
     </>
   );
 
@@ -391,7 +425,10 @@ export default function CoursesScreen({ navigation }: any) {
     );
   }
 
-  if (filteredCourses.length === 0 && !loading) {
+  // `!showPlaybook` is the web's own guard (CourseCatalog.tsx:326): with no
+  // courses but the Playbook tile on screen, "No courses found" would be a lie
+  // about a list that has one row in it.
+  if (filteredCourses.length === 0 && !showPlaybook && !loading) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
@@ -566,6 +603,32 @@ const styles = StyleSheet.create({
   filterText: {
     fontSize: 13,
     fontWeight: '500',
+  },
+  // The Playbook tile — the same dark card as a course card, laid out as a row
+  // because it has no cover image, with the violet left edge the reader's own
+  // header carries.
+  playbookTile: {
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#8B5CF6',
+  },
+  playbookTileIcon: {
+    fontSize: 28,
+  },
+  playbookTileText: {
+    flex: 1,
+  },
+  playbookTileFree: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#10B981',
   },
   listContent: {
     paddingHorizontal: 8,

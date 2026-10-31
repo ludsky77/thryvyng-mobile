@@ -21,6 +21,7 @@ import { PendingAttachmentsBanner } from './PendingAttachmentsBanner';
 import { slugify } from '../../utils/slugify';
 import * as Clipboard from 'expo-clipboard';
 import { resolveTeamColor } from '../../constants/teamColors';
+import { playbookVisible } from '../../features/pac-playbook/launch';
 
 interface PlayerDashboardProps {
   playerId: string | null;
@@ -403,6 +404,30 @@ export default function PlayerDashboard({ playerId, navigation, showLineupWidget
         </View>
       </View>
 
+      {/* 📖 PAC PLAYBOOK — the club's tactical manual, its own lazy route, so
+          none of the book is in this screen's bundle. Hidden until release by
+          the launch switch (src/features/pac-playbook/launch.ts). The web puts
+          the same card in the same place, between the lineup widget and
+          My Courses (web PlayerDashboard.tsx:436-452). */}
+      {playbookVisible && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>📖 PAC PLAYBOOK</Text>
+          <TouchableOpacity
+            style={styles.playbookCard}
+            onPress={() => navigation.navigate('Playbook')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.playbookCardText}>
+              <Text style={styles.playbookTitle}>PAC Playbook</Text>
+              <Text style={styles.playbookDesc}>
+                How we see the game, how we play it and how we think
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#a78bfa" />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* 📚 MY COURSES */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
@@ -714,6 +739,32 @@ const styles = StyleSheet.create({
     backgroundColor: '#2a2a4e',
     borderRadius: 12,
     padding: 12,
+  },
+  // The Playbook card — the same dark card as progressCard/courseCard, with a
+  // violet left edge so it reads as the book rather than a course.
+  playbookCard: {
+    backgroundColor: '#2a2a4e',
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: '#8b5cf6',
+  },
+  playbookCardText: {
+    flex: 1,
+  },
+  playbookTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  playbookDesc: {
+    color: '#888',
+    fontSize: 13,
+    lineHeight: 18,
   },
   progressHeader: {
     flexDirection: 'row',

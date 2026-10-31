@@ -85,6 +85,16 @@ export type RootStackParamList = {
   // A param-list entry is a type, erased at compile time; the runtime gate is
   // on the `config.screens` entry below and on the navigator's own.
   PlaybookDev: undefined;
+  // The PAC Playbook reader (M4). `card` is the web's `?card=` — open the
+  // book on that card instead of the cover; everything else about where you
+  // are in the book is the reader's own state, never a route param.
+  // The path below is `__DEV__` ONLY, the same three-gate pattern as
+  // `PlaybookDev`: a production bundle has no URL into the reader, so the
+  // launch switch stays the only thing that decides whether the book is
+  // reachable. In dev it is how the reader is opened at all on a machine
+  // where a simulator cannot be tapped. A real, release-time path is M5's,
+  // and it must be gated on `playbookVisible`, not on `__DEV__`.
+  Playbook: { card?: string } | undefined;
   // Fallback
   NotFound: undefined;
 };
@@ -138,7 +148,13 @@ export const linking: LinkingOptions<RootStackParamList> = {
       Cart: 'cart',
       // __DEV__ ONLY. Metro folds `__DEV__` to a literal, so in a production
       // bundle this spread is `...{}` and the path does not exist.
-      ...(__DEV__ ? { PlaybookDev: 'playbook-dev' } : {}),
+      ...(__DEV__
+        ? {
+            PlaybookDev: 'playbook-dev',
+            // thryvyng://playbook  ·  thryvyng://playbook?card=F3
+            Playbook: 'playbook',
+          }
+        : {}),
       NotFound: '*',
     },
   },

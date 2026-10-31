@@ -12,6 +12,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { useRegistration } from '../contexts/RegistrationContext';
 import { FamilyCheckoutProvider } from '../contexts/FamilyCheckoutContext';
 import { linking, type RootStackParamList } from './linking';
+// Two constants, no feature code — the Playbook's launch switch. See
+// src/features/pac-playbook/launch.ts for why it is a leaf module.
+import { playbookVisible } from '../features/pac-playbook/launch';
 import { addNotificationListeners } from '../services/notifications';
 import {
   JoinTeamScreen,
@@ -75,6 +78,13 @@ const RosterScreen = lazy(() => import('../screens/RosterScreen'));
 const PlaybookDevHarnessScreen = __DEV__
   ? lazy(() => import('../features/pac-playbook/dev/PlaybookDevHarness'))
   : null;
+// The PAC Playbook reader, M4's route. `lazy()` is the lazy boundary the whole
+// feature hangs off: nothing under `src/features/pac-playbook/` (outside
+// `launch.ts`, two constants) is imported from any boot path, so the book —
+// 20 files, a 352 KB data file in dev — loads on the first navigation to
+// `Playbook` and not before. Proved by module-evaluation log in
+// docs/recon/playbook-m4.md.
+const PlaybookScreen = lazy(() => import('../features/pac-playbook/PlaybookScreen'));
 const CreateEvaluationScreen = lazy(() => import('../screens/CreateEvaluationScreen'));
 const EvaluationRosterScreen = lazy(() => import('../screens/EvaluationRosterScreen'));
 const TeamStaffScreen = lazy(() => import('../screens/TeamStaffScreen'));
@@ -832,6 +842,22 @@ function RootStackNavigator() {
       {__DEV__ && PlaybookDevHarnessScreen ? (
         <RootStack.Screen name="PlaybookDev" options={{ headerShown: false }}>
           {(props) => <LazyScreen component={PlaybookDevHarnessScreen} {...props} />}
+        </RootStack.Screen>
+      ) : null}
+      {/* The PAC Playbook reader. It lives on the ROOT stack, not in a tab
+          stack, because its three entry points sit in different places (the
+          player dashboard and the course list in HomeStack, Club Hub in
+          HomeStack too but reached from a coach's own dashboard) and a
+          navigate() from any of them bubbles up to here — one registration,
+          not one per stack. `card` is the web's `?card=`, the only real route
+          param; `offline` is the __DEV__ harness's and the real route never
+          passes it. Gated on the launch switch: until PLAYBOOK_LIVE is
+          flipped, a store build has no Playbook route at all. */}
+      {playbookVisible ? (
+        <RootStack.Screen name="Playbook" options={{ headerShown: false }}>
+          {(props: any) => (
+            <LazyScreen component={PlaybookScreen} card={props.route?.params?.card} />
+          )}
         </RootStack.Screen>
       ) : null}
       <RootStack.Screen

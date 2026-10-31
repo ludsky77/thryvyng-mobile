@@ -9,6 +9,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { playbookVisible } from '../features/pac-playbook/launch';
 
 interface HubCard {
   id: string;
@@ -33,6 +34,23 @@ export default function ClubHubScreen() {
       subtitle: 'Season plans, curriculum, and drills',
       onPress: () => navigation.navigate('TrainingStudio', { teamId, clubId }),
     },
+    // The PAC Playbook — the coaches' and directors' way in (placement ruling
+    // Oct 28-29: players and parents enter from the dashboard and the course
+    // list, staff from Club Hub). One more card in this array, lazy-routed, so
+    // none of the book is in this screen's bundle. Hidden until release by the
+    // launch switch (src/features/pac-playbook/launch.ts).
+    ...(playbookVisible
+      ? [
+          {
+            id: 'playbook',
+            icon: 'book-outline' as keyof typeof Ionicons.glyphMap,
+            accentColor: '#8b5cf6',
+            title: 'PAC Playbook',
+            subtitle: 'How we see the game, how we play it and how we think',
+            onPress: () => navigation.navigate('Playbook'),
+          },
+        ]
+      : []),
     ...(clubId
       ? [
           {

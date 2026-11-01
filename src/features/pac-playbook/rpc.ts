@@ -19,12 +19,12 @@
  * Note `supabase.from` / `supabase.rpc` are called ON the instance. Detaching
  * either one loses `this`.
  *
- * READ vs WRITE, and what M3 does with them. The four writes below —
- * `setGotIt`, `startQuiz`, `submitQuiz`, `sendQuestion` — are shipped as
- * functions but are NOT called by any M3 screen: every call site carries a
- * `TODO(M-later)` and the UI shows the web reader's own state instead. They
- * live here now so the write prompt is a wire-up and not a rewrite, and so
- * the one call surface stays one file.
+ * READ vs WRITE. The four writes below — `setGotIt`, `startQuiz`,
+ * `submitQuiz`, `sendQuestion` — have one caller each, in the reader's own
+ * hooks and screens: `usePlaybookProgress.markGotIt`, `useQuizRun.start`,
+ * `useQuizRun.finish` and `ChapterEndScreen.send`. All four refuse through
+ * `playbookErrorMessage` (ruling R-5), and none is called on the `__DEV__`
+ * harness path, which has no player row to write as.
  */
 
 import { supabase } from '../../lib/supabase';
@@ -151,7 +151,7 @@ export async function fetchViewerKind(playerId: string): Promise<ViewerKind> {
 }
 
 /* ------------------------------------------------------------ the writes */
-/* NOT CALLED IN M3 — see the file header. Each caller is marked TODO(M-later). */
+/* One caller each — see the file header. All four refuse through R-5. */
 
 /** Family only (P0041 otherwise). `false` deletes the row. */
 export async function setGotIt(playerId: string, cardId: string, value: boolean): Promise<void> {

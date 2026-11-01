@@ -105,7 +105,10 @@ export default function CalendarScreen({ route, navigation }: any) {
   const [showSyncModal, setShowSyncModal] = useState(false);
 
   const startDate = subMonths(new Date(), 1).toISOString().split('T')[0];
-  const endDate = addMonths(new Date(), 6).toISOString().split('T')[0];
+  // 13 months, not 6: RECUR-MAX caps a series at 12 months, so a series created
+  // today has occurrences up to a year out and the 13th month is the margin
+  // that keeps the last one in view. Mirrors the web's TeamCalendarTab window.
+  const endDate = addMonths(new Date(), 13).toISOString().split('T')[0];
 
   // Create-only hook: this screen does its own fetch below, and the hook's
   // duplicate fetch/realtime/updateRsvp went with the one-writer cleanup.

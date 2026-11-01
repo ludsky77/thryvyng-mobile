@@ -20,9 +20,11 @@
  * that is the rule the SERVER regrades with — so this screen only forwards the
  * point to `run.answerTap`. Nothing here recomputes a verdict.
  *
- * M3 IS READ/RENDER ONLY: `run.start` and the submit are `TODO(M-later)` in
- * `useQuizRun.ts`, and the entry screen shows the sentence that hook sets in
- * the slot the web uses for a server refusal.
+ * DEALING AND GRADING ARE THE HOOK'S: `run.start` calls `playbook_start_quiz`
+ * and the last `next` submits through `playbook_submit_quiz`, both in
+ * `useQuizRun.ts`. The entry and results screens show the sentence that hook
+ * sets, in the slot the web uses for a server refusal (R-5), and `run.busy`
+ * holds the buttons while either call is out.
  */
 
 import React, { useEffect, useState } from 'react';

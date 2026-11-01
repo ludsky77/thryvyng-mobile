@@ -13,12 +13,12 @@
  * has no `kind` column (schema :261-280), so there is nowhere to put that
  * choice and no server path to add one.
  *
- * M3 IS READ/RENDER ONLY. The thread READS — `fetchMyQuestions` — and shows
- * whatever the player already has. The SEND is a write, so `send()` is a
- * `TODO(M-later)`: the form is built, the empty-draft guard fires, and the
- * status line says plainly that it is not connected yet. Ruling R-5's
- * behaviour on a refusal (the sentence shows and the draft stays put) is the
- * branch the TODO becomes.
+ * THE SEND is wired to `playbook_send_question` through `sendQuestion()`. The
+ * empty-draft guard fires first; on success the draft clears and the thread
+ * refetches through the nonce; on a refusal the sentence from `playbookErrors`
+ * shows and the draft STAYS PUT (ruling R-5), so nothing a family typed is
+ * lost to a "no". The `__DEV__` harness is read-only here — its `offline`
+ * thread has no player row to send as, and it says so.
  *
  * ONE MOBILE DIFFERENCE: `<select>` has no React Native equivalent, so "About"
  * is a horizontal row of chips — the whole chapter, then one per card. Same
@@ -28,7 +28,8 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { fetchMyQuestions } from '../rpc';
+import { playbookErrorMessage } from '../../../lib/playbookErrors';
+import { fetchMyQuestions, sendQuestion } from '../rpc';
 import type { Card, ChapterRow, QuestionRow, ReplyRow } from '../types';
 import { pick, useLang } from '../strings';
 import { Btn, Chip, Cta, SectTitle, Stamp, Tape, TopHead } from '../ui';
@@ -43,10 +44,10 @@ const ago = (iso: string, es: boolean): string => {
   return `${Math.round(h / 24)} ${es ? 'd' : 'd'}`;
 };
 
-/** The one sentence M3 shows where the web shows the server's answer. */
-const NOT_WIRED = {
-  en: 'Sending is not connected yet — coming in a later step. Your message is kept.',
-  es: 'El envío aún no está conectado — llega en un paso posterior. Tu mensaje se conserva.',
+/** HARNESS ONLY — the offline thread has no player row to send as. */
+const HARNESS_ONLY = {
+  en: 'The harness has no session — nothing is sent. Your message is kept.',
+  es: 'El harness no tiene sesión — no se envía nada. Tu mensaje se conserva.',
 };
 
 export function ChapterEndScreen({
@@ -73,10 +74,10 @@ export function ChapterEndScreen({
   const [draft, setDraft] = useState('');
   const [cardId, setCardId] = useState('');
   const [status, setStatus] = useState('');
-  const [sending] = useState(false);
+  const [sending, setSending] = useState(false);
   const [questions, setQuestions] = useState<QuestionRow[]>(offline?.questions ?? []);
   const [replies, setReplies] = useState<ReplyRow[]>(offline?.replies ?? []);
-  const [nonce] = useState(0);
+  const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
     if (offline) return;
@@ -109,20 +110,30 @@ export function ChapterEndScreen({
   const cardsById = useMemo(() => new Map(cards.map((c) => [c.id, c])), [cards]);
   const gotCount = cards.filter((c) => got.has(c.id)).length;
 
-  const send = () => {
+  const send = async () => {
     const body = draft.trim();
     if (!body) {
       setStatus(es ? 'Escribe un mensaje primero.' : 'Write a message first.');
       return;
     }
-    // TODO(M-later): the send. The web's own body —
-    //   `await sendQuestion(playerId, chapter.id, cardId || null, body.slice(0, 2000))`
-    //   then clear the draft, say "Sent. Your coaches will see it." and bump
-    //   the nonce so the thread refetches; on refusal set
-    //   `playbookErrorMessage(e, lang)` and KEEP the draft (R-5).
-    // `sendQuestion` is already in `rpc.ts`. It INSERTS a
-    // `playbook_questions` row, so M3 does not call it.
-    setStatus(NOT_WIRED[es ? 'es' : 'en']);
+    if (offline) {
+      setStatus(HARNESS_ONLY[es ? 'es' : 'en']);
+      return;
+    }
+    setSending(true);
+    try {
+      // 2000 is the field's own `maxLength`, trimmed again here because a
+      // paste can outrun the input.
+      await sendQuestion(playerId, chapter.id, cardId || null, body.slice(0, 2000));
+      setDraft('');
+      setStatus(es ? 'Enviado. Tus coaches lo verán.' : 'Sent. Your coaches will see it.');
+      setNonce((n) => n + 1);
+    } catch (e) {
+      // The draft stays put — R-5. A refusal must not cost the message.
+      setStatus(playbookErrorMessage(e, lang));
+    } finally {
+      setSending(false);
+    }
   };
 
   return (

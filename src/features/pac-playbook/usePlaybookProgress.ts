@@ -8,18 +8,17 @@
  * never has to ask whether somebody is "allowed": with no player there is
  * nothing player-shaped on the screen, and with a player the server answers.
  *
- * THE ONE DIFFERENCE FROM THE WEB, and it is M3's scope, not a port problem:
- * `markGotIt` does NOT write. The web calls `setGotIt()`, which is
- * `playbook_set_got_it`; M3 is read/render only, so the optimistic tick is
- * applied locally and the RPC is a `TODO(M-later)` at the one line where it
- * belongs. Everything around it — the optimistic add/delete, the rollback
- * shape, the error sentence from `playbookErrors` (ruling R-5) — is built and
- * in place, so the write prompt is one uncommented call and nothing else.
+ * `markGotIt` WRITES, and it is the web's own call: `setGotIt()`, which is
+ * `playbook_set_got_it`. The tick is applied optimistically and rolled back on
+ * a server "no", which then returns the sentence from `playbookErrors`
+ * (ruling R-5) — the tick must never outlive a refusal. The `__DEV__` harness
+ * is the one path that does not write: it has no player row, so its tick stays
+ * local.
  */
 
 import { useCallback, useEffect, useState } from 'react';
 import { playbookErrorMessage } from '../../lib/playbookErrors';
-import { fetchProgress, fetchQuizResult, fetchViewerKind } from './rpc';
+import { fetchProgress, fetchQuizResult, fetchViewerKind, setGotIt } from './rpc';
 import type { QuizResultRow, ViewerKind } from './types';
 import type { Lang } from './strings';
 
@@ -98,20 +97,28 @@ export function usePlaybookProgress(
     async (cardId: string, value: boolean): Promise<string | null> => {
       if (!playerId && !offline) return playbookErrorMessage({ hint: 'no_player_access' }, lang);
       // Optimistic, then rolled back on refusal — the tick must never outlive
-      // a server "no" (R-5). The refusal cannot arrive yet: see below.
+      // a server "no" (R-5).
       setGot((prev) => {
         const next = new Set(prev);
         if (value) next.add(cardId);
         else next.delete(cardId);
         return next;
       });
-      // TODO(M-later): the write. One line —
-      //   `try { await setGotIt(playerId!, cardId, value); return null }`
-      //   `catch (e) { <roll the set back>; return playbookErrorMessage(e, lang) }`
-      // `setGotIt` is already in `rpc.ts`; M3 is read/render only, so the tick
-      // is local and nothing is sent. The rollback branch is written out in
-      // the web's own hook and is what this becomes.
-      return null;
+      // HARNESS ONLY: `offline-player` is not a row, so the write could only
+      // be a refusal with nothing to learn from it. The tick stays local.
+      if (offline) return null;
+      try {
+        await setGotIt(playerId!, cardId, value);
+        return null;
+      } catch (e) {
+        setGot((prev) => {
+          const next = new Set(prev);
+          if (value) next.delete(cardId);
+          else next.add(cardId);
+          return next;
+        });
+        return playbookErrorMessage(e, lang);
+      }
     },
     [playerId, lang, offline]
   );

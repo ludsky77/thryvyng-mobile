@@ -15,12 +15,11 @@
  * to the prototype's own dashed "Diagram pending" panel, and the two cards the
  * web exempts from it (`mind` chapter, `FM5v5`) are exempt here too.
  *
- * "GOT IT" IS THE ONE WRITE ON THIS SCREEN, AND M3 DOES NOT SEND IT. The
- * button, its two faces, its busy state and the error line below it are all
- * built; `usePlaybookProgress.markGotIt` ticks locally and carries the
- * `TODO(M-later)` for the RPC. Ruling R-5's behaviour — the tick rolls back
- * and the sentence is shown when the server refuses — is written out in that
- * hook, ready for the call.
+ * "GOT IT" IS THE ONE WRITE ON THIS SCREEN, and it goes out through
+ * `usePlaybookProgress.markGotIt` — `playbook_set_got_it`. The button's two
+ * faces, its busy state and the error line below it are this screen's; the
+ * tick, its rollback and the sentence to show on a refusal are the hook's
+ * (ruling R-5). Nothing here decides whether the write is allowed.
  */
 
 import React, { useEffect, useState } from 'react';

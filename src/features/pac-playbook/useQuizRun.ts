@@ -28,31 +28,24 @@
  *     async, so the countdown starts on the long timing and is shortened once
  *     the answer arrives — which is the same outcome either way, because the
  *     answer arrives in under a frame.
- *  3. **M3 IS READ/RENDER ONLY.** `playbook_start_quiz` CREATES a run row and
- *     `playbook_submit_quiz` WRITES the score: both are writes, so neither is
- *     called here. Each one is a single `TODO(M-later)` with the call written
- *     out beside it, and the screen shows a labelled "not wired yet" line in
- *     the place the web shows a server refusal (ruling R-5's own slot). The
- *     `__DEV__` harness passes an `offline` deal instead, so the run screen
- *     and the results screen can be seen; its local grade uses the book's own
- *     `rules.silver` / `rules.gold` thresholds and is clearly fenced off from
- *     the real path.
+ *  3. **The harness is the only local grader.** `playbook_start_quiz` deals
+ *     the run and `playbook_submit_quiz` grades it; both are called here, and
+ *     both refuse through `playbookErrorMessage` into the slot the web uses
+ *     for a server refusal (ruling R-5). The `__DEV__` harness passes an
+ *     `offline` deal instead, so the run and results screens can be seen with
+ *     no session; its local grade uses the book's own `rules.silver` /
+ *     `rules.gold` thresholds and is fenced off from the real path.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo } from 'react-native';
 import { playbookErrorMessage } from '../../lib/playbookErrors';
 import { tapTarget } from './diagram/tapTarget';
+import { startQuiz, submitQuiz } from './rpc';
 import type { DealtQuestion, PlaybookBlocks, QuizAnswer, QuizDeal, QuizGrade } from './types';
 import type { Lang } from './strings';
 
 export type QuizPhase = 'entry' | 'countdown' | 'run' | 'result';
-
-/** The one sentence M3 shows where the web shows the server's refusal. */
-const NOT_WIRED: Record<Lang, string> = {
-  en: 'The quiz is not connected yet — coming in a later step.',
-  es: 'El quiz aún no está conectado — llega en un paso posterior.',
-};
 
 /**
  * The harness's source: a deal already in hand. Never set on the real route.
@@ -170,7 +163,7 @@ export function useQuizRun(
     setPhase('countdown');
   }, []);
 
-  const start = useCallback(() => {
+  const start = useCallback(async () => {
     if (offline) {
       setError(null);
       begin(offline.deal);
@@ -181,15 +174,19 @@ export function useQuizRun(
       setError(playbookErrorMessage({ hint: 'no_player_access' }, lang));
       return;
     }
-    // TODO(M-later): the deal. One line —
-    //   `const d = await startQuiz(playerId, bookId); begin(d)`
-    //   inside the web's own try/catch, which sets
-    //   `playbookErrorMessage(e, lang)` and stays on 'entry' (R-5).
-    // `startQuiz` is already in `rpc.ts`. It CREATES a `playbook_quiz_runs`
-    // row, so it is a write and M3 does not call it.
-    setBusy(false);
-    setError(NOT_WIRED[lang]);
-    setPhase('entry');
+    // The SERVER deals the run (R4). On a refusal the reader stays on 'entry'
+    // with the sentence, because there is no run to show (R-5).
+    setBusy(true);
+    setError(null);
+    try {
+      const d = await startQuiz(playerId, bookId);
+      begin(d);
+    } catch (e) {
+      setError(playbookErrorMessage(e, lang));
+      setPhase('entry');
+    } finally {
+      setBusy(false);
+    }
   }, [offline, begin, lang, playerId, bookId]);
 
   /** Record one attempt. `correct` is local, for the reveal only. */
@@ -232,7 +229,7 @@ export function useQuizRun(
     [question, answered, record]
   );
 
-  const finish = useCallback(() => {
+  const finish = useCallback(async () => {
     if (!deal) return;
     if (offline) {
       // __DEV__ HARNESS ONLY. The server owns the score (R4); this exists so
@@ -254,15 +251,21 @@ export function useQuizRun(
       setPhase('result');
       return;
     }
-    // TODO(M-later): the submit. One line —
-    //   `const g = await submitQuiz(deal.run_id, answersRef.current); setGrade(g)`
-    //   inside the web's try/catch, which on refusal clears the grade and
-    //   shows the sentence rather than a score nobody computed (R-5).
-    // `submitQuiz` is already in `rpc.ts`. It WRITES `playbook_quiz_results`,
-    // so M3 does not call it.
-    setGrade(null);
-    setError(NOT_WIRED[lang]);
-    setPhase('result');
+    // The SERVER grades it (R4). The phase flips only once the answer is in
+    // hand, so the results screen never prints a score nobody computed: on a
+    // refusal the grade is cleared and the sentence takes its place (R-5).
+    setBusy(true);
+    try {
+      const g = await submitQuiz(deal.run_id, answersRef.current);
+      setGrade(g);
+      setError(null);
+    } catch (e) {
+      setGrade(null);
+      setError(playbookErrorMessage(e, lang));
+    } finally {
+      setBusy(false);
+      setPhase('result');
+    }
   }, [deal, offline, verdicts, lang]);
 
   const next = useCallback(() => {

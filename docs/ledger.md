@@ -621,3 +621,24 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
    created today runs a year out and +6 cut the back half of it out of the fetch; the 13th
    month is the margin. Mirrors the web's `TeamCalendarTab` window. UNVERIFIED-DEVICE —
    the arithmetic is read-only on the client, but no device has loaded the wider range.
+
+## Verified — Nov 1 2026 (mobile Playbook write points, VERIFIED-DEVICE)
+
+- **Playbook writes · VERIFIED-DEVICE 2026-11-01 15:35–15:48 (Lu) · iOS simulator, live Metro bundle, prod DB, sandbox team.** Commit `83a201d`. Account ludwig.snchz+zztest7@gmail.com linked as secondary parent of player Zack Testeron (`8f483eab-d352-4353-8914-d46ea8a664ec`, ZZ Test Team 0826) via the invitation link + DOB. Screen ↔ DB: Got it = 5/6 shown, `playbook_card_progress` 5 rows, survives cold relaunch · quiz = result 5/8 server-graded, `playbook_quiz_runs` 3 (incl. Oct 29 web runs), `playbook_quiz_results` 1 · question = "Sent", `playbook_questions` 1 row today (2 total). Parent note ("Do it together — your Got it counts for your child") shows. Carried UNVERIFIED: staff-refusal look (P0041/P0046 as ludriv) · calendar +13 look.
+- **Sandbox roster facts (supersede the Oct 26 "zero players" note):** ZZ Test Team 0826 holds 5 active Testeron players — Zeke 2019-03-15, Zoe 2019-06-10, Zack 2012-05-05 (player slot claimed by +zztest10 on 2026-08-28; primary parent +zztest1; secondary now +zztest7), Zia 2019-09-20, Zola 2011-05-05 (claimed by +zztest17). Unclaimed player slots: Zeke, Zoe, Zia (all under 11 → parent path only).
+- **How the invitation link works (read from `public.link_parent_to_player`, prod, Nov 1):** the link never creates a player; it links an account to an EXISTING roster row (tryout/placement) by name + DOB (`P0003 dob_mismatch`), by co-parent invitation code, or by email already on the row; "I'm a Player" refuses a row whose player slot is claimed; 3 wrong DOBs lock the attempt. Staff cannot add players by hand on the admin site — by design.
+
+## Open forks (added Nov 1 2026 — after the device test)
+
+- PLAYBOOK-CARD-INVITING (ROUTINE) — Courses featured card doesn't read as tappable; needs a clear call to action.
+- QUIZ-CARD-NOTICEABLE (ROUTINE) — quiz card too quiet on the contents page; same design, more presence.
+- QUIZ-RESULT-BUTTONS-ALIGN (ROUTINE) — Play again / Home off-center, labels right-aligned.
+- QUESTION-PILLS-WRAP (ROUTINE) — ABOUT chips must wrap, not scroll.
+- QUIZ-REVIEW-NAV (ruling pending: A = review chips on result screen only · B = sticky back-to-quiz bar) — leaving mid-quiz to a card loses the run.
+- QUESTION-KIND (SACRED, schema: `kind` on playbook_questions — Question / Comment / Suggestion pills; deferred since Oct 29; planned before M6 build).
+- JOIN-DOB-LOCKOUT-RESET (🔧 if no unlock exists) — what 0 attempts does and how staff unlocks a family; code read, never burn attempts.
+- DOB-PICKER-MONTH-DRIFT (ROUTINE; 🔧 if value drifts) — wheel showed June while field showed 05/15.
+- WELCOME-BADGES-NO-TEAM (ROUTINE) — 34 bell / 27 chat badges on a no-team account.
+- GAMES-TSC-CRASH — `getGutterBoundaryX` missing in DribbleRushGame.tsx:712; UNKNOWN if reachable in prod.
+- DATA-WRITE-RULING (rule, own message) — sandbox data writes = ledger row with WHERE, not a migration.
+- CAL-PAYLOAD-14MO (watch) — 14-month calendar window, no pagination.

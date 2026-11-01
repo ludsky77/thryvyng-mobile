@@ -18,6 +18,15 @@ interface HubCard {
   title: string;
   subtitle: string;
   onPress: () => void;
+  /**
+   * Presentational only, fork PLAYBOOK-CARD-INVITING: the tile wears the
+   * accent as a rule around a raised face, and shows `cue` under its
+   * subtitle. Set on the Playbook tile so it reads as the same feature as the
+   * Courses featured card and the dashboard card. Its shape, its press target
+   * and its route are untouched.
+   */
+  featured?: boolean;
+  cue?: string;
 }
 
 export default function ClubHubScreen() {
@@ -44,9 +53,17 @@ export default function ClubHubScreen() {
           {
             id: 'playbook',
             icon: 'book-outline' as keyof typeof Ionicons.glyphMap,
-            accentColor: '#8b5cf6',
+            // The book's green, not the generic violet — `color.green`
+            // `#10b981` (src/features/pac-playbook/theme.ts:79), written out
+            // because the book is a lazy route and importing its theme here
+            // would put its module graph in this screen's bundle.
+            accentColor: '#10b981',
             title: 'PAC Playbook',
+            // THE SHARED TAGLINE and the shared cue — the cover's own opening
+            // words (features/pac-playbook/screens/CoverScreen.tsx:139).
             subtitle: 'How we see the game, how we play it and how we think',
+            cue: 'Open the book ›',
+            featured: true,
             onPress: () => navigation.navigate('Playbook'),
           },
         ]
@@ -86,7 +103,7 @@ export default function ClubHubScreen() {
         {cards.map((card) => (
           <TouchableOpacity
             key={card.id}
-            style={styles.card}
+            style={[styles.card, card.featured ? styles.cardFeatured : null]}
             onPress={card.onPress}
             activeOpacity={0.75}
           >
@@ -96,8 +113,15 @@ export default function ClubHubScreen() {
             <View style={styles.cardText}>
               <Text style={styles.cardTitle}>{card.title}</Text>
               <Text style={styles.cardSubtitle}>{card.subtitle}</Text>
+              {card.cue ? (
+                <Text style={[styles.cardCue, { color: card.accentColor }]}>{card.cue}</Text>
+              ) : null}
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#475569" />
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color={card.featured ? card.accentColor : '#475569'}
+            />
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -150,6 +174,20 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     gap: 14,
   },
+  // Fork PLAYBOOK-CARD-INVITING: a featured tile keeps the row shape above and
+  // gains the playbook's RAISED FACE inside a rule in its own accent — the
+  // device the book's quiz card uses (`pbk.quizcard`: `lineWidth.mid` of
+  // `color.green` around `color.card2`). Written out, not imported: the book
+  // is a lazy route. card2 `#1c2637` (theme.ts:63), green `#10b981`
+  // (theme.ts:79), mid `1.5` (theme.ts:255). The rule's colour is written here
+  // rather than taken from the card's `accentColor` at the call site, because
+  // that would be an inline style and this screen's lint forbids them; today
+  // the Playbook tile is the only featured one and the two agree.
+  cardFeatured: {
+    backgroundColor: '#1c2637',
+    borderWidth: 1.5,
+    borderColor: '#10b981',
+  },
   iconCircle: {
     width: 48,
     height: 48,
@@ -170,5 +208,12 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontSize: 13,
     lineHeight: 18,
+  },
+  // The shared cue. Same words in all three ways in; the colour is the
+  // card's accent, applied at the call site.
+  cardCue: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 1,
   },
 });

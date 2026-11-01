@@ -313,27 +313,42 @@ export default function CoursesScreen({ navigation }: any) {
           activeOpacity={0.85}
         >
           {/* A FEATURED CARD, not a list row — Lu's ruling of Oct 30, option A.
-              Same family as the course cards below: `#1e293b` box, 12pt
-              radius, a banded top over `cardContent`. What differs is what
-              the book is — the band is the reader's own chalkboard instead of
-              a category gradient, and it is full width, above the grid. */}
+              Same family as the course cards below: 12pt radius, a banded top
+              over `cardContent`. What differs is what the book is — the band
+              is the reader's own chalkboard instead of a category gradient,
+              it is full width above the grid, and since fork
+              PLAYBOOK-CARD-INVITING the face carries the book's own green
+              rule (see `playbookCard`). */}
           <View style={styles.playbookBand}>
             <PlaybookChalkMark />
           </View>
           <View style={styles.cardContent}>
             <View style={styles.playbookRow}>
+              {/* The book's mark, the same in all three ways in: a
+                  `book-outline` glyph on a green tint. */}
+              <View style={styles.playbookIcon}>
+                <Ionicons name="book-outline" size={22} color="#10b981" />
+              </View>
               <View style={styles.playbookRowText}>
                 <Text style={styles.cardTitle}>PAC Playbook</Text>
-                {/* ONE LINE, and short enough to stay one at the 375pt
-                    floor: 39 characters at 13pt is ~246pt against the ~285pt
-                    the row leaves beside the chevron. No `numberOfLines`, so
-                    it wraps rather than clips if it ever runs over (R-G). */}
-                <Text style={styles.cardDescription}>
-                  How we see the game and how we play it.
+                {/* THE SHARED TAGLINE — the cover's own opening words
+                    (src/features/pac-playbook/screens/CoverScreen.tsx:139),
+                    so the three entry points and the book agree. It is
+                    longer than the line it replaced and wraps to two at the
+                    375pt floor; nothing clips, because there is no
+                    `numberOfLines` and the card is full width (R-G). */}
+                <Text style={[styles.cardDescription, styles.playbookDesc]}>
+                  How we see the game, how we play it and how we think
                 </Text>
-                <Text style={styles.playbookTileFree}>Free</Text>
               </View>
-              <Ionicons name="chevron-forward" size={22} color="#8B5CF6" />
+              <Ionicons name="chevron-forward" size={22} color="#10b981" />
+            </View>
+            {/* `Free` is this screen's own fact — the book sits among paid
+                courses here and nowhere else. The cue beside it is the shared
+                wording. */}
+            <View style={styles.playbookFoot}>
+              <Text style={styles.playbookTileFree}>Free</Text>
+              <Text style={styles.playbookOpen}>Open the book ›</Text>
             </View>
           </View>
         </TouchableOpacity>
@@ -657,12 +672,25 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   // The Playbook FEATURED CARD (Lu, Oct 30, option A). The box is the course
-  // card's own — `#1e293b`, 12pt radius, `overflow:'hidden'` so the band
-  // follows the corners — at full width above the grid, and the band on top
-  // is the reader's chalkboard where a course has its category gradient.
+  // card's own shape — 12pt radius, `overflow:'hidden'` so the band follows
+  // the corners — at full width above the grid, and the band on top is the
+  // reader's chalkboard where a course has its category gradient.
+  //
+  // FORK PLAYBOOK-CARD-INVITING: the face is now the playbook's RAISED CARD
+  // inside a green rule, the same device the book's own quiz card uses
+  // (`pbk.quizcard`: `lineWidth.mid` of `color.green` around `color.card2`).
+  // The three values are written out rather than imported, for the reason
+  // `PlaybookChalkMark` gives above — importing from
+  // `src/features/pac-playbook/` would put the book's module graph in this
+  // screen's bundle and the lazy boundary would be gone. They are the
+  // theme's own: card2 `#1c2637`, green `#10b981`, greenDim
+  // `rgba(16,185,129,0.16)` (src/features/pac-playbook/theme.ts:63,79,81),
+  // and mid `1.5` (theme.ts:255).
   playbookCard: {
-    backgroundColor: '#1e293b',
+    backgroundColor: '#1c2637',
     borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#10b981',
     marginHorizontal: 16,
     marginBottom: 16,
     overflow: 'hidden',
@@ -683,10 +711,37 @@ const styles = StyleSheet.create({
   playbookRowText: {
     flex: 1,
   },
+  // The book's mark — a green-tinted disc, the same badge the Club Hub tile
+  // draws, so one feature reads as one feature.
+  playbookIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.16)',
+  },
+  // `cardDescription` ends in a 10pt gap meant for the course cards' meta
+  // rows; the foot row below carries its own `marginTop`, so drop it here.
+  playbookDesc: {
+    marginBottom: 0,
+  },
+  playbookFoot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
   playbookTileFree: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#10B981',
+    color: '#10b981',
+  },
+  // The shared cue. Same words, same green, in all three ways in.
+  playbookOpen: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#10b981',
   },
   listContent: {
     paddingHorizontal: 8,

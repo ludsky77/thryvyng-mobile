@@ -669,9 +669,33 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
     exposes `attempts` (what was sent, in dealt order) so the player's own answer
     can be read back. The plain pip row on the result screen was replaced by the
     chip row. No new screen, no retake from review.
-  - **NOT built: PLAYBOOK-CARD-INVITING.** The entry card is
-    `src/screens/CoursesScreen.tsx:309-340` (+ styles `:663-690`), outside the
-    task's SCOPE, so it was left untouched — it needs SCOPE from Lu. Same question
-    stands for `src/components/dashboards/PlayerDashboard.tsx:407-430` and the
-    `ClubHubScreen.tsx` tile. The five fork lines above stay open until Lu verifies
-    on device.
+  - PLAYBOOK-CARD-INVITING — **built in a second pass the same day**, once Lu
+    named the three entry-point files; see the row below. The five fork lines
+    stay open until Lu verifies on device.
+
+- **PLAYBOOK-CARD-INVITING · all three Playbook entry points made inviting and
+  visually identical · landed 2026-11-01 · AGENT-ONLY (typecheck 5 pre-existing
+  errors / eslint 0 errors + 0 new warnings / `expo export --platform ios` exit 0
+  — no device, no simulator, VERIFICATION PENDING).** STYLING ONLY: no `onPress`,
+  no `navigate`, no logic, no data, no RPC, no schema, no new dependency.
+  Source: `docs/recon/playbook-polish.md`.
+  - The three ways in, all OUTSIDE the feature folder:
+    `src/screens/CoursesScreen.tsx` (players/parents, course list) ·
+    `src/components/dashboards/PlayerDashboard.tsx` (players, dashboard) ·
+    `src/screens/ClubHubScreen.tsx` (coaches/directors, hub tile).
+  - What they now share: Ionicons `book-outline` on a green disc · the playbook
+    green `#10b981` as a 1.5pt rule around a `#1c2637` raised face — the SAME
+    device as QUIZ-CARD-NOTICEABLE (`pbk.quizcard`) · the cover's own tagline
+    "How we see the game, how we play it and how we think"
+    (`CoverScreen.tsx:139`) · the cue "Open the book ›". The violet accent two of
+    the three used is gone.
+  - Club Hub keeps its TILE SHAPE — only its accent, rule, face, cue and chevron
+    changed. Its local `HubCard` gained `featured?` / `cue?`, presentational only.
+  - **`src/features/pac-playbook/styles.ts` and `theme.ts` were NOT touched, on
+    purpose.** All three entry points are LAZY ROUTES; importing the book's theme
+    into them would pull its module graph into those bundles and the lazy boundary
+    would be gone (the reason `PlaybookChalkMark`, `CoursesScreen.tsx:32-40`,
+    already writes its colours out by value). The four values are duplicated with
+    a `theme.ts` line citation beside each. **Known side effect: these are copies
+    — if a playbook colour changes, `grep -rn "#1c2637\|#10b981" src/` finds every
+    one.**

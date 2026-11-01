@@ -417,13 +417,21 @@ export default function PlayerDashboard({ playerId, navigation, showLineupWidget
             onPress={() => navigation.navigate('Playbook')}
             activeOpacity={0.8}
           >
+            {/* The book's mark, the same in all three ways in: a
+                `book-outline` glyph on a green tint. */}
+            <View style={styles.playbookIcon}>
+              <Ionicons name="book-outline" size={22} color="#10b981" />
+            </View>
             <View style={styles.playbookCardText}>
               <Text style={styles.playbookTitle}>PAC Playbook</Text>
+              {/* THE SHARED TAGLINE — the cover's own opening words
+                  (src/features/pac-playbook/screens/CoverScreen.tsx:139). */}
               <Text style={styles.playbookDesc}>
                 How we see the game, how we play it and how we think
               </Text>
+              <Text style={styles.playbookOpen}>Open the book ›</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#a78bfa" />
+            <Ionicons name="chevron-forward" size={20} color="#10b981" />
           </TouchableOpacity>
         </View>
       )}
@@ -740,17 +748,35 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
   },
-  // The Playbook card — the same dark card as progressCard/courseCard, with a
-  // violet left edge so it reads as the book rather than a course.
+  // The Playbook card — the dashboard's card shape, carrying the book's own
+  // look since fork PLAYBOOK-CARD-INVITING: a RAISED FACE inside a GREEN
+  // RULE, the device the book's quiz card uses (`pbk.quizcard`:
+  // `lineWidth.mid` of `color.green` around `color.card2`). It replaces the
+  // violet left edge, so this card, the Courses featured card and the Club
+  // Hub tile all read as one feature.
+  //
+  // The values are written out, not imported: the book is a lazy route and
+  // importing `src/features/pac-playbook/` here would put its module graph in
+  // the dashboard's bundle. They are the theme's own — card2 `#1c2637`,
+  // green `#10b981`, greenDim `rgba(16,185,129,0.16)`
+  // (src/features/pac-playbook/theme.ts:63,79,81), mid `1.5` (theme.ts:255).
   playbookCard: {
-    backgroundColor: '#2a2a4e',
+    backgroundColor: '#1c2637',
     borderRadius: 12,
     padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    borderLeftWidth: 3,
-    borderLeftColor: '#8b5cf6',
+    borderWidth: 1.5,
+    borderColor: '#10b981',
+  },
+  playbookIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.16)',
   },
   playbookCardText: {
     flex: 1,
@@ -765,6 +791,13 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 13,
     lineHeight: 18,
+  },
+  // The shared cue. Same words, same green, in all three ways in.
+  playbookOpen: {
+    color: '#10b981',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 4,
   },
   progressHeader: {
     flexDirection: 'row',

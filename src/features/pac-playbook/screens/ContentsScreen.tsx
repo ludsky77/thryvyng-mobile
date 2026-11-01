@@ -25,7 +25,7 @@ import { Pressable, Text, TextInput, View } from 'react-native';
 import type { Card, ChapterRow, PlaybookBlocks, QuizResultRow } from '../types';
 import { other, pick, useLang } from '../strings';
 import { buildSearchIndex, highlight, searchCards } from '../search';
-import { Btn, Chev, Cta, Icon, IndexList, Medal, Row, Stamp, Tape, TopHead } from '../ui';
+import { Btn, Chev, Chip, Cta, Icon, IndexList, Medal, Row, Stamp, Tape, TopHead } from '../ui';
 import { pbk } from '../styles';
 import { color } from '../theme';
 
@@ -224,22 +224,23 @@ export function ContentsScreen(props: ContentsScreenProps) {
         </View>
       )}
 
+      {/* THE QUIZ ROW — fork QUIZ-CARD-NOTICEABLE. It was the web's plain
+          `.row` with a hairline round it, which read as one more chapter at
+          the end of the index and was scrolled past. Same row and the same
+          press, given the presence it needs: the green rule and raised face
+          of `pbk.quizcard`, and a pill that says what opening it does. The
+          pill is a label, not a second button — the whole row is the target,
+          as it was. */}
       {got ? (
-        <Row
-          right={<Chev />}
-          onPress={onOpenQuiz}
-          style={{
-            borderWidth: 1,
-            borderColor: color.line2,
-            backgroundColor: color.card,
-            paddingHorizontal: 14,
-          }}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Row right={<Chev />} onPress={onOpenQuiz} style={pbk.quizcard}>
+          <View style={pbk.quizcardHead}>
             <Text style={[pbk.rowName, pbk.rowNameSm]}>{t('quiz')}</Text>
             {medal ? <Medal medal={medal} /> : null}
           </View>
           <Text style={pbk.rowDesc}>{t('quizsub')}</Text>
+          <Chip green style={pbk.quizcardCta}>
+            {es ? 'Hacer el quiz ›' : 'Take the quiz ›'}
+          </Chip>
         </Row>
       ) : null}
 

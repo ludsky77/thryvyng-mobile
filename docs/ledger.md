@@ -642,3 +642,36 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
 - GAMES-TSC-CRASH — `getGutterBoundaryX` missing in DribbleRushGame.tsx:712; UNKNOWN if reachable in prod.
 - DATA-WRITE-RULING (rule, own message) — sandbox data writes = ledger row with WHERE, not a migration.
 - CAL-PAYLOAD-14MO (watch) — 14-month calendar window, no pagination.
+
+## Landed — Nov 1 2026 (Playbook UI polish, AGENT-ONLY)
+
+- **Playbook UI polish · 4 of the 5 Nov 1 forks · landed 2026-11-01 · AGENT-ONLY
+  (typecheck 5 pre-existing errors / eslint 0 errors / `expo export --platform ios`
+  exit 0 — no device, no simulator, VERIFICATION PENDING).** UI only: no RPC, no
+  schema, no new dependency, nothing outside `src/features/pac-playbook/`.
+  Source: `docs/recon/playbook-polish.md`.
+  - QUIZ-CARD-NOTICEABLE — the index's quiz row given a green rule, a raised face
+    and a "Take the quiz ›" pill. `screens/ContentsScreen.tsx`, `styles.ts`
+    (`quizcard*`).
+  - QUIZ-RESULT-BUTTONS-ALIGN — `.res` centres its children, which shrink-wrapped
+    the footer in RN; the footer now stretches and both buttons are full width.
+    `screens/QuizScreen.tsx`, `ui.tsx` (`Cta` takes `style`), `styles.ts`
+    (`ctaStretch`).
+  - QUESTION-PILLS-WRAP — the "About" chips wrap instead of scrolling
+    horizontally, so no card is reachable only by dragging.
+    `screens/ChapterEndScreen.tsx`, `styles.ts` (`pillwrap`).
+  - QUIZ-REVIEW-NAV (ruling A) — per-question chips `Q1 ✓` on the RESULT screen;
+    tapping one opens an inline panel on that same screen with the question, the
+    player's answer and the correct answer. **No RPC was added or widened**: the
+    correct answers were already client-side in the deal
+    (`DealtQuestion.content.answer` / `options`, `types.ts:214-228`), which is the
+    same data the run screen reveals an answer from. `useQuizRun.ts` now also
+    exposes `attempts` (what was sent, in dealt order) so the player's own answer
+    can be read back. The plain pip row on the result screen was replaced by the
+    chip row. No new screen, no retake from review.
+  - **NOT built: PLAYBOOK-CARD-INVITING.** The entry card is
+    `src/screens/CoursesScreen.tsx:309-340` (+ styles `:663-690`), outside the
+    task's SCOPE, so it was left untouched — it needs SCOPE from Lu. Same question
+    stands for `src/components/dashboards/PlayerDashboard.tsx:407-430` and the
+    `ClubHubScreen.tsx` tile. The five fork lines above stay open until Lu verifies
+    on device.

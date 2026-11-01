@@ -25,6 +25,17 @@
  * `useQuizRun.ts`. The entry and results screens show the sentence that hook
  * sets, in the slot the web uses for a server refusal (R-5), and `run.busy`
  * holds the buttons while either call is out.
+ *
+ * THE REVIEW IS MOBILE-ONLY — fork QUIZ-REVIEW-NAV, ruling A. The web offers
+ * no review: a reader who wanted to know what they missed had to reopen the
+ * card. The results screen now carries one chip per dealt question and reads
+ * the answer back in a panel ON THAT SCREEN. It adds no call and widens no
+ * RPC: the question, the options and `content.answer` were all in the deal
+ * `playbook_start_quiz` handed over (R4's other half, the same data the run
+ * screen reveals an answer from), the player's own answer is the one the run
+ * recorded in `run.attempts`, and the verdict is the one already shown. No
+ * new screen, and no retake from review — "Play again" is the footer's, as
+ * before.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -323,6 +334,8 @@ function Results({
 }) {
   const { lang, t } = useLang();
   const es = lang === 'es';
+  /** Which question's review panel is open; null = none. */
+  const [review, setReview] = useState<number | null>(null);
   const total = run.deal?.questions.length || 0;
   const medal = run.grade?.medal || 'none';
   const score = run.grade?.score;
@@ -332,6 +345,31 @@ function Results({
     .map((q) => pick(cardsByKey.get(q.card_key)?.content?.name, lang))
     .filter(Boolean)
     .join(' · ');
+
+  // THE REVIEW, out of what is already in hand — see the file header.
+  const rq = review != null ? (run.deal?.questions[review] ?? null) : null;
+  const rn = (review ?? 0) + 1;
+  const rOk = review != null && run.verdicts[review] === true;
+  const attempt = review != null ? run.attempts[review] : undefined;
+  const optText = (id?: string) => {
+    const o = (rq?.content?.options || []).find((x) => x.id === id);
+    return o ? pick(o.text, lang) : null;
+  };
+  // A tap question has no options, so neither answer has a text form: the
+  // player's is a point on the board and the right one is the board's target.
+  // Say that rather than print a coordinate or an empty line.
+  const mineText = attempt?.choice
+    ? (optText(attempt.choice) ?? '—')
+    : attempt && attempt.x != null
+      ? es
+        ? 'Donde tocaste el pizarrón'
+        : 'Where you tapped the board'
+      : es
+        ? 'Sin respuesta — se acabó el tiempo'
+        : 'No answer — time ran out';
+  const rightText =
+    optText(rq?.content?.answer) ??
+    (es ? 'El punto marcado en el pizarrón' : 'The marked spot on the board');
 
   return (
     <View style={pbk.res}>
@@ -359,11 +397,57 @@ function Results({
             {score ?? 0}
             <Text style={pbk.resBigSmall}> / {total}</Text>
           </Text>
-          <View style={[pbk.qpips, { justifyContent: 'center' }]}>
-            {run.verdicts.map((v, i) => (
-              <View key={i} style={[pbk.qpip, v ? pbk.qpipOk : pbk.qpipNo]} />
-            ))}
+
+          {/* The chips stand where the plain pips did: the same verdicts, in
+              the same dealt order, now labelled and pressable. */}
+          <View style={pbk.revchips}>
+            {run.verdicts.map((v, i) => {
+              const on = review === i;
+              return (
+                <Pressable
+                  key={i}
+                  onPress={() => setReview(on ? null : i)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  accessibilityLabel={`${t('question')} ${i + 1} ${
+                    v ? (es ? 'correcta' : 'correct') : (es ? 'incorrecta' : 'wrong')
+                  }`}
+                  style={[pbk.revchip, v ? pbk.revchipOk : pbk.revchipNo, on && pbk.revchipOn]}
+                >
+                  <Text style={[pbk.revchipText, v ? pbk.revchipTextOk : pbk.revchipTextNo]}>
+                    Q{i + 1} {v ? '✓' : '✗'}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
+
+          {rq ? (
+            <View style={pbk.revpanel}>
+              <Text style={pbk.revmeta}>
+                {t('question')} {rn} {t('of')} {total} ·{' '}
+                {pick(cardsByKey.get(rq.card_key)?.content?.name, lang)}
+              </Text>
+              <Text style={pbk.revq}>{pick(rq.content?.prompt, lang)}</Text>
+              <View style={pbk.revrow}>
+                <Text style={pbk.revlabel}>{es ? 'Tu respuesta' : 'Your answer'}</Text>
+                <Text style={[pbk.revtext, rOk ? pbk.revtextOk : pbk.revtextNo]}>{mineText}</Text>
+              </View>
+              <View style={pbk.revrow}>
+                <Text style={pbk.revlabel}>
+                  {es ? 'Respuesta correcta' : 'Correct answer'}
+                </Text>
+                <Text style={[pbk.revtext, pbk.revtextOk]}>{rightText}</Text>
+              </View>
+            </View>
+          ) : (
+            <Text style={pbk.lead}>
+              {es
+                ? 'Toca una pregunta para ver la respuesta.'
+                : 'Tap a question to see the answer.'}
+            </Text>
+          )}
+
           <Text style={pbk.lead}>
             {es
               ? 'Orden nuevo en cada intento. Las tarjetas que fallaste:'
@@ -373,7 +457,10 @@ function Results({
         </>
       )}
 
-      <Cta>
+      {/* Both buttons full width on the column — fork
+          QUIZ-RESULT-BUTTONS-ALIGN. `.res` centres its children, which
+          shrink-wrapped this footer and left the two off-centre. */}
+      <Cta style={pbk.ctaStretch}>
         <Btn variant="primary" label={t('again')} onPress={run.start} disabled={run.busy} />
         <Btn variant="ghost" label={t('home')} onPress={onHome} />
       </Cta>

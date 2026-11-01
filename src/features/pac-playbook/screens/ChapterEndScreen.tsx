@@ -21,13 +21,15 @@
  * thread has no player row to send as, and it says so.
  *
  * ONE MOBILE DIFFERENCE: `<select>` has no React Native equivalent, so "About"
- * is a horizontal row of chips — the whole chapter, then one per card. Same
- * value, same `cardId` state, no new dependency (a picker package would be
- * one, and FORBIDDEN).
+ * is a row of chips — the whole chapter, then one per card. Same value, same
+ * `cardId` state, no new dependency (a picker package would be one, and
+ * FORBIDDEN). The row WRAPS (fork QUESTION-PILLS-WRAP): it was a horizontal
+ * scroller, which on a narrow phone left the later cards off screen with
+ * nothing to say they were there.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import { playbookErrorMessage } from '../../../lib/playbookErrors';
 import { fetchMyQuestions, sendQuestion } from '../rpc';
 import type { Card, ChapterRow, QuestionRow, ReplyRow } from '../types';
@@ -159,20 +161,18 @@ export function ChapterEndScreen({
       <View style={pbk.qform}>
         <View style={pbk.field}>
           <Text style={pbk.fieldLabel}>{es ? 'Sobre' : 'About'}</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={{ flexDirection: 'row', gap: 6 }}>
-              <Pressable onPress={() => setCardId('')}>
-                <Chip green={cardId === ''}>
-                  {es ? 'Todo el capítulo' : 'The whole chapter'}
-                </Chip>
+          <View style={pbk.pillwrap}>
+            <Pressable onPress={() => setCardId('')}>
+              <Chip green={cardId === ''}>
+                {es ? 'Todo el capítulo' : 'The whole chapter'}
+              </Chip>
+            </Pressable>
+            {cards.map((x) => (
+              <Pressable key={x.id} onPress={() => setCardId(x.id)}>
+                <Chip green={cardId === x.id}>{pick(x.content?.name, lang)}</Chip>
               </Pressable>
-              {cards.map((x) => (
-                <Pressable key={x.id} onPress={() => setCardId(x.id)}>
-                  <Chip green={cardId === x.id}>{pick(x.content?.name, lang)}</Chip>
-                </Pressable>
-              ))}
-            </View>
-          </ScrollView>
+            ))}
+          </View>
         </View>
 
         <View style={pbk.field}>

@@ -202,9 +202,20 @@ export function Btn({
   );
 }
 
-/** `.cta` — the footer block. Inline, not sticky; see `styles.ts`. */
-export function Cta({ children }: { children: React.ReactNode }) {
-  return <View style={pbk.cta}>{children}</View>;
+/**
+ * `.cta` — the footer block. Inline, not sticky; see `styles.ts`.
+ *
+ * `style` exists for the one screen that centres its children: see
+ * `pbk.ctaStretch` (fork QUIZ-RESULT-BUTTONS-ALIGN).
+ */
+export function Cta({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
+  return <View style={[pbk.cta, style]}>{children}</View>;
 }
 
 /* ------------------------------------------------------- chips and medals */

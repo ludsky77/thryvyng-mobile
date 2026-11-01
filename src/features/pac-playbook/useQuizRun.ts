@@ -73,6 +73,13 @@ export interface QuizRun {
   question: DealtQuestion | null;
   /** Per-question local verdicts, in dealt order. */
   verdicts: (boolean | undefined)[];
+  /**
+   * What was actually sent for each question, in dealt order — the same
+   * objects `playbook_submit_quiz` was handed. The results screen's review
+   * panel reads the player's answer back out of this (QUIZ-REVIEW-NAV); an
+   * `undefined` slot is a question the timer closed with nothing on it.
+   */
+  attempts: (QuizAnswer | undefined)[];
   /** Has the current question been attempted? Reveals the answer. */
   answered: boolean;
   lastCorrect: boolean | null;
@@ -104,6 +111,7 @@ export function useQuizRun(
   const [deal, setDeal] = useState<QuizDeal | null>(null);
   const [index, setIndex] = useState(0);
   const [verdicts, setVerdicts] = useState<(boolean | undefined)[]>([]);
+  const [attempts, setAttempts] = useState<(QuizAnswer | undefined)[]>([]);
   const [answered, setAnswered] = useState(false);
   const [lastCorrect, setLastCorrect] = useState<boolean | null>(null);
   const [lastChoice, setLastChoice] = useState<string | null>(null);
@@ -139,6 +147,7 @@ export function useQuizRun(
     setIndex(0);
     answersRef.current = [];
     setVerdicts([]);
+    setAttempts([]);
     setAnswered(false);
     setLastCorrect(null);
     setLastChoice(null);
@@ -153,6 +162,7 @@ export function useQuizRun(
     setIndex(0);
     answersRef.current = [];
     setVerdicts(new Array(d.questions.length).fill(undefined));
+    setAttempts(new Array(d.questions.length).fill(undefined));
     setAnswered(false);
     setLastCorrect(null);
     setLastChoice(null);
@@ -197,6 +207,14 @@ export function useQuizRun(
       setVerdicts((v) => {
         const next = v.slice();
         next[index] = correct;
+        return next;
+      });
+      // The same answer, kept in dealt order so the results screen can read
+      // it back. `answersRef` is keyed by question and is the submit's
+      // payload; this is the review's, and neither is derived from the other.
+      setAttempts((a) => {
+        const next = a.slice();
+        next[index] = answer;
         return next;
       });
       answersRef.current = answersRef.current
@@ -330,6 +348,7 @@ export function useQuizRun(
     index,
     question,
     verdicts,
+    attempts,
     answered,
     lastCorrect,
     lastChoice,

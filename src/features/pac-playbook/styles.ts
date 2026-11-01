@@ -276,6 +276,33 @@ export const pbk = StyleSheet.create({
   /** `.snote` — the search result count / empty note. */
   snote: { fontSize: fs.meta, color: color.mute, marginHorizontal: space.px2 },
 
+  /**
+   * The quiz's row at the foot of the index — MOBILE ONLY, fork
+   * QUIZ-CARD-NOTICEABLE. The web's own `.row` was used as-is and the quiz
+   * read as one more chapter, so it was scrolled past. Same row, lifted off
+   * the page: the raised face, a green rule and the pill below the
+   * description. No new colour or measure — `card2`, `green` and the spacing
+   * scale are the book's own.
+   */
+  quizcard: {
+    borderWidth: lineWidth.mid,
+    borderColor: color.green,
+    borderRadius: radius.card,
+    backgroundColor: color.card2,
+    paddingHorizontal: space.px14,
+    marginTop: space.px4,
+  },
+  quizcardHead: { flexDirection: 'row', alignItems: 'center', gap: space.px6 },
+  quizcardCta: { marginTop: space.px8 },
+
+  /**
+   * `.field` with a wrapping chip row — MOBILE ONLY, fork
+   * QUESTION-PILLS-WRAP. The "About" chips were a horizontal scroller, so
+   * every chip past the viewport was off screen with nothing to say so. They
+   * wrap now; no chip is reachable only by dragging.
+   */
+  pillwrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space.px6 },
+
   /* ------------------------------------------------------ buttons and chips */
 
   /** `.cta` — inline, not sticky (see the header). */
@@ -332,6 +359,16 @@ export const pbk = StyleSheet.create({
 
   /** `.two` — the two-up footer grid. */
   two: { flexDirection: 'row', gap: space.px8 },
+
+  /**
+   * `.cta` on a screen that centres its children — MOBILE ONLY, fork
+   * QUIZ-RESULT-BUTTONS-ALIGN. `.res` is `alignItems:'center'`, which on the
+   * web leaves a block-level footer full width and in RN shrink-wraps it: the
+   * two buttons came out narrow and off the column. Stretching the footer
+   * back to the column puts them on the same full-width line every other
+   * screen's buttons sit on.
+   */
+  ctaStretch: { alignSelf: 'stretch' },
 
   /** `.chip` and its two tints. */
   chip: {
@@ -1089,6 +1126,67 @@ export const pbk = StyleSheet.create({
     borderColor: color.line2,
   },
   medalbigNoneText: { color: color.mute },
+
+  /* ---------------------------------------------------- the review chips */
+
+  /**
+   * MOBILE ONLY, fork QUIZ-REVIEW-NAV (ruling A). The web has no review at
+   * all: a reader who wanted to see what they missed reopened the card. One
+   * chip per dealt question on the results screen, and the answer read back
+   * in a panel on that same screen — no new screen, no retake, and no second
+   * source for the verdict, which is still the one the run recorded.
+   */
+  revchips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.px6, justifyContent: 'center' },
+  revchip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: control.chip,
+    paddingHorizontal: space.px10,
+    borderRadius: radius.pill,
+    borderWidth: lineWidth.hairline,
+    borderColor: color.line2,
+    backgroundColor: color.card,
+  },
+  revchipOk: { borderColor: color.green },
+  revchipNo: { borderColor: color.bad },
+  revchipOn: { borderWidth: lineWidth.mid, backgroundColor: color.card2 },
+  revchipText: { fontWeight: fw.bold, fontSize: fs.meta, color: color.chalk2 },
+  revchipTextOk: { color: color.green },
+  revchipTextNo: { color: color.bad },
+  revpanel: {
+    alignSelf: 'stretch',
+    gap: space.px8,
+    borderWidth: lineWidth.hairline,
+    borderColor: color.line,
+    borderRadius: radius.cardLg,
+    backgroundColor: color.card,
+    paddingVertical: space.px12,
+    paddingHorizontal: space.px14,
+  },
+  revmeta: {
+    fontWeight: fw.bold,
+    fontSize: fs.micro,
+    letterSpacing: track(fs.micro, ls.capsWider),
+    textTransform: 'uppercase',
+    color: color.dim,
+  },
+  revq: {
+    fontWeight: fw.extrabold,
+    fontSize: fs.button,
+    lineHeight: line(fs.button, lh.snug),
+    color: color.chalk,
+  },
+  revrow: { gap: space.px2 },
+  revlabel: {
+    fontWeight: fw.bold,
+    fontSize: fs.micro,
+    letterSpacing: track(fs.micro, ls.capsWide),
+    textTransform: 'uppercase',
+    color: color.mute,
+  },
+  revtext: { fontSize: fs.lead, lineHeight: line(fs.lead, lh.prose), color: color.chalk2 },
+  revtextOk: { color: color.green },
+  revtextNo: { color: color.bad },
 
   /* ---------------------------------------------- search, forms, the cover */
 

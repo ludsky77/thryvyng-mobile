@@ -34,6 +34,13 @@
  *     flat colour under it; the texture is an open question for M5's look.
  *   `position:sticky` on `.cta` — the footer renders inline at the end of the
  *     scroll instead, in the same order. See PLAYBOOK-MOBILE-CTA-NOT-STICKY.
+ *
+ * SINCE PLAYBOOK-TYPE-PASS-E, TYPE COMES THROUGH `type.ts`. The six roles
+ * there (kicker · label · title · subtitle · body · caption) say what an
+ * element IS; this file spreads the role and overrides only what the element
+ * genuinely needs on top, so a departure from the scale is visible as an
+ * override instead of being free-handed. The `line()` / `track()` helpers moved
+ * there too, so the header and the page resolve a ratio the same way.
  */
 
 import { StyleSheet } from 'react-native';
@@ -49,10 +56,7 @@ import {
   radius,
   space,
 } from './theme';
-
-/** `line-height` and `letter-spacing` are ratios in the design; resolve them. */
-const line = (size: number, ratio: number) => Math.round(size * ratio * 100) / 100;
-const track = (size: number, em: number) => Math.round(size * em * 100) / 100;
+import { line, role, track } from './type';
 
 export const pbk = StyleSheet.create({
   /* ------------------------------------------------------------- the shell */
@@ -78,9 +82,9 @@ export const pbk = StyleSheet.create({
     paddingHorizontal: space.px8,
   },
   note: {
+    ...role.bodyLead,
     fontSize: fs.chipAlt,
     lineHeight: line(fs.chipAlt, lh.prose),
-    color: color.mute,
     textAlign: 'center',
   },
 
@@ -153,19 +157,17 @@ export const pbk = StyleSheet.create({
   /* ---------------------------------------------------------- prose, lists */
 
   /** `.lead` */
-  lead: { fontSize: fs.lead, lineHeight: line(fs.lead, lh.prose), color: color.mute },
+  lead: role.bodyLead,
 
-  /** `.one` and its block label. */
-  one: { fontSize: fs.body, lineHeight: line(fs.body, lh.loose), color: color.chalk },
-  oneMute: { fontSize: fs.lead, lineHeight: line(fs.lead, lh.loose), color: color.chalk2 },
-  blockLabel: {
-    fontFamily: ff.bold,
-    fontSize: fs.meta,
-    letterSpacing: track(fs.meta, ls.capsWidest),
-    textTransform: 'uppercase',
-    color: color.mute,
-    marginBottom: space.px3,
-  },
+  /**
+   * `.one` and its block label.
+   *
+   * `blockLabel` is `role.label`: the quiet furniture that names the paragraph
+   * under it. See `secttlText` above for why it must not look like a kicker.
+   */
+  one: role.body,
+  oneMute: { ...role.body, fontSize: fs.lead, lineHeight: line(fs.lead, lh.loose), color: color.chalk2 },
+  blockLabel: { ...role.label, marginBottom: space.px3 },
 
   /** `b.hl` — `fmt()`'s bold green key term. */
   hl: { color: color.green, fontFamily: ff.extrabold },
@@ -194,13 +196,7 @@ export const pbk = StyleSheet.create({
     paddingTop: space.px7,
   },
   rowBody: { flex: 1, minWidth: 0 },
-  rowName: {
-    fontFamily: ff.extrabold,
-    fontSize: fs.rowName,
-    lineHeight: line(fs.rowName, lh.snug),
-    letterSpacing: track(fs.rowName, ls.heading),
-    color: color.chalk,
-  },
+  rowName: role.titleRow,
   rowNameSm: { fontSize: fs.headerTitle, lineHeight: line(fs.headerTitle, lh.snug) },
   rowEm: {
     fontFamily: ff.medium,
@@ -209,11 +205,21 @@ export const pbk = StyleSheet.create({
     letterSpacing: 0,
   },
   rowDesc: {
-    fontSize: fs.lead,
+    ...role.bodyLead,
     lineHeight: line(fs.lead, lh.text),
-    color: color.mute,
     marginTop: space.px3,
   },
+  /**
+   * The right-hand cell of a TAPPABLE row — status first, then the one cue.
+   *
+   * RULING PLAYBOOK-TYPE-PASS-E: "tappable = one consistent cue, non-tappable
+   * gets none". A card row used to end in a `StatusPip` and nothing else, so
+   * the only rows in the book that showed the reader where they could go were
+   * the ones with no progress to show. The pip is STATUS; the chevron is the
+   * AFFORDANCE; a row that has both shows both, in that order.
+   */
+  rowEnd: { flexDirection: 'row', alignItems: 'flex-start', gap: space.px6 },
+
   rowChev: {
     width: 22,
     textAlign: 'right',
@@ -251,30 +257,116 @@ export const pbk = StyleSheet.create({
   stOk: { backgroundColor: color.green, borderColor: color.green },
   stOkText: { color: color.greenInk, fontSize: fs.micro, fontFamily: ff.extrabold },
   stNext: { borderColor: color.green, borderStyle: 'dashed' },
+  /**
+   * The tick INSIDE a toned pip — ruling PLAYBOOK-SECTION-RAIL. `greenInk` is
+   * a near-black GREEN, which is right on `color.green` and faintly wrong on
+   * sky or periwinkle; `board` is the book's own dark navy and reads on all
+   * four tones. The untoned pip keeps `greenInk` exactly as it was.
+   */
+  stOkToneText: { color: color.board },
 
-  /** `.secttl` / `.subdesc` */
+  /**
+   * `.secttl` / `.subdesc` — A SECTION DIVIDER.
+   *
+   * RULING PLAYBOOK-TYPE-PASS-E: this is `role.kicker`, and a kicker is NOT a
+   * block label. The two were byte-identical before this pass (both
+   * `ff.bold` / `fs.meta` / `capsWidest` / `mute`), so "POSSESSION" dividing a
+   * chapter's list and "WHAT YOU SEE" labelling a paragraph inside a card were
+   * set exactly the same. The kicker now wins on weight AND ink — 800 in
+   * `chalk2` against the label's 700 in `mute`.
+   */
   secttl: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    marginTop: space.px10,
+    alignItems: 'center',
+    gap: space.px8,
+    marginTop: space.px14,
     marginHorizontal: space.px2,
   },
-  secttlText: {
-    fontFamily: ff.bold,
-    fontSize: fs.meta,
-    letterSpacing: track(fs.meta, ls.capsWidest),
-    textTransform: 'uppercase',
-    color: color.mute,
+  /**
+   * The section's RAIL — ruling PLAYBOOK-SECTION-RAIL. 3pt of the section's
+   * tone down the left of the kicker row, which is what makes a section
+   * findable while scrolling a seventeen-card chapter. `stretch` so it is as
+   * tall as the row's tallest child (the pill), not a fixed height that would
+   * have to be kept in step with the type.
+   */
+  secttlRail: {
+    width: space.px3,
+    alignSelf: 'stretch',
+    minHeight: space.px16,
+    borderRadius: radius.xs,
+    backgroundColor: color.chalk2,
   },
-  secttlSmall: { fontFamily: ff.medium, fontSize: fs.meta, color: color.dim, letterSpacing: 0 },
-  subdesc: { fontSize: fs.secondary, color: color.dim, marginHorizontal: space.px2 },
+  /** The kicker takes the row so the count pill is pushed to the far end. */
+  secttlText: { ...role.kicker, flex: 1 },
+  /**
+   * The COUNT PILL. It was plain `dim` text at the end of the row; it is now
+   * a pill tinted with the section's own tone at 13% behind the tone's ink,
+   * so the count belongs to its section instead of floating between two.
+   */
+  secttlPill: {
+    paddingHorizontal: space.px8,
+    paddingVertical: space.px2,
+    borderRadius: radius.pill,
+    backgroundColor: color.card,
+  },
+  secttlPillText: { ...role.kickerCount, color: color.mute },
+  secttlSmall: role.kickerCount,
+  subdesc: {
+    ...role.caption,
+    fontSize: fs.secondary,
+    lineHeight: line(fs.secondary, lh.text),
+    color: color.dim,
+    marginHorizontal: space.px2,
+  },
+
+  /**
+   * "What you will learn" — MOBILE ONLY, ruling PLAYBOOK-TYPE-PASS-E.
+   *
+   * It was `blockLabel` + `lead`: the chapter's whole promise set in the same
+   * label a paragraph inside a card gets, with nothing round it. It is now its
+   * OWN DEVICE — a kicker over a framed body with the book's green down the
+   * left edge, the same left-bar device `remind` uses in pink. No new colour
+   * and no new measure: `card`, `line`, `green` and `lineWidth.accent` are the
+   * book's own.
+   *
+   * THE FRAME IS A LIST, and today the content gives it one item: every
+   * chapter's `learn` is a single sentence in the frozen data, so a real
+   * multi-item list needs a content change, which this pass forbids. The
+   * device takes items, so it will render them the day the content has them.
+   */
+  learnbox: {
+    borderWidth: lineWidth.hairline,
+    borderColor: color.line,
+    borderLeftWidth: lineWidth.accent,
+    borderLeftColor: color.green,
+    borderRadius: radius.field,
+    backgroundColor: color.card,
+    paddingVertical: space.px10,
+    paddingHorizontal: space.px12,
+    gap: space.px6,
+    marginTop: space.px4,
+  },
+  /**
+   * The kicker over the frame. It needs MORE air above it than below: the
+   * device is the kicker AND the box, so the two have to group against the
+   * tape strip above them. Without this they sat an equal gap from both and
+   * read as two unrelated things.
+   */
+  learnLabel: { ...role.kicker, marginTop: space.px6, marginBottom: space.px4 },
+  learnRow: { flexDirection: 'row', gap: space.px8, alignItems: 'flex-start' },
+  learnTick: {
+    ...role.labelAccent,
+    fontSize: fs.secondary,
+    lineHeight: line(fs.lead, lh.prose),
+    letterSpacing: ls.none,
+  },
+  learnText: { ...role.bodyLead, flex: 1, color: color.chalk2 },
 
   /** `.count` — the "n of m cards read" line. */
-  count: { fontFamily: ff.medium, fontSize: fs.meta, color: color.mute, marginHorizontal: space.px2 },
+  count: { ...role.caption, marginHorizontal: space.px2 },
 
   /** `.snote` — the search result count / empty note. */
-  snote: { fontSize: fs.meta, color: color.mute, marginHorizontal: space.px2 },
+  snote: { ...role.caption, marginHorizontal: space.px2 },
 
   /**
    * The quiz's row at the foot of the index — MOBILE ONLY, fork
@@ -411,6 +503,8 @@ export const pbk = StyleSheet.create({
     lineHeight: line(fs.meta, lh.text),
   },
   crumbStrong: { fontFamily: ff.bold, color: color.chalk2 },
+  /** The card's section kicker — its mark and its name, in the section tone. */
+  crumbSect: { flexDirection: 'row', alignItems: 'center', gap: space.px4 },
   crumbTag: {
     marginLeft: 'auto',
     borderWidth: lineWidth.hairline,
@@ -445,13 +539,7 @@ export const pbk = StyleSheet.create({
     borderRadius: radius.hair,
     transform: [{ rotate: '-4deg' }],
   },
-  title: {
-    fontFamily: ff.extrabold,
-    fontSize: fs.cardTitle,
-    lineHeight: line(fs.cardTitle, lh.tightest),
-    letterSpacing: track(fs.cardTitle, ls.headingLg),
-    color: color.chalk,
-  },
+  title: role.title,
   titleRule: {
     height: space.px2,
     borderRadius: radius.xs,
@@ -459,7 +547,7 @@ export const pbk = StyleSheet.create({
     marginTop: space.px6,
     marginRight: '6%',
   },
-  titleEs: { marginTop: space.px8, fontSize: fs.button, fontFamily: ff.medium, color: color.mute },
+  titleEs: { ...role.subtitle, marginTop: space.px8 },
 
   /** `.cuechip` — the pill around a cue word. */
   cuechip: {
@@ -491,7 +579,7 @@ export const pbk = StyleSheet.create({
     borderWidth: lineWidth.hairline,
     borderColor: color.line,
   },
-  blkText: { fontSize: fs.lead, lineHeight: line(fs.lead, lh.prose), color: color.chalk },
+  blkText: { ...role.bodyLead, color: color.chalk },
   blkLabelRead: { color: color.green },
   blkLabelIfnot: { color: color.pinkText },
   blkLabelRit: { color: '#b7acff' },
@@ -551,8 +639,8 @@ export const pbk = StyleSheet.create({
     padding: space.px12,
   },
   pendText: {
+    ...role.bodyLead,
     fontSize: fs.secondary,
-    color: color.mute,
     lineHeight: line(fs.secondary, lh.prose),
   },
 
@@ -576,7 +664,7 @@ export const pbk = StyleSheet.create({
     lineHeight: line(fs.lead, lh.solid),
     color: color.chalk,
   },
-  verbAlt: { fontSize: fs.micro, color: color.mute, lineHeight: line(fs.micro, lh.tight) },
+  verbAlt: { ...role.caption, fontSize: fs.micro, lineHeight: line(fs.micro, lh.tight) },
   reasonCell: {
     flex: 1,
     alignItems: 'center',
@@ -599,7 +687,7 @@ export const pbk = StyleSheet.create({
     borderColor: color.line,
     gap: space.px8,
   },
-  linkboxText: { fontSize: fs.lead, color: color.chalk2, lineHeight: line(fs.lead, lh.prose) },
+  linkboxText: { ...role.bodyLead, color: color.chalk2 },
   linkchips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.px8 },
   linkchip: {
     borderWidth: lineWidth.hairline,
@@ -610,13 +698,7 @@ export const pbk = StyleSheet.create({
     paddingHorizontal: space.px12,
     gap: space.px1,
   },
-  linkchipEyebrow: {
-    fontFamily: ff.semibold,
-    fontSize: fs.tiny,
-    letterSpacing: track(fs.tiny, ls.capsWide),
-    textTransform: 'uppercase',
-    color: color.green,
-  },
+  linkchipEyebrow: { ...role.labelAccent, fontSize: fs.tiny, letterSpacing: track(fs.tiny, ls.capsWide) },
   linkchipText: { fontFamily: ff.bold, fontSize: fs.linkchip, color: color.chalk },
 
   /** `.trailbar` — "‹ Back to <card>" after following a green chip. */
@@ -766,9 +848,10 @@ export const pbk = StyleSheet.create({
     marginTop: space.px2,
   },
   cuelineText: {
+    ...role.bodyLead,
     fontSize: fs.secondary,
-    color: color.chalk2,
     lineHeight: line(fs.secondary, lh.text),
+    color: color.chalk2,
   },
 
   /** `.legend` — us / them / pass / run. */
@@ -855,18 +938,11 @@ export const pbk = StyleSheet.create({
   },
   rolepanelNumText: { color: color.greenInk, fontFamily: ff.extrabold, fontSize: fs.panelName },
   rolepanelBody: { flex: 1, minWidth: 0 },
-  rolepanelLabel: {
-    fontFamily: ff.bold,
-    fontSize: fs.meta,
-    letterSpacing: track(fs.meta, ls.capsWide),
-    textTransform: 'uppercase',
-    color: color.mute,
-    marginBottom: space.px3,
-  },
+  rolepanelLabel: { ...role.label, marginBottom: space.px3 },
   rolepanelText: {
+    ...role.body,
     fontSize: fs.panelBody,
     lineHeight: line(fs.panelBody, lh.prose),
-    color: color.chalk,
   },
 
   /** `.keys` — the little key-word pills under a role. */
@@ -928,12 +1004,7 @@ export const pbk = StyleSheet.create({
 
   /** `.mvgroup` / `.mvchip` / `.mvroles` — the movement panel's controls. */
   mvgroup: { gap: space.px6 },
-  mvgroupLabel: {
-    fontSize: fs.micro,
-    letterSpacing: track(fs.micro, ls.capsWider),
-    textTransform: 'uppercase',
-    color: color.mute,
-  },
+  mvgroupLabel: { ...role.label, letterSpacing: track(fs.micro, ls.capsWider) },
   mvchips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.px6 },
   mvchip: {
     minHeight: control.mvchip,
@@ -1105,7 +1176,7 @@ export const pbk = StyleSheet.create({
     lineHeight: line(fs.resultBig, lh.solid),
     color: color.chalk,
   },
-  resBigSmall: { fontSize: fs.rowName, color: color.mute },
+  resBigSmall: { ...role.caption, fontSize: fs.rowName, lineHeight: line(fs.rowName, lh.solid) },
   medalbig: {
     width: control.medalBig,
     height: control.medalBig,
@@ -1177,14 +1248,8 @@ export const pbk = StyleSheet.create({
     color: color.chalk,
   },
   revrow: { gap: space.px2 },
-  revlabel: {
-    fontFamily: ff.bold,
-    fontSize: fs.micro,
-    letterSpacing: track(fs.micro, ls.capsWide),
-    textTransform: 'uppercase',
-    color: color.mute,
-  },
-  revtext: { fontSize: fs.lead, lineHeight: line(fs.lead, lh.prose), color: color.chalk2 },
+  revlabel: role.label,
+  revtext: { ...role.bodyLead, color: color.chalk2 },
   revtextOk: { color: color.green },
   revtextNo: { color: color.bad },
 
@@ -1203,8 +1268,14 @@ export const pbk = StyleSheet.create({
     minHeight: control.rowCompact,
   },
   searchboxOn: { borderColor: color.green },
-  searchInput: { flex: 1, minWidth: 0, color: color.chalk, fontSize: fs.body, paddingVertical: space.px12 },
-  searchClear: { color: color.mute, fontSize: fs.panelName, padding: space.px4 },
+  searchInput: {
+    ...role.body,
+    flex: 1,
+    minWidth: 0,
+    lineHeight: undefined,
+    paddingVertical: space.px12,
+  },
+  searchClear: { ...role.caption, fontSize: fs.panelName, lineHeight: undefined, padding: space.px4 },
 
   /** `.sres .hit` — one search result. */
   sres: { gap: space.px8 },
@@ -1218,35 +1289,38 @@ export const pbk = StyleSheet.create({
     paddingHorizontal: space.px12,
   },
   hitEyebrow: {
+    ...role.labelAccent,
     fontSize: fs.hitEyebrow,
-    fontFamily: ff.bold,
     letterSpacing: track(fs.hitEyebrow, ls.capsWide),
-    textTransform: 'uppercase',
-    color: color.green,
   },
-  hitName: { fontSize: fs.button, fontFamily: ff.extrabold, color: color.chalk },
-  hitBody: { fontSize: fs.secondary, color: color.mute, lineHeight: line(fs.secondary, lh.text) },
+  hitName: {
+    ...role.titleRowSm,
+    fontSize: fs.button,
+    lineHeight: line(fs.button, lh.snug),
+    letterSpacing: track(fs.button, ls.heading),
+  },
+  hitBody: { ...role.bodyLead, fontSize: fs.secondary, lineHeight: line(fs.secondary, lh.text) },
   /** `.sres mark` — a matched word. */
   mark: { backgroundColor: 'rgba(16, 185, 129, 0.24)', color: color.chalk },
+  /**
+   * The pressed face for the two CROSS-LINK surfaces — a search hit and a
+   * green link chip. Both were `Pressable`s with no feedback at all, which
+   * ruling PLAYBOOK-TYPE-PASS-E's "one consistent cue" does not allow. The
+   * cue is the chevron they now carry; this is the press that confirms it.
+   */
+  pressed: { opacity: 0.65 },
 
   /** `.field` — a labelled input. */
   field: { gap: space.px4 },
-  fieldLabel: {
-    fontSize: fs.micro,
-    fontFamily: ff.bold,
-    letterSpacing: track(fs.micro, ls.capsWide),
-    textTransform: 'uppercase',
-    color: color.mute,
-  },
+  fieldLabel: role.label,
   fieldInput: {
+    ...role.body,
     borderWidth: lineWidth.hairline,
     borderColor: color.line2,
     borderRadius: radius.field,
     backgroundColor: color.board,
-    color: color.chalk,
     paddingVertical: space.px10,
     paddingHorizontal: space.px12,
-    fontSize: fs.body,
     lineHeight: line(fs.body, lh.text),
   },
   fieldTextarea: { minHeight: 58, textAlignVertical: 'top' },
@@ -1260,7 +1334,7 @@ export const pbk = StyleSheet.create({
     backgroundColor: color.card,
     padding: space.px12,
   },
-  qstatus: { fontSize: fs.chipAlt, color: color.mute, minHeight: 18 },
+  qstatus: { ...role.caption, fontSize: fs.chipAlt, minHeight: 18 },
   qlist: { gap: space.px8 },
   qitem: {
     borderWidth: lineWidth.hairline,
@@ -1273,17 +1347,16 @@ export const pbk = StyleSheet.create({
   },
   qitemDone: { borderColor: 'rgba(16, 185, 129, 0.4)' },
   qhead: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.px8 },
-  qmeta: { fontSize: fs.dense, color: color.mute, flex: 1 },
-  qtext: { fontSize: fs.lead, lineHeight: line(fs.lead, lh.prose), color: color.chalk },
+  qmeta: { ...role.captionSm, flex: 1 },
+  qtext: { ...role.bodyLead, color: color.chalk },
   qreply: { borderLeftWidth: lineWidth.accent, borderLeftColor: color.green, paddingLeft: space.px10, paddingVertical: space.px4 },
-  qreplyLabel: {
-    fontSize: fs.micro,
-    fontFamily: ff.bold,
-    letterSpacing: track(fs.micro, ls.capsWider),
-    textTransform: 'uppercase',
-    color: color.green,
+  qreplyLabel: { ...role.labelAccent, letterSpacing: track(fs.micro, ls.capsWider) },
+  qreplyText: {
+    ...role.body,
+    fontSize: fs.linkchip,
+    lineHeight: line(fs.linkchip, lh.prose),
+    marginTop: space.px2,
   },
-  qreplyText: { fontSize: fs.linkchip, color: color.chalk, marginTop: space.px2 },
   /** `.qrow` — the dashed "Questions & notes" row. */
   qrow: {
     borderWidth: lineWidth.hairline,
@@ -1314,7 +1387,7 @@ export const pbk = StyleSheet.create({
     marginRight: '60%',
   },
   coverSub: { fontSize: fs.headerTitle, fontFamily: ff.semibold, color: color.chalk2 },
-  coverLead: { fontSize: fs.body, lineHeight: line(fs.body, lh.loose), color: color.mute },
+  coverLead: { ...role.body, color: color.mute },
   coverHow: {
     borderWidth: lineWidth.hairline,
     borderColor: color.line2,
@@ -1337,7 +1410,7 @@ export const pbk = StyleSheet.create({
   coverHowKeyText: { color: color.green, fontFamily: ff.extrabold, fontSize: fs.secondary },
   coverHowBody: { flex: 1, minWidth: 0 },
   coverHowName: { color: color.chalk, fontFamily: ff.bold, fontSize: fs.body },
-  coverHowText: { color: color.mute, fontSize: fs.lead, lineHeight: line(fs.lead, lh.text) },
+  coverHowText: { ...role.bodyLead, lineHeight: line(fs.lead, lh.text) },
   coverChs: { flexDirection: 'row', flexWrap: 'wrap', gap: space.px6 },
   coverChip: {
     borderWidth: lineWidth.hairline,

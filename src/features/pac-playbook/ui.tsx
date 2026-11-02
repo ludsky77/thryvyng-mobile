@@ -16,7 +16,8 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { pbk } from './styles';
-import { color, lineWidth } from './theme';
+import { color, lineWidth, type SectionTone } from './theme';
+import { toneFor } from './type';
 
 /* ---------------------------------------------------------------- the tape */
 
@@ -97,10 +98,130 @@ export function Chev() {
 }
 
 /** `.row .st` — read ✓, next (dashed ring), or unread. */
-export function StatusPip({ state }: { state: 'ok' | 'next' | 'none' }) {
+export function StatusPip({ state, tone }: { state: 'ok' | 'next' | 'none'; tone?: SectionTone }) {
+  // Ruling PLAYBOOK-SECTION-RAIL: a card inside a section wears that
+  // section's tone, so a run of ticks reads as belonging to one part of the
+  // chapter. A card with no section (the loose list at the head of a chapter)
+  // passes no tone and keeps the book's own green.
+  const ink = tone?.ink;
   return (
-    <View style={[pbk.st, state === 'ok' && pbk.stOk, state === 'next' && pbk.stNext]}>
-      {state === 'ok' ? <Text style={pbk.stOkText}>✓</Text> : null}
+    <View
+      style={[
+        pbk.st,
+        state === 'ok' && pbk.stOk,
+        state === 'next' && pbk.stNext,
+        ink && state === 'ok' ? { backgroundColor: ink, borderColor: ink } : null,
+        ink && state === 'next' ? { borderColor: ink } : null,
+      ]}
+    >
+      {state === 'ok' ? <Text style={[pbk.stOkText, tone && pbk.stOkToneText]}>✓</Text> : null}
+    </View>
+  );
+}
+
+/**
+ * ONE MARK PER TONE SLOT — ruling PLAYBOOK-SECTION-RAIL.
+ *
+ * The content carries no icon for a section (`ChapterSub` is `id`, `name`,
+ * `desc` and nothing else), so the mark comes from the same POSITION rule the
+ * tone does: 1st ball · 2nd shield · 3rd arrows · 4th target, then cycle. They
+ * are drawn here rather than fetched for the reason every icon in this file is
+ * — `playbook.css`'s own marks are inline SVG, and there is no icon font in
+ * the book.
+ *
+ * Attribute for attribute the same pen as `Icon` below: a 24-unit box,
+ * `stroke-width:2.2`, round caps and joins, no fill except the target's eye.
+ */
+export function SectionIcon({
+  position,
+  size = 14,
+  color: ink,
+}: {
+  position: number;
+  size?: number;
+  color: string;
+}) {
+  const common = {
+    stroke: ink,
+    strokeWidth: lineWidth.iconStroke,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    fill: 'none',
+  };
+  const slot = ((Math.trunc(position) % 4) + 4) % 4;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      {slot === 0 ? (
+        /* ball — the game itself */
+        <>
+          <Circle cx={12} cy={12} r={8.5} {...common} />
+          <Path d="M12 7.6 L16 10.5 L14.5 15.2 L9.5 15.2 L8 10.5 Z" {...common} />
+        </>
+      ) : slot === 1 ? (
+        /* shield — keeping it out */
+        <Path d="M12 3.4 L19 6.4 V12 c0 4.4 -3 7.4 -7 8.8 -4 -1.4 -7 -4.4 -7 -8.8 V6.4 Z" {...common} />
+      ) : slot === 2 ? (
+        /* arrows — the turn, both ways */
+        <>
+          <Path d="M4 9 H16 M13 6 L16 9 L13 12" {...common} />
+          <Path d="M20 15 H8 M11 18 L8 15 L11 12" {...common} />
+        </>
+      ) : (
+        /* target — where it is meant to end up.
+           A CROSSHAIR, not concentric rings: rings plus a centre dot came out
+           as a small circle with something in the middle at 14pt, which is
+           exactly what the ball is, and on screen the 1st and 4th sections
+           were wearing the same mark. The four ticks break the outline, so
+           the two read apart at the size they are actually drawn. */
+        <>
+          <Circle cx={12} cy={12} r={7} {...common} />
+          <Path d="M12 2.5 V6 M12 18 V21.5 M2.5 12 H6 M18 12 H21.5" {...common} />
+          <Circle cx={12} cy={12} r={1.7} fill={ink} stroke="none" />
+        </>
+      )}
+    </Svg>
+  );
+}
+
+/**
+ * The right-hand cell of a TAPPABLE row — ruling PLAYBOOK-TYPE-PASS-E.
+ *
+ * Status (a pip, a medal) then the one cue, in that order. A row that is
+ * pressable ends in a `Chev`; a row that is not gets no cue at all, which is
+ * why this is a component a screen opts into rather than something `Row`
+ * appends on its own.
+ */
+export function RowEnd({ children }: { children?: React.ReactNode }) {
+  return (
+    <View style={pbk.rowEnd}>
+      {children ?? null}
+      <Chev />
+    </View>
+  );
+}
+
+/**
+ * "What you will learn" — the chapter's promise, as its own device.
+ *
+ * Ruling PLAYBOOK-TYPE-PASS-E: a KICKER over a FRAMED LIST, not a block label
+ * over a paragraph. `items` is a list because the device is one; the frozen
+ * content gives each chapter a single sentence, so one item renders without a
+ * tick and two or more render with one each (see `pbk.learnbox`).
+ */
+export function LearnBox({ label, items }: { label: string; items: string[] }) {
+  const list = items.filter((x) => !!x && x.trim().length > 0);
+  if (list.length === 0) return null;
+  return (
+    <View>
+      <Text style={pbk.learnLabel}>{label}</Text>
+      <View style={pbk.learnbox}>
+        {list.map((x, i) => (
+          <View key={i} style={pbk.learnRow}>
+            {list.length > 1 ? <Text style={pbk.learnTick}>✓</Text> : null}
+            <Text style={pbk.learnText}>{x}</Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -122,12 +243,36 @@ export function IndexList({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** `.secttl` — an uppercase section title with its optional count. */
-export function SectTitle({ children, count }: { children: React.ReactNode; count?: string }) {
+/**
+ * `.secttl` — an uppercase section title with its optional count.
+ *
+ * `position` is the section's index in its chapter's own `subs` array, and
+ * passing it is what turns the header on: the rail, the mark, the kicker's ink
+ * and the pill's tint all come from `toneFor(position)` (ruling
+ * PLAYBOOK-SECTION-RAIL). A header with NO position — the chapter-end screen's
+ * "Your messages" — is not a section of the book and keeps the neutral kicker
+ * it has always had.
+ */
+export function SectTitle({
+  children,
+  count,
+  position,
+}: {
+  children: React.ReactNode;
+  count?: string;
+  position?: number;
+}) {
+  const tone = position == null ? null : toneFor(position);
   return (
     <View style={pbk.secttl}>
-      <Text style={pbk.secttlText}>{children}</Text>
-      {count ? <Text style={pbk.secttlSmall}>{count}</Text> : null}
+      {tone ? <View style={[pbk.secttlRail, { backgroundColor: tone.ink }]} /> : null}
+      {tone && position != null ? <SectionIcon position={position} color={tone.ink} /> : null}
+      <Text style={[pbk.secttlText, tone ? { color: tone.ink } : null]}>{children}</Text>
+      {count ? (
+        <View style={[pbk.secttlPill, tone ? { backgroundColor: tone.tint } : null]}>
+          <Text style={[pbk.secttlPillText, tone ? { color: tone.ink } : null]}>{count}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }

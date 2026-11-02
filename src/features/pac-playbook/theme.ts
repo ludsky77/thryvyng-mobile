@@ -103,6 +103,41 @@ export const color = {
   tapeInk: '#1b2230',
 } as const;
 
+/* ---------------------------------------------------------- section tones */
+
+/**
+ * THE SECTION TONES — ruling PLAYBOOK-SECTION-RAIL, Lu, 2026-11-02.
+ *
+ * A chapter's sections (POSSESSION, DEFENDING, SWITCHES, …) were all set in
+ * the one `chalk2` kicker, so a reader scrolling a seventeen-card chapter had
+ * nothing but the words to tell them which part of it they were in. Each
+ * section now carries a TONE: the kicker's ink, a 3pt rail down the left of
+ * its row, the tint behind its count pill, its icon, and the status pip on
+ * every card that belongs to it.
+ *
+ * **COOL ONLY, by ruling: the green/blue family, never amber, coral or any
+ * warm hue.** The book already spends warm colour on meaning that must not be
+ * diluted — `gold` and `silver` are medals, `bad` `#ff5a76` is a wrong answer,
+ * `pink` is a reminder. A warm section tone would collide with all three.
+ *
+ * These are NOT `color.green`. The book's own `#10b981` stays what it has
+ * always been — right answers, progress, the "us" team — and `tone[0]`'s
+ * `#3DD68C` is a lighter, cooler green that reads as a LABEL rather than as a
+ * verdict. The four are ordered as the ruling lists them.
+ *
+ * `tint` is each `ink` at 13% alpha, written out because this file is pure
+ * data and may not compute. They are the same colour; if one is edited the
+ * other has to be edited with it.
+ */
+export const sectionTones = [
+  { name: 'green', ink: '#3DD68C', tint: 'rgba(61, 214, 140, 0.13)' },
+  { name: 'sky', ink: '#6FB1FF', tint: 'rgba(111, 177, 255, 0.13)' },
+  { name: 'teal', ink: '#2ED3C6', tint: 'rgba(46, 211, 198, 0.13)' },
+  { name: 'periwinkle', ink: '#8FA8FF', tint: 'rgba(143, 168, 255, 0.13)' },
+] as const;
+
+export type SectionTone = (typeof sectionTones)[number];
+
 /* -------------------------------------------------------------------- type */
 
 /**
@@ -393,6 +428,7 @@ export const doodle = {
  */
 export const playbookTheme = {
   color,
+  sectionTones,
   typeUnit,
   fontSize,
   fontWeight,

@@ -324,31 +324,38 @@ export default function CoursesScreen({ navigation }: any) {
           </View>
           <View style={styles.cardContent}>
             <View style={styles.playbookRow}>
-              {/* The book's mark, the same in all three ways in: a
-                  `book-outline` glyph on a green tint. */}
-              <View style={styles.playbookIcon}>
-                <Ionicons name="book-outline" size={22} color="#10b981" />
-              </View>
               <View style={styles.playbookRowText}>
-                <Text style={styles.cardTitle}>PAC Playbook</Text>
+                {/* THE SIGN, line one — ruling ACCENT-A, identical on all
+                    three doors: the book's mark beside its name, set as a
+                    green kicker. The green-tinted disc this row used to open
+                    with is gone, because the glyph belongs to the sign now and
+                    the chalkboard band above already carries the book's
+                    picture. The white `PAC Playbook` title is gone with it —
+                    the kicker is the name. */}
+                <View style={styles.playbookKickerRow}>
+                  <Ionicons name="book-outline" size={14} color="#10b981" />
+                  <Text style={styles.playbookKicker}>PAC Playbook</Text>
+                </View>
                 {/* THE SHARED TAGLINE — the cover's own opening words
                     (src/features/pac-playbook/screens/CoverScreen.tsx:139),
-                    so the three entry points and the book agree. It is
-                    longer than the line it replaced and wraps to two at the
-                    375pt floor; nothing clips, because there is no
-                    `numberOfLines` and the card is full width (R-G). */}
-                <Text style={[styles.cardDescription, styles.playbookDesc]}>
+                    so the three entry points and the book agree. It is the
+                    card's headline now, and it wraps to two lines at the 375pt
+                    floor; nothing clips, because there is no `numberOfLines`
+                    and the card is full width (R-G). */}
+                <Text style={styles.playbookDesc}>
                   How we see the game, how we play it and how we think
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={22} color="#10b981" />
+              <Ionicons name="chevron-forward" size={20} color="#10b981" />
             </View>
             {/* `Free` is this screen's own fact — the book sits among paid
                 courses here and nowhere else. The cue beside it is the shared
                 wording. */}
             <View style={styles.playbookFoot}>
               <Text style={styles.playbookTileFree}>Free</Text>
-              <Text style={styles.playbookOpen}>Open the book ›</Text>
+              {/* The cue lost its `›`: the chevron in the row above is this
+                  card's one tap cue, and the arrow said it twice. */}
+              <Text style={styles.playbookOpen}>Open the book</Text>
             </View>
           </View>
         </TouchableOpacity>
@@ -711,20 +718,36 @@ const styles = StyleSheet.create({
   playbookRowText: {
     flex: 1,
   },
-  // The book's mark — a green-tinted disc, the same badge the Club Hub tile
-  // draws, so one feature reads as one feature.
-  playbookIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  // THE SIGN — ruling ACCENT-A, identical on all three doors. The green
+  // kicker is the book's own green eyebrow, by value: `role.labelAccent` at
+  // `fs.hitEyebrow` (`src/features/pac-playbook/type.ts`) — 11.5pt, 700,
+  // `capsWide` tracking (11.5 × 0.08 = 0.92), uppercase, `color.green`
+  // `#10b981`. `fontWeight` and not a face, because Archivo is loaded by the
+  // book alone (`font.ts`) and a door asking for it would silently get the
+  // system font.
+  playbookKickerRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(16, 185, 129, 0.16)',
+    gap: 6,
+    marginBottom: 3,
   },
-  // `cardDescription` ends in a 10pt gap meant for the course cards' meta
-  // rows; the foot row below carries its own `marginTop`, so drop it here.
+  playbookKicker: {
+    color: '#10b981',
+    fontSize: 11.5,
+    fontWeight: '700',
+    letterSpacing: 0.92,
+    textTransform: 'uppercase',
+  },
+  // THE SIGN'S TAGLINE, and the card's headline now the title is gone. The
+  // ink is `color.chalk2` `#d7dde6` (theme.ts); it was the course cards'
+  // `cardDescription` grey `#9CA3AF`, which is the grey a course's blurb
+  // gets — the book is not a course blurb, and the other two doors had two
+  // more greys again (`#888`, `#64748b`).
   playbookDesc: {
-    marginBottom: 0,
+    color: '#d7dde6',
+    fontSize: 15,
+    fontWeight: '500',
+    lineHeight: 20,
   },
   playbookFoot: {
     flexDirection: 'row',

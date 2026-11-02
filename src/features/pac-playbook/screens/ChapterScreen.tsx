@@ -13,8 +13,22 @@ import React from 'react';
 import { Text, View } from 'react-native';
 import type { Card, ChapterRow } from '../types';
 import { other, pick, useLang } from '../strings';
-import { Btn, Chev, Cta, IndexList, Row, SectTitle, Stamp, StatusPip, Tape, TopHead } from '../ui';
+import {
+  Btn,
+  Chev,
+  Cta,
+  IndexList,
+  LearnBox,
+  Row,
+  RowEnd,
+  SectTitle,
+  Stamp,
+  StatusPip,
+  Tape,
+  TopHead,
+} from '../ui';
 import { pbk } from '../styles';
+import { toneFor } from '../type';
 
 export function ChapterScreen({
   chapter,
@@ -37,19 +51,37 @@ export function ChapterScreen({
   const { lang, t } = useLang();
   const es = lang === 'es';
   const subs = chapter.content?.subs || [];
+  /**
+   * section id → its POSITION in the chapter's own `subs`, which is what the
+   * tone is keyed on (ruling PLAYBOOK-SECTION-RAIL). Built from `subs` and not
+   * from the sections that end up rendered, so unpublishing a section's last
+   * card cannot re-colour the sections after it.
+   */
+  const subPos = new Map(subs.map((x, i) => [x.id, i]));
   const next = got ? cards.find((x) => !got.has(x.id)) : undefined;
   const gotCount = got ? cards.filter((x) => got.has(x.id)).length : 0;
 
-  const row = (x: Card) => (
+  const row = (x: Card) => {
+    // A loose card belongs to no section, so it takes no tone and its pip
+    // stays the book's green.
+    const pos = x.content?.sub != null ? subPos.get(x.content.sub) : undefined;
+    const tone = pos == null ? undefined : toneFor(pos);
+    return (
     <Row
       key={x.key}
       onPress={() => onOpenCard(x.key)}
+      /* One cue on every tappable row (PLAYBOOK-TYPE-PASS-E): the pip is the
+         reader's status, the chevron is what says the row opens. A staff
+         viewer has no pip and still gets the chevron. */
       right={
-        got ? (
-          <StatusPip
-            state={got.has(x.id) ? 'ok' : next && next.key === x.key ? 'next' : 'none'}
-          />
-        ) : undefined
+        <RowEnd>
+          {got ? (
+            <StatusPip
+              state={got.has(x.id) ? 'ok' : next && next.key === x.key ? 'next' : 'none'}
+              tone={tone}
+            />
+          ) : null}
+        </RowEnd>
       }
     >
       <Text style={[pbk.rowName, pbk.rowNameSm]}>
@@ -58,7 +90,8 @@ export function ChapterScreen({
       </Text>
       <Text style={pbk.rowDesc}>{pick(x.content?.hook, lang)}</Text>
     </Row>
-  );
+    );
+  };
 
   const loose = cards.filter((x) => !x.content?.sub);
 
@@ -73,20 +106,18 @@ export function ChapterScreen({
         stamp={got ? <Stamp lines={[`${gotCount} / ${cards.length}`, t('read')]} /> : undefined}
       />
 
-      <View>
-        <Text style={pbk.blockLabel}>{t('learn')}</Text>
-        <Text style={pbk.lead}>{pick(chapter.content?.learn, lang)}</Text>
-      </View>
+      <LearnBox label={t('learn')} items={[pick(chapter.content?.learn, lang)]} />
 
       {subs.length > 0 ? (
         <>
           {loose.length > 0 ? <IndexList>{loose.map(row)}</IndexList> : null}
-          {subs.map((s) => {
+          {subs.map((s, i) => {
             const cs = cards.filter((x) => x.content?.sub === s.id);
             if (!cs.length) return null;
             return (
               <View key={s.id}>
                 <SectTitle
+                  position={i}
                   count={got ? `${cs.filter((x) => got.has(x.id)).length}/${cs.length}` : undefined}
                 >
                   {pick(s.name, lang)}

@@ -15,7 +15,8 @@ interface HubCard {
   id: string;
   icon: keyof typeof Ionicons.glyphMap;
   accentColor: string;
-  title: string;
+  /** Optional since ACCENT-A: a tile whose `kicker` names it needs no title. */
+  title?: string;
   subtitle: string;
   onPress: () => void;
   /**
@@ -27,6 +28,14 @@ interface HubCard {
    */
   featured?: boolean;
   cue?: string;
+  /**
+   * An uppercase, accent-coloured eyebrow above the subtitle — ruling
+   * ACCENT-A: the Playbook's SIGN is identical on all three doors into the
+   * book, and the kicker is the line that names it. A tile that sets `kicker`
+   * drops `title`, because the kicker IS the name and printing both said it
+   * twice. No other hub tile sets it, and none of them changes.
+   */
+  kicker?: string;
 }
 
 export default function ClubHubScreen() {
@@ -58,11 +67,16 @@ export default function ClubHubScreen() {
             // because the book is a lazy route and importing its theme here
             // would put its module graph in this screen's bundle.
             accentColor: '#10b981',
-            title: 'PAC Playbook',
+            // THE SIGN — ruling ACCENT-A. The kicker carries the name on all
+            // three doors, so there is no `title` here; the tagline below is
+            // the tile's headline. The book's glyph stays in the icon circle
+            // every hub tile has, which is this host's own furniture.
+            kicker: 'PAC Playbook',
             // THE SHARED TAGLINE and the shared cue — the cover's own opening
-            // words (features/pac-playbook/screens/CoverScreen.tsx:139).
+            // words (features/pac-playbook/screens/CoverScreen.tsx:139). The
+            // cue lost its `›`: the tile's chevron is its one tap cue.
             subtitle: 'How we see the game, how we play it and how we think',
-            cue: 'Open the book ›',
+            cue: 'Open the book',
             featured: true,
             onPress: () => navigation.navigate('Playbook'),
           },
@@ -111,8 +125,15 @@ export default function ClubHubScreen() {
               <Ionicons name={card.icon} size={26} color={card.accentColor} />
             </View>
             <View style={styles.cardText}>
-              <Text style={styles.cardTitle}>{card.title}</Text>
-              <Text style={styles.cardSubtitle}>{card.subtitle}</Text>
+              {card.kicker ? (
+                <Text style={[styles.cardKicker, { color: card.accentColor }]}>
+                  {card.kicker}
+                </Text>
+              ) : null}
+              {card.title ? <Text style={styles.cardTitle}>{card.title}</Text> : null}
+              <Text style={[styles.cardSubtitle, card.kicker ? styles.cardSubtitleLead : null]}>
+                {card.subtitle}
+              </Text>
               {card.cue ? (
                 <Text style={[styles.cardCue, { color: card.accentColor }]}>{card.cue}</Text>
               ) : null}
@@ -208,6 +229,29 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontSize: 13,
     lineHeight: 18,
+  },
+  // THE SIGN'S KICKER — ruling ACCENT-A, identical on all three doors into
+  // the book. The book's own green eyebrow, by value: `role.labelAccent` at
+  // `fs.hitEyebrow` (`src/features/pac-playbook/type.ts`) — 11.5pt, 700,
+  // `capsWide` tracking (11.5 × 0.08 = 0.92), uppercase. The COLOUR comes
+  // from the tile's `accentColor` at the call site, which for the Playbook is
+  // `color.green` `#10b981`. `fontWeight` and not a face: Archivo is loaded
+  // by the book alone (`font.ts`), so a hub tile asking for it would silently
+  // get the system font.
+  cardKicker: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    letterSpacing: 0.92,
+    textTransform: 'uppercase',
+  },
+  // A kicker'd tile has no title, so its subtitle is the headline and takes
+  // the sign's own ink and size — `color.chalk2` `#d7dde6` (theme.ts), the
+  // same line the other two doors print.
+  cardSubtitleLead: {
+    color: '#d7dde6',
+    fontSize: 15,
+    fontWeight: '500',
+    lineHeight: 20,
   },
   // The shared cue. Same words in all three ways in; the colour is the
   // card's accent, applied at the call site.

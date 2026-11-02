@@ -39,6 +39,7 @@ import {
   radius,
   space,
 } from './theme';
+import { line, role, track } from './type';
 
 export interface HeaderBack {
   label: string;
@@ -288,17 +289,27 @@ const styles = StyleSheet.create({
   titleCell: { flex: 1, minWidth: 0 },
   /** Row two of the stacked header: the title block, the whole column wide. */
   titleCellWide: { width: '100%' },
+  /**
+   * The app bar's own title and sub-line.
+   *
+   * The ratios go through `line()` / `track()` (`type.ts`) like every other
+   * measure in the book. They used to be resolved here with a bare
+   * `Math.round(fs.x * lh.y)`, which rounds to a whole point where the page
+   * rounds to two — two spellings of one rule, and the way a header starts
+   * leading differently from the page under it. The INK stays local: this bar
+   * is violet, so its white and `#e4e0ff` are not the page's `chalk`.
+   */
   title: {
     fontFamily: ff.extrabold,
     fontSize: fs.headerTitle,
-    lineHeight: Math.round(fs.headerTitle * lh.tight),
-    letterSpacing: fs.headerTitle * ls.heading,
+    lineHeight: line(fs.headerTitle, lh.tight),
+    letterSpacing: track(fs.headerTitle, ls.heading),
     color: '#fff',
   },
   sub: {
-    fontSize: fs.meta,
+    ...role.caption,
     color: '#e4e0ff',
-    lineHeight: Math.round(fs.meta * lh.heading),
+    lineHeight: line(fs.meta, lh.heading),
     marginTop: space.px1,
   },
 
@@ -329,7 +340,7 @@ const styles = StyleSheet.create({
   segLabel: {
     fontFamily: ff.bold,
     fontSize: fs.meta,
-    letterSpacing: fs.meta * ls.caps,
+    letterSpacing: track(fs.meta, ls.caps),
     color: color.violetInk,
   },
   segLabelOn: { color: color.violet2 },

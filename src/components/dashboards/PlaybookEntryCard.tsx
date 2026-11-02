@@ -20,6 +20,24 @@ import { playbookVisible } from '../../constants/playbookLaunch';
  * WHERE IT SITS, on every dashboard: directly below the quick-nav tile grid
  * (`QuickActionsCard`), so the book is the first thing after navigation.
  *
+ * THE SIGN IS SHARED, THE FRAME IS THE HOST'S — ruling ACCENT-A, Lu,
+ * 2026-11-01 (PLAYBOOK-TYPE-PASS-E). The three doors into the book no longer
+ * each style their own name: the SIGN — the green kicker `PAC PLAYBOOK`, the
+ * book glyph, the tagline and the green cue — is identical in
+ * `src/screens/CoursesScreen.tsx`, `src/screens/ClubHubScreen.tsx` and this
+ * file, to the point, the weight and the ink. What stays HOST-SPECIFIC is the
+ * frame: this card's rule is the dashboard's violet because it sits under the
+ * violet tile grid, while the other two are green because their screens are.
+ * The white `PAC Playbook` title is GONE from all three — the kicker carries
+ * the name now, so the words appeared twice on every door.
+ *
+ * The sign's values are written out here, not imported, for the lazy-boundary
+ * reason below. They are the book's own, and the file that owns them is
+ * `src/features/pac-playbook/type.ts` (`role.labelAccent` for the kicker:
+ * `fs.hitEyebrow` 11.5 at `ff.bold` with `capsWide` tracking, 11.5 × 0.08 =
+ * 0.92, in `color.green`; `role.bodyLead`'s ink `chalk2` `#d7dde6` for the
+ * tagline).
+ *
  * THE THREE DESIGN CHANGES (Nov 1, second pass)
  * 1. the club's CREST replaces the book-icon disc on the left — see "the crest"
  *    below for where the image comes from;
@@ -180,18 +198,23 @@ export default function PlaybookEntryCard({
         )}
       </View>
       <View style={styles.playbookCardText}>
+        {/* THE SIGN, line one — the book's mark and its name, as a green
+            kicker. The glyph stays beside the kicker here because this door's
+            disc is the CLUB's crest; on the other two doors the glyph sits in
+            the disc the host gives it. One glyph per door, same green. */}
         <View style={styles.playbookTitleRow}>
-          <Text style={styles.playbookTitle}>PAC Playbook</Text>
-          {/* The book's mark, the same `book-outline` glyph as the other ways
-              in — now beside the title, because the disc is the club's. */}
           <Ionicons name="book-outline" size={14} color="#10b981" />
+          <Text style={styles.playbookKicker}>PAC Playbook</Text>
         </View>
         {/* THE SHARED TAGLINE — the cover's own opening words
-            (src/features/pac-playbook/screens/CoverScreen.tsx:139). */}
+            (src/features/pac-playbook/screens/CoverScreen.tsx:139). It is the
+            door's headline now that the kicker carries the name. */}
         <Text style={styles.playbookDesc}>
           How we see the game, how we play it and how we think
         </Text>
-        <Text style={styles.playbookOpen}>Open the book ›</Text>
+        {/* The cue lost its `›`: the chevron on the right is this card's one
+            tap cue, and the arrow said it twice. */}
+        <Text style={styles.playbookOpen}>Open the book</Text>
       </View>
       <Ionicons name="chevron-forward" size={20} color="#10b981" />
     </TouchableOpacity>
@@ -250,17 +273,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 2,
+    marginBottom: 3,
   },
-  playbookTitle: {
-    color: '#fff',
-    fontSize: 16,
+  // THE SIGN'S KICKER — ruling ACCENT-A, identical on all three doors. The
+  // book's own green eyebrow, by value: `role.labelAccent` at
+  // `fs.hitEyebrow` (`src/features/pac-playbook/type.ts`) — 11.5pt, 700,
+  // `capsWide` tracking (11.5 × 0.08 = 0.92), uppercase, `color.green`
+  // `#10b981`. `fontWeight` and not a face: Archivo is loaded by the book and
+  // only by the book (`font.ts`), so a door asking for it would get the
+  // system font silently.
+  playbookKicker: {
+    color: '#10b981',
+    fontSize: 11.5,
     fontWeight: '700',
+    letterSpacing: 0.92,
+    textTransform: 'uppercase',
   },
+  // THE SIGN'S TAGLINE, and the door's headline. `color.chalk2` `#d7dde6`
+  // (theme.ts) — the three doors each had their own grey before this
+  // (`#888` here, `#9CA3AF` on Courses, `#64748b` on Club Hub).
   playbookDesc: {
-    color: '#888',
-    fontSize: 13,
-    lineHeight: 18,
+    color: '#d7dde6',
+    fontSize: 15,
+    fontWeight: '500',
+    lineHeight: 20,
   },
   // The shared cue, still the playbook green — with the rule now violet, this
   // and the chevron are the card's only green.

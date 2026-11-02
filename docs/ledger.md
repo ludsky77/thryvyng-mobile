@@ -981,3 +981,211 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
     `rpc.ts:85-99` assertion is observed, not inferred. INFERRED: that the original
     `+zztest7` secondary-parent row was among the accounts looked at — the
     verification note says "all 3 role dashboards", it does not name the account.
+
+## Landed — Nov 1 2026 (the Playbook's type scale, and one sign on all three doors)
+
+- **PLAYBOOK-TYPE-PASS-E · six typographic roles in one tokens file, applied
+  across the book, plus ruling ACCENT-A on the three entry doors · landed
+  2026-11-01 · AGENT-VERIFIED; DEVICE LOOK PENDING.** Typography and hierarchy
+  only: no content, no diagram, no quiz logic, no schema, no RPC, no auth, no
+  launch flag, no new dependency, no new font. Archivo was already loaded (M6,
+  `68a59b7`) and this pass adds no face to it.
+  - **THE TOKENS FILE: `src/features/pac-playbook/type.ts`** (new). Six roles —
+    **kicker · label · title · subtitle · body · caption** — each a complete
+    `TextStyle` built from `theme.ts` names. **It writes no number of its own**,
+    so `theme.ts` stays the one place a Playbook measure lives (M1's rule); this
+    file is a set of OPINIONS about those values. `line()` / `track()` moved
+    here from `styles.ts` so the header and the page resolve a ratio the same
+    way — `PlaybookHeader.tsx` had been rounding its own to whole points while
+    the page rounded to two.
+  - **THE DEFECT THIS PASS WAS REALLY ABOUT — a kicker and a label were the
+    same style.** `secttlText` (the section divider: POSSESSION, DEFENDING) and
+    `blockLabel` (a label inside a card: WHAT YOU SEE, READ) were byte-identical
+    — both `ff.bold` / `fs.meta` / `capsWidest` / `color.mute`. The reader could
+    not tell a section from a label because they were set the same. They now
+    differ on all three axes at once: the kicker is 800 in `chalk2` at `meta`,
+    the label 700 in `mute` at `micro`.
+  - **FOUND, AND FIXED HERE: since M6 the book's PROSE was not Archivo.** M6
+    swapped 83 sites from `fontWeight: fw.X` to `fontFamily: ff.X`, but a style
+    that had never carried a `fontWeight` got no `fontFamily` either — so every
+    HEADING was Archivo while all the body text rendered in the OS font. **29 of
+    the 103 sized text styles** had no face: `lead`, `one`, `oneMute`,
+    `blkText`, `rowDesc`, `coverLead`, `linkboxText`, `rolepanelText`, `qtext`,
+    `revtext`, `hitBody`, `pendText`, `cuelineText`, `coverHowText`, `snote`,
+    `subdesc`, `note`, `qmeta`, `qstatus`, `qreplyText`, `verbAlt`,
+    `resBigSmall`, `mvgroupLabel`, `searchInput`, `fieldInput`, `searchClear`
+    among them. Routing them through `role.body` / `role.bodyLead` /
+    `role.caption` closes it. **This is why the book reads differently even
+    where no size changed** — it is the largest visible change in the pass, and
+    it was a bug, not a restyle.
+  - **"What you will learn" is its own device now** (`pbk.learnbox`,
+    `LearnBox` in `ui.tsx`). It was `blockLabel` + `lead` — the chapter's whole
+    promise set in the same label a paragraph inside a card gets. It is a
+    KICKER over a FRAMED body with the book's green down the left edge, the
+    left-bar device `remind` already uses in pink. No new colour, no new
+    measure.
+    - **THE "LIST" HAS ONE ITEM, and that is a CONTENT limit, not a choice.**
+      The ruling asked for a framed LIST. Every chapter's `learn` in the frozen
+      data is a single sentence (`dev/pac-playbook-v2-FINAL-data.json`, 7 of 7),
+      and splitting prose on its commas makes fragments ("with and without the
+      ball"). `LearnBox` takes `items: string[]` and renders ticks at 2+, so it
+      becomes a real list the day the content carries one. **A multi-item list
+      needs a content change — NEEDS LU.**
+  - **One tap cue, everywhere** (ruling: tappable gets one cue, non-tappable
+    none). A chapter's card rows ended in a `StatusPip` and nothing else, so
+    the only rows that showed where you could go were the ones with no progress
+    to show — `RowEnd` now puts the pip (status) and a chevron (affordance)
+    together, and a staff viewer with no pip still gets the chevron. A search
+    hit was a `Pressable` with NO cue and NO press state; it has both. The quiz
+    pill lost its `›` because the row around it already has a chevron, and the
+    green link chips gained the press state they never had.
+  - **RULING ACCENT-A — the sign is shared, the frame is the host's.** The
+    Playbook SIGN — green kicker `PAC PLAYBOOK`, the book glyph, the tagline,
+    the green cue — is now identical on all three doors to the point, the
+    weight and the ink. The FRAME stays the host's: the dashboard card keeps
+    its violet rule because it sits under the violet tile grid, Courses and Club
+    Hub keep their green.
+    - **DEFAULT TAKEN — the white `PAC Playbook` title is gone from all three.**
+      The kicker carries the name, so the words were printed twice on every
+      door. The tagline is the headline now, at `color.chalk2` `#d7dde6` — the
+      three doors had three different greys for it before (`#888`, `#9CA3AF`,
+      `#64748b`). Reversible: put the title back and the kicker becomes an
+      eyebrow above it.
+    - **DEFAULT TAKEN — the book glyph appears ONCE per door, in the host's own
+      slot.** The dashboard's left disc is the club CREST (verified Nov 1), so
+      its glyph sits in the kicker row at 14; Courses dropped its green-tinted
+      disc for the same kicker-row glyph, because its chalkboard band already
+      carries the book's picture; Club Hub keeps the icon circle every hub tile
+      has, at 26. The glyph, its green and the rest of the sign are identical —
+      only the SLOT follows the host, which is what ACCENT-A says about host
+      furniture. **If Lu wants the slot identical too, that is one more pass.**
+    - **DEFAULT TAKEN — the cue dropped its `›`** on all three doors: each door
+      already ends in a green chevron, so the arrow said it twice. Same ruling
+      as the quiz pill inside the book.
+    - `ClubHubScreen`'s `HubCard` gained an optional `kicker` and its `title`
+      became optional. **No other hub tile sets either, and none of them
+      changes.**
+  - **THE LAZY BOUNDARY HOLDS, and the doors CANNOT import `type.ts`.** They are
+    boot-path screens and the book is a lazy route, so the sign's values are
+    written out in each door with a citation back to `type.ts`, exactly as those
+    files already carry `#10b981` and `#1c2637` by value. **Three copies of the
+    sign is the cost** — `RECOMMEND (suggestion)`: extract a shared
+    `PlaybookSign` component outside the feature folder, which is a new file and
+    so was outside this task's SCOPE. The doors also keep `fontWeight` and NOT
+    `fontFamily`: Archivo is registered by `font.ts` when the book opens and by
+    nothing else, so a door asking for the face would silently get the system
+    font.
+  - **Files touched (10).** New: `src/features/pac-playbook/type.ts`. Changed:
+    `styles.ts` · `ui.tsx` · `PlaybookHeader.tsx` · `screens/ChapterScreen.tsx` ·
+    `screens/ContentsScreen.tsx` · `screens/CardScreen.tsx` ·
+    `src/components/dashboards/PlaybookEntryCard.tsx` ·
+    `src/screens/CoursesScreen.tsx` · `src/screens/ClubHubScreen.tsx`.
+    **Not touched on purpose:** every file in `MIRROR.md` (`diagram/*`,
+    `search.ts`, `types.ts`, `doodleArt.ts` are byte-identical mirrors of
+    `thrive-and-score` and are edited web-first), and `dev/PlaybookDevHarness.tsx`.
+  - **Gates:** `npx tsc --noEmit` **5 errors, all pre-existing in
+    `src/components/games/*`, 0 new** · `eslint` on the 10 files **0 errors**,
+    14 warnings against a 15-warning baseline — **one fewer**, the
+    `{ letterSpacing: 1.2 }` inline style that `pbk.blockLabel` now carries ·
+    `npx expo export --platform ios` **exit 0**, iOS bundle **9.32 MB
+    (unchanged** — the lazy boundary did not move**)**, Archivo still **4 faces,
+    not 18** (M6's bundle trap stays shut).
+  - **SEEN ON THE SIMULATOR (iPhone 17 Pro, `DEEE9FA3`, dev client over Metro),
+    5 of the 8 views asked for:** cover · contents · chapter (the learn device
+    and the new row cues) · a card (`F0`) · quiz entry · and the DASHBOARD door
+    on a live player login (Zack Testeron, Provo Athletic Club — crest, kicker,
+    tagline, cue and violet rule all as designed). Screenshots are in the
+    session scratchpad, not the repo.
+  - **NOT SEEN: the Courses door and the Club Hub tile.** Neither screen has a
+    deep link (`src/navigation/linking.ts` registers no path for them) and the
+    simulator cannot be tapped from here — `osascript` has no assistive access
+    on this machine, so there is no UI automation. Adding a dev link would mean
+    editing `src/navigation/linking.ts`, which is outside this task's SCOPE.
+    **Those two doors are UNVERIFIED-VISUAL; they typecheck, lint and bundle,
+    and nobody has looked at them.**
+  - Source: this session, 2026-11-01; the rulings in Lu's prompt (ACCENT-A and
+    the four hierarchy rules); `theme.ts`, `font.ts` and `MIRROR.md` for the
+    constraints the pass had to hold.
+
+- **PLAYBOOK-SECTION-RAIL, under PLAYBOOK-TYPE-PASS-E · every section of a
+  chapter gets its own tone · landed 2026-11-02 · AGENT-VERIFIED ON THE
+  SIMULATOR; LU'S DEVICE LOOK PENDING.** Colour and one inline mark per
+  section; no content, no data, no schema, no gate, no dependency, no new
+  font. The doors (ACCENT-A), the quiz, the cover and search are untouched.
+  - **WHY.** PLAYBOOK-TYPE-PASS-E made the section kicker a distinct ELEMENT
+    from a block label, but every section was still the same `chalk2`, so in a
+    seventeen-card chapter like Principles nothing but the words told a reader
+    which part they were in. A tone gives each section an identity that
+    survives scrolling.
+  - **THE TONES** live in `theme.ts` (`sectionTones`) because that file is the
+    one place a Playbook colour is written down (M1). In the ruling's order:
+    **green `#3DD68C` · sky `#6FB1FF` · teal `#2ED3C6` · periwinkle
+    `#8FA8FF`**, each with its `tint` — the same ink at **13% alpha**, written
+    out as `rgba()` because `theme.ts` is pure data and may not compute. **Edit
+    one and the other has to be edited with it.**
+    - **COOL ONLY, by ruling — never amber, coral or any warm hue.** The book
+      already spends warm colour on meaning that must not be diluted: `gold`
+      and `silver` are medals, `bad` `#ff5a76` is a wrong answer, `pink` is a
+      reminder.
+    - **`tone[0]` is NOT `color.green`.** The book's `#10b981` stays what it
+      has always been — right answers, progress, the "us" team. `#3DD68C` is
+      lighter and cooler, so it reads as a LABEL and not as a verdict.
+  - **THE POSITION RULE lives in `type.ts` (`toneFor`)**, and is the only place
+    a tone is assigned: **1st → green, 2nd → sky, 3rd → teal, 4th →
+    periwinkle, then cycle.** So `possession` is green because it is FIRST in
+    Principles, not because possession is green.
+    - **The index is the position in `chapter.content.subs`**, the chapter's
+      own declared order — **not** the position among the sections that happen
+      to render. A section whose last card is unpublished is skipped on screen,
+      and keying on the rendered position would re-colour every section after
+      it the day that happened.
+  - **WHAT WEARS THE TONE.** On the chapter contents screen: a **3pt rail**
+    down the left of the kicker row (`pbk.secttlRail`, `alignSelf:'stretch'` so
+    it tracks the row rather than a height kept in step by hand), the **kicker's
+    ink**, the **mark**, the **count pill** (was plain `dim` text, now a pill
+    at the tone's 13% tint behind the tone's ink), and the **status pip on every
+    card in that section**. On the card screen: the **section kicker** in the
+    crumb — its mark and its name — and nothing else.
+  - **THE MARKS ARE NEW, because the content has none.** `ChapterSub` is `id`,
+    `name`, `desc` and nothing more, so the mark comes from the same position
+    rule: **1st ball · 2nd shield · 3rd arrows · 4th target.** Drawn as inline
+    SVG in `ui.tsx` (`SectionIcon`) with the same pen as the header's icons —
+    24-unit box, `stroke-width:2.2`, round caps.
+    - **FOUND ON SCREEN AND FIXED: the 1st and 4th marks were the same mark.**
+      The target drawn as concentric rings plus a centre dot is, at 14pt, a
+      small circle with something in the middle — which is exactly the ball.
+      Principles showed it: POSSESSION (1st) and FINGERPRINTS (5th, cycling
+      back to slot 1) looked identical to STRUCTURE (4th). The target is a
+      **crosshair** now — a ring broken by four ticks — and the two read apart
+      at the size they are actually drawn.
+  - **SAME-ROOT SWEEP (1 site, reported not asked):** the card screen's CURRENT
+    position pip was `color.green` and, beside a sky or teal section kicker,
+    read as the FIRST section's tone — a mismatch these tones created. It now
+    takes the card's own section tone. The read/unread pips stay neutral: they
+    are progress, not identity. **Outside the ruling's literal "card screen's
+    section kicker" — say the word and it goes back to green.**
+  - **A card with NO section keeps the book's green.** The loose list at the
+    head of a chapter belongs to no section, so `toneFor` is never called for
+    it; and the four chapters with no `subs` at all are unchanged. The
+    chapter-end screen's "Your messages" header passes no position and keeps
+    the neutral kicker it has always had.
+  - **Files touched (6), all inside the feature folder:** `theme.ts`
+    (`sectionTones`) · `type.ts` (`toneFor`) · `styles.ts` (rail, pill, toned
+    tick, `crumbSect`) · `ui.tsx` (`SectionIcon`, toned `SectTitle` and
+    `StatusPip`) · `screens/ChapterScreen.tsx` · `screens/CardScreen.tsx`.
+    Nothing in `MIRROR.md` was touched.
+  - **Gates:** `npx tsc --noEmit` **5 errors, all pre-existing in
+    `src/components/games/*`, 0 new** · `eslint` on the 6 files **0 errors**, 5
+    warnings, all of them CardScreen's pre-existing inline styles, **0 new** ·
+    `npx expo export --platform ios` **exit 0**, iOS bundle **9.33 MB** (9.32 →
+    9.33, the four marks and the tone table).
+  - **SEEN ON THE SIMULATOR** (iPhone 17 Pro `DEEE9FA3`, dev client over Metro,
+    offline harness): all six Principles sections across three scroll positions
+    — POSSESSION green/ball · DEFENDING sky/shield · THE TWO TRANSITIONS
+    teal/arrows · STRUCTURE periwinkle/crosshair · FINGERPRINTS green/ball
+    (the cycle) · PRESSING LINES sky/shield — each with its rail, its tinted
+    count pill and its toned pips; and card `P4` showing the sky "Defending"
+    kicker over a sky position pip. Screenshots are in the session scratchpad,
+    not the repo.
+  - Source: this session, 2026-11-02; Lu's ruling of the same day (cool tones
+    only, the four tones in order, the position rule).

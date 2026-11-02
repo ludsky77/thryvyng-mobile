@@ -156,9 +156,13 @@ export function ContentsScreen(props: ContentsScreenProps) {
                   ? ch?.content?.subs?.find((x) => x.id === c.content.sub)
                   : null;
                 return (
+                  /* A hit opens a card, so it carries the same cue a row
+                     does and the press state the rest of the book has
+                     (PLAYBOOK-TYPE-PASS-E — it had neither). The chevron sits
+                     after the name, the way a green link chip's does. */
                   <Pressable
                     key={c.key}
-                    style={pbk.hit}
+                    style={({ pressed }) => [pbk.hit, pressed && pbk.pressed]}
                     onPress={() => onOpenCard(c.key, true)}
                     accessibilityRole="button"
                   >
@@ -166,7 +170,7 @@ export function ContentsScreen(props: ContentsScreenProps) {
                       {pick(ch?.content?.name, lang)}
                       {sub ? ' · ' + pick(sub.name, lang) : ''}
                     </Text>
-                    <Text style={pbk.hitName}>{mark(pick(c.content?.name, lang))}</Text>
+                    <Text style={pbk.hitName}>{mark(pick(c.content?.name, lang))} ›</Text>
                     <Text style={pbk.hitBody}>
                       {mark(pick(c.content?.hook, lang) || pick(c.content?.see, lang))}
                     </Text>
@@ -238,8 +242,11 @@ export function ContentsScreen(props: ContentsScreenProps) {
             {medal ? <Medal medal={medal} /> : null}
           </View>
           <Text style={pbk.rowDesc}>{t('quizsub')}</Text>
+          {/* A LABEL, not a second cue: the row's own chevron is the cue, so
+              the pill lost the `›` it used to carry (PLAYBOOK-TYPE-PASS-E —
+              one cue per tappable thing). */}
           <Chip green style={pbk.quizcardCta}>
-            {es ? 'Hacer el quiz ›' : 'Take the quiz ›'}
+            {es ? 'Hacer el quiz' : 'Take the quiz'}
           </Chip>
         </Row>
       ) : null}

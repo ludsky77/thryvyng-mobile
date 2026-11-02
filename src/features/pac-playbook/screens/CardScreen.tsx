@@ -31,8 +31,9 @@ import { Fmt } from '../Fmt';
 import { PositionsPanel } from '../panels/PositionsPanel';
 import { MovementPanel } from '../panels/MovementPanel';
 import { FormationPanel, NumbersPanel } from '../panels/FormationPanels';
-import { Btn, Chip, Cta } from '../ui';
+import { Btn, Chip, Cta, SectionIcon } from '../ui';
 import { pbk } from '../styles';
+import { toneFor } from '../type';
 
 interface ReadingNav {
   prev: Card | null;
@@ -165,6 +166,16 @@ export function CardScreen(props: CardScreenProps) {
   const c = card.content || {};
   const nav = readingNav(card, chapter, chapterCards, lang);
   const sub = c.sub ? chapter.content?.subs?.find((s) => s.id === c.sub) : null;
+  /**
+   * The card's SECTION KICKER wears its section's tone — ruling
+   * PLAYBOOK-SECTION-RAIL. The position is the section's index in the
+   * chapter's own `subs`, the same input the chapter's list uses, so a card
+   * and the row that opened it are the same colour. The REST of the card stays
+   * neutral by that ruling: the body, the blocks and the board do not take the
+   * tone.
+   */
+  const subIndex = c.sub ? (chapter.content?.subs?.findIndex((s) => s.id === c.sub) ?? -1) : -1;
+  const subTone = subIndex >= 0 ? toneFor(subIndex) : null;
   const [busy, setBusy] = useState(false);
 
   useEffect(() => setBusy(false), [card.key]);
@@ -198,7 +209,7 @@ export function CardScreen(props: CardScreenProps) {
   else if (card.chapter_key !== 'mind' && card.key !== 'FM5v5')
     board = (
       <View style={pbk.pend}>
-        <Text style={[pbk.blockLabel, { letterSpacing: 1.2 }]}>{t('pend')}</Text>
+        <Text style={pbk.blockLabel}>{t('pend')}</Text>
         <Text style={pbk.pendText}>
           <Fmt text={pick(c.see, lang)} />
         </Text>
@@ -215,7 +226,16 @@ export function CardScreen(props: CardScreenProps) {
         {sub ? (
           <>
             <Text style={pbk.crumbText}>·</Text>
-            <Text style={[pbk.crumbText, pbk.crumbStrong]}>{pick(sub.name, lang)}</Text>
+            {subTone ? (
+              <View style={pbk.crumbSect}>
+                <SectionIcon position={subIndex} size={12} color={subTone.ink} />
+                <Text style={[pbk.crumbText, pbk.crumbStrong, { color: subTone.ink }]}>
+                  {pick(sub.name, lang)}
+                </Text>
+              </View>
+            ) : (
+              <Text style={[pbk.crumbText, pbk.crumbStrong]}>{pick(sub.name, lang)}</Text>
+            )}
           </>
         ) : null}
         <Text style={pbk.crumbText}>·</Text>
@@ -229,9 +249,19 @@ export function CardScreen(props: CardScreenProps) {
 
       <View style={pbk.pips}>
         {nav.subList.map((x, i) => (
+          /* The pip for the card you are ON takes the section's tone. It was
+             the book's green, which after PLAYBOOK-SECTION-RAIL read as the
+             FIRST section's tone sitting under a sky or teal kicker — a
+             mismatch the tones themselves created. The read/unread pips stay
+             neutral: they are progress, not identity. */
           <View
             key={x.key}
-            style={[pbk.pip, i < nav.subPos && pbk.pipDone, i === nav.subPos && pbk.pipCur]}
+            style={[
+              pbk.pip,
+              i < nav.subPos && pbk.pipDone,
+              i === nav.subPos && pbk.pipCur,
+              i === nav.subPos && subTone ? { backgroundColor: subTone.ink } : null,
+            ]}
           />
         ))}
       </View>
@@ -344,7 +374,7 @@ export function CardScreen(props: CardScreenProps) {
                 return (
                   <Pressable
                     key={x}
-                    style={pbk.linkchip}
+                    style={({ pressed }) => [pbk.linkchip, pressed && pbk.pressed]}
                     onPress={() => onFollowLink(x)}
                     accessibilityRole="button"
                   >

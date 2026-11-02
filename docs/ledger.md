@@ -755,7 +755,9 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
     run 2026-11-01 ~17:56.
 
 - **PLAYBOOK-M6-ARCHIVO · Archivo wired into the mobile Playbook, that feature only ·
-  landed 2026-11-01 · AGENT-ONLY, VERIFICATION PENDING (not looked at on a device).**
+  landed 2026-11-01 (`68a59b7`) · DEVICE-VERIFIED by Lu (iOS simulator) Nov 1, 2026
+  evening — Archivo 400/500/700/800 loading via `useFonts`, 600→700 substitution
+  kept; type hierarchy revisited wholesale in pass E (next entry).**
   The web's typeface now renders in the book on mobile. Ruling **E-R3 is revisited**:
   it was A ("first mobile build uses the system font, Archivo is not loaded, `expo-font`
   is not a dependency") and that is no longer true. `theme.ts`'s own note said a
@@ -836,10 +838,12 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
 ## Landed — Nov 1 2026 (Playbook moved to the top of every dashboard, AGENT-ONLY)
 
 - **PLAYBOOK-DASHBOARD-PLACEMENT · the Playbook entry card now sits directly below
-  the quick-nav tile grid on ALL THREE role dashboards · landed 2026-11-01 ·
-  VERIFICATION PENDING (AGENT-ONLY: typecheck · eslint · `expo export`; no device,
-  no simulator).** PLACEMENT + ONE EXTRACTED COMPONENT: no `onPress`, no `navigate`,
-  no route, no visibility gate, no data, no RPC, no schema, no new dependency.
+  the quick-nav tile grid on ALL THREE role dashboards · landed 2026-11-01 (`654303e`) ·
+  DEVICE-VERIFIED by Lu (iOS simulator) Nov 1, 2026 22:39 — card on all 3 role
+  dashboards, viewer-club crest rendering correctly after root-cause fix (club id
+  passed from hosts). Agent gates green too: typecheck · eslint · `expo export`.**
+  PLACEMENT + ONE EXTRACTED COMPONENT: no `onPress`, no `navigate`, no route,
+  no visibility gate, no data, no RPC, no schema, no new dependency.
   Source: `docs/recon/playbook-polish.md` (appended this session).
   - **New shared component** `src/components/dashboards/PlaybookEntryCard.tsx` — the
     PLAYBOOK-CARD-INVITING card (markup and styles) lifted out of
@@ -883,7 +887,8 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
     `PlayerDashboard.tsx` as a direct importer of `playbookVisible`. It no longer is
     — `PlaybookEntryCard.tsx` is. `grep -rn "playbookVisible" src/` is the truth.
 
-- **RESTYLE of the same row, same day (2026-11-01, AGENT-ONLY, VERIFICATION PENDING).**
+- **RESTYLE of the same row, same day (2026-11-01, `654303e`) — DEVICE-VERIFIED in the
+  same run: Lu, iOS simulator, Nov 1, 2026 22:39.**
   `PlaybookEntryCard.tsx` only — no other file, no gate, no route, no schema.
   Source: `docs/recon/playbook-polish.md`, section "second pass — the card restyled".
   - **Crest replaces the book disc on the left.** Source found, nothing new hardcoded:
@@ -927,7 +932,9 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
     it down from the three dashboards instead — they already hold the club — and drop
     the copied query. That needs the dashboard files, so it is a separate task.
 
-- **CREST BUG FIXED, same row, same day (2026-11-01, AGENT-ONLY, VERIFICATION PENDING).**
+- **CREST BUG FIXED, same row, same day (2026-11-01, `654303e`) — DEVICE-VERIFIED in
+  the same run: Lu, iOS simulator, Nov 1, 2026 22:39, viewer-club crest rendering
+  correctly with the club id passed down from the hosts.**
   Lu's device test: `+zztest7` (secondary parent, PAC) saw the `PAC` lettering, not the
   logo, while `public_clubs.logo_url` for PAC holds a URL that `curl -I` answers 200
   `image/png` 61 KB. Four files: `PlaybookEntryCard.tsx`, `PlayerDashboard.tsx`,
@@ -968,7 +975,9 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
     CoachDashboard 30/30, ClubAdminDashboard 10/10) + 1 warning on the new card
     (`navigation: any`) / **0 new** · `expo export --platform ios` **exit 0**, iOS bundle
     9.32 MB.
-  - **STILL NEEDS DEVICE.** The query now runs with a real club id, but nobody has seen
-    the image render, and whether `public_clubs` answers for a secondary parent is
-    asserted by `rpc.ts:85-99`, not observed. If it is still lettering, check first
-    whether `player.teams.club_id` arrived — it is now the only input.
+  - **DEVICE-SEEN — the image renders.** Lu, iOS simulator, Nov 1, 2026 22:39: the
+    viewer-club crest draws on all three role dashboards, so the query does run and
+    `public_clubs` does answer with the club id passed down from the hosts. The
+    `rpc.ts:85-99` assertion is observed, not inferred. INFERRED: that the original
+    `+zztest7` secondary-parent row was among the accounts looked at — the
+    verification note says "all 3 role dashboards", it does not name the account.

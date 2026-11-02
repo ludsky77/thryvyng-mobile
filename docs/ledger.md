@@ -638,6 +638,22 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
   mean something once a coach has a place to read and sort what players send, so the column
   and the pills land together with that inbox or not at all. Nothing to do until that step is
   planned. Source: Lu's ruling in the planning room, 2026-11-01 ~17:42.
+- **OPEN — PLAYBOOK-TENANT-SCOPE** (SACRED, visibility gate; opened 2026-11-01, **Lu ruled
+  YES this is a real fork**). **The PAC Playbook is visible and openable to EVERY tenant's
+  users.** `playbookVisible` is a plain module constant with no club in it
+  (`src/constants/playbookLaunch.ts:57-60`), the `Playbook` route is gated on that constant
+  and nothing else (`src/navigation/AppNavigator.tsx:349`), and the book is fetched **by
+  slug** — `fetchBook()` does `.eq('slug', 'pac-playbook')` (`rpc.ts:45,77-83`) — with
+  `owner_club_id` read off the row only to fetch the owner's crest
+  (`usePlaybookBook.ts:182`) and **never compared to the viewer's club**. Evidence recorded
+  in `docs/recon/playbook-polish.md` (sections "TENANT SCOPE — the answer, and it is no" and
+  the restyle pass's tenant note).
+  - **FIX:** gate book visibility on the viewer's club vs `owner_club_id`. SACRED — it is a
+    visibility-gate change, so it does not move without Lu.
+  - **REQUIRED BEFORE ANY SECOND TENANT GOES LIVE.** Today only PAC is live, so nothing is
+    exposed in practice; the day a second club has users, this is a leak.
+  - **Long term:** each club gets its own book(s), which makes the gate a join rather than a
+    comparison — so the fix should not hard-code "one book, one owner".
 - JOIN-DOB-LOCKOUT-RESET (🔧 if no unlock exists) — what 0 attempts does and how staff unlocks a family; code read, never burn attempts.
 - DOB-PICKER-MONTH-DRIFT (ROUTINE; 🔧 if value drifts) — wheel showed June while field showed 05/15.
 - WELCOME-BADGES-NO-TEAM (ROUTINE) — 34 bell / 27 chat badges on a no-team account.

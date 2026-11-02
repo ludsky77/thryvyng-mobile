@@ -816,3 +816,143 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
     file by the `--stdin` baseline trick) · `expo export --platform ios` **exit 0**.
   - Source: this session, 2026-11-01; the cited web files; `expo-font@14.0.12` source;
     `nm`/`Podfile.lock` output above.
+
+## Landed — Nov 1 2026 (Playbook moved to the top of every dashboard, AGENT-ONLY)
+
+- **PLAYBOOK-DASHBOARD-PLACEMENT · the Playbook entry card now sits directly below
+  the quick-nav tile grid on ALL THREE role dashboards · landed 2026-11-01 ·
+  VERIFICATION PENDING (AGENT-ONLY: typecheck · eslint · `expo export`; no device,
+  no simulator).** PLACEMENT + ONE EXTRACTED COMPONENT: no `onPress`, no `navigate`,
+  no route, no visibility gate, no data, no RPC, no schema, no new dependency.
+  Source: `docs/recon/playbook-polish.md` (appended this session).
+  - **New shared component** `src/components/dashboards/PlaybookEntryCard.tsx` — the
+    PLAYBOOK-CARD-INVITING card (markup and styles) lifted out of
+    `PlayerDashboard.tsx` unchanged, so the three dashboards show one card instead
+    of three copies. It also owns the `playbookVisible` gate (renders `null` when
+    false), so the gate is read once instead of per dashboard. The gate itself and
+    `src/constants/playbookLaunch.ts` are untouched.
+  - **Where it sits now, per dashboard** (all three are rendered by
+    `src/screens/DashboardScreen.tsx` inside `HomeStack`, the stack that owns the
+    `Playbook` route):
+    - `PlayerDashboard.tsx` (player, parent) — **MOVED** from below YOUR PROGRESS to
+      directly below `QuickActionsCard`, above the lineup widget. Its local
+      `playbookCard`/`playbookIcon`/`playbookCardText`/`playbookTitle`/`playbookDesc`/
+      `playbookOpen` styles and its now-unused `Ionicons` import were removed with
+      the markup.
+    - `CoachDashboard.tsx` (head_coach, assistant_coach, team_manager) — **NEW door**,
+      inserted as section 5 between the Quick Actions grid and TEAM PERFORMANCE; the
+      numbered section comments below it shifted 5-8 → 6-9.
+    - `ClubAdminDashboard.tsx` (club_admin) — **NEW door**, between the Quick Actions
+      grid and TEAMS.
+  - **Why coaches and admins get it:** the card's only gate has always been
+    `playbookVisible` — no role test anywhere, and the `Playbook` route itself is
+    gated on the same constant (`AppNavigator.tsx:349`), so every role that can
+    reach a dashboard could already open the book. Coaches and directors already had
+    the Club Hub tile; this is a second door for them, not a new permission.
+  - The other two entry points are UNCHANGED and keep their own markup:
+    `src/screens/CoursesScreen.tsx` and `src/screens/ClubHubScreen.tsx` — different
+    SHAPES of the same feature, both outside `src/components/dashboards/`.
+  - **The lazy boundary holds:** `PlaybookEntryCard.tsx` imports nothing from
+    `src/features/pac-playbook/`; the four theme values are written out by value with
+    `theme.ts` citations, as the three entry points already do. iOS bundle 9.32 MB,
+    unchanged from M6 — the book is still only behind the route's `lazy()`.
+  - **Gates:** typecheck 5 pre-existing `src/components/games/*` errors / **0 new** ·
+    eslint **0 errors** on the 4 files; per-file warning counts identical to `HEAD`
+    via the `--stdin` baseline trick (PlayerDashboard 36/36, CoachDashboard 30/30,
+    ClubAdminDashboard 10/10), the new file 1 warning (`navigation: any`, the same
+    prop type every dashboard in this repo uses) · `expo export --platform ios`
+    **exit 0**.
+  - **Known side effect (stale comment, outside this task's SCOPE):**
+    `src/constants/playbookLaunch.ts`'s `IMPORTED BY:` list still names
+    `PlayerDashboard.tsx` as a direct importer of `playbookVisible`. It no longer is
+    — `PlaybookEntryCard.tsx` is. `grep -rn "playbookVisible" src/` is the truth.
+
+- **RESTYLE of the same row, same day (2026-11-01, AGENT-ONLY, VERIFICATION PENDING).**
+  `PlaybookEntryCard.tsx` only — no other file, no gate, no route, no schema.
+  Source: `docs/recon/playbook-polish.md`, section "second pass — the card restyled".
+  - **Crest replaces the book disc on the left.** Source found, nothing new hardcoded:
+    `clubs.logo_url`, read through the `public_clubs` view the way the book's own
+    header does (`src/features/pac-playbook/rpc.ts:85-99`, `fetchClubCrest`), keyed on
+    the VIEWER's club from `currentRole.club.id` (`AuthContext.tsx:92`). There is no
+    bundled PAC crest asset and no club context carrying a logo — `currentRole.club`
+    and `useUserTeams` both stop at `{ id, name }`. Fallback: logo → club initials
+    (`CoachDashboard.tsx:336`) → `PAC` (`PlaybookHeader.tsx:62`).
+  - **`book-outline` moved** to the right of the title, `size={14}`, still green.
+  - **The rule is now the dashboard's violet** `rgba(139, 92, 246, 0.4)` — the exact
+    border the quick-nav tiles use (`src/components/QuickActionsCard.tsx:108`,
+    `styles.buttonBorder`; `rgb(139,92,246)` = the app violet `#8b5cf6`). Colour only:
+    the card keeps `borderWidth: 1.5` and the `#1c2637` raised face. Cue and chevron
+    stay green.
+  - **Known side effect — the three entry points no longer match.** The green rule was
+    PLAYBOOK-CARD-INVITING's whole point; `CoursesScreen.tsx` and `ClubHubScreen.tsx`
+    are still green and are outside this task's SCOPE. The dashboard door's only
+    remaining thread to the book is the green cue and chevron.
+  - **Known side effect — this folder now copies a QUERY from the feature**, not just
+    colours (four lines of `public_clubs` select), to hold the lazy boundary.
+  - **Found, not fixed (citation drift):** M6 moved `theme.ts`. `card2` is `:65` not
+    `:63`, `green` `:81` not `:79`, `lineWidth.mid` `:310` not `:255`. Values unchanged.
+    `PlaybookEntryCard.tsx` carries the corrected numbers; `CoursesScreen.tsx` and
+    `ClubHubScreen.tsx` still carry the stale ones (outside SCOPE). Also
+    `PlaybookHeader.tsx` cites `src/components/comm/ChannelList.tsx`, which does not
+    exist — the chat-list crest is `src/screens/ChatScreen.tsx:849`.
+  - **TENANT SCOPE — NO, and this is a real exposure.** `playbookVisible` is a plain
+    constant with no club in it (`playbookLaunch.ts:57-60`), the route is gated on that
+    and nothing else (`AppNavigator.tsx:349`), and the book is fetched by slug
+    `'pac-playbook'` with `owner_club_id` never compared to the viewer's club
+    (`rpc.ts:45,77-83`; `usePlaybookBook.ts:182` uses it only for the crest). **A
+    non-PAC tenant's user sees the PAC-branded card on their dashboard and can open
+    PAC's book** — now beside their OWN club's crest, which this pass added. Fixing it
+    is a visibility-gate change and was forbidden here. **NEEDS LU.**
+  - **Gates:** typecheck 5 pre-existing `src/components/games/*` errors / **0 new** ·
+    eslint **0 errors, 1 warning** (`navigation: any`, the warning the file already
+    had) / **0 new** · `expo export --platform ios` **exit 0**, iOS bundle 9.32 MB
+    (unchanged).
+  - **RECOMMEND (suggestion):** if the crest matters more than the file boundary, pass
+    it down from the three dashboards instead — they already hold the club — and drop
+    the copied query. That needs the dashboard files, so it is a separate task.
+
+- **CREST BUG FIXED, same row, same day (2026-11-01, AGENT-ONLY, VERIFICATION PENDING).**
+  Lu's device test: `+zztest7` (secondary parent, PAC) saw the `PAC` lettering, not the
+  logo, while `public_clubs.logo_url` for PAC holds a URL that `curl -I` answers 200
+  `image/png` 61 KB. Four files: `PlaybookEntryCard.tsx`, `PlayerDashboard.tsx`,
+  `CoachDashboard.tsx`, `ClubAdminDashboard.tsx`.
+  Source: `docs/recon/playbook-polish.md`, section "ROOT CAUSE — why the crest drew PAC".
+  - **ROOT CAUSE: the lookup key was empty, so the query never ran.** The card keyed the
+    crest on `useAuth().currentRole?.club?.id`, which is `null` for that role, and the
+    effect's guard `if (!playbookVisible || !clubId) return;` took the early exit — no
+    `public_clubs` query, no `<Image>` mounted, so `onError` never fired either. Not RLS,
+    not the URL, not the column. **Proof is the rendered string:** the initials branch was
+    `substring(0, 2)`, two characters, which cannot spell the three-letter `PAC`, so `PAC`
+    could only be the `: 'PAC'` fallback, which needs a falsy club name — and
+    `AuthContext.tsx:92` sets `club` to `{ id, name }` or to `null` as ONE unit, so a
+    falsy name and a falsy id are the same fact.
+  - **Why it went unnoticed:** nothing else depends on `currentRole.club`. Its only other
+    readers take it last in an `||` chain (`RoleSwitcher.tsx:157`,
+    `WorldCupPredictorScreen.tsx:1101`), and the Playbook's own header resolves the crest
+    from `book.owner_club_id` instead (`usePlaybookBook.ts:182`).
+  - **INFERRED / UNKNOWN:** whether `get_enriched_roles_v2` returns `club_id` for a parent
+    row. Server-side, not in this repo. The check is
+    `select club_id, club_name from get_enriched_roles_v2('<user id>')` — not run, SQL was
+    forbidden here. The fix does not depend on the answer.
+  - **THE FIX — the host dashboard hands the club id down** (the earlier RECOMMEND, now in
+    scope). `clubId` is a required prop, `clubName` optional, `useAuth` gone from the card.
+    Admin passes its own `clubId` prop · Coach passes `team.club_id` (typed at `:35`, from
+    `select('*', …)` at `:96`) · Player passes `player.teams?.club_id`, which cost ONE word
+    in its select (`:89`) and one optional field on its inline `teams` type (`:40`).
+  - **Why the id and not the logo_url:** coach and admin already hold `logo_url` and could
+    skip the query, but a player's and a parent's `clubs` join may not answer at all — the
+    `public_clubs` view exists precisely because direct `clubs` reads do not answer for
+    them (`rpc.ts:85-99`). The id passed is the team row's plain `club_id` column, which
+    demonstrably reads, and the logo comes through the view. One path, one RLS story, all
+    three roles.
+  - Also: the fetched name now wins over the passed one once it lands, and the effect
+    clears `crest`/`broken` on a club change so a role switch cannot leave a stale crest.
+  - **Gates:** typecheck 5 pre-existing `src/components/games/*` errors / **0 new** ·
+    eslint **0 errors**, per-file counts identical to `HEAD` (PlayerDashboard 36/36,
+    CoachDashboard 30/30, ClubAdminDashboard 10/10) + 1 warning on the new card
+    (`navigation: any`) / **0 new** · `expo export --platform ios` **exit 0**, iOS bundle
+    9.32 MB.
+  - **STILL NEEDS DEVICE.** The query now runs with a real club id, but nobody has seen
+    the image render, and whether `public_clubs` answers for a secondary parent is
+    asserted by `rpc.ts:85-99`, not observed. If it is still lettering, check first
+    whether `player.teams.club_id` arrived — it is now the only input.

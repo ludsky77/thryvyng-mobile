@@ -13,6 +13,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { LiveGamesWidget } from '../game-stats/LiveGamesWidget';
 import QuickActionsCard from '../QuickActionsCard';
+import PlaybookEntryCard from './PlaybookEntryCard';
 import PendingSurveyBanner from '../surveys/PendingSurveyBanner';
 import { usePendingStaffRequests } from '../../hooks/usePendingStaffRequests';
 
@@ -292,6 +293,21 @@ export default function ClubAdminDashboard({
                 navigation.navigate('StaffRequests', { clubId }),
             },
           ]}
+        />
+      </View>
+
+      {/* 📖 PAC PLAYBOOK — the club's tactical manual, its own lazy route, so
+          none of the book is in this screen's bundle. FIRST THING AFTER THE
+          QUICK-NAV GRID on every role dashboard (fork
+          PLAYBOOK-DASHBOARD-PLACEMENT). The card and its launch-switch gate
+          are the shared `PlaybookEntryCard`, which is where the colours are
+          cited and the lazy boundary is argued. */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>📖 PAC PLAYBOOK</Text>
+        <PlaybookEntryCard
+          navigation={navigation}
+          clubId={clubId}
+          clubName={club?.name ?? null}
         />
       </View>
 

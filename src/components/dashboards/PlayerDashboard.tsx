@@ -10,7 +10,6 @@ import {
   Alert,
 } from 'react-native';
 import PlayerAvatar from '../PlayerAvatar';
-import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { LiveGamesWidget } from '../game-stats/LiveGamesWidget';
@@ -21,7 +20,7 @@ import { PendingAttachmentsBanner } from './PendingAttachmentsBanner';
 import { slugify } from '../../utils/slugify';
 import * as Clipboard from 'expo-clipboard';
 import { resolveTeamColor } from '../../constants/teamColors';
-import { playbookVisible } from '../../constants/playbookLaunch';
+import PlaybookEntryCard from './PlaybookEntryCard';
 
 interface PlayerDashboardProps {
   playerId: string | null;
@@ -38,7 +37,7 @@ interface Player {
   referral_code: string | null;
   photo_url: string | null;
   team_id: string;
-  teams?: { id: string; name: string; color?: string | null; clubs?: { id: string; name: string } | null } | null;
+  teams?: { id: string; name: string; color?: string | null; club_id?: string | null; clubs?: { id: string; name: string } | null } | null;
 }
 
 interface EnrolledCourse {
@@ -87,7 +86,7 @@ export default function PlayerDashboard({ playerId, navigation, showLineupWidget
           referral_code,
           photo_url,
           team_id,
-          teams(id, name, color, clubs(id, name))
+          teams(id, name, color, club_id, clubs(id, name))
         `)
         .eq('id', playerId)
         .single();
@@ -328,6 +327,22 @@ export default function PlayerDashboard({ playerId, navigation, showLineupWidget
         ]}
       />
 
+      {/* 📖 PAC PLAYBOOK — the club's tactical manual, its own lazy route, so
+          none of the book is in this screen's bundle. FIRST THING AFTER THE
+          QUICK-NAV GRID on every role dashboard since fork
+          PLAYBOOK-DASHBOARD-PLACEMENT (it used to sit below YOUR PROGRESS).
+          The card and its launch-switch gate are the shared
+          `PlaybookEntryCard`, which is where the colours are cited and the
+          lazy boundary is argued. */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>📖 PAC PLAYBOOK</Text>
+        <PlaybookEntryCard
+          navigation={navigation}
+          clubId={player.teams?.club_id ?? null}
+          clubName={clubName}
+        />
+      </View>
+
       {/* Upcoming Lineup Widget - Compact thin bars */}
       {showLineupWidget && upcomingLineups.length > 0 && (
         <View style={styles.lineupWidgetContainer}>
@@ -403,38 +418,6 @@ export default function PlayerDashboard({ playerId, navigation, showLineupWidget
           <Text style={styles.xpBarHint}>Keep learning to level up!</Text>
         </View>
       </View>
-
-      {/* 📖 PAC PLAYBOOK — the club's tactical manual, its own lazy route, so
-          none of the book is in this screen's bundle. Hidden until release by
-          the launch switch (src/constants/playbookLaunch.ts). The web puts
-          the same card in the same place, between the lineup widget and
-          My Courses (web PlayerDashboard.tsx:436-452). */}
-      {playbookVisible && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📖 PAC PLAYBOOK</Text>
-          <TouchableOpacity
-            style={styles.playbookCard}
-            onPress={() => navigation.navigate('Playbook')}
-            activeOpacity={0.8}
-          >
-            {/* The book's mark, the same in all three ways in: a
-                `book-outline` glyph on a green tint. */}
-            <View style={styles.playbookIcon}>
-              <Ionicons name="book-outline" size={22} color="#10b981" />
-            </View>
-            <View style={styles.playbookCardText}>
-              <Text style={styles.playbookTitle}>PAC Playbook</Text>
-              {/* THE SHARED TAGLINE — the cover's own opening words
-                  (src/features/pac-playbook/screens/CoverScreen.tsx:139). */}
-              <Text style={styles.playbookDesc}>
-                How we see the game, how we play it and how we think
-              </Text>
-              <Text style={styles.playbookOpen}>Open the book ›</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#10b981" />
-          </TouchableOpacity>
-        </View>
-      )}
 
       {/* 📚 MY COURSES */}
       <View style={styles.section}>
@@ -747,57 +730,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#2a2a4e',
     borderRadius: 12,
     padding: 12,
-  },
-  // The Playbook card — the dashboard's card shape, carrying the book's own
-  // look since fork PLAYBOOK-CARD-INVITING: a RAISED FACE inside a GREEN
-  // RULE, the device the book's quiz card uses (`pbk.quizcard`:
-  // `lineWidth.mid` of `color.green` around `color.card2`). It replaces the
-  // violet left edge, so this card, the Courses featured card and the Club
-  // Hub tile all read as one feature.
-  //
-  // The values are written out, not imported: the book is a lazy route and
-  // importing `src/features/pac-playbook/` here would put its module graph in
-  // the dashboard's bundle. They are the theme's own — card2 `#1c2637`,
-  // green `#10b981`, greenDim `rgba(16,185,129,0.16)`
-  // (src/features/pac-playbook/theme.ts:63,79,81), mid `1.5` (theme.ts:255).
-  playbookCard: {
-    backgroundColor: '#1c2637',
-    borderRadius: 12,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    borderWidth: 1.5,
-    borderColor: '#10b981',
-  },
-  playbookIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(16, 185, 129, 0.16)',
-  },
-  playbookCardText: {
-    flex: 1,
-  },
-  playbookTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  playbookDesc: {
-    color: '#888',
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  // The shared cue. Same words, same green, in all three ways in.
-  playbookOpen: {
-    color: '#10b981',
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: 4,
   },
   progressHeader: {
     flexDirection: 'row',

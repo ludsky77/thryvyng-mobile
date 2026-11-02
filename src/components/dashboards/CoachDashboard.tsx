@@ -16,6 +16,7 @@ import { supabase } from '../../lib/supabase';
 import { formatDistanceToNow } from 'date-fns';
 import { LiveGamesWidget } from '../game-stats/LiveGamesWidget';
 import QuickActionsCard from '../QuickActionsCard';
+import PlaybookEntryCard from './PlaybookEntryCard';
 import PendingSurveyBanner from '../surveys/PendingSurveyBanner';
 import { usePendingStaffRequests } from '../../hooks/usePendingStaffRequests';
 import { slugify } from '../../utils/slugify';
@@ -485,7 +486,22 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
         />
       </View>
 
-      {/* 5. Team Performance Stats */}
+      {/* 5. 📖 PAC PLAYBOOK — the club's tactical manual, its own lazy route, so
+          none of the book is in this screen's bundle. FIRST THING AFTER THE
+          QUICK-NAV GRID on every role dashboard (fork
+          PLAYBOOK-DASHBOARD-PLACEMENT). The card and its launch-switch gate
+          are the shared `PlaybookEntryCard`, which is where the colours are
+          cited and the lazy boundary is argued. */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>📖 PAC PLAYBOOK</Text>
+        <PlaybookEntryCard
+          navigation={navigation}
+          clubId={team.club_id ?? null}
+          clubName={clubName ?? null}
+        />
+      </View>
+
+      {/* 6. Team Performance Stats */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>📊 TEAM PERFORMANCE</Text>
         <View style={styles.performanceRow}>
@@ -508,7 +524,7 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
         </View>
       </View>
 
-      {/* 6. Top Fundraising Players */}
+      {/* 7. Top Fundraising Players */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>💰 TOP FUNDRAISERS (This Month)</Text>
         <View style={styles.card}>
@@ -526,7 +542,7 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
         </View>
       </View>
 
-      {/* 7. Top XP Earners */}
+      {/* 8. Top XP Earners */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>🏅 TOP XP EARNERS</Text>
         {topPlayers.length === 0 ? (
@@ -544,7 +560,7 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
         )}
       </View>
 
-      {/* 8. Recent Activity */}
+      {/* 9. Recent Activity */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>🕐 RECENT ACTIVITY</Text>
         <View style={styles.card}>

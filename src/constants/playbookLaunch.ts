@@ -21,21 +21,28 @@
  *
  * RELEASE PROCEDURE: flip `PLAYBOOK_LIVE` to `true`. Nothing else. On the web
  * that is one line plus a push; here it is one line plus a build.
+ * FLIPPED TO `true` 2026-11-01 — the book is released. The switch stays in
+ * place as the single kill switch: back to `false` hides the route and all
+ * three entry points again, with no other edit.
  *
- * MIRROR NOTE — this file is NOT byte-identical to the web's, and cannot be:
- * the web reads `import.meta.env.DEV`, which does not exist in a Metro bundle.
- * `__DEV__` is its exact counterpart and the only declared diff. The switch's
- * SEMANTICS are the web's, line for line.
+ * MIRROR NOTE — this file is now SEMANTICALLY byte-for-byte the web's switch:
+ * a plain constant and the derived gate, with no environment test on either
+ * side. The `__DEV__` dev-only override that used to OR into the gate (the
+ * mobile counterpart of the web's `import.meta.env.DEV`, which does not exist
+ * in a Metro bundle) was REMOVED at the flip on 2026-11-01: with the book
+ * live it bought nothing, and it was the file's only declared diff from the
+ * web. There is no environment branch here any more.
  *
- * WHAT MOBILE DOES NOT GET, and it matters: Vite replaces
- * `import.meta.env.DEV` with `false` in a production build, so the web's gates
- * fold to constants and the gated markup is DROPPED from the bundle. Metro
- * folds `__DEV__` too, but it does NOT fold an imported constant across module
- * boundaries, so `playbookVisible` is a runtime `false` here and the gated
- * code is SKIPPED AT RUNTIME, not removed. Nothing of the Playbook is
- * REACHABLE in a store build; the reader's own modules still never load,
- * because the route's `import()` is lazy and nothing calls it. The difference
- * is bundle weight, not visibility — see `docs/recon/playbook-m4.md`.
+ * WHAT MOBILE DOES NOT GET, and it matters: Metro does NOT fold an imported
+ * constant across module boundaries, so `playbookVisible` is a runtime read
+ * here, not a compile-time constant the way Vite's `import.meta.env.DEV`
+ * substitution makes the web's gates fold. While the switch was `false` that
+ * meant the gated code was SKIPPED AT RUNTIME, not removed — nothing of the
+ * Playbook was REACHABLE in a store build, because the route's `import()` is
+ * lazy and nothing called it, but the gated markup was still bundle weight.
+ * The difference was bundle weight, not visibility — see
+ * `docs/recon/playbook-m4.md`. With the switch `true` the gates now pass and
+ * the lazy `import()` runs on the first navigation to `Playbook`.
  *
  * This module imports nothing on purpose. Every entry point imports it from a
  * boot path (the dashboard, the course list, Club Hub), so it has to stay a
@@ -45,7 +52,7 @@
  * `src/components/dashboards/PlayerDashboard.tsx`, `src/screens/CoursesScreen.tsx`
  * and `src/screens/ClubHubScreen.tsx` (the three entry points).
  */
-export const PLAYBOOK_LIVE = false;
+export const PLAYBOOK_LIVE = true;
 
 /** Every Playbook entry point and the `Playbook` route are gated on this. */
-export const playbookVisible = PLAYBOOK_LIVE || __DEV__;
+export const playbookVisible = PLAYBOOK_LIVE;

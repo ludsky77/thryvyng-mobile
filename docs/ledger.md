@@ -631,7 +631,13 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
 ## Open forks (added Nov 1 2026 — after the device test)
 
 - CLOSED Nov 1 2026 ~17:25 — PLAYBOOK-CARD-INVITING · QUIZ-CARD-NOTICEABLE · QUIZ-RESULT-BUTTONS-ALIGN · QUESTION-PILLS-WRAP · QUIZ-REVIEW-NAV (ruling A): all five verified on device, see the two VERIFIED-DEVICE rows below.
-- QUESTION-KIND (SACRED, schema: `kind` on playbook_questions — Question / Comment / Suggestion pills; deferred since Oct 29; planned before M6 build).
+- **PARKED — QUESTION-KIND** (SACRED, schema: `kind` on `playbook_questions` — Question /
+  Comment / Suggestion pills; deferred since Oct 29). **RE-RULED 2026-11-01 ~17:42 by Lu,
+  reversing the earlier "planned before M6 build":** it is no longer gated on M6 and is not
+  scheduled on its own. It ships WITH the future coach question-inbox step — the pills only
+  mean something once a coach has a place to read and sort what players send, so the column
+  and the pills land together with that inbox or not at all. Nothing to do until that step is
+  planned. Source: Lu's ruling in the planning room, 2026-11-01 ~17:42.
 - JOIN-DOB-LOCKOUT-RESET (🔧 if no unlock exists) — what 0 attempts does and how staff unlocks a family; code read, never burn attempts.
 - DOB-PICKER-MONTH-DRIFT (ROUTINE; 🔧 if value drifts) — wheel showed June while field showed 05/15.
 - WELCOME-BADGES-NO-TEAM (ROUTINE) — 34 bell / 27 chat badges on a no-team account.
@@ -698,3 +704,33 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
     a `theme.ts` line citation beside each. **Known side effect: these are copies
     — if a playbook colour changes, `grep -rn "#1c2637\|#10b981" src/` finds every
     one.**
+
+## Landed — Nov 1 2026 (Playbook launch flip, AGENT-ONLY)
+
+- **PLAYBOOK-LIVE-FLIP · mobile launch switch flipped ON · landed 2026-11-01 ·
+  AGENT-ONLY — VERIFICATION PENDING (no device or simulator has opened the app at
+  `PLAYBOOK_LIVE = true`).** `src/constants/playbookLaunch.ts:55` —
+  `PLAYBOOK_LIVE = false` → `true`. (Build proof at landing: typecheck 5 pre-existing
+  `src/components/games/*` errors / 0 new · eslint 0 errors + 0 new warnings ·
+  `expo export --platform ios` exit 0.)
+  - **The `__DEV__` override on the gate is GONE.** `playbookVisible` was
+    `PLAYBOOK_LIVE || __DEV__`; it is now `playbookVisible = PLAYBOOK_LIVE`. The flag is a
+    plain constant with no environment branch, the same shape as the web's
+    `src/features/pac-playbook/launch.ts` — the `__DEV__` OR was this file's only declared
+    diff from the web and it bought nothing once the book is live. One file touched; the four
+    importers were NOT edited (they already read `playbookVisible`, which still exists).
+  - **Known side effect — this is a user-visible release.** All three Playbook doors and the
+    `Playbook` route now appear for every signed-in user in any build, not just dev:
+    `src/screens/CoursesScreen.tsx:244` (course list, `All Courses` filter only) ·
+    `src/components/dashboards/PlayerDashboard.tsx:412` (player dashboard) ·
+    `src/screens/ClubHubScreen.tsx:51` (coach/director hub tile) ·
+    `src/navigation/AppNavigator.tsx:349` (the route). **Kill switch: set
+    `PLAYBOOK_LIVE = false` — one line, nothing else, hides all four again.**
+  - **Not touched, on purpose: the M2 board harness** (`PlaybookDev` route,
+    `src/features/pac-playbook/dev/`, `thryvyng://playbook-dev`). It is gated on bare
+    `__DEV__` in `src/navigation/AppNavigator.tsx:79,877` — it never read `PLAYBOOK_LIVE` or
+    `playbookVisible`, so it is a SEPARATE harness (its own PLAYBOOK-DEV-HARNESS row), not the
+    override this flip removed. Metro still folds it out of a production bundle.
+  - Carried from the Nov 1 device test and still open: staff-refusal look (P0041/P0046) ·
+    calendar +13 look. Both are UNVERIFIED-DEVICE and unaffected by the flip.
+  - Source: this flip's session, 2026-11-01; flag file's own header comment.

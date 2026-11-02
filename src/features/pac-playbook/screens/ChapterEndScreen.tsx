@@ -8,10 +8,15 @@
  * `playbook_reply_question`, which is the staff screen's job — here a reply is
  * read, not written.
  *
- * LEFT OUT on the web, and carried over as the same gap rather than invented
- * here: the prototype's question / note / feedback chips. `playbook_questions`
- * has no `kind` column (schema :261-280), so there is nowhere to put that
- * choice and no server path to add one.
+ * THE KIND CHIPS ARE HERE NOW — Question / Comment / Suggestion, Lu's three
+ * words (ES: Pregunta / Comentario / Sugerencia). They were left out at M3
+ * for a real reason — `playbook_questions` had no `kind` column — and that
+ * reason is gone: migration `20261102033000` added the column with
+ * `CHECK (kind IN ('question','comment','suggestion'))` and a FIVE-argument
+ * `playbook_send_question`. The send below calls the five-arg form through
+ * `coachRpc.ts`; the mirrored four-arg `sendQuestion` in `rpc.ts` is left
+ * untouched, and the server still carries it as a wrapper for any build that
+ * has not shipped yet.
  *
  * THE SEND is wired to `playbook_send_question` through `sendQuestion()`. The
  * empty-draft guard fires first; on success the draft clears and the thread
@@ -31,7 +36,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { playbookErrorMessage } from '../../../lib/playbookErrors';
-import { fetchMyQuestions, sendQuestion } from '../rpc';
+import { fetchMyQuestions } from '../rpc';
+import {
+  QUESTION_KINDS,
+  kindLabel,
+  sendQuestionWithKind,
+  type QuestionKind,
+} from '../coachRpc';
 import type { Card, ChapterRow, QuestionRow, ReplyRow } from '../types';
 import { pick, useLang } from '../strings';
 import { Btn, Chip, Cta, SectTitle, Stamp, Tape, TopHead } from '../ui';
@@ -74,6 +85,7 @@ export function ChapterEndScreen({
   const es = lang === 'es';
 
   const [draft, setDraft] = useState('');
+  const [kind, setKind] = useState<QuestionKind>('question');
   const [cardId, setCardId] = useState('');
   const [status, setStatus] = useState('');
   const [sending, setSending] = useState(false);
@@ -126,7 +138,7 @@ export function ChapterEndScreen({
     try {
       // 2000 is the field's own `maxLength`, trimmed again here because a
       // paste can outrun the input.
-      await sendQuestion(playerId, chapter.id, cardId || null, body.slice(0, 2000));
+      await sendQuestionWithKind(playerId, chapter.id, cardId || null, body.slice(0, 2000), kind);
       setDraft('');
       setStatus(es ? 'Enviado. Tus coaches lo verán.' : 'Sent. Your coaches will see it.');
       setNonce((n) => n + 1);
@@ -159,6 +171,25 @@ export function ChapterEndScreen({
       </Text>
 
       <View style={pbk.qform}>
+        {/* The three kinds, default Question. They are the CHECK constraint's
+            own values, so a chip can never send something the server will
+            refuse. */}
+        <View style={pbk.field}>
+          <Text style={pbk.fieldLabel}>{es ? 'Tipo' : 'Kind'}</Text>
+          <View style={pbk.pillwrap}>
+            {QUESTION_KINDS.map((k) => (
+              <Pressable
+                key={k}
+                onPress={() => setKind(k)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: kind === k }}
+              >
+                <Chip green={kind === k}>{kindLabel(k, es)}</Chip>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
         <View style={pbk.field}>
           <Text style={pbk.fieldLabel}>{es ? 'Sobre' : 'About'}</Text>
           <View style={pbk.pillwrap}>
@@ -208,10 +239,13 @@ export function ChapterEndScreen({
                 <View key={q.id} style={[pbk.qitem, q.status === 'answered' && pbk.qitemDone]}>
                   <View style={pbk.qhead}>
                     <Text style={pbk.qmeta}>
+                      {kindLabel((q as { kind?: string }).kind || 'question', es)} ·{' '}
                       {pick(chapter.content?.name, lang)}
                       {card ? ' · ' + pick(card.content?.name, lang) : ''} · {ago(q.created_at, es)}
                     </Text>
-                    {q.status === 'answered' ? <Chip green>✓</Chip> : null}
+                    {q.status === 'answered' ? (
+                      <Chip green>{es ? 'Respondida ✓' : 'Answered ✓'}</Chip>
+                    ) : null}
                   </View>
                   <Text style={pbk.qtext}>{q.body}</Text>
                   {rs.map((r) => (

@@ -352,6 +352,10 @@ function HomeStack() {
             <LazyScreen
               component={PlaybookScreen}
               card={props.route?.params?.card}
+              /* A push tap on a question — PLAYBOOK-COACH-TRACK-MOBILE. Read
+                 only, like `card`: the reader never writes these back. */
+              question={props.route?.params?.question}
+              questionMode={props.route?.params?.questionMode}
               onExit={() =>
                 props.navigation?.canGoBack()
                   ? props.navigation.goBack()
@@ -1004,6 +1008,37 @@ export default function AppNavigator() {
           params: { screen: 'LineupList', params: { teamId: data.team_id } },
         });
       }
+    } else if (type === 'playbook_question' || type === 'playbook_answer') {
+      /* PLAYBOOK-COACH-TRACK-MOBILE. The two pushes migration
+         20261102033000 fires (:819, :892), and they land in two different
+         places because they have two different readers:
+
+           playbook_question  a coach was told a player asked something ->
+                              the inbox thread for that question;
+           playbook_answer    the asker was told a coach replied -> their own
+                              messages, which live on the end-of-chapter
+                              screen. The reader looks the chapter up from the
+                              question id, because this payload has none.
+
+         Both carry `question_id` in `data`; `card_key` is passed through as
+         the book's existing `card` param so a tap still lands on the right
+         card if the question row has gone. Nested navigate (Main -> HomeTab
+         -> Playbook), the same shape as the chat branch above, because the
+         reader lives in HomeStack and the root navigator cannot resolve it
+         by name. Gated by `playbookVisible` at the route, so a tap on a
+         build with the book switched off simply finds no screen. */
+      const questionId = data.question_id ?? data.reference_id;
+      nav.navigate('Main', {
+        screen: 'HomeTab',
+        params: {
+          screen: 'Playbook',
+          params: {
+            card: data.card_key ?? undefined,
+            question: questionId,
+            questionMode: type === 'playbook_question' ? 'inbox' : 'family',
+          },
+        },
+      });
     } else if (type === 'survey' || type === 'survey_reminder') {
       if (data.survey_id) {
         nav.navigate('Main', {

@@ -54,6 +54,12 @@ import { doodlePlan, strengthPreset, STRENGTH, type DoodleScreen } from './doodl
 import { PlaybookHeader, type HeaderBack } from './PlaybookHeader';
 import { CoverScreen } from './screens/CoverScreen';
 import { ContentsScreen } from './screens/ContentsScreen';
+import { TeamProgressScreen } from './screens/TeamProgressScreen';
+import { PlayerProgressScreen } from './screens/PlayerProgressScreen';
+import { InboxScreen } from './screens/InboxScreen';
+import { ThreadScreen } from './screens/ThreadScreen';
+import { fetchQuestionWhere, fetchStaffInbox, type InboxRow } from './coachRpc';
+import { useStaffTrack, type OfflineStaff } from './useStaffTrack';
 import { ChapterScreen } from './screens/ChapterScreen';
 import { CardScreen } from './screens/CardScreen';
 import { ChapterEndScreen } from './screens/ChapterEndScreen';
@@ -82,7 +88,15 @@ type Nav =
   | { screen: 'chapter'; ch: string }
   | { screen: 'card'; id: string }
   | { screen: 'chend'; ch: string }
-  | { screen: 'quiz' };
+  | { screen: 'quiz' }
+  /* The coach track — PLAYBOOK-COACH-TRACK-MOBILE. Four more screens on the
+     ONE route (ruling R-2): the book never gained a navigator entry and does
+     not gain four now. `thread` carries the whole inbox row because the list
+     already loaded it; nothing is fetched twice to open a thread. */
+  | { screen: 'progress' }
+  | { screen: 'player'; id: string }
+  | { screen: 'inbox' }
+  | { screen: 'thread'; q: InboxRow };
 
 /**
  * Everything the `__DEV__` harness injects so the reader can be opened with no
@@ -146,11 +160,26 @@ export interface PlaybookOffline {
   initialScrollY?: number;
   /** Seeds the two interactive boards — see `PlaybookLook`. */
   look?: PlaybookLook;
+  /** The harness's staff roster and inbox — PLAYBOOK-COACH-TRACK-MOBILE. */
+  staff?: OfflineStaff | null;
 }
 
 export interface PlaybookScreenProps {
   /** The web's `?card=`; `linking.ts` types it as `Playbook: { card?: string }`. */
   card?: string;
+  /**
+   * A PUSH TAP — PLAYBOOK-COACH-TRACK-MOBILE, push types `playbook_question`
+   * and `playbook_answer` (migration :819, :892).
+   *
+   * `question` is the row's id and `questionMode` says which side tapped:
+   * `inbox` lands a coach on the thread, `family` lands the asker on their own
+   * messages — which live on the END-OF-CHAPTER screen, so the chapter is
+   * looked up from the question itself. Both fall back to the contents screen
+   * rather than to a blank one if the row cannot be read (it was deleted, or
+   * the tapper is no longer staff for that player).
+   */
+  question?: string;
+  questionMode?: 'inbox' | 'family';
   /**
    * Leave the book and go back to whatever opened it — the dashboard card,
    * the Courses featured card or the Club Hub card (Lu, Oct 27: "back/home at
@@ -191,7 +220,13 @@ export default function PlaybookScreen(props: PlaybookScreenProps) {
   );
 }
 
-function Reader({ card: cardParam, onExit, offline }: PlaybookScreenProps) {
+function Reader({
+  card: cardParam,
+  question: questionParam,
+  questionMode,
+  onExit,
+  offline,
+}: PlaybookScreenProps) {
   const { currentRole } = useAuth();
   const { lang, t } = useLang();
   const es = lang === 'es';
@@ -209,6 +244,15 @@ function Reader({ card: cardParam, onExit, offline }: PlaybookScreenProps) {
   const bookId = content?.book.id || null;
   const progress = usePlaybookProgress(playerId, bookId, lang, offline?.progress);
   const quiz = useQuizRun(playerId, bookId, lang, offline?.quiz);
+
+  /**
+   * THE COACH TRACK's one load. Gated on the book being open so a reader who
+   * never reaches the contents screen never asks the server whether they are
+   * staff. A family-only account gets an empty roster and nothing is drawn
+   * (ruling R1); `canAnswer` is the separate gate that hides the inbox row
+   * from a team manager (ruling R2).
+   */
+  const staff = useStaffTrack(!!content, offline?.staff);
 
   const [nav, setNav] = useState<Nav>(offline?.initialNav ?? { screen: 'cover' });
   const [trail, setTrail] = useState<string[]>([]);
@@ -252,6 +296,56 @@ function Reader({ card: cardParam, onExit, offline }: PlaybookScreenProps) {
     if (cardParam && cardsByKey.has(cardParam)) setNav({ screen: 'card', id: cardParam });
     setDeepLinkDone(true);
   }, [deepLinkDone, cards.length, cardsByKey, cardParam]);
+
+  /**
+   * A PUSH TAP on a question — PLAYBOOK-COACH-TRACK-MOBILE.
+   *
+   * Two destinations, because the two pushes have two audiences (R3 / R4):
+   *
+   *   `inbox`  a coach tapped "new question". The row is found by asking the
+   *            inbox for everything and matching the id — the same RPC the
+   *            list screen uses, so the tap cannot open a thread the server
+   *            would not have listed.
+   *   `family` the asker tapped "your coach replied". Their messages live on
+   *            the end-of-chapter screen, and the push carries no chapter, so
+   *            the question's own row is read for it.
+   *
+   * Either way a failure lands on the contents screen rather than nowhere:
+   * the row may have been deleted, or the tapper may no longer be staff for
+   * that player, and neither is worth a dead end. It runs once.
+   */
+  const [questionDone, setQuestionDone] = useState(false);
+  useEffect(() => {
+    if (questionDone || !questionParam || !content || offline) return;
+    setQuestionDone(true);
+    let gone = false;
+    (async () => {
+      try {
+        if (questionMode === 'inbox') {
+          const all = await fetchStaffInbox('all');
+          const row = all.find((q) => q.question_id === questionParam);
+          if (!gone && row) {
+            setNav({ screen: 'thread', q: row });
+            return;
+          }
+        } else {
+          const where = await fetchQuestionWhere(questionParam);
+          const ch = where ? chapters.find((c) => c.id === where.chapter_id) : null;
+          if (!gone && ch) {
+            setNav({ screen: 'chend', ch: ch.key });
+            return;
+          }
+        }
+        if (!gone) setNav({ screen: 'home' });
+      } catch (e) {
+        console.warn('playbook: question deep link failed', e);
+        if (!gone) setNav({ screen: 'home' });
+      }
+    })();
+    return () => {
+      gone = true;
+    };
+  }, [questionDone, questionParam, questionMode, content, chapters, offline]);
 
   /* ------------------------------------------------------------ navigation */
 
@@ -433,6 +527,25 @@ function Reader({ card: cardParam, onExit, offline }: PlaybookScreenProps) {
       label: pick(chaptersByKey.get(nav.ch)?.content?.name, lang),
       go: () => go({ screen: 'chapter', ch: nav.ch }),
     };
+  } else if (nav.screen === 'progress') {
+    pageKey = 'progress';
+    sub = es ? 'Progreso del equipo' : 'Team progress';
+    back = { label: t('contents'), go: () => go({ screen: 'home' }) };
+  } else if (nav.screen === 'player') {
+    pageKey = `player:${nav.id}`;
+    sub = es ? 'Jugador/a' : 'Player';
+    back = {
+      label: es ? 'Progreso' : 'Progress',
+      go: () => go({ screen: 'progress' }),
+    };
+  } else if (nav.screen === 'inbox') {
+    pageKey = 'inbox';
+    sub = es ? 'Preguntas' : 'Questions';
+    back = { label: t('contents'), go: () => go({ screen: 'home' }) };
+  } else if (nav.screen === 'thread') {
+    pageKey = `thread:${nav.q.question_id}`;
+    sub = es ? 'Mensaje' : 'Message';
+    back = { label: es ? 'Preguntas' : 'Questions', go: () => go({ screen: 'inbox' }) };
   } else {
     sub = t('quiz');
     back = {
@@ -475,6 +588,11 @@ function Reader({ card: cardParam, onExit, offline }: PlaybookScreenProps) {
         }}
         onOpenCover={() => go({ screen: 'cover' })}
         onOpenQuiz={() => go({ screen: 'quiz' })}
+        isStaff={staff.isStaff}
+        canAnswer={staff.canAnswer}
+        openCount={staff.openCount}
+        onOpenTeamProgress={() => go({ screen: 'progress' })}
+        onOpenInbox={() => go({ screen: 'inbox' })}
         onContinue={() => nx && openCard(nx.key)}
       />
     );
@@ -560,6 +678,41 @@ function Reader({ card: cardParam, onExit, offline }: PlaybookScreenProps) {
         />
       );
     }
+  } else if (nav.screen === 'progress') {
+    body = (
+      <TeamProgressScreen
+        roster={staff.roster}
+        loading={staff.loading}
+        onOpenPlayer={(id) => go({ screen: 'player', id })}
+      />
+    );
+  } else if (nav.screen === 'player') {
+    const p = staff.roster.find((r) => r.player_id === nav.id);
+    if (p) {
+      body = (
+        <PlayerProgressScreen
+          player={p}
+          chapters={chapters}
+          cards={cards}
+          offlineGot={offline?.staff ? Array.from(progress.got) : null}
+        />
+      );
+    }
+  } else if (nav.screen === 'inbox') {
+    body = (
+      <InboxScreen
+        offline={offline?.staff ? offline.staff.inbox : null}
+        onOpenThread={(q) => go({ screen: 'thread', q })}
+      />
+    );
+  } else if (nav.screen === 'thread') {
+    body = (
+      <ThreadScreen
+        question={nav.q}
+        offlineReplies={offline?.staff ? [] : null}
+        onAnswered={staff.reload}
+      />
+    );
   } else {
     body = (
       <QuizScreen

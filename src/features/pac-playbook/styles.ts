@@ -947,6 +947,51 @@ export const pbk = StyleSheet.create({
   },
   kppresetText: { fontFamily: ff.bold, fontSize: fs.meta, color: color.chalk2, textAlign: 'center' },
 
+  /* ------------------------------------------------- the coach track (ct*) */
+
+  /**
+   * PLAYBOOK-COACH-TRACK-MOBILE. The staff screens borrow the book's own
+   * parts wherever one fits — rows are `Row`, the progress bar is the
+   * contents screen's `bar`/`barFill`, the thread is the family's `qitem` /
+   * `qreply`, the composer is `field` / `fieldTextarea`. What is new is a
+   * count badge, the roster line and the inbox item's head.
+   */
+  ctBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.px6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: color.pink,
+  },
+  ctBadgeText: { fontFamily: ff.extrabold, fontSize: fs.micro, color: '#fff' },
+  /** The roster line: name on the left, the two numbers on the right. */
+  ctLine: { flexDirection: 'row', alignItems: 'baseline', gap: space.px8 },
+  ctName: { ...role.titleRowSm, flex: 1, minWidth: 0 },
+  ctNums: { fontFamily: ff.bold, fontSize: fs.meta, color: color.chalk2 },
+  ctMeta: { fontFamily: ff.medium, fontSize: fs.tiny, color: color.dim },
+  ctEmpty: { ...role.caption, textAlign: 'center', paddingVertical: space.px24 },
+  /** An inbox item: the kind pill and the who/where line above the body. */
+  ctItem: {
+    backgroundColor: color.card,
+    borderRadius: radius.card,
+    borderWidth: lineWidth.hairline,
+    borderColor: color.line,
+    padding: space.px12,
+    gap: space.px6,
+  },
+  ctItemOpen: { borderColor: color.line2 },
+  ctItemHead: { flexDirection: 'row', alignItems: 'center', gap: space.px6 },
+  ctItemWho: { ...role.label, color: color.chalk2, flex: 1, minWidth: 0 },
+  ctItemBody: {
+    fontFamily: ff.medium,
+    fontSize: fs.lead,
+    lineHeight: line(fs.lead, lh.text),
+    color: color.chalk,
+  },
+  ctList: { gap: space.px8 },
+
   /** `.cueline` — "Your cue", with the ringed dot. */
   cueline: { flexDirection: 'row', gap: space.px10, alignItems: 'flex-start' },
   cuelineDot: {

@@ -25,7 +25,7 @@ import { Pressable, Text, TextInput, View } from 'react-native';
 import type { Card, ChapterRow, PlaybookBlocks, QuizResultRow } from '../types';
 import { other, pick, useLang } from '../strings';
 import { buildSearchIndex, highlight, searchCards } from '../search';
-import { Btn, Chev, Chip, Cta, Icon, IndexList, Medal, Row, Stamp, Tape, TopHead } from '../ui';
+import { Btn, Chev, Chip, Cta, Icon, IndexList, Medal, Row, RowEnd, Stamp, Tape, TopHead } from '../ui';
 import { pbk } from '../styles';
 import { color } from '../theme';
 
@@ -44,6 +44,19 @@ interface ContentsScreenProps {
   onOpenCard: (cardKey: string, fromSearch?: boolean) => void;
   onOpenCover: () => void;
   onOpenQuiz: () => void;
+  /**
+   * THE STAFF DOORS — PLAYBOOK-COACH-TRACK-MOBILE.
+   *
+   * `isStaff` is the server's answer (a non-empty `playbook_staff_roster()`),
+   * not a role read on the client, and `canAnswer` is the separate predicate
+   * that keeps a team MANAGER out of the inbox (ruling R2). A reader who is
+   * neither sees neither row and the screen is exactly what it was.
+   */
+  isStaff?: boolean;
+  canAnswer?: boolean;
+  openCount?: number;
+  onOpenTeamProgress?: () => void;
+  onOpenInbox?: () => void;
   onContinue: () => void;
   /** Name of the next unread card, printed small on the Continue button. */
   continueLabel: string;
@@ -64,6 +77,11 @@ export function ContentsScreen(props: ContentsScreenProps) {
     onOpenCard,
     onOpenCover,
     onOpenQuiz,
+    isStaff,
+    canAnswer,
+    openCount,
+    onOpenTeamProgress,
+    onOpenInbox,
     onContinue,
     continueLabel,
   } = props;
@@ -235,6 +253,56 @@ export function ContentsScreen(props: ContentsScreenProps) {
           of `pbk.quizcard`, and a pill that says what opening it does. The
           pill is a label, not a second button — the whole row is the target,
           as it was. */}
+      {/* THE STAFF DOORS — PLAYBOOK-COACH-TRACK-MOBILE, ruling R1 / R2.
+
+          They sit BELOW the index and above the quiz card, which is where a
+          coach looks after scanning the book rather than before it, and they
+          are the book's own `Row` — the same hairline, the same chevron, the
+          same 58pt target — so nothing here is a second design. A reader the
+          roster does not answer for renders neither, and this whole block is
+          absent from their screen. */}
+      {isStaff ? (
+        <Row right={<Chev />} onPress={onOpenTeamProgress} style={pbk.qrow}>
+          <Text style={[pbk.rowName, pbk.rowNameSm]}>
+            {es ? 'Progreso del equipo' : 'Team progress'}
+          </Text>
+          <Text style={pbk.rowDesc}>
+            {es
+              ? 'Quién va leyendo, y quién necesita un empujón.'
+              : 'Who is reading, and who needs a nudge.'}
+          </Text>
+        </Row>
+      ) : null}
+
+      {isStaff && canAnswer ? (
+        <Row
+          onPress={onOpenInbox}
+          style={pbk.qrow}
+          /* `RowEnd` appends the chevron itself — the one cue per tappable
+             row (ruling PLAYBOOK-TYPE-PASS-E). Only the count goes in. */
+          right={
+            <RowEnd>
+              {openCount ? (
+                <View style={pbk.ctBadge}>
+                  <Text style={pbk.ctBadgeText}>{openCount}</Text>
+                </View>
+              ) : null}
+            </RowEnd>
+          }
+        >
+          <Text style={[pbk.rowName, pbk.rowNameSm]}>{es ? 'Preguntas' : 'Questions'}</Text>
+          <Text style={pbk.rowDesc}>
+            {openCount
+              ? es
+                ? `${openCount} sin responder.`
+                : `${openCount} waiting for an answer.`
+              : es
+                ? 'Nada pendiente.'
+                : 'Nothing waiting.'}
+          </Text>
+        </Row>
+      ) : null}
+
       {got ? (
         <Row right={<Chev />} onPress={onOpenQuiz} style={pbk.quizcard}>
           <View style={pbk.quizcardHead}>

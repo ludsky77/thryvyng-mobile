@@ -61,6 +61,7 @@ import { STRENGTH, doodlePlan, withDoodleColors } from '../doodleArt';
 import { withChalkEdge } from '../doodleChalk';
 import PlaybookScreen, { type PlaybookOffline } from '../PlaybookScreen';
 import { withTestCards } from './testCards';
+import { DEV_INBOX, DEV_ROSTER, DEV_STAFF, DEV_STAFF_MANAGER } from './coachFixtures';
 import {
   OFFLINE_BOOK,
   OFFLINE_COUNTS,
@@ -128,6 +129,10 @@ type TapReadout = {
  *   …&screen=card&id=ZZK&fix=1                            the keeper angle board
  *   …&screen=card&id=ZZK&fix=1&kpball=byline              …the ball on the byline
  *   …&screen=card&id=ZZK&fix=1&kp=you                     …"you be the keeper"
+ *   …&coach=1                                             + a fake staff roster
+ *   …&coach=mgr                                           …as a team MANAGER (R2)
+ *   …&screen=progress&coach=1                             team progress
+ *   …&screen=inbox&coach=1                                the question inbox
  *
  * `tab`, `kp` and `kpball` are `PlaybookLook` — the same reason `screen` and
  * `y` exist. A 4th tab, a second mode and a preset are all behind a PRESS, and
@@ -182,6 +187,24 @@ function navFromParams(params: Record<string, string>): PlaybookOffline['initial
       return { screen: 'chend', ch: params.ch || 'foundations' };
     case 'quiz':
       return { screen: 'quiz' };
+    /* The coach track's four screens (PLAYBOOK-COACH-TRACK-MOBILE). `player`
+       and `thread` need a row to open, so the harness reaches them by
+       tapping from the list — these two are the doors. */
+    case 'progress':
+      return { screen: 'progress' };
+    case 'inbox':
+      return { screen: 'inbox' };
+    /* `player` and `thread` are normally reached by TAPPING a row, and this
+       simulator still cannot be tapped from a shell. `pl` / `th` name the
+       fixture row to open on. A `thread` needs the whole row, not an id, so
+       it is looked up in the fixture the list would have handed over. */
+    case 'player':
+      return { screen: 'player', id: params.pl || DEV_ROSTER[0].player_id };
+    case 'thread': {
+      const row =
+        DEV_INBOX.find((q) => q.question_id === params.th) || DEV_INBOX[0];
+      return row ? { screen: 'thread', q: row } : { screen: 'inbox' };
+    }
     default:
       return { screen: 'cover' };
   }
@@ -210,6 +233,21 @@ function ReaderHost({
     () => (params.fix === '1' ? withTestCards(OFFLINE_BOOK) : OFFLINE_BOOK),
     [params.fix]
   );
+  /**
+   * `coach=1` hands the reader a fake roster and inbox (`./coachFixtures.ts`)
+   * so the staff screens can be looked at with no coach login; `coach=mgr`
+   * is the same roster with `canAnswer: false`, which is the team-manager
+   * case ruling R2 exists for — the Questions row must NOT appear.
+   */
+  const staff = useMemo(
+    () =>
+      params.coach === 'mgr'
+        ? DEV_STAFF_MANAGER
+        : params.coach === '1'
+          ? DEV_STAFF
+          : null,
+    [params.coach]
+  );
   /** The two interactive boards' initial state — see `PlaybookLook`. */
   const look = useMemo(
     () => ({
@@ -225,7 +263,7 @@ function ReaderHost({
           the key remounts the shell rather than quietly ignoring the new
           screen. Harness-only — the app never changes these params. */}
       <PlaybookScreen
-        key={`${params.screen || 'cover'}|${params.ch || ''}|${params.id || ''}|${params.q || ''}|${params.start || ''}|${params.autoplay || ''}|${params.dz || ''}|${params.y || ''}|${params.lang || ''}|${params.fix || ''}|${params.tab || ''}|${params.kp || ''}|${params.kpball || ''}`}
+        key={`${params.screen || 'cover'}|${params.ch || ''}|${params.id || ''}|${params.q || ''}|${params.start || ''}|${params.autoplay || ''}|${params.dz || ''}|${params.y || ''}|${params.lang || ''}|${params.fix || ''}|${params.tab || ''}|${params.kp || ''}|${params.kpball || ''}|${params.coach || ''}|${params.pl || ''}|${params.th || ''}`}
         offline={{
           book,
           progress: OFFLINE_PROGRESS,
@@ -239,6 +277,7 @@ function ReaderHost({
           autoStartQuiz: params.start === '1',
           initialScrollY: params.y ? Number(params.y) : undefined,
           look,
+          staff,
           lang: params.lang === 'es' ? 'es' : 'en',
           dz: params.dz ? `dz=${params.dz}` : undefined,
         }}

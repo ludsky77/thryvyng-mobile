@@ -1419,3 +1419,130 @@ Lu's rulings of the same day.
     control still works normally, and the app never sets it.
   - Screenshots are in the session scratchpad, not the repo — as with the Nov 1
     pass.
+
+## Landed — Nov 2 2026 (Playbook coach track, mobile)
+
+- **PLAYBOOK-COACH-TRACK-MOBILE · team progress, the question inbox, kind
+  chips and two push taps · landed 2026-11-02 · agent-verified; DEVICE LOOK
+  PENDING.**
+  - **Built on server objects already APPLIED to prod** — migration
+    `20261102033000_playbook_coach_track.sql` in `thrive-and-score`, Nov 2
+    2026. **This session made no DB connection of any kind** and wrote no SQL:
+    the signatures were read from that file and from
+    `thrive-and-score/docs/recon/coach-track-recon.md` (declared read-only
+    cross-repo read).
+  - **The five server objects the app now calls:** `playbook_staff_roster(p_team_id)`
+    → 17 columns per player, progress already counted · `playbook_staff_inbox(p_status)`
+    → 21 columns per question, `'open' | 'answered' | 'closed' | 'all'` ·
+    `playbook_can_answer_for_player(user, player)` · `playbook_reply_question(question, body)`
+    · the FIVE-argument `playbook_send_question(player, chapter, card, body, kind)`.
+    Plus two table reads under RLS: `playbook_question_replies` for a thread and
+    `playbook_questions` for a push tap's chapter.
+  - **THE TWO GATES, and the UI is built on the difference** (rulings R1 / R2):
+    - **Progress** = `playbook_can_see_player` — family, the player's team staff
+      **including managers**, and the club-wide director set
+      (full_access / operations / view_only).
+    - **Inbox** = `playbook_can_answer_for_player` — the player's head/assistant
+      **coaches** or the club-wide set. **A team manager is NOT in it**, so the
+      Questions row is HIDDEN for them, not empty. The client cannot tell the two
+      apart from the roster alone (`via` is 'team' for a manager too), so
+      `canAnswerAnything()` probes the predicate once per distinct (via, team) and
+      stops at the first yes — which also gets the mixed case right (manager of
+      team A, coach of team B).
+    - **Non-staff see nothing new.** "Am I staff?" is a non-empty roster, i.e. the
+      server's answer, never a role string read on the client — the Playbook's
+      staff set is `team_staff` + `club_staff` titles and genuinely differs from
+      the one `players` uses (recon Q4 item 8).
+  - **What shipped, screen by screen:**
+    - Contents: a **Team progress** row for staff, and a **Questions** row with an
+      open-count badge for answerers only. The book's own `Row` — same hairline,
+      same chevron, same target.
+    - **Team progress**: team picker built from the roster itself (one team = no
+      picker; a director gets "All teams" + a chip per team and a grouped list),
+      players **sorted least-read first** — Lu's nudge — each row with name,
+      got-it x/total, a bar in that team's section tone, quiz best/last/medal and
+      last activity.
+    - **Player detail**: per-chapter got-it counts and the quiz panel. Adds no new
+      read — `fetchProgress()` is the mirrored call the family side already makes
+      — and has **no "Got it" button**, because the write RPC's gate is family-only
+      and a button that always fails is worse than none.
+    - **Inbox**: Open / Answered tabs (two calls to the same RPC; the server owns
+      the status), item = kind pill, player, team, chapter · card, time, reply
+      count, "from the family" when the sender is a parent.
+    - **Thread**: question + replies + composer. **Sending does not mark it
+      answered — the server does**, in the same statement that fires the push, so
+      a reply that lands is a reply that notified. A refusal keeps the draft (R-5).
+    - **Family side**: three kind chips — **Question / Comment / Suggestion ·
+      Pregunta / Comentario / Sugerencia**, default Question, the CHECK
+      constraint's own values — and the send moved to the five-arg form. "Your
+      messages" now prints the kind and says **Answered ✓** in words.
+  - **Push taps** (`src/navigation/AppNavigator.tsx`, `routeNotification`):
+    `playbook_question` → the inbox thread for that question; `playbook_answer` →
+    the asker's own messages, which live on the end-of-chapter screen, so the
+    chapter is looked up from the question row (the payload carries none). Both
+    fall back to the contents screen rather than a dead end. Nested navigate
+    (Main → HomeTab → Playbook), the shape the chat branch already uses.
+  - **NOTHING MIRRORED MOVED.** All four new RPC wrappers live in a NEW
+    `coachRpc.ts`; `rpc.ts`, `types.ts` and `search.ts` are untouched and the
+    drift check is clean. The web has none of this yet — mobile first, Lu's call.
+  - **Files (14).** New: `coachRpc.ts` · `useStaffTrack.ts` · `staffFormat.ts` ·
+    `screens/TeamProgressScreen.tsx` · `screens/PlayerProgressScreen.tsx` ·
+    `screens/InboxScreen.tsx` · `screens/ThreadScreen.tsx` ·
+    `dev/coachFixtures.ts`. Changed: `PlaybookScreen.tsx` (four Nav screens on the
+    one route, R-2 intact) · `screens/ContentsScreen.tsx` · `screens/ChapterEndScreen.tsx`
+    · `styles.ts` (`ct*`) · `dev/PlaybookDevHarness.tsx` ·
+    `src/navigation/AppNavigator.tsx`.
+  - **Gates:** `npx tsc --noEmit` **5 errors, all pre-existing in
+    `src/components/games/*`, 0 new** · `eslint` on the 14 files **0 errors** (4
+    new warnings, all `no-console` on failure paths, the idiom
+    `usePlaybookBook.ts` already uses) · `npx expo export --platform ios`
+    **exit 0**, iOS bundle **9.40 MB** (9.36 → 9.40) · **MIRROR.md drift check
+    clean**.
+  - **The dev fixture ships in nothing.** `dev/coachFixtures.ts` is a fake roster
+    (6 players, 2 teams) and inbox (3 open, 1 answered) reached only by
+    `thryvyng://playbook-dev?open=reader&coach=1` (`coach=mgr` for the manager
+    case). Searched in the Hermes bundle in both encodings it stores strings in:
+    `PLAYBOOK-DEV-COACHFIX` 0 · `ZZ Test Team B` 0 · `DEV_ROSTER` 0 ·
+    `coachFixtures` 0 · `playbook-dev` 0 — while the real code IS there:
+    `playbook_staff_roster` 1 · `playbook_staff_inbox` 1 ·
+    `playbook_can_answer_for_player` 1 · `Sugerencia` 1 · `playbook_answer` 1.
+  - **SEEN ON THE SIMULATOR** (iPhone 17 Pro `DEEE9FA3`, dev client over Metro,
+    fixture): contents with both staff rows and a pink **3** badge · team progress
+    grouped over two teams with the least-read player on top (4% → 35% → 88%) ·
+    player detail · inbox Open with all three kind pills and "from the family" ·
+    a thread with its reply box · the family form with Question / Comment /
+    Suggestion · "Your messages" with **Answered ✓** and the coach's reply · the
+    whole progress screen in Spanish · and the **manager** case showing Team
+    progress with NO Questions row.
+
+  - **NOT VERIFIED HERE, and this is the gap the live test closes.** Every screen
+    above was driven by the `__DEV__` fixture. **No RPC in this track has ever
+    been called against prod from this app** — not once, by design (no DB access
+    was permitted, and none was made). What the fixture cannot prove: that the
+    roster returns the right players for a real login, that the manager really is
+    excluded by the server rather than only by the client, that a reply flips the
+    status and fires the two pushes, and that a tapped push lands on the right
+    screen.
+
+  - **LIVE TEST PLAN — who logs in, and what they must see:**
+
+    | login | role | Team progress row | Questions row | what to check |
+    | --- | --- | --- | --- | --- |
+    | **Cole Coachman** | head coach, ZZ Test Team 0826 | **YES** | **YES** | one team, so NO team picker. His players only, least-read first. Open a thread, reply → it moves to Answered and the family gets a push. |
+    | **+zztest7** | parent | **NO** | **NO** | neither row anywhere on contents. Chapter end: the three kind chips, Question preselected. Send one as **Suggestion** → Cole's phone gets "New Playbook suggestion". The reply comes back under it with **Answered ✓**. |
+    | **ludriv** | director | **YES** | **YES** | "All teams" plus a chip per club team, and the list GROUPED by team. Every club player, not just one team's. |
+    | **a team manager** (if one is loginable) | team_manager | **YES** | **NO** | **the one that matters most (R2).** Team progress opens and lists the team; the Questions row must be ABSENT, not empty. If no manager account is loginable, say so and this stays unverified. |
+
+    **Push taps, both directions:** +zztest7 sends → Cole taps the notification →
+    lands on that thread. Cole replies → +zztest7 taps → lands on that chapter's
+    "Questions & notes" with the reply visible.
+
+    **Two server questions this test also settles** (recon Q4 items 4 and 7, both
+    still open): whether a `view_only_director` may in fact reply, and whether an
+    INVITED-but-not-joined team's staff should see a player. Neither is a mobile
+    change; both are visible from these logins.
+  - Screenshots are in the session scratchpad, not the repo — as with the Nov 1
+    and Nov 2 passes.
+  - Source: this session, 2026-11-02; `thrive-and-score/docs/recon/coach-track-recon.md`
+    and migration `20261102033000_playbook_coach_track.sql`; Lu's rulings R1–R4 and
+    the Oct 28 "parent Got-it counts for the child / anyone can send" ruling.

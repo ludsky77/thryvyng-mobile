@@ -630,11 +630,7 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
 
 ## Open forks (added Nov 1 2026 — after the device test)
 
-- PLAYBOOK-CARD-INVITING (ROUTINE) — Courses featured card doesn't read as tappable; needs a clear call to action.
-- QUIZ-CARD-NOTICEABLE (ROUTINE) — quiz card too quiet on the contents page; same design, more presence.
-- QUIZ-RESULT-BUTTONS-ALIGN (ROUTINE) — Play again / Home off-center, labels right-aligned.
-- QUESTION-PILLS-WRAP (ROUTINE) — ABOUT chips must wrap, not scroll.
-- QUIZ-REVIEW-NAV (ruling pending: A = review chips on result screen only · B = sticky back-to-quiz bar) — leaving mid-quiz to a card loses the run.
+- CLOSED Nov 1 2026 ~17:25 — PLAYBOOK-CARD-INVITING · QUIZ-CARD-NOTICEABLE · QUIZ-RESULT-BUTTONS-ALIGN · QUESTION-PILLS-WRAP · QUIZ-REVIEW-NAV (ruling A): all five verified on device, see the two VERIFIED-DEVICE rows below.
 - QUESTION-KIND (SACRED, schema: `kind` on playbook_questions — Question / Comment / Suggestion pills; deferred since Oct 29; planned before M6 build).
 - JOIN-DOB-LOCKOUT-RESET (🔧 if no unlock exists) — what 0 attempts does and how staff unlocks a family; code read, never burn attempts.
 - DOB-PICKER-MONTH-DRIFT (ROUTINE; 🔧 if value drifts) — wheel showed June while field showed 05/15.
@@ -645,9 +641,11 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
 
 ## Landed — Nov 1 2026 (Playbook UI polish, AGENT-ONLY)
 
-- **Playbook UI polish · 4 of the 5 Nov 1 forks · landed 2026-11-01 · AGENT-ONLY
-  (typecheck 5 pre-existing errors / eslint 0 errors / `expo export --platform ios`
-  exit 0 — no device, no simulator, VERIFICATION PENDING).** UI only: no RPC, no
+- **Playbook UI polish · 4 of the 5 Nov 1 forks · landed 2026-11-01 · VERIFIED-DEVICE
+  2026-11-01 ~17:25 (Lu) — iOS simulator, live Metro bundle, signed in as `+zztest7`;
+  all four seen on screen, the review-chip ✗ panel confirmed.** (Build proof at landing:
+  typecheck 5 pre-existing errors / eslint 0 errors / `expo export --platform ios` exit 0.)
+  UI only: no RPC, no
   schema, no new dependency, nothing outside `src/features/pac-playbook/`.
   Source: `docs/recon/playbook-polish.md`.
   - QUIZ-CARD-NOTICEABLE — the index's quiz row given a green rule, a raised face
@@ -670,13 +668,14 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
     can be read back. The plain pip row on the result screen was replaced by the
     chip row. No new screen, no retake from review.
   - PLAYBOOK-CARD-INVITING — **built in a second pass the same day**, once Lu
-    named the three entry-point files; see the row below. The five fork lines
-    stay open until Lu verifies on device.
+    named the three entry-point files; see the row below. All five fork lines are
+    CLOSED — Lu verified them on device Nov 1 2026 ~17:25.
 
 - **PLAYBOOK-CARD-INVITING · all three Playbook entry points made inviting and
-  visually identical · landed 2026-11-01 · AGENT-ONLY (typecheck 5 pre-existing
-  errors / eslint 0 errors + 0 new warnings / `expo export --platform ios` exit 0
-  — no device, no simulator, VERIFICATION PENDING).** STYLING ONLY: no `onPress`,
+  visually identical · landed 2026-11-01 · VERIFIED-DEVICE 2026-11-01 ~17:25 (Lu) —
+  iOS simulator, live Metro bundle, signed in as `+zztest7`; all three entry doors
+  seen on screen.** (Build proof at landing: typecheck 5 pre-existing errors / eslint
+  0 errors + 0 new warnings / `expo export --platform ios` exit 0.) STYLING ONLY: no `onPress`,
   no `navigate`, no logic, no data, no RPC, no schema, no new dependency.
   Source: `docs/recon/playbook-polish.md`.
   - The three ways in, all OUTSIDE the feature folder:

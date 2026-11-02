@@ -60,6 +60,7 @@ import { tapTarget } from '../diagram/tapTarget';
 import { STRENGTH, doodlePlan, withDoodleColors } from '../doodleArt';
 import { withChalkEdge } from '../doodleChalk';
 import PlaybookScreen, { type PlaybookOffline } from '../PlaybookScreen';
+import { withTestCards } from './testCards';
 import {
   OFFLINE_BOOK,
   OFFLINE_COUNTS,
@@ -121,6 +122,16 @@ type TapReadout = {
  *   …&screen=home&q=press                                 contents, searching
  *   …&screen=chapter&ch=foundations                       a chapter
  *   …&screen=card&id=F3                                   a card (and its panel)
+ *   …&fix=1                                               + the two test cards
+ *   …&screen=card&id=ZZ5&fix=1                            the five-frame tab row
+ *   …&screen=card&id=ZZ5&fix=1&tab=4                      …opened on its 4th tab
+ *   …&screen=card&id=ZZK&fix=1                            the keeper angle board
+ *   …&screen=card&id=ZZK&fix=1&kpball=byline              …the ball on the byline
+ *   …&screen=card&id=ZZK&fix=1&kp=you                     …"you be the keeper"
+ *
+ * `tab`, `kp` and `kpball` are `PlaybookLook` — the same reason `screen` and
+ * `y` exist. A 4th tab, a second mode and a preset are all behind a PRESS, and
+ * there is still no way to press anything on this simulator from a shell.
  *   …&screen=chend&ch=foundations                         questions & notes
  *   …&screen=quiz                                         the quiz entry
  *   …&screen=quiz&start=1                                 the quiz, running
@@ -188,15 +199,35 @@ function ReaderHost({
   onBack: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  /**
+   * `fix=1` adds the two `__DEV__` test cards (`./testCards.ts`) — a
+   * five-frame card for PLAYBOOK-DIAGRAM-TABS and a `keeperangle` card for
+   * PLAYBOOK-KEEPER-ANGLE, neither of which exists in the book yet. Without
+   * the flag this is the book the server serves, unchanged, so one harness
+   * cannot quietly become two different books.
+   */
+  const book = useMemo(
+    () => (params.fix === '1' ? withTestCards(OFFLINE_BOOK) : OFFLINE_BOOK),
+    [params.fix]
+  );
+  /** The two interactive boards' initial state — see `PlaybookLook`. */
+  const look = useMemo(
+    () => ({
+      tab: params.tab ? Number(params.tab) : undefined,
+      keeperMode: params.kp === 'you' ? ('you' as const) : undefined,
+      keeperBall: params.kpball,
+    }),
+    [params.tab, params.kp, params.kpball]
+  );
   return (
     <View style={styles.readerHost}>
       {/* A fresh link is a fresh reader: `initialNav` is an initial state, so
           the key remounts the shell rather than quietly ignoring the new
           screen. Harness-only — the app never changes these params. */}
       <PlaybookScreen
-        key={`${params.screen || 'cover'}|${params.ch || ''}|${params.id || ''}|${params.q || ''}|${params.start || ''}|${params.autoplay || ''}|${params.dz || ''}|${params.y || ''}|${params.lang || ''}`}
+        key={`${params.screen || 'cover'}|${params.ch || ''}|${params.id || ''}|${params.q || ''}|${params.start || ''}|${params.autoplay || ''}|${params.dz || ''}|${params.y || ''}|${params.lang || ''}|${params.fix || ''}|${params.tab || ''}|${params.kp || ''}|${params.kpball || ''}`}
         offline={{
-          book: OFFLINE_BOOK,
+          book,
           progress: OFFLINE_PROGRESS,
           quiz: { ...OFFLINE_QUIZ, autoplay: params.autoplay === '1' },
           questions: OFFLINE_QUESTIONS,
@@ -207,6 +238,7 @@ function ReaderHost({
           initialQuery: params.q,
           autoStartQuiz: params.start === '1',
           initialScrollY: params.y ? Number(params.y) : undefined,
+          look,
           lang: params.lang === 'es' ? 'es' : 'en',
           dz: params.dz ? `dz=${params.dz}` : undefined,
         }}

@@ -89,6 +89,30 @@ type Nav =
  * session: the whole book, a progress set, a dealt quiz and a question thread.
  * Undefined on the real route, where every one of these comes from the server.
  */
+/**
+ * THE AGENT'S LOOK — harness-only, and `undefined` on the real route.
+ *
+ * `initialNav` exists because a simulator cannot be tapped from a shell (see
+ * its own note below). The two interactive boards added on 2026-11-02 moved
+ * that problem one level down: a figure's 4th tab (PLAYBOOK-DIAGRAM-TABS) and
+ * the keeper board's second mode and its presets (PLAYBOOK-KEEPER-ANGLE) are
+ * all reached by PRESSING something, so without this they could be built and
+ * never photographed.
+ *
+ * It is an INITIAL state and nothing more: each field seeds the state the
+ * component would otherwise start at, and every control still works normally
+ * afterwards. Nothing in the app sets it, and no behaviour depends on it being
+ * absent.
+ */
+export interface PlaybookLook {
+  /** 1-based frame a tabbed figure opens on. Out of range is clamped. */
+  tab?: number;
+  /** Which mode the keeper board opens in. */
+  keeperMode?: 'watch' | 'you';
+  /** Which preset the keeper board's ball starts on, by id. */
+  keeperBall?: string;
+}
+
 export interface PlaybookOffline {
   book: OfflineBook;
   progress?: OfflineProgress;
@@ -120,6 +144,8 @@ export interface PlaybookOffline {
    * board that sits below the fold would otherwise go unlooked-at.
    */
   initialScrollY?: number;
+  /** Seeds the two interactive boards — see `PlaybookLook`. */
+  look?: PlaybookLook;
 }
 
 export interface PlaybookScreenProps {
@@ -482,6 +508,7 @@ function Reader({ card: cardParam, onExit, offline }: PlaybookScreenProps) {
           chaptersByKey={chaptersByKey}
           blocks={blocks}
           blocksReady={blocksReady}
+          look={offline?.look}
           reminder={pick(book.meta?.reminder, lang)}
           author={author}
           got={got}

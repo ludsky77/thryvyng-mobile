@@ -8,12 +8,32 @@
  * function unchanged — it is arithmetic over the chapter's card list and there
  * is nothing in it for a platform to disagree about.
  *
- * WHICH BOARD appears depends on the card's `kind`, and the five-way branch is
- * the web's: positions → `PositionsPanel`, formation → `FormationPanel`,
+ * WHICH BOARD appears depends on the card's `kind`. Five of the six branches
+ * are the web's: positions → `PositionsPanel`, formation → `FormationPanel`,
  * numbers → `NumbersPanel`, movement → `MovementPanel`, otherwise the card's
  * own diagram through `CardBoard`. A card with no diagram at all falls through
- * to the prototype's own dashed "Diagram pending" panel, and the two cards the
- * web exempts from it (`mind` chapter, `FM5v5`) are exempt here too.
+ * to the prototype's own dashed "Diagram pending" panel, and the `mind`
+ * chapter is exempt from it, as on the web.
+ *
+ * THE SIXTH BRANCH IS MOBILE-ONLY — `keeperangle` → `KeeperAnglePanel`
+ * (PLAYBOOK-KEEPER-ANGLE). It sits with the other four `kind` tests and ABOVE
+ * the `diagram` fallback on purpose: the panel needs no stored block, so a
+ * keeper card that also happens to carry a diagram must still get the
+ * interactive board rather than a still picture of one. The web has no such
+ * panel yet and shows that card's static fallback until a web slice builds it
+ * (Lu's ruling, 2026-11-02).
+ *
+ * `FM5v5` IS NO LONGER EXEMPT from the pending panel, and that is the point:
+ * the exemption existed because the card had neither a diagram nor a formation
+ * block, so it would have shown "Diagram pending" forever. With
+ * PLAYBOOK-DIAGRAM-TABS it can carry a five-frame diagram like any other card,
+ * and the day it does, the `diagram` branch above catches it. Until then it
+ * reads as what it is — a card whose figure has not been drawn — which is
+ * honest, and is what the other 68 cards do.
+ *
+ * THE CARD'S SECTION TONE reaches both interactive boards and `CardBoard`
+ * (ruling PLAYBOOK-SECTION-RAIL): the active frame tab and the shooting
+ * triangle wear the same colour as the card's kicker and breadcrumb.
  *
  * "GOT IT" IS THE ONE WRITE ON THIS SCREEN, and it goes out through
  * `usePlaybookProgress.markGotIt` — `playbook_set_got_it`. The button's two
@@ -25,12 +45,14 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { CardBoard } from '../CardBoard';
+import type { PlaybookLook } from '../PlaybookScreen';
 import type { Card, ChapterRow, PlaybookBlocks } from '../types';
 import { other, pick, useLang, type Lang } from '../strings';
 import { Fmt } from '../Fmt';
 import { PositionsPanel } from '../panels/PositionsPanel';
 import { MovementPanel } from '../panels/MovementPanel';
 import { FormationPanel, NumbersPanel } from '../panels/FormationPanels';
+import { KeeperAnglePanel } from '../panels/KeeperAnglePanel';
 import { Btn, Chip, Cta, SectionIcon } from '../ui';
 import { pbk } from '../styles';
 import { toneFor } from '../type';
@@ -82,6 +104,8 @@ interface CardScreenProps {
   chaptersByKey: Map<string, ChapterRow>;
   blocks: PlaybookBlocks;
   blocksReady: boolean;
+  /** Harness-only seeds for the two interactive boards; see `PlaybookLook`. */
+  look?: PlaybookLook;
   reminder: string;
   author: string;
   /** null = staff read-only view: no Got it, no progress (R-1). */
@@ -150,6 +174,7 @@ export function CardScreen(props: CardScreenProps) {
     chaptersByKey,
     blocks,
     blocksReady,
+    look,
     reminder,
     author,
     got,
@@ -194,7 +219,24 @@ export function CardScreen(props: CardScreenProps) {
   else if (kind === 'numbers' && blocks.numbers)
     board = <NumbersPanel block={blocks.numbers} diagram={blocks.diagrams[card.key]} />;
   else if (kind === 'movement' && blocks.movement) board = <MovementPanel block={blocks.movement} />;
-  else if (diagram) board = <CardBoard block={diagram} cardKey={card.key} />;
+  else if (kind === 'keeperangle')
+    board = (
+      <KeeperAnglePanel
+        tone={subTone}
+        initialMode={look?.keeperMode}
+        initialBall={look?.keeperBall}
+      />
+    );
+  else if (diagram)
+    board = (
+      <CardBoard
+        block={diagram}
+        cardKey={card.key}
+        tone={subTone}
+        /* `look.tab` is 1-based, the way the deep link reads. */
+        initialFrame={look?.tab != null ? look.tab - 1 : undefined}
+      />
+    );
   else if (!blocksReady)
     board = (
       <View style={pbk.frame}>
@@ -206,7 +248,7 @@ export function CardScreen(props: CardScreenProps) {
         </View>
       </View>
     );
-  else if (card.chapter_key !== 'mind' && card.key !== 'FM5v5')
+  else if (card.chapter_key !== 'mind')
     board = (
       <View style={pbk.pend}>
         <Text style={pbk.blockLabel}>{t('pend')}</Text>

@@ -85,11 +85,28 @@ scoring bug rather than a style drift.
 Not in this manifest and not mirrored: `theme.ts`, `styles.ts`, `ui.tsx` and
 `doodleChalk.ts` are **new on mobile** (the stylesheet has no mobile equivalent
 to copy, and the chalk filter has no CSS to carry it); `rpc.ts`, `strings.tsx`,
-the three hooks, the six screens, the three panels, `PlaybookScreen.tsx`,
+the three hooks, the six screens, the four panels, `PlaybookScreen.tsx`,
 `PlaybookHeader.tsx`, `Doodles.tsx`, `Fmt.tsx`, `DiagramBoard.tsx`,
 `CardBoard.tsx` and `StillBoard.tsx` are **adapt** or **rebuild** in the recon's
 plan — never a copy. The web↔mobile map for all of them is
 `docs/recon/playbook-m3.md` § 1.
+
+**MOBILE-ONLY, with no web counterpart at all** (2026-11-02): the fourth panel,
+`panels/KeeperAnglePanel.tsx` (PLAYBOOK-KEEPER-ANGLE), and its `__DEV__`
+fixture `dev/testCards.ts`. The web has no keeper board and shows the card's
+static fallback until a web slice builds one — Lu's ruling, mobile first. They
+are named here so a future re-mirror does not go looking for a web original
+that does not exist.
+
+**Nothing mirrored moved on 2026-11-02.** PLAYBOOK-DIAGRAM-TABS and
+PLAYBOOK-KEEPER-ANGLE were both built so the eight mirrored files and the data
+file stay byte-identical: the tab row lives in `CardBoard.tsx` and
+`DiagramBoard.tsx` (both rebuilds), the keeper board draws with
+`react-native-svg` components instead of adding an element type to
+`renderDiagram.ts`, it stores nothing so `types.ts` and `search.ts` need no new
+block kind, and the test cards are a function over the offline book rather than
+an edit to the frozen JSON. The drift check above was run after the change and
+was clean.
 
 ## What imports these now
 

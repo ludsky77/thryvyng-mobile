@@ -90,9 +90,9 @@ export const track = (size: number, em: number) => Math.round(size * em * 100) /
  *
  * A section's tone comes from WHERE IT SITS IN ITS CHAPTER, not from its name
  * and not from anything in the content: 1st → green, 2nd → sky, 3rd → teal,
- * 4th → periwinkle, then cycle. So the tones are a reading aid the chapter
- * hands out, and `possession` is green in Principles because it is first
- * there, not because possession is green.
+ * 4th → periwinkle, 5th → ice (PLAYBOOK-SECTION-TONE-5), then cycle. So the
+ * tones are a reading aid the chapter hands out, and `possession` is green in
+ * Principles because it is first there, not because possession is green.
  *
  * THE INDEX IS THE POSITION IN `chapter.content.subs`, the chapter's own
  * declared order — NOT the position among the sections that happen to have

@@ -16,7 +16,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { pbk } from './styles';
-import { color, lineWidth, type SectionTone } from './theme';
+import { color, lineWidth, sectionTones, type SectionTone } from './theme';
 import { toneFor } from './type';
 
 /* ---------------------------------------------------------------- the tape */
@@ -124,7 +124,10 @@ export function StatusPip({ state, tone }: { state: 'ok' | 'next' | 'none'; tone
  *
  * The content carries no icon for a section (`ChapterSub` is `id`, `name`,
  * `desc` and nothing else), so the mark comes from the same POSITION rule the
- * tone does: 1st ball · 2nd shield · 3rd arrows · 4th target, then cycle. They
+ * tone does: 1st ball · 2nd shield · 3rd arrows · 4th target · 5th glove, then
+ * cycle (PLAYBOOK-SECTION-TONE-5 — the 5th slot arrived with the 5th tone, and
+ * the two have to cycle together, or a section's mark and its colour would come
+ * from two different rules). They
  * are drawn here rather than fetched for the reason every icon in this file is
  * — `playbook.css`'s own marks are inline SVG, and there is no icon font in
  * the book.
@@ -148,7 +151,11 @@ export function SectionIcon({
     strokeLinejoin: 'round' as const,
     fill: 'none',
   };
-  const slot = ((Math.trunc(position) % 4) + 4) % 4;
+  // The modulus is `sectionTones.length`, not a literal: the marks and the
+  // tones cycle as ONE (PLAYBOOK-SECTION-TONE-5), so a tone added without a
+  // mark would put the 6th section's green under the 1st section's ball.
+  const n = sectionTones.length;
+  const slot = ((Math.trunc(position) % n) + n) % n;
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
       {slot === 0 ? (
@@ -166,7 +173,7 @@ export function SectionIcon({
           <Path d="M4 9 H16 M13 6 L16 9 L13 12" {...common} />
           <Path d="M20 15 H8 M11 18 L8 15 L11 12" {...common} />
         </>
-      ) : (
+      ) : slot === 3 ? (
         /* target — where it is meant to end up.
            A CROSSHAIR, not concentric rings: rings plus a centre dot came out
            as a small circle with something in the middle at 14pt, which is
@@ -177,6 +184,24 @@ export function SectionIcon({
           <Circle cx={12} cy={12} r={7} {...common} />
           <Path d="M12 2.5 V6 M12 18 V21.5 M2.5 12 H6 M18 12 H21.5" {...common} />
           <Circle cx={12} cy={12} r={1.7} fill={ink} stroke="none" />
+        </>
+      ) : (
+        /* glove — the keeper's own mark, and the 5th slot's
+           (PLAYBOOK-SECTION-TONE-5).
+
+           A MITTEN, not a five-finger hand: at 14pt the icon is 14 points
+           across and the stroke lands at 1.28pt (2.2 × 14 / 24), so finger
+           slots would close up into a grey block. The silhouette is a
+           flat-bottomed, round-topped palm with ONE thumb loop — which is
+           what tells it apart from the four before it at that size: the ball
+           is a closed circle, the shield tapers to a point DOWN, the arrows
+           are two open strokes and the target is a circle with four ticks.
+           This is the only mark with a bump on one side and a straight edge
+           along the bottom. The thumb's radius is 2.9 units (~1.7pt drawn) so
+           its hole survives the stroke. */
+        <>
+          <Path d="M7.6 19.8 V11 a3.4 3.4 0 0 1 6.8 0 V19.8 Z" {...common} />
+          <Path d="M14.4 12.6 h1.4 a2.9 2.9 0 0 1 0 5.8 h-1.4" {...common} />
         </>
       )}
     </Svg>

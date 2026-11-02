@@ -1189,3 +1189,233 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
     not the repo.
   - Source: this session, 2026-11-02; Lu's ruling of the same day (cool tones
     only, the four tones in order, the position rule).
+
+## Landed — Nov 2 2026 (Playbook diagram tabs, keeper angle board, 5th section tone)
+
+All three below are **agent-verified; DEVICE LOOK PENDING.** Gates for the whole
+batch, run at landing: `npx tsc --noEmit` **5 errors, all pre-existing in
+`src/components/games/*`, 0 new** · `eslint` on the 11 touched files **0
+errors**, 9 warnings, all of them pre-existing inline styles and **1 new** (the
+keeper board's `{position:'absolute',inset:0}`, the same one `MovementPanel`
+already carries) · `npx expo export --platform ios` **exit 0**, iOS bundle
+**9.36 MB** (9.33 → 9.36) · **MIRROR.md drift check clean** — silence from the
+eight mirrored files and the frozen JSON, exactly the one declared `doodleArt`
+hunk. No RPC, no schema, no migration, no new dependency, no launch-flag change,
+and **nothing outside `src/features/pac-playbook/`**. Source: this session,
+2026-11-02, built from `docs/recon/playbook-content-gaps.md` (RECOMMEND 1–4) on
+Lu's rulings of the same day.
+
+- **PLAYBOOK-DIAGRAM-TABS · a tab row for multi-frame figures · landed
+  2026-11-02 · agent-verified; DEVICE LOOK PENDING.**
+  - **What it fixes, and it is a BUG, not a feature.** A `playbook_blocks`
+    diagram may carry `frames` instead of `elements`, and both boards drew the
+    LAST frame and nothing else (`DiagramBoard.tsx:144-146` as it was). **Six of
+    the book's 38 diagrams carry two frames, so frame 1 of each of those six
+    cards was in the database, was fetched, and could not be looked at:**
+    `F1` Time & space · `F4` Around the ball · `PL1` Right-side overlap ·
+    `P17` Break or keep · `P11` Choose your battles · `GF7` When to juke.
+    Three of them (`P17`, `P11`, `GF7`) are A/B pairs whose whole teaching is
+    the comparison — the reader only ever saw B. **Those six cards look
+    different now; that is the point of the change.**
+  - 2 to 5 frames, tab 1 selected on open, tabs are real buttons at
+    `control.tab` = **44pt**, the active tab wears the card's SECTION tone
+    (PLAYBOOK-SECTION-RAIL) and the rest are neutral. A single-frame block draws
+    as a plain board with no row.
+  - **Motion, and how it stays inside ruling E-R2 = A.** Selecting a tab plays
+    THAT frame's beats: the board re-renders at each beat's own `at`, on the
+    diagram's own clock, then once more at the finished picture — **`beats + 1`
+    renders per tab (three or four), not sixty a second.** E-R2 = A exists
+    because `SvgXml` re-parses its string on every change; four parses over a
+    two-second sequence is not the web's rAF loop. **A card with no tabs is
+    untouched** — one parse, finished picture, every cell lit
+    (PLAYBOOK-STATIC-BEATS-ALL-ON still stands). Reduced motion skips the
+    playback and shows the finished picture, which is exactly what the card did
+    before.
+  - `DiagramBoard` took two optional props, `frame` and `tt`, both defaulting to
+    the old behaviour. **The hit test still reads the LAST frame on purpose**:
+    `tapTarget()` is the rule the SERVER regrades a tap with, so the quiz board
+    (which never passes `frame`) is unchanged.
+  - **Also landed here:** the `card.key !== 'FM5v5'` exemption on
+    `CardScreen.tsx` was deleted, as the recon asked. **Consequence to know:
+    `FM5v5` now shows the dashed "Diagram pending" panel**, because it still has
+    no diagram and no formation block. That is honest and is what the other 68
+    cards do, and it goes away the day FM5v5 gets its five-frame diagram row.
+  - **One pre-existing clip fixed, because the tabs made it unavoidable**
+    (`styles.ts` `boardCap`): the caption was absolute at `bottom: 8` inside
+    `frame`, whose last child is the 13pt `tray` — so the ledge painted over the
+    caption's descenders — and it had no `right`, so a long caption ran off the
+    frame. Now `bottom: 20` and `right: 10`, so it clears the tray and wraps.
+    True of all six cards before today; never seen, because until the tab row
+    there was no way to see any caption but the last frame's.
+  - **Files (4):** `DiagramBoard.tsx` · `CardBoard.tsx` (rewritten round the tab
+    row) · `styles.ts` (`dtabs`/`dtab`, `boardCap`) · `theme.ts`
+    (`control.tab`). `FormationPanel` was NOT touched, as instructed.
+  - **SEEN ON THE SIMULATOR** (iPhone 17 Pro `DEEE9FA3`, dev client over Metro,
+    offline harness): `P17` with a 2-tab row, tab 1 selected in teal, showing
+    frame 1 "A · SPACE TO GOAL → BREAK" — the frame that was unreachable — with
+    frame 1's own beats; and the 5-frame `__DEV__` fixture on tab 1 and on tab
+    4, each with its own picture, caption and beat row. **Motion was caught in
+    the act**: two screenshots of the same tab 4 s apart show the pass undrawn
+    and then drawn, from one mount.
+
+- **PLAYBOOK-KEEPER-ANGLE · an interactive keeper angle board · landed
+  2026-11-02 · agent-verified; DEVICE LOOK PENDING.**
+  - `panels/KeeperAnglePanel.tsx`, dispatched from one new branch in
+    `CardScreen`'s `kind` chain when `content.kind === 'keeperangle'`. Drag the
+    ball: the shooting triangle runs ball → both posts, the keeper is placed on
+    an arc ("the rope") on the triangle's bisector, the goal line underneath is
+    drawn green where the keeper reaches and dashed white where it is open, and
+    three readouts give ANGLE · GOAL COVERED · OPEN GOAL. Second mode, "You be
+    the keeper", lets the reader drag the keeper and reads BEST SPOT ✓ when
+    their coverage is within 3% of the automatic spot. Four presets (Byline ·
+    Box corner · Wide angle · PK spot), EN and ES throughout.
+  - **It stores NOTHING, and that is the design** (recon RECOMMEND 1): the posts
+    come from the backdrop, the three depths are constants in the file, the
+    words are the file's. So there is **no new `playbook_blocks.kind`, no change
+    to `types.ts` or `search.ts`** — both byte-identical mirrors — and **no
+    migration**. A keeper card is one `playbook_cards` row with
+    `content.kind = 'keeperangle'`.
+  - **`renderDiagram.ts` was not touched** (RECOMMEND 2). The backdrop is
+    `backdrop('zoom-goal', …)` from the mirrored renderer, parsed once through
+    `SvgXml`; everything that moves is `react-native-svg` components over it,
+    sharing the viewBox — MovementPanel's split, for MovementPanel's reason. The
+    drag is raw RN responder events; **no gesture library was added**.
+  - **The posts are re-declared locally with a comment citing
+    `renderDiagram.ts:112`** (RECOMMEND 3), the precedent `MovementPanel.tsx:73-77`
+    sets. **If the backdrop's goal ever moves, `GY` and `POST` move with it.**
+  - **THE METRE SCALE — corrected the same day, 2026-11-02, before any device
+    look.** Every physical distance on this board is now derived from ONE
+    number: the DRAWN goal is 18 board units and a real goal is 7.32 m, so
+    **1 unit = 0.4067 m**, and `M(metres)` is the only conversion in the file.
+    Rope apex **2.5 m**, keeper reach **1.6 m**, smother **0.25 m**, and the
+    four presets written as (across, out) in metres: Byline (14, 1.2) · Box
+    corner (17, 15) · Wide angle (8, 9) · **PK spot (0, 11)**.
+  - **What that fixed, and it was one thing.** The first cut used fractions of
+    the half-goal and placed the presets by eye. The rope and the reach came
+    out right by luck — within 1% of 2.5 m and 1.6 m — but the **PK spot sat 12
+    units from the line, which is 4.9 m, not 11 m**, and from 4.9 m a keeper on
+    the rope covers the whole goal. The board read "PK spot · GOAL COVERED
+    100%", the opposite of the one thing every player knows about penalties.
+    **The coverage formula was never wrong; the distance was.**
+  - **THE PANEL NOW DRAWS ITS OWN CHALK, AT TRUE SCALE** — Lu's ruling,
+    2026-11-02: the geometry is the teaching, so the lines must be true to it.
+    The first metre-scale pass left the shared `zoom-goal` backdrop underneath,
+    and the two disagreed: read back at the goal's own scale that backdrop's
+    box is **26.0 m × 8.1 m** (a 6-yard box is 18.32 × 5.5, a penalty area
+    40.32 × 16.5), its D is **4.1 m** where a real one is 9.15 m, and it draws
+    **no penalty spot at all** — so the penalty spot sat above the drawn box
+    and looked like a mistake. This panel no longer uses that backdrop. A local
+    memoized `Chalk` component draws the goal line, the goal mouth, the penalty
+    area, the six-yard box, the penalty spot and the D (r 9.15 m about the
+    spot, only the part outside the area), all from `M()`, in the renderer's
+    own pen — `CLR.chalk` at 0.5 / 0.4 opacity, the mouth at 1.4 in `CLR.ink`.
+  - **`renderDiagram.ts` AND EVERY MIRRORED FILE ARE STILL UNTOUCHED**, and
+    every other board in the book still gets the shared backdrop exactly as
+    before. The panel simply stopped importing `backdrop`. It now has **no
+    `SvgXml` and no SVG string at all** — both layers are `react-native-svg`
+    components over one viewBox — which keeps it further inside ruling
+    E-R2 = A than it was.
+  - **THE FIT, since true scale is wider than the old window.** The widest
+    thing on the board is the penalty area, 40.32 m. At the previous scale
+    (1 unit = 0.4067 m) that is **99.15 of 100 units** — it fits, but its
+    touchlines land 0.17 m from the board's edge. **The smallest change that
+    fits it properly** was to widen this panel's own window to the penalty area
+    plus 1.2 m a side: 42.72 m × 22.25 m (deep enough for the top of the D),
+    which makes the viewBox **100 × 52.08** instead of 100 × 64 and moves the
+    unit scale 4.8%. `VB` has always been local to this panel, so **no shared
+    file and no shared viewBox changed**, and because the metres did not move,
+    every angle and coverage number is unchanged with them.
+  - **Nothing is copied from the renderer's coordinates any more.** The first
+    cut re-declared `POST` and `GY` from `renderDiagram.ts:112` with a warning
+    that they would rot if that backdrop moved; they are now derived from the
+    laws of the game (a goal is 7.32 m), so there is nothing left to keep in
+    step.
+  - **Geometry, checked numerically before it was looked at.** The rope is the
+    circle through both posts whose apex is 2.5 m in front of goal centre —
+    centre `k = (d² − hw²)/2d` behind the line, radius `d − k`. A standalone
+    check of the formulas confirmed: the rope passes through both posts and the
+    apex to 1e-9; the auto keeper lies ON the rope AND on the bisector at all
+    four presets; a keeper behind the line covers 0%; a keeper on the ball
+    covers 100%; inside the rope the keeper leaves the arc and attacks the ball
+    at 0.25 m goal-side.
+  - **The four readouts, predicted then photographed — they match exactly:**
+
+    | preset | across · out | angle | covered | open | zone |
+    | --- | --- | --- | --- | --- | --- |
+    | Byline | 14 m · 1.2 m | 3° | 100% | 0% | TIGHT |
+    | Box corner | 17 m · 15 m | 12° | 75% | 25% | TIGHT |
+    | Wide angle | 8 m · 11 m | 25° | 66% | 34% | IN BETWEEN |
+    | PK spot | 0 m · 11 m | 37° | **57%** | 43% | WIDE |
+
+    **PK 57% is the prototype's own figure.** Byline at 100% is right, not a
+    saturation artefact — from the byline the keeper really does own everything.
+  - **Wide angle moved from (8, 9) to (8, 11) on Lu's call** and now reads
+    **25° · 66% covered**, under the 70% the brief asked for. At (8, 9) the
+    same formula gave 74%; the position moved, the rule did not.
+  - **Files (3 + 1 shared):** `panels/KeeperAnglePanel.tsx` (new) ·
+    `screens/CardScreen.tsx` (one dispatch branch) · `styles.ts` (`kp*`) ·
+    `theme.ts` (shared `control.tab`).
+  - **Web:** has no such panel and shows the card's static fallback until a web
+    slice builds one — Lu's ruling, mobile first. Recorded in `MIRROR.md` so a
+    future re-mirror does not look for a web original.
+  - **SEEN ON THE SIMULATOR** — three times, as the board was corrected.
+    **The version that landed, with its own true-scale chalk:** PK spot reading
+    **ANGLE 37° · GOAL COVERED 57% · OPEN GOAL 43%**, WIDE · STEP UP, STAY
+    CENTRAL, **with the ball sitting exactly on the drawn penalty spot** and the
+    goal line green in the middle, dashed white at both corners; and Wide angle
+    reading **25° · 66% · 34%**, IN BETWEEN · NEAR POST FIRST, the spot now
+    visible beside the ball. Both boards show the penalty area, the six-yard
+    box and the D at their real sizes. Earlier passes, kept for the record:
+    with the shared backdrop and true metres, PK 37°/57% but the spot outside
+    the drawn box; before the metre scale at all, PK 74°/100% — the bug. The
+    second mode, the presets row and the Spanish strings (MODO · Mira al
+    portero · ÁNGULO · PORTERÍA TAPADA · ÁNGULO CERRADO · PRIMER PALO) were
+    verified before the chalk change and are untouched by it.
+
+- **PLAYBOOK-SECTION-TONE-5 · a fifth section tone and a fifth mark · landed
+  2026-11-02 · agent-verified; DEVICE LOOK PENDING.**
+  - `sectionTones` gained **`ice` `#C7D7FF`** (tint at 13%, written out, as the
+    other four are) and `SectionIcon` gained a fifth slot, a **glove** — a
+    mitten with one thumb loop, chosen because at 14pt it is the only mark with
+    a bump on one side and a straight bottom edge, where the ball is a closed
+    circle, the shield tapers down, the arrows are two open strokes and the
+    target is a circle with ticks.
+  - **The cycle is unchanged and is now driven by the array, not a literal.**
+    `toneFor()` already read `sectionTones.length`; `SectionIcon` had a hardcoded
+    `% 4` and now reads the same length, so marks and tones cycle as ONE. A 6th
+    section still wraps to green/ball.
+  - **This closes the collision the Nov 1 entry recorded**: Principles' 5th
+    section, FINGERPRINTS, was green/ball — identical to its 1st section,
+    POSSESSION — and is now ice/glove. PRESSING LINES, the 6th, moves from
+    sky/shield to green/ball, which is the cycle doing its job.
+  - **Files (2):** `theme.ts` · `ui.tsx`. (`type.ts`'s ruling comment updated to
+    name the fifth tone.)
+  - **SEEN ON THE SIMULATOR**: the Principles chapter list with THE TWO
+    TRANSITIONS teal/arrows, STRUCTURE periwinkle/crosshair and **FINGERPRINTS
+    ice/glove**, each with its rail and tinted count pill.
+
+- **`dev/testCards.ts` — a `__DEV__`-only fixture, new 2026-11-02.** Neither of
+  the two boards above could be looked at on real content: all six frames cards
+  carry exactly two frames and no row carries `keeperangle`. The fixture is a
+  FUNCTION over the offline book (a 5-frame card `ZZ5` and a keeper card `ZZK`,
+  both in `principles`), **not an edit to the frozen
+  `pac-playbook-v2-FINAL-data.json`**, which stays byte-identical and keeps
+  `MIRROR.md`'s one-command drift check honest. Reached only by
+  `thryvyng://playbook-dev?open=reader&…&fix=1`.
+  - **Proved absent from a production bundle.** `expo export --platform ios`,
+    then a search of the Hermes bundle in BOTH encodings it stores strings in:
+    `PLAYBOOK-DEV-TESTCARDS` 0 · `[DEV] Five steps` 0 · `[DEV] Keeper angles` 0 ·
+    `Cinco pasos` 0 · `withTestCards` 0 · `playbook-dev` 0 ·
+    `offline-pac-playbook` 0 — while the real new code IS there:
+    `KeeperAnglePanel` 1 · `You be the keeper` 1 · `Own your near post` 1 ·
+    `Ángulo cerrado` 1 · `Punto penal` 1.
+  - **`PlaybookLook` (`PlaybookScreen.tsx`) — a harness-only prop, same family
+    as `initialNav` and `initialScrollY`, and it exists for the same stated
+    reason: this simulator cannot be tapped from a shell.** `xcrun simctl` has
+    no tap verb, `idb` and `cliclick` are not installed, and AppleScript window
+    control is refused (`osascript is not allowed assistive access`). A 4th tab,
+    a second keeper mode and a preset are all behind a PRESS, so without it they
+    could be built and never photographed. It seeds initial state only; every
+    control still works normally, and the app never sets it.
+  - Screenshots are in the session scratchpad, not the repo — as with the Nov 1
+    pass.

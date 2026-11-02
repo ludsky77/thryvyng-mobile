@@ -125,6 +125,14 @@ export const color = {
  * `#3DD68C` is a lighter, cooler green that reads as a LABEL rather than as a
  * verdict. The four are ordered as the ruling lists them.
  *
+ * A FIFTH TONE, `ice` `#C7D7FF` — ruling PLAYBOOK-SECTION-TONE-5, Lu,
+ * 2026-11-02. Four tones meant a chapter's 5th section wore the 1st's green,
+ * which the Keeper chapter's five sections would have shown on one screen.
+ * `ice` is the palest member of the same cool family and sits furthest from
+ * `periwinkle` before it, so sections 4 and 5 are told apart as easily as 1
+ * and 2. The cycle is unchanged — `toneFor()` reads this array's length, so a
+ * sixth section still wraps back to green.
+ *
  * `tint` is each `ink` at 13% alpha, written out because this file is pure
  * data and may not compute. They are the same colour; if one is edited the
  * other has to be edited with it.
@@ -134,6 +142,7 @@ export const sectionTones = [
   { name: 'sky', ink: '#6FB1FF', tint: 'rgba(111, 177, 255, 0.13)' },
   { name: 'teal', ink: '#2ED3C6', tint: 'rgba(46, 211, 198, 0.13)' },
   { name: 'periwinkle', ink: '#8FA8FF', tint: 'rgba(143, 168, 255, 0.13)' },
+  { name: 'ice', ink: '#C7D7FF', tint: 'rgba(199, 215, 255, 0.13)' },
 ] as const;
 
 export type SectionTone = (typeof sectionTones)[number];
@@ -357,6 +366,8 @@ export const lineWidth = {
  */
 export const control = {
   chip: 32,
+  /** A diagram frame tab. 44 is the floor a finger wants, not a design step. */
+  tab: 44,
   segSmall: 34,
   mvchip: 36,
   seg2: 42,

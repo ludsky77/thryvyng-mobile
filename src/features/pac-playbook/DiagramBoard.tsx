@@ -21,9 +21,29 @@
  * drawn only while `0 < p < 1`. `null` is used instead of `diagTotal(d)`
  * because it cannot drift with the clock.
  *
- * FRAMES: a two-frame card shows its LAST frame, which is the frame
- * `tapTarget()` also reads (`diagram/tapTarget.ts:25`). The picture and the
- * hit test must never disagree about which frame is on screen.
+ * FRAMES: by default a multi-frame card shows its LAST frame, which is the
+ * frame `tapTarget()` also reads (`diagram/tapTarget.ts:25`). The picture and
+ * the hit test must never disagree about which frame is on screen.
+ *
+ * `frame` AND `tt` — added by PLAYBOOK-DIAGRAM-TABS, and both default to the
+ * behaviour above, so every existing caller is unchanged:
+ *
+ *   `frame`  which frame to draw, for the reader's tab row (`CardBoard`).
+ *            Out-of-range values are CLAMPED rather than rejected: the frame
+ *            count is content, and content that grows a frame must not be able
+ *            to blank a board.
+ *   `tt`     the renderer's own clock in ms, for the tab row's beat-by-beat
+ *            playback. `undefined` / `null` is "the finished picture", the
+ *            renderer's own documented value for it (`renderDiagram.ts:13`)
+ *            and what every caller before this one passed.
+ *
+ * THE HIT TEST STILL READS THE LAST FRAME, deliberately. `tg` below is
+ * `tapTarget(block)` whatever `frame` says, because the SERVER regrades a tap
+ * by that same rule (`tapTarget.ts:6-9`) and a client that scored against a
+ * different frame would disagree with it. The two cannot drift in practice:
+ * `onTap` is the quiz's, `frame` is the reader's, and nothing passes both —
+ * the quiz board never renders a tab row. If a future caller ever needs both,
+ * the fix is on the server's side of the rule, not here.
  *
  * THE HIT TEST IS GEOMETRY, NOT THE DOM. The web reads `data-el` attributes
  * back out of the DOM; `SvgXml` drops them and React Native has no DOM. It
@@ -110,6 +130,17 @@ export interface DiagramBoardProps {
   /** The diagram content — the mirrored `diagram/types.ts` shape. */
   block: DiagramBlock;
   lang: Lang;
+  /**
+   * Which frame of a multi-frame block to draw. Clamped into range; the
+   * default is the LAST frame, which is what every caller before
+   * PLAYBOOK-DIAGRAM-TABS got. Ignored by a block with no frames.
+   */
+  frame?: number;
+  /**
+   * The renderer's clock, in ms. `null` / omitted is the finished picture —
+   * see the header. Only `CardBoard`'s tab playback passes a number.
+   */
+  tt?: number | null;
   /** Heat blobs under the elements (the positions card). */
   heat?: HeatBlob[];
   /** Shirt number to spotlight; every other `pos-*` element dims. */
@@ -136,13 +167,14 @@ export interface DiagramBoardHandle {
 }
 
 export const DiagramBoard = forwardRef<DiagramBoardHandle, DiagramBoardProps>(function DiagramBoard(
-  { block, lang, heat, dim, target, onTap },
+  { block, lang, frame, tt, heat, dim, target, onTap },
   ref
 ) {
-  // A two-frame card's finished picture is its last frame — the same frame
-  // tapTarget() reads.
-  const shown: Diagram = block.frames?.length
-    ? block.frames[block.frames.length - 1].d
+  // A multi-frame card's default picture is its LAST frame — the same frame
+  // tapTarget() reads. `frame` overrides that for the reader's tabs only.
+  const frames = block.frames;
+  const shown: Diagram = frames?.length
+    ? frames[Math.min(Math.max(0, Math.trunc(frame ?? frames.length - 1)), frames.length - 1)].d
     : block;
 
   const [w, h] = useMemo(() => dims(shown), [shown]);
@@ -150,8 +182,8 @@ export const DiagramBoard = forwardRef<DiagramBoardHandle, DiagramBoardProps>(fu
   // ONE parse per content change: the string is memoized here and SvgXml
   // memoizes its parse on the string identity (`react-native-svg/src/xml.tsx`).
   const xml = useMemo(
-    () => render(shown, null, { lang, heat, dim, target: target ?? null }),
-    [shown, lang, heat, dim, target]
+    () => render(shown, tt ?? null, { lang, heat, dim, target: target ?? null }),
+    [shown, tt, lang, heat, dim, target]
   );
 
   const tg = useMemo(() => tapTarget(block), [block]);

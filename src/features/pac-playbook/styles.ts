@@ -778,11 +778,27 @@ export const pbk = StyleSheet.create({
     textTransform: 'uppercase',
     color: color.mute,
   },
-  /** `.board .cap` — a frame's caption, bottom-left. */
+  /**
+   * `.board .cap` — a frame's caption, bottom-left.
+   *
+   * TWO NUMBERS CHANGED BY PLAYBOOK-DIAGRAM-TABS, and both fix the same
+   * pre-existing clip. The caption is absolute inside `frame`, whose last
+   * child is the `tray` (8 high, 5 above it) — so at `bottom: 8` the pill sat
+   * ON the ledge, and the ledge, being the later sibling, painted over its
+   * descenders. `20` clears the tray and lands the pill just inside the
+   * board's own bottom edge, where it was meant to be.
+   *
+   * `right` existed nowhere, so a long caption — "Ring 1 on the ball · ring 2
+   * around it · ring 3 shapes the rest" — ran one line off the frame. It now
+   * wraps. This was always true of the six two-frame cards; it was simply
+   * never looked at, because until the tab row there was no way to see any
+   * caption but the last frame's.
+   */
   boardCap: {
     position: 'absolute',
     left: space.px10,
-    bottom: space.px8,
+    right: space.px10,
+    bottom: space.px20,
     backgroundColor: 'rgba(11, 18, 32, 0.85)',
     borderRadius: radius.pill,
     paddingVertical: space.px3,
@@ -836,6 +852,100 @@ export const pbk = StyleSheet.create({
     lineHeight: line(fs.dense, lh.tight),
   },
   beatTextOn: { color: color.board },
+
+  /* ---------------------------------------------------- the frame tab row */
+
+  /**
+   * `dtabs` / `dtab` — PLAYBOOK-DIAGRAM-TABS.
+   *
+   * A multi-frame card's frames were drawn one at a time with no way to reach
+   * the others (the board showed the LAST, `DiagramBoard`'s own default), so
+   * frame 1 of every two-frame card in the book was unreachable. These are the
+   * doors to them.
+   *
+   * THE HEIGHT IS A TAP TARGET, NOT A DESIGN STEP. `control.tab` is 44 —
+   * the floor a finger wants — where the book's other small controls sit at
+   * 32-42 (`control.chip`, `control.mvchip`, `control.seg2`). A tab is the one
+   * control here that a reader presses repeatedly while reading, so it is the
+   * one that gets the floor rather than the rhythm.
+   *
+   * THE ACTIVE TAB'S COLOUR IS NOT HERE. It is the card's SECTION tone, passed
+   * in and applied inline, by ruling PLAYBOOK-SECTION-RAIL — the same tone the
+   * card's kicker and its row's pip already wear. A card outside any section
+   * has no tone and the active tab falls back to `chalk`, which is what every
+   * other "on" state in the book uses (`beatCellOn`, `seg2On`, `mvchipOn`).
+   */
+  dtabs: { flexDirection: 'row', gap: space.px6 },
+  dtab: {
+    flex: 1,
+    minHeight: control.tab,
+    borderRadius: radius.control,
+    backgroundColor: color.card,
+    borderWidth: lineWidth.hairline,
+    borderColor: color.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: space.px4,
+    gap: space.px1,
+  },
+  dtabOn: { backgroundColor: color.chalk, borderColor: color.chalk },
+  dtabText: { fontFamily: ff.extrabold, fontSize: fs.headerTitle, color: color.chalk2 },
+  dtabOnText: { color: color.board },
+
+  /* ------------------------------------------------- the keeper angle board */
+
+  /**
+   * `kp*` — PLAYBOOK-KEEPER-ANGLE, the keeper's own panel.
+   *
+   * Built from the movement panel's parts wherever one fits — the board frame
+   * is `frame` + `tray`, the mode chips are `mvchip`, the zone sentence is
+   * `rolepanel`'s shape — so the two interactive boards in the book read as
+   * one thing. What is new is the READOUT ROW: three numbers the reader
+   * watches change as they drag, which no other panel has.
+   */
+  kpboard: {
+    width: '100%',
+    backgroundColor: color.board,
+    borderRadius: radius.control,
+    borderWidth: lineWidth.hairline,
+    borderColor: color.line2,
+    overflow: 'hidden',
+  },
+  kpreadouts: { flexDirection: 'row', gap: space.px6 },
+  kpcell: {
+    flex: 1,
+    backgroundColor: color.card,
+    borderRadius: radius.control,
+    borderWidth: lineWidth.hairline,
+    borderColor: color.line,
+    paddingVertical: space.px8,
+    paddingHorizontal: space.px6,
+    alignItems: 'center',
+    gap: space.px2,
+  },
+  kpcellLabel: {
+    fontFamily: ff.bold,
+    fontSize: fs.micro,
+    letterSpacing: track(fs.micro, ls.capsWider),
+    textTransform: 'uppercase',
+    color: color.mute,
+    textAlign: 'center',
+  },
+  kpcellValue: { fontFamily: ff.extrabold, fontSize: fs.panelName, color: color.chalk },
+  kppresets: { flexDirection: 'row', flexWrap: 'wrap', gap: space.px6 },
+  kppreset: {
+    flexGrow: 1,
+    flexBasis: '46%',
+    minHeight: control.tab,
+    borderRadius: radius.control,
+    backgroundColor: color.card,
+    borderWidth: lineWidth.hairline,
+    borderColor: color.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: space.px8,
+  },
+  kppresetText: { fontFamily: ff.bold, fontSize: fs.meta, color: color.chalk2, textAlign: 'center' },
 
   /** `.cueline` — "Your cue", with the ringed dot. */
   cueline: { flexDirection: 'row', gap: space.px10, alignItems: 'flex-start' },

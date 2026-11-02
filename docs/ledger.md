@@ -705,11 +705,13 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
     — if a playbook colour changes, `grep -rn "#1c2637\|#10b981" src/` finds every
     one.**
 
-## Landed — Nov 1 2026 (Playbook launch flip, AGENT-ONLY)
+## Landed — Nov 1 2026 (Playbook launch flip, VERIFIED-DEVICE)
 
 - **PLAYBOOK-LIVE-FLIP · mobile launch switch flipped ON · landed 2026-11-01 ·
-  AGENT-ONLY — VERIFICATION PENDING (no device or simulator has opened the app at
-  `PLAYBOOK_LIVE = true`).** `src/constants/playbookLaunch.ts:55` —
+  VERIFIED-DEVICE 2026-11-01 ~17:56 (Lu) — iOS simulator, cold relaunch, fresh Metro
+  bundle, signed in as `+zztest7`; the Courses Playbook card shows and OPENS, with
+  `PLAYBOOK_LIVE` as the only gate (the `__DEV__` override is gone, so this is the
+  released path, not a dev path).** `src/constants/playbookLaunch.ts:55` —
   `PLAYBOOK_LIVE = false` → `true`. (Build proof at landing: typecheck 5 pre-existing
   `src/components/games/*` errors / 0 new · eslint 0 errors + 0 new warnings ·
   `expo export --platform ios` exit 0.)
@@ -733,4 +735,5 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
     override this flip removed. Metro still folds it out of a production bundle.
   - Carried from the Nov 1 device test and still open: staff-refusal look (P0041/P0046) ·
     calendar +13 look. Both are UNVERIFIED-DEVICE and unaffected by the flip.
-  - Source: this flip's session, 2026-11-01; flag file's own header comment.
+  - Source: this flip's session, 2026-11-01; flag file's own header comment; Lu's simulator
+    run 2026-11-01 ~17:56.

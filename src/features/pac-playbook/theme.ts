@@ -27,11 +27,13 @@
  *     box is larger than that value.
  *
  * NOT CARRIED, deliberately:
- *  - **No `fontFamily`.** Ruling E-R3 = A: the first mobile build uses the
- *    system font, so Archivo is not loaded and `expo-font` is not a
- *    dependency. The web's `--sans` stack is therefore absent rather than
- *    translated — an absent key cannot be half-applied. If E-R3 is revisited,
- *    a `fontFamily` block is added here and nowhere else.
+ *  - **No `--sans` STACK.** The web's `--sans` is a fallback chain
+ *    (`'Archivo','Helvetica Neue',Helvetica,Arial,system-ui,sans-serif`); RN's
+ *    `fontFamily` takes ONE name and has no chain, so there is nothing to
+ *    translate. The single name is in `fontFamily` below, and the fallback is
+ *    RN's own: an unresolved name renders the system font. Ruling E-R3 was
+ *    revisited in M6 — Archivo IS now loaded, by `font.ts`, and this is the
+ *    one place its faces are written down, as that ruling's note required.
  *  - **No chalkboard texture.** The page background is four stacked
  *    gradients (two radial pools over a two-axis ruled weave). RN cannot
  *    express it in a style object; it is a rebuild question for M3, not a
@@ -148,10 +150,14 @@ export const fontSize = {
 } as const;
 
 /**
- * RN takes `fontWeight` as a string. The system font supplies what it has:
- * 800 and 700 may render as the same face on some devices, which is a
- * cost of ruling E-R3 = A and is why the design's own 700/800 split is kept
- * here rather than collapsed — it comes back for free if Archivo lands.
+ * The design's own weights, as RN spells them (a string).
+ *
+ * SINCE M6 THESE ARE A RECORD, NOT A STYLE. Archivo is loaded as four
+ * SEPARATE faces and the face carries the weight, so Playbook text sets
+ * `fontFamily` (below) and NOT `fontWeight` — see `fontFamily`'s note for why
+ * setting both is actively wrong. These names stay because they are what the
+ * stylesheet says, they key `fontFamily`, and they are the fallback the
+ * system font would need if Archivo were ever dropped again.
  */
 export const fontWeight = {
   regular: '400', //    2 uses: the coach's aside, a list's small print
@@ -159,6 +165,55 @@ export const fontWeight = {
   semibold: '600', //   11 uses: chips, segment labels
   bold: '700', //       34 uses: labels, buttons, eyebrows
   extrabold: '800', //  33 uses: every heading and numeral
+} as const;
+
+/**
+ * Archivo, the frozen design's typeface — ONE FAMILY NAME PER WEIGHT.
+ *
+ * The web loads exactly four faces, and no others
+ * (`thrive-and-score` `src/features/pac-playbook/loadPlaybookFont.ts:33`):
+ *
+ *   https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700;800
+ *
+ * No italics: `playbook.css` has not one `font-style:italic`. The four here
+ * are those four, keyed by the `fontWeight` name that asks for them, so a
+ * style reads `fontFamily: ff.extrabold` where it used to read
+ * `fontWeight: fw.extrabold` and the two cannot drift apart.
+ *
+ * WHY A FAMILY PER WEIGHT, AND WHY NEVER ALSO `fontWeight`. `expo-font`
+ * registers each face under its own alias at ONE style:
+ * `ReactFontManager.getInstance().setTypeface(name, Typeface.NORMAL, face)`
+ * (`expo-font@14.0.12`, `android/src/main/java/expo/modules/font/
+ * FontLoaderModule.kt:57`). So the alias `Archivo_700Bold` is known to Android
+ * only as a NORMAL-style face. Asking for `fontWeight:'700'` on top of it
+ * makes Android look for a bold face under that alias, find none, and
+ * SYNTHESISE one over a face that is already bold — a smeared double-bold.
+ * iOS resolves the alias to a single PostScript name instead
+ * (`ios/FontLoaderModule.swift`, `FontFamilyAliasManager.setAlias`), so the
+ * two platforms would not even disagree the same way. The weight therefore
+ * lives in the name and nowhere else.
+ *
+ * THE ONE MAPPING THAT IS NOT ONE-TO-ONE: `semibold` (600). The stylesheet
+ * asks for 600 in 11 places but the web never loads a 600 face, so the
+ * browser resolves it by CSS font matching — for a desired 600, faces heavier
+ * than 600 are tried first, ascending — and paints those 11 rules in Archivo
+ * 700 Bold. Mapping `semibold` to `Archivo_700Bold` is therefore what the web
+ * ACTUALLY renders. `@expo-google-fonts/archivo` does ship a real
+ * `Archivo_600SemiBold`; using it would give mobile a weight the frozen design
+ * does not have. Mirror first — so 600 points at Bold, and the chips and
+ * segment labels sit at the same weight as the labels around them, exactly as
+ * they do on the web.
+ *
+ * These strings are the aliases `font.ts` registers. They are the only names
+ * RN will resolve; a typo renders the system font silently, which is why
+ * nothing outside this file spells them out.
+ */
+export const fontFamily = {
+  regular: 'Archivo_400Regular', //      400 — body prose
+  medium: 'Archivo_500Medium', //        500 — counts, muted sub-lines
+  semibold: 'Archivo_700Bold', //        600 → 700, see the note above
+  bold: 'Archivo_700Bold', //            700 — labels, buttons, eyebrows
+  extrabold: 'Archivo_800ExtraBold', //  800 — every heading and numeral
 } as const;
 
 /**
@@ -341,6 +396,7 @@ export const playbookTheme = {
   typeUnit,
   fontSize,
   fontWeight,
+  fontFamily,
   lineHeightRatio,
   letterSpacingEm,
   radius,

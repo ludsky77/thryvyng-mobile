@@ -143,3 +143,54 @@ Three files changed: `src/screens/CoursesScreen.tsx`,
   SACRED fork QUESTION-KIND: the column does not exist, so the pills do not
   exist either and nothing was wired. The chips fork 4 fixes are the "About"
   chips — the chapter and its cards — which are what clipped.
+
+## M6 — which Archivo the web actually uses (read-only recon, Nov 1)
+Read in `~/Documents/thrive-and-score`, nothing written there.
+
+**Four weights, no italics.** The single source is the Google Fonts URL the web
+loads, `src/features/pac-playbook/loadPlaybookFont.ts:33`:
+
+    https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700;800&display=swap
+
+Same four in the frozen prototype's own `<head>`
+(`docs/playbook/pac-playbook-v2-FINAL-prototype.html:2`), and that file's own
+comment names their jobs: *"400 body, 500 the muted sub-lines, 700 labels and
+chips, 800 every title, number and board glyph."* The stack it feeds is
+`--sans:'Archivo','Helvetica Neue',Helvetica,Arial,system-ui,sans-serif`
+(`playbook.css:24`, repeated at `:389`).
+
+**No italics anywhere.** `grep -n "font-style\|italic" playbook.css` → no hits.
+So the 9 italic faces `@expo-google-fonts/archivo` ships are not design, and
+none is loaded on mobile.
+
+**THE ONE TRAP: the web asks for a weight it never loads.** `playbook.css` sets
+`font-weight:600` in 11 places (chips, segment labels) but 600 is NOT in that
+URL. The browser resolves it by CSS font matching — for a desired 600, faces
+heavier than 600 are tried first, ascending — so those 11 rules paint in
+**Archivo 700 Bold** on the web. Mobile mirrors the *result*: `theme.ts` maps
+`fontFamily.semibold → 'Archivo_700Bold'`. `@expo-google-fonts/archivo` does
+ship a real `Archivo_600SemiBold`, and using it would have given mobile a
+weight the frozen design does not have. Flagged for Lu — it is the one place
+where mirroring the web costs a visible distinction.
+
+### Bundle trap found while measuring (not a web finding)
+Importing the four names from the package ROOT bundles **all 18 faces**: the
+package's `index.js` is a barrel that `require()`s every weight at module
+scope. Measured with `npx expo export --platform ios`, which listed 18 `.ttf`s
+(2.2 MB of TTF in the package). Importing each face from its own subpath
+(`@expo-google-fonts/archivo/400Regular`, etc.) bundles exactly **4**.
+Re-measured after the change: 4 faces listed, export exit 0.
+
+### Gates — M6
+Files: `src/features/pac-playbook/{theme.ts,font.ts,styles.ts,PlaybookHeader.tsx,PlaybookScreen.tsx,panels/MovementPanel.tsx}`,
+`package.json`, `package-lock.json`, `app.json`.
+
+- `npx tsc --noEmit` → **5 errors, the same pre-existing `src/components/games/*`
+  five** (AnticipationArena ×2, DribbleRush ×2, PatternPlay ×1). **0 new.**
+- `ESLINT_USE_FLAT_CONFIG=false npx eslint <6 changed files>` → **0 errors**, 5
+  warnings, all `react-native/no-inline-styles` on lines this pass did not
+  write. Proven **0 new** with this doc's own stdin trick — each file's pristine
+  `HEAD` content piped through `eslint --stdin --stdin-filename <same path>`,
+  counts identical before and after (theme 0/0, styles 0/0, PlaybookHeader 0/0,
+  PlaybookScreen 2/2, MovementPanel 5/5). `font.ts` is new: 0 problems.
+- `npx expo export --platform ios` → **exit 0**, one iOS bundle (9.32 MB).

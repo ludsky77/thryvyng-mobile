@@ -40,8 +40,8 @@ import { StyleSheet } from 'react-native';
 import {
   color,
   control,
+  fontFamily as ff,
   fontSize as fs,
-  fontWeight as fw,
   layout,
   letterSpacingEm as ls,
   lineHeightRatio as lh,
@@ -111,7 +111,7 @@ export const pbk = StyleSheet.create({
   },
   tapeText: {
     color: color.tapeInk,
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     fontSize: fs.meta,
     letterSpacing: track(fs.meta, ls.tape),
     textTransform: 'uppercase',
@@ -142,7 +142,7 @@ export const pbk = StyleSheet.create({
   },
   stampText: {
     color: color.dim,
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     fontSize: fs.micro,
     letterSpacing: track(fs.micro, ls.capsWide),
     textTransform: 'uppercase',
@@ -159,7 +159,7 @@ export const pbk = StyleSheet.create({
   one: { fontSize: fs.body, lineHeight: line(fs.body, lh.loose), color: color.chalk },
   oneMute: { fontSize: fs.lead, lineHeight: line(fs.lead, lh.loose), color: color.chalk2 },
   blockLabel: {
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     fontSize: fs.meta,
     letterSpacing: track(fs.meta, ls.capsWidest),
     textTransform: 'uppercase',
@@ -168,7 +168,7 @@ export const pbk = StyleSheet.create({
   },
 
   /** `b.hl` — `fmt()`'s bold green key term. */
-  hl: { color: color.green, fontWeight: fw.extrabold },
+  hl: { color: color.green, fontFamily: ff.extrabold },
 
   /** `.index` — dashed rules between rows, none after the last. */
   index: {},
@@ -187,7 +187,7 @@ export const pbk = StyleSheet.create({
   },
   rowNum: {
     width: 34,
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     fontSize: fs.meta,
     letterSpacing: track(fs.meta, ls.capsWider),
     color: color.dim,
@@ -195,7 +195,7 @@ export const pbk = StyleSheet.create({
   },
   rowBody: { flex: 1, minWidth: 0 },
   rowName: {
-    fontWeight: fw.extrabold,
+    fontFamily: ff.extrabold,
     fontSize: fs.rowName,
     lineHeight: line(fs.rowName, lh.snug),
     letterSpacing: track(fs.rowName, ls.heading),
@@ -203,7 +203,7 @@ export const pbk = StyleSheet.create({
   },
   rowNameSm: { fontSize: fs.headerTitle, lineHeight: line(fs.headerTitle, lh.snug) },
   rowEm: {
-    fontWeight: fw.medium,
+    fontFamily: ff.medium,
     fontSize: fs.secondary,
     color: color.mute,
     letterSpacing: 0,
@@ -217,7 +217,7 @@ export const pbk = StyleSheet.create({
   rowChev: {
     width: 22,
     textAlign: 'right',
-    fontWeight: fw.medium,
+    fontFamily: ff.medium,
     fontSize: fs.question,
     lineHeight: line(fs.question, lh.solid),
     color: color.dim,
@@ -234,7 +234,7 @@ export const pbk = StyleSheet.create({
     overflow: 'hidden',
   },
   barFill: { height: '100%', backgroundColor: color.green, borderRadius: radius.xs },
-  pct: { fontWeight: fw.medium, fontSize: fs.meta, color: color.chalk2 },
+  pct: { fontFamily: ff.medium, fontSize: fs.meta, color: color.chalk2 },
   pctZero: { color: color.dim },
 
   /** `.row .st` — the ✓ / dashed "next" pip. */
@@ -249,7 +249,7 @@ export const pbk = StyleSheet.create({
     justifyContent: 'center',
   },
   stOk: { backgroundColor: color.green, borderColor: color.green },
-  stOkText: { color: color.greenInk, fontSize: fs.micro, fontWeight: fw.extrabold },
+  stOkText: { color: color.greenInk, fontSize: fs.micro, fontFamily: ff.extrabold },
   stNext: { borderColor: color.green, borderStyle: 'dashed' },
 
   /** `.secttl` / `.subdesc` */
@@ -261,17 +261,17 @@ export const pbk = StyleSheet.create({
     marginHorizontal: space.px2,
   },
   secttlText: {
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     fontSize: fs.meta,
     letterSpacing: track(fs.meta, ls.capsWidest),
     textTransform: 'uppercase',
     color: color.mute,
   },
-  secttlSmall: { fontWeight: fw.medium, fontSize: fs.meta, color: color.dim, letterSpacing: 0 },
+  secttlSmall: { fontFamily: ff.medium, fontSize: fs.meta, color: color.dim, letterSpacing: 0 },
   subdesc: { fontSize: fs.secondary, color: color.dim, marginHorizontal: space.px2 },
 
   /** `.count` — the "n of m cards read" line. */
-  count: { fontWeight: fw.medium, fontSize: fs.meta, color: color.mute, marginHorizontal: space.px2 },
+  count: { fontFamily: ff.medium, fontSize: fs.meta, color: color.mute, marginHorizontal: space.px2 },
 
   /** `.snote` — the search result count / empty note. */
   snote: { fontSize: fs.meta, color: color.mute, marginHorizontal: space.px2 },
@@ -326,12 +326,12 @@ export const pbk = StyleSheet.create({
     width: '100%',
   },
   btnText: {
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     fontSize: fs.button,
     letterSpacing: track(fs.button, ls.button),
     textAlign: 'center',
   },
-  btnSmall: { fontWeight: fw.medium, fontSize: fs.lead, opacity: 0.9 },
+  btnSmall: { fontFamily: ff.medium, fontSize: fs.lead, opacity: 0.9 },
   btnPrimary: {
     backgroundColor: color.green,
     shadowColor: color.green,
@@ -383,7 +383,7 @@ export const pbk = StyleSheet.create({
     backgroundColor: color.card,
     alignSelf: 'flex-start',
   },
-  chipText: { fontWeight: fw.semibold, fontSize: fs.meta, color: color.chalk2 },
+  chipText: { fontFamily: ff.semibold, fontSize: fs.meta, color: color.chalk2 },
   chipGreen: { backgroundColor: color.greenDim, borderColor: color.green },
   chipGreenText: { color: color.green },
 
@@ -395,7 +395,7 @@ export const pbk = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  medalText: { fontWeight: fw.extrabold, fontSize: fs.medal, color: '#1b1403' },
+  medalText: { fontFamily: ff.extrabold, fontSize: fs.medal, color: '#1b1403' },
   medalGold: { backgroundColor: color.gold },
   medalSilver: { backgroundColor: color.silver },
   medalNone: { backgroundColor: color.line2 },
@@ -406,11 +406,11 @@ export const pbk = StyleSheet.create({
   crumb: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.px6 },
   crumbText: {
     fontSize: fs.meta,
-    fontWeight: fw.medium,
+    fontFamily: ff.medium,
     color: color.mute,
     lineHeight: line(fs.meta, lh.text),
   },
-  crumbStrong: { fontWeight: fw.bold, color: color.chalk2 },
+  crumbStrong: { fontFamily: ff.bold, color: color.chalk2 },
   crumbTag: {
     marginLeft: 'auto',
     borderWidth: lineWidth.hairline,
@@ -420,7 +420,7 @@ export const pbk = StyleSheet.create({
     paddingVertical: space.px1,
   },
   crumbTagText: {
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     fontSize: fs.micro,
     letterSpacing: track(fs.micro, ls.capsWide),
     color: color.dim,
@@ -446,7 +446,7 @@ export const pbk = StyleSheet.create({
     transform: [{ rotate: '-4deg' }],
   },
   title: {
-    fontWeight: fw.extrabold,
+    fontFamily: ff.extrabold,
     fontSize: fs.cardTitle,
     lineHeight: line(fs.cardTitle, lh.tightest),
     letterSpacing: track(fs.cardTitle, ls.headingLg),
@@ -459,7 +459,7 @@ export const pbk = StyleSheet.create({
     marginTop: space.px6,
     marginRight: '6%',
   },
-  titleEs: { marginTop: space.px8, fontSize: fs.button, fontWeight: fw.medium, color: color.mute },
+  titleEs: { marginTop: space.px8, fontSize: fs.button, fontFamily: ff.medium, color: color.mute },
 
   /** `.cuechip` — the pill around a cue word. */
   cuechip: {
@@ -473,9 +473,9 @@ export const pbk = StyleSheet.create({
     paddingVertical: space.px6,
     paddingHorizontal: space.px16,
   },
-  cuechipText: { fontWeight: fw.extrabold, fontSize: fs.headerTitle, color: color.chalk },
+  cuechipText: { fontFamily: ff.extrabold, fontSize: fs.headerTitle, color: color.chalk },
   cuechipSmall: {
-    fontWeight: fw.semibold,
+    fontFamily: ff.semibold,
     fontSize: fs.micro,
     letterSpacing: track(fs.micro, ls.capsWider),
     textTransform: 'uppercase',
@@ -512,7 +512,7 @@ export const pbk = StyleSheet.create({
     color: color.pinkText,
     fontSize: fs.secondary,
     lineHeight: line(fs.secondary, lh.prose),
-    fontWeight: fw.medium,
+    fontFamily: ff.medium,
   },
 
   /** `.auth` — the byline strip at the foot of a card. */
@@ -528,7 +528,7 @@ export const pbk = StyleSheet.create({
     backgroundColor: color.card,
   },
   authText: {
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     fontSize: fs.dense,
     letterSpacing: track(fs.dense, ls.capsWide),
     textTransform: 'uppercase',
@@ -571,7 +571,7 @@ export const pbk = StyleSheet.create({
     borderColor: color.line,
   },
   verbName: {
-    fontWeight: fw.extrabold,
+    fontFamily: ff.extrabold,
     fontSize: fs.lead,
     lineHeight: line(fs.lead, lh.solid),
     color: color.chalk,
@@ -587,7 +587,7 @@ export const pbk = StyleSheet.create({
     borderWidth: lineWidth.hairline,
     borderColor: color.line,
   },
-  reasonName: { fontWeight: fw.extrabold, fontSize: fs.lead, color: color.green },
+  reasonName: { fontFamily: ff.extrabold, fontSize: fs.lead, color: color.green },
 
   /** `.linkbox` / `.linkchip` — "See also" and its green chips. */
   linkbox: {
@@ -611,13 +611,13 @@ export const pbk = StyleSheet.create({
     gap: space.px1,
   },
   linkchipEyebrow: {
-    fontWeight: fw.semibold,
+    fontFamily: ff.semibold,
     fontSize: fs.tiny,
     letterSpacing: track(fs.tiny, ls.capsWide),
     textTransform: 'uppercase',
     color: color.green,
   },
-  linkchipText: { fontWeight: fw.bold, fontSize: fs.linkchip, color: color.chalk },
+  linkchipText: { fontFamily: ff.bold, fontSize: fs.linkchip, color: color.chalk },
 
   /** `.trailbar` — "‹ Back to <card>" after following a green chip. */
   trailbar: {
@@ -631,7 +631,7 @@ export const pbk = StyleSheet.create({
     paddingVertical: space.px9,
     paddingHorizontal: space.px12,
   },
-  trailbarText: { color: '#d9d3ff', fontSize: fs.secondary, fontWeight: fw.semibold },
+  trailbarText: { color: '#d9d3ff', fontSize: fs.secondary, fontFamily: ff.semibold },
 
   /** `.ptrs` — the "Pointers" bullet list. */
   ptrs: { marginTop: space.px4, gap: space.px3 },
@@ -640,10 +640,10 @@ export const pbk = StyleSheet.create({
   /** `.cardbar` — `grid-template-columns:52px minmax(0,1.15fr) minmax(0,1fr)`. */
   cardbar: { flexDirection: 'row', gap: space.px8 },
   cardbarIcon: { width: 52, flexGrow: 0, flexShrink: 0, paddingHorizontal: 0 },
-  cardbarIconText: { fontSize: fs.question, fontWeight: fw.bold },
+  cardbarIconText: { fontSize: fs.question, fontFamily: ff.bold },
   cardbarMid: { flex: 1.15 },
   cardbarNext: { flex: 1, flexDirection: 'column', gap: 0, paddingHorizontal: space.px10 },
-  cardbarNextSmall: { fontWeight: fw.semibold, fontSize: fs.micro, opacity: 0.85 },
+  cardbarNextSmall: { fontFamily: ff.semibold, fontSize: fs.micro, opacity: 0.85 },
 
   /* --------------------------------------------------------- the board chrome */
 
@@ -690,7 +690,7 @@ export const pbk = StyleSheet.create({
     paddingHorizontal: space.px9,
   },
   boardStText: {
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     fontSize: fs.micro,
     letterSpacing: track(fs.micro, ls.capsWider),
     textTransform: 'uppercase',
@@ -707,7 +707,7 @@ export const pbk = StyleSheet.create({
     paddingHorizontal: space.px9,
   },
   boardCapText: {
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     fontSize: fs.micro,
     letterSpacing: track(fs.micro, ls.caps),
     textTransform: 'uppercase',
@@ -726,10 +726,10 @@ export const pbk = StyleSheet.create({
   dbandLabel: {
     fontSize: fs.tiny,
     lineHeight: line(fs.tiny, lh.caption),
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     color: color.chalk2,
   },
-  dbandSub: { fontWeight: fw.medium, color: color.mute, fontSize: fs.tiny },
+  dbandSub: { fontFamily: ff.medium, color: color.mute, fontSize: fs.tiny },
 
   /** `.beats` — one cell per beat, all lit on a static board. */
   beats: { flexDirection: 'row', gap: space.px6 },
@@ -747,7 +747,7 @@ export const pbk = StyleSheet.create({
   },
   beatCellOn: { backgroundColor: color.chalk, borderColor: color.chalk },
   beatText: {
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     fontSize: fs.dense,
     color: color.mute,
     textAlign: 'center',
@@ -774,7 +774,7 @@ export const pbk = StyleSheet.create({
   /** `.legend` — us / them / pass / run. */
   legend: { flexDirection: 'row', flexWrap: 'wrap', rowGap: space.px6, columnGap: space.px14 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: space.px6 },
-  legendText: { fontSize: fs.meta, fontWeight: fw.medium, color: color.mute },
+  legendText: { fontSize: fs.meta, fontFamily: ff.medium, color: color.mute },
   lgDot: { width: space.px10, height: space.px10, borderRadius: space.px5 },
   lgLine: { width: 18, borderTopWidth: lineWidth.thick, borderTopColor: color.chalk2 },
   lgLineDash: { borderStyle: 'dashed' },
@@ -803,9 +803,9 @@ export const pbk = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iscKeyText: { color: color.green, fontWeight: fw.extrabold, fontSize: fs.secondary },
-  iscName: { fontWeight: fw.extrabold, fontSize: fs.secondary, color: color.chalk },
-  iscSmall: { fontWeight: fw.medium, fontSize: fs.micro, color: color.mute },
+  iscKeyText: { color: color.green, fontFamily: ff.extrabold, fontSize: fs.secondary },
+  iscName: { fontFamily: ff.extrabold, fontSize: fs.secondary, color: color.chalk },
+  iscSmall: { fontFamily: ff.medium, fontSize: fs.micro, color: color.mute },
 
   /* ------------------------------------------------------------ the panels */
 
@@ -823,7 +823,7 @@ export const pbk = StyleSheet.create({
     paddingHorizontal: space.px6,
   },
   seg2Small: { minHeight: control.segSmall },
-  seg2Text: { fontWeight: fw.bold, fontSize: fs.lead, color: color.chalk2, textAlign: 'center' },
+  seg2Text: { fontFamily: ff.bold, fontSize: fs.lead, color: color.chalk2, textAlign: 'center' },
   seg2SmallText: { fontSize: fs.meta },
   seg2On: { backgroundColor: color.chalk, borderColor: color.chalk },
   seg2OnText: { color: color.board },
@@ -831,7 +831,7 @@ export const pbk = StyleSheet.create({
 
   /** `.ramp` — the heat-map colour ramp. */
   ramp: { flexDirection: 'row', alignItems: 'center', gap: space.px10 },
-  rampText: { fontSize: fs.micro, color: color.mute, fontWeight: fw.semibold },
+  rampText: { fontSize: fs.micro, color: color.mute, fontFamily: ff.semibold },
 
   /** `.rolepanel` — the shirt-number disc and its paragraph. */
   rolepanel: {
@@ -853,10 +853,10 @@ export const pbk = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rolepanelNumText: { color: color.greenInk, fontWeight: fw.extrabold, fontSize: fs.panelName },
+  rolepanelNumText: { color: color.greenInk, fontFamily: ff.extrabold, fontSize: fs.panelName },
   rolepanelBody: { flex: 1, minWidth: 0 },
   rolepanelLabel: {
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     fontSize: fs.meta,
     letterSpacing: track(fs.meta, ls.capsWide),
     textTransform: 'uppercase',
@@ -879,7 +879,7 @@ export const pbk = StyleSheet.create({
     paddingVertical: space.px3,
     paddingHorizontal: space.px10,
   },
-  keyPillText: { fontSize: fs.dense, fontWeight: fw.bold, color: color.chalk2 },
+  keyPillText: { fontSize: fs.dense, fontFamily: ff.bold, color: color.chalk2 },
 
   /** `.numlist` — the shirt-numbers table. */
   numlist: { gap: space.px6 },
@@ -904,23 +904,23 @@ export const pbk = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  numlistNumText: { fontWeight: fw.extrabold, fontSize: fs.secondary, color: color.chalk },
+  numlistNumText: { fontFamily: ff.extrabold, fontSize: fs.secondary, color: color.chalk },
   numlistAbbr: {
     width: 42,
-    fontWeight: fw.extrabold,
+    fontFamily: ff.extrabold,
     fontSize: fs.meta,
     letterSpacing: track(fs.meta, ls.caps),
     color: color.green,
   },
   numlistName: {
     flex: 1,
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     fontSize: fs.lead,
     lineHeight: line(fs.lead, lh.compact),
     color: color.chalk,
   },
   numlistRole: {
-    fontWeight: fw.regular,
+    fontFamily: ff.regular,
     fontSize: fs.chipAlt,
     color: color.mute,
     lineHeight: line(fs.chipAlt, lh.option),
@@ -945,7 +945,7 @@ export const pbk = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  mvchipText: { fontWeight: fw.bold, fontSize: fs.chipAlt, color: color.chalk2 },
+  mvchipText: { fontFamily: ff.bold, fontSize: fs.chipAlt, color: color.chalk2 },
   mvchipOn: { backgroundColor: color.chalk, borderColor: color.chalk },
   mvchipOnText: { color: color.board },
   mvroles: { flexDirection: 'row', flexWrap: 'wrap', rowGap: space.px6, columnGap: space.px14 },
@@ -959,8 +959,8 @@ export const pbk = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  mvroleKeyText: { fontWeight: fw.extrabold, fontSize: fs.micro },
-  mvroleText: { fontSize: fs.meta, color: color.mute, fontWeight: fw.semibold },
+  mvroleKeyText: { fontFamily: ff.extrabold, fontSize: fs.micro },
+  mvroleText: { fontSize: fs.meta, color: color.mute, fontFamily: ff.semibold },
 
   /* -------------------------------------------------------------- the quiz */
 
@@ -968,7 +968,7 @@ export const pbk = StyleSheet.create({
   bug: { flexDirection: 'row', alignItems: 'center', gap: space.px10 },
   bugBody: { flex: 1, minWidth: 0 },
   bugTitle: {
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     fontSize: fs.meta,
     letterSpacing: track(fs.meta, ls.capsWider),
     textTransform: 'uppercase',
@@ -987,14 +987,14 @@ export const pbk = StyleSheet.create({
   qpipNo: { backgroundColor: color.bad, borderColor: color.bad },
   scoreBox: { alignItems: 'flex-end' },
   scoreLabel: {
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     fontSize: fs.tiny,
     letterSpacing: track(fs.tiny, ls.tape),
     textTransform: 'uppercase',
     color: color.mute,
   },
   scoreValue: {
-    fontWeight: fw.extrabold,
+    fontFamily: ff.extrabold,
     fontSize: fs.score,
     lineHeight: line(fs.score, lh.flush),
     color: color.chalk,
@@ -1007,7 +1007,7 @@ export const pbk = StyleSheet.create({
 
   /** `.q` — the question itself. */
   q: {
-    fontWeight: fw.extrabold,
+    fontFamily: ff.extrabold,
     fontSize: fs.question,
     lineHeight: line(fs.question, lh.snug),
     color: color.chalk,
@@ -1036,11 +1036,11 @@ export const pbk = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  optKeyText: { fontWeight: fw.extrabold, fontSize: fs.meta, color: color.mute },
+  optKeyText: { fontFamily: ff.extrabold, fontSize: fs.meta, color: color.mute },
   optText: {
     flex: 1,
     fontSize: fs.body,
-    fontWeight: fw.semibold,
+    fontFamily: ff.semibold,
     lineHeight: line(fs.body, lh.option),
     color: color.chalk,
   },
@@ -1074,7 +1074,7 @@ export const pbk = StyleSheet.create({
   coachDotBad: { backgroundColor: color.bad },
   coachBody: { flex: 1, minWidth: 0 },
   coachText: {
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     fontSize: fs.button,
     lineHeight: line(fs.button, lh.tight),
     color: color.chalk,
@@ -1082,7 +1082,7 @@ export const pbk = StyleSheet.create({
   coachTextGood: { color: color.green },
   coachTextBad: { color: color.bad },
   coachSmall: {
-    fontWeight: fw.regular,
+    fontFamily: ff.regular,
     fontSize: fs.secondary,
     color: color.mute,
     marginTop: space.px2,
@@ -1091,7 +1091,7 @@ export const pbk = StyleSheet.create({
   /** `.count3` — the 3-2-1 before the first question. */
   count3: { minHeight: 200, alignItems: 'center', justifyContent: 'center' },
   count3Text: {
-    fontWeight: fw.extrabold,
+    fontFamily: ff.extrabold,
     fontSize: fs.countdown,
     lineHeight: line(fs.countdown, lh.solid),
     color: color.green,
@@ -1100,7 +1100,7 @@ export const pbk = StyleSheet.create({
   /** `.res` — the results screen. */
   res: { alignItems: 'center', gap: space.px14, paddingTop: space.px18 },
   resBig: {
-    fontWeight: fw.extrabold,
+    fontFamily: ff.extrabold,
     fontSize: fs.resultBig,
     lineHeight: line(fs.resultBig, lh.solid),
     color: color.chalk,
@@ -1114,7 +1114,7 @@ export const pbk = StyleSheet.create({
     justifyContent: 'center',
   },
   medalbigText: {
-    fontWeight: fw.extrabold,
+    fontFamily: ff.extrabold,
     fontSize: fs.body,
     letterSpacing: track(fs.body, ls.capsWide),
     textTransform: 'uppercase',
@@ -1150,7 +1150,7 @@ export const pbk = StyleSheet.create({
   revchipOk: { borderColor: color.green },
   revchipNo: { borderColor: color.bad },
   revchipOn: { borderWidth: lineWidth.mid, backgroundColor: color.card2 },
-  revchipText: { fontWeight: fw.bold, fontSize: fs.meta, color: color.chalk2 },
+  revchipText: { fontFamily: ff.bold, fontSize: fs.meta, color: color.chalk2 },
   revchipTextOk: { color: color.green },
   revchipTextNo: { color: color.bad },
   revpanel: {
@@ -1164,21 +1164,21 @@ export const pbk = StyleSheet.create({
     paddingHorizontal: space.px14,
   },
   revmeta: {
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     fontSize: fs.micro,
     letterSpacing: track(fs.micro, ls.capsWider),
     textTransform: 'uppercase',
     color: color.dim,
   },
   revq: {
-    fontWeight: fw.extrabold,
+    fontFamily: ff.extrabold,
     fontSize: fs.button,
     lineHeight: line(fs.button, lh.snug),
     color: color.chalk,
   },
   revrow: { gap: space.px2 },
   revlabel: {
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     fontSize: fs.micro,
     letterSpacing: track(fs.micro, ls.capsWide),
     textTransform: 'uppercase',
@@ -1219,12 +1219,12 @@ export const pbk = StyleSheet.create({
   },
   hitEyebrow: {
     fontSize: fs.hitEyebrow,
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     letterSpacing: track(fs.hitEyebrow, ls.capsWide),
     textTransform: 'uppercase',
     color: color.green,
   },
-  hitName: { fontSize: fs.button, fontWeight: fw.extrabold, color: color.chalk },
+  hitName: { fontSize: fs.button, fontFamily: ff.extrabold, color: color.chalk },
   hitBody: { fontSize: fs.secondary, color: color.mute, lineHeight: line(fs.secondary, lh.text) },
   /** `.sres mark` — a matched word. */
   mark: { backgroundColor: 'rgba(16, 185, 129, 0.24)', color: color.chalk },
@@ -1233,7 +1233,7 @@ export const pbk = StyleSheet.create({
   field: { gap: space.px4 },
   fieldLabel: {
     fontSize: fs.micro,
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     letterSpacing: track(fs.micro, ls.capsWide),
     textTransform: 'uppercase',
     color: color.mute,
@@ -1278,7 +1278,7 @@ export const pbk = StyleSheet.create({
   qreply: { borderLeftWidth: lineWidth.accent, borderLeftColor: color.green, paddingLeft: space.px10, paddingVertical: space.px4 },
   qreplyLabel: {
     fontSize: fs.micro,
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     letterSpacing: track(fs.micro, ls.capsWider),
     textTransform: 'uppercase',
     color: color.green,
@@ -1299,7 +1299,7 @@ export const pbk = StyleSheet.create({
   cover: { gap: space.px14 },
   coverTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   coverTitle: {
-    fontWeight: fw.extrabold,
+    fontFamily: ff.extrabold,
     fontSize: fs.coverTitle,
     lineHeight: line(fs.coverTitle, lh.flush),
     letterSpacing: track(fs.coverTitle, ls.headingXl),
@@ -1313,7 +1313,7 @@ export const pbk = StyleSheet.create({
     marginTop: space.px2,
     marginRight: '60%',
   },
-  coverSub: { fontSize: fs.headerTitle, fontWeight: fw.semibold, color: color.chalk2 },
+  coverSub: { fontSize: fs.headerTitle, fontFamily: ff.semibold, color: color.chalk2 },
   coverLead: { fontSize: fs.body, lineHeight: line(fs.body, lh.loose), color: color.mute },
   coverHow: {
     borderWidth: lineWidth.hairline,
@@ -1334,9 +1334,9 @@ export const pbk = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  coverHowKeyText: { color: color.green, fontWeight: fw.extrabold, fontSize: fs.secondary },
+  coverHowKeyText: { color: color.green, fontFamily: ff.extrabold, fontSize: fs.secondary },
   coverHowBody: { flex: 1, minWidth: 0 },
-  coverHowName: { color: color.chalk, fontWeight: fw.bold, fontSize: fs.body },
+  coverHowName: { color: color.chalk, fontFamily: ff.bold, fontSize: fs.body },
   coverHowText: { color: color.mute, fontSize: fs.lead, lineHeight: line(fs.lead, lh.text) },
   coverChs: { flexDirection: 'row', flexWrap: 'wrap', gap: space.px6 },
   coverChip: {
@@ -1347,10 +1347,10 @@ export const pbk = StyleSheet.create({
     paddingVertical: space.px4,
     paddingHorizontal: space.px11,
   },
-  coverChipText: { fontSize: fs.meta, fontWeight: fw.bold, color: color.chalk2 },
+  coverChipText: { fontSize: fs.meta, fontFamily: ff.bold, color: color.chalk2 },
   coverBy: {
     fontSize: fs.dense,
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     letterSpacing: track(fs.dense, ls.capsWider),
     textTransform: 'uppercase',
     color: color.dim,

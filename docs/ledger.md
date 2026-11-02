@@ -737,3 +737,82 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
     calendar +13 look. Both are UNVERIFIED-DEVICE and unaffected by the flip.
   - Source: this flip's session, 2026-11-01; flag file's own header comment; Lu's simulator
     run 2026-11-01 ~17:56.
+
+- **PLAYBOOK-M6-ARCHIVO · Archivo wired into the mobile Playbook, that feature only ·
+  landed 2026-11-01 · AGENT-ONLY, VERIFICATION PENDING (not looked at on a device).**
+  The web's typeface now renders in the book on mobile. Ruling **E-R3 is revisited**:
+  it was A ("first mobile build uses the system font, Archivo is not loaded, `expo-font`
+  is not a dependency") and that is no longer true. `theme.ts`'s own note said a
+  `fontFamily` block would be "added here and nowhere else" if E-R3 were revisited —
+  that is what happened.
+  - **Weights: exactly the web's four, no italics.** 400 / 500 / 700 / 800, from the
+    Google Fonts URL the web loads (`thrive-and-score`
+    `src/features/pac-playbook/loadPlaybookFont.ts:33`). `playbook.css` has not one
+    `font-style:italic`. Full recon in `docs/recon/playbook-polish.md` § M6.
+  - **Packages added (2):** `expo-font@14.0.12` (promoted from a transitive dep of
+    `expo@54` to an explicit one by `npx expo install`, SDK-54 compatible) and
+    `@expo-google-fonts/archivo@0.4.2` (JS + `.ttf` assets only, **no native code**).
+  - **Loading route: the `useFonts` hook at the Playbook root, NOT the config plugin.**
+    `src/features/pac-playbook/font.ts` is imported only by `PlaybookScreen`, so the
+    faces are registered the first time the book is opened and never for anyone who
+    does not open it — the standing "Playbook must not slow app open" ruling, and the
+    same reason the web keeps its `<link>` out of `index.html`. The plugin route was
+    rejected because its `fonts` option copies files into the native project, so
+    nothing would render until a new EAS build and every weight change would cost one.
+  - **DEFAULT TAKEN — `app.json` gained a bare `"expo-font"` plugin entry.** Added
+    automatically by `npx expo install`, not by hand. With **no `fonts` array it
+    configures nothing and is inert**; it was kept rather than reverted because it is
+    the installer's canonical output and is the hook if native-embedded fonts are ever
+    wanted. Safe to delete if Lu prefers `app.json` untouched.
+  - **DEFAULT TAKEN — styles now name a FACE and carry NO `fontWeight`.** 83 sites
+    swapped `fontWeight: fw.X` → `fontFamily: ff.X` (styles.ts 79, PlaybookHeader 4),
+    plus 2 `react-native-svg` glyph labels in `panels/MovementPanel.tsx`. **Setting
+    both would be a bug, from source:** `expo-font` registers each alias at one style
+    only — `ReactFontManager.getInstance().setTypeface(name, Typeface.NORMAL, face)`
+    (`expo-font@14.0.12`, `android/src/main/java/expo/modules/font/FontLoaderModule.kt:57`)
+    — so `fontWeight:'700'` on top of the `Archivo_700Bold` alias makes Android
+    synthesise a bold over a face that is already bold. iOS resolves the alias to a
+    single PostScript name instead (`ios/FontLoaderModule.swift`), so the platforms
+    would not even disagree the same way. **Cost of this route:** if the faces ever
+    fail to register, the book reads *flat* (system regular, no weight hierarchy)
+    rather than wrong. The faces are bundled, so that is a belt-and-braces path.
+  - **DEFAULT TAKEN — 600 maps to 700, mirroring the web.** `playbook.css` asks for
+    `font-weight:600` in 11 places (chips, segment labels) but the web never loads a
+    600 face, so a browser paints those 11 rules in Archivo 700 Bold. `fontFamily`
+    mirrors that result. **A real `Archivo_600SemiBold` IS available** in the package;
+    using it would give mobile a weight the frozen design does not have. **This is the
+    one spot where mirroring costs a visible distinction — Lu's call to override.**
+  - **No flash, and app open is untouched.** The gate sits at the Playbook ROOT, above
+    the header, and its placeholder is the page colour with **no text** — the one thing
+    that cannot re-paint. It costs at most one frame, and only on the first open of an
+    app session: `useFonts` seeds its state from a synchronous `isLoaded` check
+    (`expo-font/src/FontHooks.ts:18`), so every later open is already ready on the
+    first render.
+  - **BUNDLE TRAP, found and fixed while measuring.** Importing the four names from the
+    package ROOT bundles **all 18 faces** — `index.js` is a barrel that `require()`s
+    every weight. `expo export` listed 18 `.ttf`s. `font.ts` imports each face from its
+    own subpath (`@expo-google-fonts/archivo/400Regular`, …); re-measured, **4**.
+  - **DEV CLIENT: no new EAS build needed — Archivo renders over Metro now.**
+    `expo-font`'s native module is ALREADY compiled into the dev client on the
+    simulator. Evidence, not inference: `nm -a` on the installed
+    `thryvyngmobile.app/thryvyngmobile.debug.dylib` (device `DEEE9FA3`, bundle
+    `B57C94DF`, built Oct 30 17:30) reports
+    `libExpoFont.a(FontLoaderModule.o)` and `libExpoFont.a(FontUtilsModule.o)` linked
+    in, with the module-name strings `ExpoFontLoader` / `ExpoFontUtils` present. Root
+    cause: `expo-font` has always been a dependency of the `expo` package itself
+    (`expo@54.0.32` → `expo-font ~14.0.11`), so autolinking compiled it in long before
+    this task named it — `ios/Podfile.lock` carries `ExpoFont (14.0.11)` and
+    `ExpoModulesProvider.swift` registers `FontLoaderModule.self`. The new package
+    `@expo-google-fonts/archivo` is **assets + JS only**, which Metro serves. So a
+    reload shows Archivo; a build is needed only if the config plugin's `fonts` array
+    is ever used instead.
+  - **Scope held:** no fonts outside the Playbook, no app-wide font, no schema/RPC/env/
+    auth, nothing written in `thrive-and-score` (read-only there), no commit or push.
+    `dev/PlaybookDevHarness.tsx` was deliberately NOT touched — its own 8 `fontWeight`
+    sites are `__DEV__` tool chrome, not the design; the reader it mounts is the real
+    `PlaybookScreen`, so the BOOK inside the harness does render in Archivo.
+  - **Gates:** typecheck 5 pre-existing `src/components/games/*` errors / **0 new** ·
+    eslint **0 errors**, 5 pre-existing inline-style warnings, **0 new** (proven per
+    file by the `--stdin` baseline trick) · `expo export --platform ios` **exit 0**.
+  - Source: this session, 2026-11-01; the cited web files; `expo-font@14.0.12` source;
+    `nm`/`Podfile.lock` output above.

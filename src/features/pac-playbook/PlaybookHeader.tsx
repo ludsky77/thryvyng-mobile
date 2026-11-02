@@ -31,8 +31,8 @@ import { useLang, type Lang } from './strings';
 import {
   color,
   control,
+  fontFamily as ff,
   fontSize as fs,
-  fontWeight as fw,
   letterSpacingEm as ls,
   lineHeightRatio as lh,
   lineWidth,
@@ -283,13 +283,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   crestImg: { width: '100%', height: '100%', padding: space.px2 },
-  crestText: { fontWeight: fw.extrabold, fontSize: fs.micro, color: color.violet2 },
+  crestText: { fontFamily: ff.extrabold, fontSize: fs.micro, color: color.violet2 },
 
   titleCell: { flex: 1, minWidth: 0 },
   /** Row two of the stacked header: the title block, the whole column wide. */
   titleCellWide: { width: '100%' },
   title: {
-    fontWeight: fw.extrabold,
+    fontFamily: ff.extrabold,
     fontSize: fs.headerTitle,
     lineHeight: Math.round(fs.headerTitle * lh.tight),
     letterSpacing: fs.headerTitle * ls.heading,
@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
   /** The chevron-only leave-the-book button: no label, so no `maxWidth`. */
   hbtnExit: { marginLeft: -space.px4 },
   hbtnPressed: { backgroundColor: 'rgba(255, 255, 255, 0.15)' },
-  hbtnLabel: { color: '#fff', fontWeight: fw.bold, fontSize: fs.lead, flexShrink: 1 },
+  hbtnLabel: { color: '#fff', fontFamily: ff.bold, fontSize: fs.lead, flexShrink: 1 },
 
   /** `.seg` — one bordered box, two halves, the on half filled white. */
   seg: {
@@ -327,7 +327,7 @@ const styles = StyleSheet.create({
   segBtn: { paddingVertical: space.px6, paddingHorizontal: space.px9 },
   segBtnOn: { backgroundColor: '#fff' },
   segLabel: {
-    fontWeight: fw.bold,
+    fontFamily: ff.bold,
     fontSize: fs.meta,
     letterSpacing: fs.meta * ls.caps,
     color: color.violetInk,

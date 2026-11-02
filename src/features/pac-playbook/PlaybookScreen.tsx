@@ -33,9 +33,11 @@
  *  3. **The footer is inline.** `position:sticky` has no RN equivalent and a
  *     screen owns its own `.cta`; the order on screen is unchanged. Recorded
  *     as PLAYBOOK-MOBILE-CTA-NOT-STICKY.
- *  4. **No font to load.** The web injects Archivo from the route's own chunk
- *     (`loadPlaybookFont`); ruling E-R3 = A keeps the system font on mobile,
- *     so there is nothing to inject and `expo-font` is not a dependency.
+ *  4. **The font is registered, not injected.** The web injects an Archivo
+ *     <link> from the route's own chunk (`loadPlaybookFont`); M6 revisited
+ *     ruling E-R3 and mobile now registers the same four faces from bundled
+ *     `.ttf`s through `expo-font`. `font.ts` holds the how and the why; the
+ *     root below holds the one frame it can cost.
  *
  * THE LAZY RULE (§ E3) HOLDS: nothing in this folder is imported from the root
  * layout, a tab layout or a provider. In M3 the only way in is the `__DEV__`
@@ -47,6 +49,7 @@ import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
 import { DoodleBand } from './Doodles';
+import { usePlaybookFont } from './font';
 import { doodlePlan, strengthPreset, STRENGTH, type DoodleScreen } from './doodleArt';
 import { PlaybookHeader, type HeaderBack } from './PlaybookHeader';
 import { CoverScreen } from './screens/CoverScreen';
@@ -140,6 +143,21 @@ export default function PlaybookScreen(props: PlaybookScreenProps) {
   // `offline.lang` is the harness's way to open it already in Spanish, since a
   // simulator cannot be tapped from a shell.
   const langState = usePlaybookLangState(props.offline?.lang ?? 'en');
+
+  // Archivo, for this route only (`font.ts`). The gate is HERE, above the
+  // header, because every style in the book now names a face and none names a
+  // weight — so text painted before the faces register would paint in the
+  // system font and then jump. The placeholder is the page colour and NO TEXT,
+  // which is the one thing that cannot flash.
+  //
+  // It costs at most one frame, and only on the first open of an app session:
+  // `useFonts` seeds its own state from a synchronous `isLoaded` check
+  // (`expo-font/src/FontHooks.ts`), so every later open is already `ready` on
+  // the first render. Nothing outside this route mounts the hook, so app open
+  // never waits on it — the standing performance ruling.
+  const font = usePlaybookFont();
+  if (!font.ready) return <View style={pbk.page} />;
+
   return (
     <PlaybookLangProvider value={langState}>
       <Reader {...props} />

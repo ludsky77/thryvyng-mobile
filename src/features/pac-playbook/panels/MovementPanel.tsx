@@ -47,7 +47,7 @@ import { pick, useLang } from '../strings';
 import { Fmt } from '../Fmt';
 import { Btn } from '../ui';
 import { pbk } from '../styles';
-import { color, radius } from '../theme';
+import { color, fontFamily as ff, radius } from '../theme';
 
 const ROLE_CLR: Record<string, string> = {
   B: '#ffd166',
@@ -278,7 +278,7 @@ export function MovementPanel({ block }: { block: MovementBlock }) {
                     y={y + 1.1}
                     textAnchor="middle"
                     fontSize={3.1}
-                    fontWeight="800"
+                    fontFamily={ff.extrabold}
                     fill="#0b1220"
                   >
                     {n}
@@ -298,7 +298,7 @@ export function MovementPanel({ block }: { block: MovementBlock }) {
                         y={3}
                         textAnchor="middle"
                         fontSize={2.9}
-                        fontWeight="800"
+                        fontFamily={ff.extrabold}
                         fill={rc}
                       >
                         {r}

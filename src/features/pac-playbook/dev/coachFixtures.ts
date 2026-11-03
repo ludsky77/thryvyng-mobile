@@ -23,6 +23,7 @@
 
 import type { InboxRow, RosterRow, ThreadReply } from '../coachRpc';
 import type { MyMessage } from '../familyRpc';
+import type { TeamMeta } from '../staffTeams';
 
 /** The grep token. If an export contains this, the fixture shipped. */
 export const MARK = 'PLAYBOOK-DEV-COACHFIX';
@@ -281,4 +282,188 @@ export const DEV_MY_MESSAGES: MyMessage[] = [
 export const DEV_MAIL = {
   messages: DEV_MY_MESSAGES,
   seenAt: DEV_SEEN_AT,
+};
+
+/* ------------------- a whole club, for the drill-down -------------------- */
+
+/**
+ * A FAKE CLUB — `__DEV__` only, PLAYBOOK-STAFF-DRILLDOWN.
+ *
+ * The drill-down has five levels and `DEV_ROSTER` above cannot reach them: two
+ * teams with no gender and no age group collapse straight to the team cards.
+ * So this is a club with the shape the director view was designed for, and
+ * every one of its awkward cases is here ON PURPOSE:
+ *
+ *   THREE GENDERS PRESENT    Boys, Girls and ONE Coed team — the ruling says
+ *                            Coed renders only where such a team exists, and a
+ *                            screenshot of that needs one to exist.
+ *   AGES OUT OF ORDER        U8 before U10 before U12 before U14, so a string
+ *                            sort (which would put U10 first) is visibly wrong.
+ *   A ONE-TEAM BRANCH        Coed has one age with one team, which the flow
+ *                            must SKIP twice over and land on the roster.
+ *   A TWO-TEAM AGE           Boys U12, which must NOT be skipped.
+ *   AN ARCHIVED TEAM         so "Past seasons ›" has something behind it.
+ *   A TEST TEAM              which must NOT appear at all (`is_test`, the chat
+ *                            list's own rule).
+ *   A TEAM WITH NO `teams`   ROW — `nometa` is in the roster and absent from
+ *                            `DEV_CLUB_META`, which is what an RLS refusal
+ *                            looks like: its players stay, in the "Not set"
+ *                            bucket, and the screen says one team could not be
+ *                            placed.
+ *
+ * `gender` is spelled the way the column really holds it ("Boys", "Girls",
+ * "Coed"), not the normalised key, so `normalizeGender` is exercised rather
+ * than bypassed.
+ */
+
+interface DevClubTeam {
+  id: string;
+  name: string;
+  gender: string | null;
+  age: string | null;
+  status: 'active' | 'archived';
+  isTest?: boolean;
+  coach: string;
+  /** False = the `teams` read does not return this row (an RLS refusal). */
+  meta?: boolean;
+  size: number;
+}
+
+const CLUB_TEAMS: DevClubTeam[] = [
+  { id: 'dev-b08', name: '[DEV] ZZ Lions', gender: 'Boys', age: 'U8', status: 'active', coach: '[DEV] R. Okafor', size: 4 },
+  { id: 'dev-b10a', name: '[DEV] ZZ Comets', gender: 'Boys', age: 'U10', status: 'active', coach: '[DEV] M. Herrera', size: 5 },
+  { id: 'dev-b10b', name: '[DEV] ZZ Rangers', gender: 'Boys', age: 'U10', status: 'active', coach: '[DEV] T. Blake', size: 4 },
+  { id: 'dev-b12a', name: '[DEV] ZZ Thunder', gender: 'Boys', age: 'U12', status: 'active', coach: '[DEV] L. Sandoval', size: 6 },
+  { id: 'dev-b12b', name: '[DEV] ZZ Falcons', gender: 'Boys', age: 'U12', status: 'active', coach: '[DEV] P. Ndiaye', size: 5 },
+  { id: 'dev-g10', name: '[DEV] ZZ Aurora', gender: 'Girls', age: 'U10', status: 'active', coach: '[DEV] C. Duarte', size: 5 },
+  { id: 'dev-g12a', name: '[DEV] ZZ Tide', gender: 'Girls', age: 'U12', status: 'active', coach: '[DEV] S. Whitfield', size: 6 },
+  { id: 'dev-g12b', name: '[DEV] ZZ Summit', gender: 'Girls', age: 'U12', status: 'active', coach: '[DEV] A. Kowal', size: 4 },
+  { id: 'dev-g14', name: '[DEV] ZZ Vanguard', gender: 'Girls', age: 'U14', status: 'active', coach: '[DEV] J. Amara', size: 5 },
+  { id: 'dev-c12', name: '[DEV] ZZ United', gender: 'Coed', age: 'U12', status: 'active', coach: '[DEV] D. Roth', size: 4 },
+  { id: 'dev-b12old', name: '[DEV] ZZ Thunder 25', gender: 'Boys', age: 'U12', status: 'archived', coach: '[DEV] L. Sandoval', size: 4 },
+  { id: 'dev-test', name: '[DEV] ZZ Sandbox', gender: 'Boys', age: 'U12', status: 'active', isTest: true, coach: '[DEV] Q. A. Bot', size: 3 },
+  { id: 'dev-nometa', name: '[DEV] ZZ Unreadable', gender: null, age: null, status: 'active', coach: '[DEV] Unknown', meta: false, size: 3 },
+];
+
+const FIRST = [
+  'Ana', 'Mateo', 'Sofia', 'Jordan', 'Rafa', 'Harper', 'Luca', 'Nora',
+  'Iker', 'Zoe', 'Omar', 'Maya', 'Diego', 'Ivy', 'Tomas', 'Lena',
+  'Noah', 'Pilar', 'Enzo', 'Ruby', 'Kai', 'Vera', 'Milo', 'Sasha',
+];
+const LAST = ['Ruiz', 'Flores', 'Nguyen', 'Pike', 'Molina', 'Quinn', 'Serra', 'Hale', 'Vega', 'Bauer'];
+
+/** Read counts and activity ages, spread so every level has a spread. */
+const GOT = [0, 3, 9, 17, 24, 33, 41, 52, 61, 69];
+/** Hours since the last Got-it or quiz run. Over 168 (7 d) is a nudge. */
+const SINCE = [1, 6, 22, 70, 150, 200, 410, 900];
+
+/**
+ * DETERMINISTIC, not random: the same club every launch, so two screenshots
+ * taken a minute apart can be compared. The arithmetic is a stride through
+ * three prime-ish offsets, which is enough to stop a team reading as a
+ * sequence without a generator.
+ */
+function clubPlayers(t: DevClubTeam, seed: number): RosterRow[] {
+  const out: RosterRow[] = [];
+  for (let i = 0; i < t.size; i += 1) {
+    const n = seed + i * 7;
+    const got = GOT[(seed + i * 3) % GOT.length];
+    const hours = SINCE[(seed + i * 5) % SINCE.length];
+    const runs = got > 20 ? ((seed + i) % 3) + 1 : 0;
+    const best = runs ? Math.min(8, 4 + ((seed + i) % 5)) : null;
+    out.push({
+      player_id: `${t.id}-p${i + 1}`,
+      first_name: `[DEV] ${FIRST[n % FIRST.length]}`,
+      last_name: LAST[(n * 3) % LAST.length],
+      player_status: 'active',
+      team_id: t.id,
+      team_name: t.name,
+      club_id: 'dev-club',
+      via: 'club',
+      got_it_count: got,
+      total_cards: TOTAL,
+      quiz_best_score: best,
+      quiz_best_medal: best == null ? 'none' : best >= 8 ? 'gold' : best >= 6 ? 'silver' : 'none',
+      quiz_last_score: best == null ? null : Math.max(0, best - ((seed + i) % 3)),
+      quiz_runs: runs,
+      quiz_last_run_at: runs ? hoursAgo(hours + 2) : null,
+      last_activity_at: hoursAgo(hours),
+    });
+  }
+  return out;
+}
+
+/** Every player in the club, including the past, hidden and unreadable teams. */
+export const DEV_CLUB_ROSTER: RosterRow[] = CLUB_TEAMS.flatMap((t, i) => clubPlayers(t, i + 1));
+
+/** What the `teams` read returns — every team EXCEPT `dev-nometa`. */
+export const DEV_CLUB_META: TeamMeta[] = CLUB_TEAMS.filter((t) => t.meta !== false).map((t) => ({
+  id: t.id,
+  name: t.name,
+  age_group: t.age,
+  gender: t.gender,
+  team_status: t.status,
+  is_test: !!t.isTest,
+  season_id: t.status === 'archived' ? 'dev-season-25' : 'dev-season-26',
+}));
+
+/** What the `team_staff` → `profiles` read returns. */
+export const DEV_CLUB_COACHES: Record<string, string> = Object.fromEntries(
+  CLUB_TEAMS.filter((t) => t.meta !== false).map((t) => [t.id, t.coach])
+);
+
+/** The director's whole club — `coach=club`. */
+export const DEV_STAFF_CLUB = {
+  roster: DEV_CLUB_ROSTER,
+  inbox: DEV_INBOX,
+  canAnswer: true,
+  replies: DEV_THREAD_REPLIES,
+};
+
+export const DEV_CLUB = { meta: DEV_CLUB_META, coaches: DEV_CLUB_COACHES };
+
+/**
+ * A COACH WITH EXACTLY ONE TEAM — `coach=one`, the landing Lu named: no
+ * tiles, no ages, no team cards, straight onto the roster.
+ */
+const ONE = CLUB_TEAMS.find((t) => t.id === 'dev-b12a')!;
+
+export const DEV_STAFF_ONE_TEAM = {
+  roster: DEV_CLUB_ROSTER.filter((r) => r.team_id === ONE.id),
+  inbox: [] as InboxRow[],
+  canAnswer: true,
+};
+
+export const DEV_CLUB_ONE_TEAM = {
+  meta: DEV_CLUB_META.filter((m) => m.id === ONE.id),
+  coaches: { [ONE.id]: ONE.coach },
+};
+
+/**
+ * The two-team fixture's own metadata, so `coach=1` keeps reading sensibly
+ * after the rebuild: both teams are Boys U12 and ACTIVE, which lands that
+ * reader on their two team cards (Lu's 2–4 rule).
+ */
+export const DEV_CLUB_AB = {
+  meta: [
+    {
+      id: TEAM_A.id,
+      name: TEAM_A.name,
+      age_group: 'U12',
+      gender: 'Boys',
+      team_status: 'active',
+      is_test: false,
+      season_id: 'dev-season-26',
+    },
+    {
+      id: TEAM_B.id,
+      name: TEAM_B.name,
+      age_group: 'U12',
+      gender: 'Boys',
+      team_status: 'active',
+      is_test: false,
+      season_id: 'dev-season-26',
+    },
+  ] as TeamMeta[],
+  coaches: { [TEAM_A.id]: '[DEV] L. Sandoval', [TEAM_B.id]: '[DEV] P. Ndiaye' },
 };

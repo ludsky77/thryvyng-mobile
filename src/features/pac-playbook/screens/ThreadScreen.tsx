@@ -134,15 +134,21 @@ export function ThreadScreen({
       />
 
       <View style={[pbk.qitem, answered && pbk.qitemDone]}>
+        {/* F1 THREAD ✓ CHIP. The ✓ lives in the SAME inner row as the kind
+            pill, not as a third child of a wrapping `qhead`. It used to sit
+            beside `ctItemHead`, and `qhead` wraps: a long chapter · card ·
+            team line filled the first line and pushed the ✓ onto its own,
+            where it read as an orphan circle under the pill. The two pills
+            are now one unit and the meta line is what wraps. */}
         <View style={pbk.qhead}>
           <View style={pbk.ctItemHead}>
             <Chip green={!answered}>{kindLabel(question.kind, es)}</Chip>
-            <Text style={pbk.qmeta}>
-              {where}
-              {question.team_name ? ` · ${question.team_name}` : ''}
-            </Text>
+            {answered ? <Chip green>✓</Chip> : null}
           </View>
-          {answered ? <Chip green>✓</Chip> : null}
+          <Text style={[pbk.qmeta, pbk.ctFlex]}>
+            {where}
+            {question.team_name ? ` · ${question.team_name}` : ''}
+          </Text>
         </View>
         <Text style={pbk.qtext}>{question.body}</Text>
         <Text style={pbk.ctMeta}>

@@ -54,13 +54,18 @@ import { doodlePlan, strengthPreset, STRENGTH, type DoodleScreen } from './doodl
 import { PlaybookHeader, type HeaderBack } from './PlaybookHeader';
 import { CoverScreen } from './screens/CoverScreen';
 import { ContentsScreen } from './screens/ContentsScreen';
-import { TeamProgressScreen } from './screens/TeamProgressScreen';
+import {
+  TeamProgressScreen,
+  type ProgressLook,
+  type ProgressState,
+} from './screens/TeamProgressScreen';
 import { PlayerProgressScreen } from './screens/PlayerProgressScreen';
 import { InboxScreen } from './screens/InboxScreen';
 import { ThreadScreen } from './screens/ThreadScreen';
 import { MessagesScreen } from './screens/MessagesScreen';
 import { fetchQuestionWhere, fetchStaffInbox, type InboxRow } from './coachRpc';
 import { useStaffTrack, type OfflineStaff } from './useStaffTrack';
+import { useStaffClub, type OfflineClub } from './useStaffClub';
 import { useMyMessages, type OfflineMessages } from './useMyMessages';
 import { ChapterScreen } from './screens/ChapterScreen';
 import { CardScreen } from './screens/CardScreen';
@@ -132,6 +137,12 @@ export interface PlaybookLook {
   keeperMode?: 'watch' | 'you';
   /** Which preset the keeper board's ball starts on, by id. */
   keeperBall?: string;
+  /**
+   * Which level of the staff drill-down to open on — PLAYBOOK-STAFF-DRILLDOWN.
+   * Five levels, four of them behind a tap, and still no way to tap a
+   * simulator from a shell; see `ProgressLook`.
+   */
+  progress?: ProgressLook;
 }
 
 export interface PlaybookOffline {
@@ -169,6 +180,15 @@ export interface PlaybookOffline {
   look?: PlaybookLook;
   /** The harness's staff roster and inbox — PLAYBOOK-COACH-TRACK-MOBILE. */
   staff?: OfflineStaff | null;
+  /** The harness's team metadata — PLAYBOOK-STAFF-DRILLDOWN. */
+  club?: OfflineClub | null;
+  /**
+   * Open the end-of-chapter screen as if it had been reached from the family's
+   * messages list — F2, and harness-only for the usual reason: that screen is
+   * reached by TAPPING a message and this simulator cannot be tapped from a
+   * shell, so the back label it must show would otherwise be unphotographable.
+   */
+  endFrom?: 'messages' | null;
   /** The harness's family messages and a pretend last-look timestamp. */
   messages?: OfflineMessages | null;
 }
@@ -264,6 +284,14 @@ function Reader({
   const staff = useStaffTrack(!!content, offline?.staff);
 
   /**
+   * THE DRILL-DOWN'S TEAM METADATA — PLAYBOOK-STAFF-DRILLDOWN. Keyed off the
+   * roster's own team ids, so a reader with no roster (not staff) makes no
+   * call at all, and it never gates the screen: the roster renders the moment
+   * it arrives and the gender/age levels appear when their facts do.
+   */
+  const club = useStaffClub(staff.roster, offline?.club);
+
+  /**
    * THE FAMILY'S MESSAGES — FAMILY-MESSAGES-ON-COVER. Gated on a player, so a
    * staff-only reader never makes the call: `playerId` is the role's own
    * `entity_id` (R-4), which only a player or a parent has. One load per
@@ -277,6 +305,25 @@ function Reader({
   const [query, setQuery] = useState(offline?.initialQuery ?? '');
   const [focusSearch, setFocusSearch] = useState(false);
   const [quizReturn, setQuizReturn] = useState(false);
+  /**
+   * F2 MESSAGES BACK — Lu's Oct 28 ruling, "return to where you were".
+   *
+   * The end-of-chapter screen has two doors: the chapter it belongs to, and
+   * (since FAMILY-MESSAGES-ON-COVER) the family's own messages list. Back used
+   * to go to the chapter either way, which dropped a reader who had tapped a
+   * message out of the list they were reading. This remembers the door. It is
+   * set by the ONE handler that opens the screen from the messages list and
+   * cleared by `openEnd`, which is every other way in.
+   */
+  const [endFrom, setEndFrom] = useState<'messages' | null>(offline?.endFrom ?? null);
+  /**
+   * Which level of the staff drill-down was open — PLAYBOOK-STAFF-DRILLDOWN.
+   * Tapping a player leaves that screen and coming back REMOUNTS it, so
+   * without this a director four levels down would land on the club tiles
+   * again. Lives here for the same reason every other "where was I" in this
+   * file does (ruling R-2): one state machine, not two.
+   */
+  const [progressState, setProgressState] = useState<ProgressState | null>(null);
   const [gotError, setGotError] = useState<string | null>(null);
   const [deepLinkDone, setDeepLinkDone] = useState(false);
 
@@ -432,10 +479,23 @@ function Reader({
    * instead of to an empty one (R-1).
    */
   const openEnd = useCallback(
-    (chapterKey: string) =>
-      playerId
+    (chapterKey: string) => {
+      setEndFrom(null); // F2: every door but the messages list
+      return playerId
         ? go({ screen: 'chend', ch: chapterKey })
-        : go({ screen: 'chapter', ch: chapterKey }),
+        : go({ screen: 'chapter', ch: chapterKey });
+    },
+    [playerId, go]
+  );
+
+  /** F2: the same screen, opened FROM the messages list, which Back returns to. */
+  const openEndFromMessages = useCallback(
+    (chapterKey: string) => {
+      setEndFrom('messages');
+      return playerId
+        ? go({ screen: 'chend', ch: chapterKey })
+        : go({ screen: 'chapter', ch: chapterKey });
+    },
     [playerId, go]
   );
 
@@ -552,10 +612,23 @@ function Reader({
     doodle = 'chend';
     pageKey = `end:${nav.ch}`;
     sub = es ? 'Preguntas y notas' : 'Questions & notes';
-    back = {
-      label: pick(chaptersByKey.get(nav.ch)?.content?.name, lang),
-      go: () => go({ screen: 'chapter', ch: nav.ch }),
-    };
+    /* F2 MESSAGES BACK: back to the list if that is where this was opened
+       from, otherwise to the chapter, exactly as before. */
+    back =
+      endFrom === 'messages'
+        ? {
+            /* SHORT on purpose: the header truncates, and "Your messages"
+               came back as "Your messa…" on a 6.3-inch screen. */
+            label: es ? 'Mensajes' : 'Messages',
+            go: () => {
+              setEndFrom(null);
+              go({ screen: 'messages' });
+            },
+          }
+        : {
+            label: pick(chaptersByKey.get(nav.ch)?.content?.name, lang),
+            go: () => go({ screen: 'chapter', ch: nav.ch }),
+          };
   } else if (nav.screen === 'progress') {
     pageKey = 'progress';
     sub = es ? 'Progreso del equipo' : 'Team progress';
@@ -750,18 +823,25 @@ function Reader({
         cards={cards}
         isNew={messages.isNew}
         loading={messages.loading}
-        /* The chapter's own Questions & notes screen — `openEnd` already
-           sends a staff viewer to the chapter list instead (R-1), and only a
-           reader WITH a player has messages at all. */
-        onOpenChapter={openEnd}
+        /* The chapter's own Questions & notes screen — `openEndFromMessages`
+           already sends a staff viewer to the chapter list instead (R-1), and
+           only a reader WITH a player has messages at all. F2: it also
+           records that Back belongs to this list. */
+        onOpenChapter={openEndFromMessages}
       />
     );
   } else if (nav.screen === 'progress') {
     body = (
       <TeamProgressScreen
         roster={staff.roster}
-        loading={staff.loading}
+        loading={staff.loading || club.loading}
         quizTotal={quizTotal}
+        metaById={club.metaById}
+        coaches={club.coaches}
+        metaMissing={club.missing}
+        look={offline?.look?.progress}
+        state={progressState}
+        onState={setProgressState}
         onOpenPlayer={(id) => go({ screen: 'player', id })}
       />
     );

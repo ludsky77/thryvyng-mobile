@@ -1645,3 +1645,122 @@ Lu's rulings of the same day.
   - Source: this session, 2026-11-02; Lu's Nov 2 device-test rulings 1–5;
     `20261028190000_playbook_v1_schema.sql` (the quiz run length) and
     `20261102033000_playbook_coach_track.sql` (the question policies).
+
+## Landed — Nov 2 2026 (Playbook staff drill-down + two fixes, AGENT-ONLY)
+
+**PLAYBOOK-STAFF-DRILLDOWN** · `AGENT-ONLY` · **DEVICE LOOK PENDING** · agent
+session 2026-11-02, Lu's canvas of the same day ("Playbook Team progress —
+director view options", row 2 / Flow1–Flow4) and the two fixes F1 / F2 beside
+it. Nothing here has been seen by a human on a real phone.
+
+- **THE SCREEN IS NOW FOUR LEVELS, NOT ONE LIST.** `TeamProgressScreen` was a
+  flat roster with a team chip row. It is now: **home** (a "Find a team"
+  search, the season line, one tile per gender PRESENT, and "Needs a nudge ·
+  whole club") → **gender** (the age-group grid) → **age** (team cards: coach,
+  players, avg, nudge count) → **team** (the compact roster). The player
+  detail it opens is unchanged.
+- **EVERY STEP WITH ONE CHOICE IS SKIPPED**, which is the ruling's own point.
+  One team → that roster. Two to four teams → their team cards. One gender →
+  straight to the ages. One team in an age → straight to its roster. The
+  Coed branch in the fixture skips twice in a row and was photographed doing
+  it. The club-level furniture is gated with it: the search box appears only
+  above FIVE teams (the only reader who cannot see them all at once) and the
+  whole-club nudge row only above one.
+- **THE TRAIL** (`Team progress › Boys › U12 › Team`) is on every level, each
+  crumb but the last pressable, and it is BUILT FROM THE VIEW rather than
+  accumulated, so it cannot drift. A level a reader SKIPPED is not offered as
+  a crumb — there was never a screen there for them.
+- **THE SEASON RULE IS THE CHAT LIST'S, COPIED WITH ITS PROVENANCE.**
+  `getTeamBucket`, **`src/hooks/useUserTeams.ts:26-33`** — test team hidden,
+  `archived`/`inactive` past, `active` active, anything else hidden — reached
+  by the chat list through `useSharedUserTeams` (`ChatScreen.tsx:722-724`). It
+  is COPIED into `staffTeams.ts` (`teamBucket`) because it is not exported and
+  `src/hooks/**` was outside this prompt's SCOPE. `normalizeGender` is the
+  same story from `ChatScreen.tsx:1636`. **Two forks now exist; see RECOMMEND.**
+  One deliberate difference, documented at the function: a team the `teams`
+  read did not return is `'unknown'`, not hidden, and shows under the CURRENT
+  season — the hook can afford to drop a team it could not classify, this
+  screen cannot, because the roster has already said the player exists.
+- **"NEEDS A NUDGE" = no Got-it and no quiz activity in 7 days, or never**,
+  read off the roster RPC's `last_activity_at` and never recomputed from
+  parts. The whole-club list is least-read first, each row labelled with its
+  team, and taps through to the player detail.
+- **WHAT IS NOT REACHABLE, AND IS THEREFORE NOT DRAWN: the season's NAME.**
+  The ruling asks for "Season \<current\>". No read in this app can name a
+  season — there is no `seasons` table in `supabase/migrations/`, nothing in
+  `src/` selects one, and `teams.season_id` is a bare uuid (the `season_name`
+  column on `evaluations` is free text typed into a dropdown, not a season
+  record). The line therefore reads **"This season" / "Past seasons"** rather
+  than inventing a label, and the toggle appears only when the other season
+  actually holds a team. **Naming it needs a new read and a new ruling.**
+- **NO NEW RPC, NO NEW COLUMN, NO SCHEMA CHANGE.** The gender / age group /
+  season facts come from `teams` (`id, name, age_group, gender, team_status,
+  is_test, season_id`) — the same columns `ChatScreen.tsx:1614` and
+  `useUserTeams.ts:109-130` already read — and the head coach from
+  `team_staff` → `profiles`, which is `ClubTeamsListScreen.tsx:57-71`'s own two
+  reads, batched with `.in()` instead of one pair per team.
+- **A SHORT READ IS A MISSING FACT, NOT AN ERROR.** If RLS does not return a
+  team's row its players DO NOT disappear: the team lands in the "Not set"
+  bucket under the current season and the home screen says `N teams with no
+  readable gender or age group`. The fixture ships one such team on purpose so
+  that line is photographed. A refused `profiles` read simply prints no coach.
+- **ONE DEPARTURE FROM THE SPEC, flagged for Lu.** The roster row is `name ·
+  thin bar · x / 69 · ›` as ruled — EXCEPT under the **Quiz** sort, where the
+  trailing number becomes that player's best quiz score (`6 / 8`, or `—` for
+  nobody who has run it). A list ordered by a number it does not show reads as
+  shuffled; the first screenshot of it was the proof. One line reverts it.
+- **F1 THREAD ✓ CHIP — fixed.** The ✓ was a sibling of the pill row inside a
+  WRAPPING `qhead`, so a long `chapter · card · team` line filled line one and
+  pushed the ✓ onto its own as an orphan circle. The two pills are now one
+  unit inside `ctItemHead` and the meta line is what wraps. Seen: `Question`
+  and `✓` side by side with `Principles · The +1 · [DEV] ZZ Test Team 0826`
+  wrapping to two lines beside them.
+- **F2 MESSAGES BACK — fixed** (Lu, Oct 28: return to where you were). The
+  end-of-chapter screen has two doors and Back went to the chapter from both.
+  `PlaybookScreen` now remembers which (`endFrom`), set by the one handler the
+  messages list uses and cleared by every other way in. The label is
+  **"Messages" / "Mensajes"**, deliberately short — "Your messages" came back
+  from the simulator as `Your messa…`.
+- **A FIFTH "WHERE WAS I".** Tapping a player leaves the progress screen and
+  coming back REMOUNTS it, so the drill-down level is held in `PlaybookScreen`
+  (`progressState`) and handed back — a director four levels down no longer
+  lands on the club tiles after looking at one player.
+- **Files (12).** New: `staffTeams.ts` · `staffTree.ts` (pure, no I/O) ·
+  `useStaffClub.ts`. Changed: `screens/TeamProgressScreen.tsx` (rebuilt) ·
+  `screens/ThreadScreen.tsx` (F1) · `PlaybookScreen.tsx` (F2, the hook, the
+  remembered level) · `styles.ts` · `dev/coachFixtures.ts` ·
+  `dev/PlaybookDevHarness.tsx` · `MIRROR.md` · this ledger. Looks in
+  `docs/recon/m6-drilldown/`.
+- **Gates.** `npx tsc --noEmit` **5 errors, all pre-existing in
+  `src/components/games/*`, 0 new** · `eslint` on the 9 touched source files
+  **0 errors** (1 new warning, `no-console` on `useStaffClub`'s failure path —
+  the same idiom as every other read in this folder) · `npx expo export
+  --platform ios` **exit 0, 9.45 MB** · fixture strings
+  (`PLAYBOOK-DEV-COACHFIX`, `ZZ Lions`, `ZZ Unreadable`, `dev-b12a`,
+  `playbook-dev`) **0 hits in the bundle**, while `Needs a nudge` / `Find a
+  team` / `This season` are present — the dev tree is folded out and the
+  screen is in · **MIRROR.md drift check clean** (silence from the eight
+  mirrored files and the data file, one declared `doodleArt.ts` hunk, no git
+  diff on `rpc.ts` / `types.ts` / `search.ts`).
+- **SEEN ON THE SIMULATOR** (iPhone 17 Pro `DEEE9FA3`, dev client over Metro,
+  `__DEV__` fixture — a club of 11 visible teams, 3 genders, 4 age groups, 51
+  players, one archived team, one test team and one unreadable team):
+  the club home with its four tiles and the pink **19** badge · the Boys age
+  grid reading **U8 · U10 · U12** in that order · the two U12 team cards with
+  their coaches · the compact roster (`49% · 4/6 · 6.8/8`, three sort chips,
+  six one-line rows) · the whole-club nudge list, least read first, including
+  a player from the unreadable team · a ONE-TEAM coach landing straight on
+  their roster with no search and no tiles · past seasons showing only the
+  archived team · the F1 thread · the F2 header reading `‹ Messages` · and the
+  roster and the club home in Spanish.
+- **NOT VERIFIED HERE.** No DB call was made: every number on every screenshot
+  is the fixture. **The live questions this leaves open** — does a real
+  director's `teams` read return every team the roster names (the "Not set"
+  bucket is the tell)? Does `team_staff` → `profiles` return other teams'
+  coaches for a director, and for a coach reading only their own team? Does a
+  real club's `team_status` actually divide the seasons the way the chat list
+  assumes? Those three are the device/prod test this entry is waiting on.
+- Source: this session, 2026-11-02; Lu's Nov 2 canvas (row 2, Flow1–Flow4) and
+  the F1 / F2 rulings; `useUserTeams.ts:26-33`; `ChatScreen.tsx:1614,1636`;
+  `ClubTeamsListScreen.tsx:57-71`; `20261102033000_playbook_coach_track.sql`
+  (the roster RPC's columns).

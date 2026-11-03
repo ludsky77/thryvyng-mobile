@@ -992,6 +992,89 @@ export const pbk = StyleSheet.create({
   },
   ctList: { gap: space.px8 },
 
+  /* ---------------------- the staff drill-down (PLAYBOOK-STAFF-DRILLDOWN) */
+
+  /**
+   * The director view is four levels deep, so it needs three things the flat
+   * roster never did: a TRAIL to say where you are, TILES to choose a branch
+   * with, and a STAT STRIP over a roster. Everything else on those screens is
+   * still the book's own — the search box is `searchbox`, a team card is
+   * `ctItem`, a player is `Row`, a bar is `bar`/`barFill`.
+   *
+   * `ctRowTight` is the COMPACT roster row Lu asked for: one line, ~44pt,
+   * which is the finger's floor (`control.tab`) and not a design step — the
+   * standard `row` is 58 and three lines tall, and a 25-player roster at that
+   * height is four screens of scrolling.
+   */
+  /** The one-line cell that gives way: a name beside a fixed-width number. */
+  ctFlex: { flex: 1, minWidth: 0 },
+
+  ctCrumbs: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.px4 },
+  ctCrumb: { ...role.label, color: color.mute },
+  ctCrumbLink: { color: color.green },
+  ctCrumbNow: { color: color.chalk2 },
+  ctCrumbSep: { ...role.label, color: color.dim },
+
+  ctSeason: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.px8,
+  },
+  ctSeasonText: { ...role.label, color: color.chalk2, flex: 1, minWidth: 0 },
+  ctSeasonBtn: { ...role.label, color: color.green },
+
+  ctTiles: { flexDirection: 'row', flexWrap: 'wrap', gap: space.px8 },
+  ctTile: {
+    flexGrow: 1,
+    flexBasis: '46%',
+    gap: space.px6,
+    minHeight: control.rowTall,
+    borderWidth: lineWidth.hairline,
+    borderColor: color.line,
+    borderRadius: radius.card,
+    backgroundColor: color.card,
+    padding: space.px12,
+  },
+  ctTileName: {
+    fontFamily: ff.extrabold,
+    fontSize: fs.panelName,
+    lineHeight: line(fs.panelName, lh.tight),
+    color: color.chalk,
+  },
+  ctTileRow: { flexDirection: 'row', alignItems: 'center', gap: space.px8 },
+  ctNudge: { fontFamily: ff.bold, fontSize: fs.tiny, color: color.pinkText },
+
+  ctStrip: { flexDirection: 'row', gap: space.px6 },
+  ctStat: {
+    flex: 1,
+    alignItems: 'center',
+    gap: space.px2,
+    paddingVertical: space.px9,
+    paddingHorizontal: space.px4,
+    borderRadius: radius.card,
+    backgroundColor: color.card,
+    borderWidth: lineWidth.hairline,
+    borderColor: color.line,
+  },
+  ctStatValue: { fontFamily: ff.extrabold, fontSize: fs.panelName, color: color.chalk },
+  ctStatLabel: {
+    ...role.label,
+    fontSize: fs.tiny,
+    letterSpacing: track(fs.tiny, ls.caps),
+    textAlign: 'center',
+  },
+
+  ctRowTight: { minHeight: control.tab, paddingVertical: space.px6, alignItems: 'center' },
+  ctTightLine: { flexDirection: 'row', alignItems: 'center', gap: space.px8 },
+  ctMiniBar: {
+    width: 54,
+    height: space.px2,
+    borderRadius: radius.xs,
+    backgroundColor: color.line2,
+    overflow: 'hidden',
+  },
+
   /* ------------------------------ the family's messages (PLAYBOOK-COVER-POLISH) */
 
   /**

@@ -106,6 +106,21 @@ and the screen that lists them. `familyRpc.ts` exists FOR this manifest:
 all-chapters read was added beside it rather than inside it, the same move
 `coachRpc.ts` made for the coach track. The web has none of these screens yet.
 
+**MOBILE-ONLY, added 2026-11-02 (PLAYBOOK-STAFF-DRILLDOWN):** `staffTeams.ts`,
+`staffTree.ts` and `useStaffClub.ts` — the team metadata the director view
+needs (gender, age group, season, head coach), the pure tree it is grouped
+into, and the one hook that loads it. `screens/TeamProgressScreen.tsx` was
+REBUILT in place (it was already mobile-only and not in the manifest). The web
+has no staff track at all, so there is no original to re-mirror from; this is
+named here so a future re-mirror does not go looking for one.
+
+`staffTeams.ts` carries **two deliberate copies of non-Playbook code**, both
+labelled at their definition: `normalizeGender` from `ChatScreen.tsx:1636` and
+`teamBucket` from `useUserTeams.ts:26-33` (`getTeamBucket`). Neither original
+is exported and neither file was in this prompt's SCOPE. They are a fork risk
+of exactly the kind this manifest exists to prevent, and the ledger carries the
+RECOMMEND to export the originals and delete the copies.
+
 **Nothing mirrored moved on 2026-11-02.** PLAYBOOK-DIAGRAM-TABS and
 PLAYBOOK-KEEPER-ANGLE were both built so the eight mirrored files and the data
 file stay byte-identical: the tab row lives in `CardBoard.tsx` and

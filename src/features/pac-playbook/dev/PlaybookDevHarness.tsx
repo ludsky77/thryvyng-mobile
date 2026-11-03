@@ -61,7 +61,18 @@ import { STRENGTH, doodlePlan, withDoodleColors } from '../doodleArt';
 import { withChalkEdge } from '../doodleChalk';
 import PlaybookScreen, { type PlaybookOffline } from '../PlaybookScreen';
 import { withTestCards } from './testCards';
-import { DEV_INBOX, DEV_MAIL, DEV_ROSTER, DEV_STAFF, DEV_STAFF_MANAGER } from './coachFixtures';
+import {
+  DEV_CLUB,
+  DEV_CLUB_AB,
+  DEV_CLUB_ONE_TEAM,
+  DEV_INBOX,
+  DEV_MAIL,
+  DEV_ROSTER,
+  DEV_STAFF,
+  DEV_STAFF_CLUB,
+  DEV_STAFF_MANAGER,
+  DEV_STAFF_ONE_TEAM,
+} from './coachFixtures';
 import {
   OFFLINE_BOOK,
   OFFLINE_COUNTS,
@@ -132,9 +143,25 @@ type TapReadout = {
  *   …&coach=1                                             + a fake staff roster
  *   …&coach=mgr                                           …as a team MANAGER (R2)
  *   …&screen=progress&coach=1                             team progress
+ *
+ *   THE DRILL-DOWN (PLAYBOOK-STAFF-DRILLDOWN) — `coach=club` is a whole fake
+ *   club (3 genders, 4 age groups, 11 visible teams, one archived, one test,
+ *   one with no readable `teams` row); `coach=one` is a coach with exactly one
+ *   team. `lvl` picks the level, because four of the five are behind a tap:
+ *
+ *   …&screen=progress&coach=club                          the club home (tiles)
+ *   …&screen=progress&coach=club&lvl=gender&g=male        the age grid
+ *   …&screen=progress&coach=club&lvl=teams&g=male&age=U12 the team cards
+ *   …&screen=progress&coach=club&lvl=team&tm=dev-b12a     the compact roster
+ *   …&screen=progress&coach=club&lvl=team&tm=dev-b12a&sortb=quiz
+ *   …&screen=progress&coach=club&lvl=nudge                the whole-club list
+ *   …&screen=progress&coach=club&tq=sando                 "Find a team" results
+ *   …&screen=progress&coach=club&past=1                   past seasons
+ *   …&screen=progress&coach=one                           one team → its roster
  *   …&screen=inbox&coach=1                                the question inbox
  *   …&msg=1                                               + the family's messages
  *   …&msg=1&screen=messages                               see-all messages
+ *   …&msg=1&screen=chend&ch=principles&from=messages      F2: back to the list
  *
  * `msg` is PLAYBOOK-COVER-POLISH's family block. WITHOUT it the cover shows no
  * "Your messages" section at all, which is the empty state the ruling asks for
@@ -248,15 +275,40 @@ function ReaderHost({
    * is the same roster with `canAnswer: false`, which is the team-manager
    * case ruling R2 exists for — the Questions row must NOT appear.
    */
-  const staff = useMemo(
-    () =>
-      params.coach === 'mgr'
-        ? DEV_STAFF_MANAGER
-        : params.coach === '1'
-          ? DEV_STAFF
-          : null,
-    [params.coach]
-  );
+  const staff = useMemo(() => {
+    switch (params.coach) {
+      case 'mgr':
+        return DEV_STAFF_MANAGER;
+      case 'club':
+        return DEV_STAFF_CLUB;
+      case 'one':
+        return DEV_STAFF_ONE_TEAM;
+      case '1':
+        return DEV_STAFF;
+      default:
+        return null;
+    }
+  }, [params.coach]);
+  /**
+   * The team metadata the drill-down reads from `teams` / `team_staff` /
+   * `profiles` — PLAYBOOK-STAFF-DRILLDOWN. It travels WITH the roster it
+   * belongs to, so a fixture can never describe teams its roster does not
+   * have; `coach=club`'s own set deliberately omits one team, which is what an
+   * RLS refusal looks like on screen.
+   */
+  const club = useMemo(() => {
+    switch (params.coach) {
+      case 'club':
+        return DEV_CLUB;
+      case 'one':
+        return DEV_CLUB_ONE_TEAM;
+      case '1':
+      case 'mgr':
+        return DEV_CLUB_AB;
+      default:
+        return null;
+    }
+  }, [params.coach]);
   /**
    * `msg=1` hands the reader a fake set of its own messages, one of them
    * answered five minutes ago and one thirty hours ago, against a pretend
@@ -271,8 +323,33 @@ function ReaderHost({
       tab: params.tab ? Number(params.tab) : undefined,
       keeperMode: params.kp === 'you' ? ('you' as const) : undefined,
       keeperBall: params.kpball,
+      /* `lvl` / `g` / `age` / `tm` / `past` / `sortb` — the drill-down's five
+         levels, which are otherwise only reachable by tapping. */
+      progress:
+        params.lvl || params.past || params.sortb || params.tq
+          ? {
+              view: params.lvl as 'home' | 'gender' | 'teams' | 'team' | 'nudge' | undefined,
+              gender: params.g as 'male' | 'female' | 'coed' | 'unset' | undefined,
+              age: params.age,
+              teamId: params.tm,
+              past: params.past === '1',
+              sort: params.sortb as 'least' | 'az' | 'quiz' | undefined,
+              query: params.tq,
+            }
+          : undefined,
     }),
-    [params.tab, params.kp, params.kpball]
+    [
+      params.tab,
+      params.kp,
+      params.kpball,
+      params.lvl,
+      params.g,
+      params.age,
+      params.tm,
+      params.past,
+      params.sortb,
+      params.tq,
+    ]
   );
   return (
     <View style={styles.readerHost}>
@@ -280,7 +357,7 @@ function ReaderHost({
           the key remounts the shell rather than quietly ignoring the new
           screen. Harness-only — the app never changes these params. */}
       <PlaybookScreen
-        key={`${params.screen || 'cover'}|${params.ch || ''}|${params.id || ''}|${params.q || ''}|${params.start || ''}|${params.autoplay || ''}|${params.dz || ''}|${params.y || ''}|${params.lang || ''}|${params.fix || ''}|${params.tab || ''}|${params.kp || ''}|${params.kpball || ''}|${params.coach || ''}|${params.pl || ''}|${params.th || ''}|${params.msg || ''}`}
+        key={`${params.screen || 'cover'}|${params.ch || ''}|${params.id || ''}|${params.q || ''}|${params.start || ''}|${params.autoplay || ''}|${params.dz || ''}|${params.y || ''}|${params.lang || ''}|${params.fix || ''}|${params.tab || ''}|${params.kp || ''}|${params.kpball || ''}|${params.coach || ''}|${params.pl || ''}|${params.th || ''}|${params.msg || ''}|${params.lvl || ''}|${params.g || ''}|${params.age || ''}|${params.tm || ''}|${params.past || ''}|${params.sortb || ''}|${params.tq || ''}|${params.from || ''}`}
         offline={{
           book,
           progress: OFFLINE_PROGRESS,
@@ -295,7 +372,10 @@ function ReaderHost({
           initialScrollY: params.y ? Number(params.y) : undefined,
           look,
           staff,
+          club,
           messages: mail,
+          /* F2: as if a message in the list had been tapped. */
+          endFrom: params.from === 'messages' ? 'messages' : null,
           lang: params.lang === 'es' ? 'es' : 'en',
           dz: params.dz ? `dz=${params.dz}` : undefined,
         }}

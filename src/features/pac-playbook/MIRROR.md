@@ -1,8 +1,10 @@
 # Mirror manifest — PAC Playbook pure layer
 
-**Provenance: `thrive-and-score` @ `c772111`** (M1 mirrored `83a3686`; M3
+**Provenance: `thrive-and-score` @ `b31b922`** (M1 mirrored `83a3686`; M3
 re-mirrored to `c772111`, which changed `renderDiagram.ts` — DIAGRAM-LABEL-FIT
-— and reworded two comments in `doodleArt.ts`).
+— and reworded two comments in `doodleArt.ts`; **2026-11-03 re-mirrored to
+`b31b922`** — PLAYBOOK-FUTSAL-BACKDROP, which changed the three `diagram/`
+files marked below and nothing else in this manifest).
 
 These files are **mirrored from the web repo** (`thrive-and-score`), not written
 here. The pattern is the one `src/lib/joinErrors.ts` already set in this
@@ -36,16 +38,22 @@ mobile copy alone — that is the fork this manifest exists to prevent.
 
 | Mobile path | Web path | Web commit | Mirrored | Status |
 | --- | --- | --- | --- | --- |
-| `src/features/pac-playbook/diagram/renderDiagram.ts` | `src/features/pac-playbook/diagram/renderDiagram.ts` | `c772111` | 2026-10-30 | byte-identical |
-| `src/features/pac-playbook/diagram/geometry.ts` | `src/features/pac-playbook/diagram/geometry.ts` | `c772111` | 2026-10-30 | byte-identical |
-| `src/features/pac-playbook/diagram/heat.ts` | `src/features/pac-playbook/diagram/heat.ts` | `c772111` | 2026-10-30 | byte-identical |
-| `src/features/pac-playbook/diagram/tapTarget.ts` | `src/features/pac-playbook/diagram/tapTarget.ts` | `c772111` | 2026-10-30 | byte-identical |
-| `src/features/pac-playbook/diagram/types.ts` | `src/features/pac-playbook/diagram/types.ts` | `c772111` | 2026-10-30 | byte-identical |
-| `src/features/pac-playbook/search.ts` | `src/features/pac-playbook/search.ts` | `c772111` | 2026-10-30 | byte-identical |
-| `src/features/pac-playbook/types.ts` | `src/features/pac-playbook/types.ts` | `c772111` | 2026-10-30 | byte-identical |
-| `src/features/pac-playbook/doodleArt.ts` | `src/features/pac-playbook/doodleArt.ts` | `c772111` | 2026-10-30 | **1 declared diff: DEV flag** |
-| `src/lib/playbookErrors.ts` | `src/lib/playbookErrors.ts` | `c772111` | 2026-10-30 | byte-identical |
-| `src/features/pac-playbook/dev/pac-playbook-v2-FINAL-data.json` | `docs/playbook/pac-playbook-v2-FINAL-data.json` | `c772111` | 2026-10-30 | byte-identical · **`__DEV__` only** |
+| `src/features/pac-playbook/diagram/renderDiagram.ts` | `src/features/pac-playbook/diagram/renderDiagram.ts` | `b31b922` | 2026-11-03 | byte-identical |
+| `src/features/pac-playbook/diagram/geometry.ts` | `src/features/pac-playbook/diagram/geometry.ts` | `b31b922` | 2026-11-03 | byte-identical |
+| `src/features/pac-playbook/diagram/heat.ts` | `src/features/pac-playbook/diagram/heat.ts` | `b31b922` | 2026-10-30 | byte-identical |
+| `src/features/pac-playbook/diagram/tapTarget.ts` | `src/features/pac-playbook/diagram/tapTarget.ts` | `b31b922` | 2026-10-30 | byte-identical |
+| `src/features/pac-playbook/diagram/types.ts` | `src/features/pac-playbook/diagram/types.ts` | `b31b922` | 2026-11-03 | byte-identical |
+| `src/features/pac-playbook/search.ts` | `src/features/pac-playbook/search.ts` | `b31b922` | 2026-10-30 | byte-identical |
+| `src/features/pac-playbook/types.ts` | `src/features/pac-playbook/types.ts` | `b31b922` | 2026-10-30 | byte-identical |
+| `src/features/pac-playbook/doodleArt.ts` | `src/features/pac-playbook/doodleArt.ts` | `b31b922` | 2026-10-30 | **1 declared diff: DEV flag** |
+| `src/lib/playbookErrors.ts` | `src/lib/playbookErrors.ts` | `b31b922` | 2026-10-30 | byte-identical |
+| `src/features/pac-playbook/dev/pac-playbook-v2-FINAL-data.json` | `docs/playbook/pac-playbook-v2-FINAL-data.json` | `b31b922` | 2026-10-30 | byte-identical · **`__DEV__` only** |
+
+**Reading the two right-hand columns after 2026-11-03.** `Web commit` is the
+commit each file was verified byte-identical against — the whole set was
+re-checked against `b31b922` on 2026-11-03, so every row names it. `Mirrored` is
+the day that file's CONTENT last moved; only the three rows dated 2026-11-03
+changed then, and the rest have not been re-copied since M3.
 
 The last row is **data, not code, and it ships in no build.** It is the frozen
 content file the PROD SEED was generated from
@@ -129,6 +137,40 @@ import, so no screen outside this file changed:
 
 One definition of each rule, and if one moves every screen moves with it —
 which is what this manifest exists to get.
+
+**THREE MIRRORED FILES MOVED ON 2026-11-03 — PLAYBOOK-FUTSAL-BACKDROP.** The
+first re-mirror since M3. The web added a `'futsal'` backdrop (web `b31b922`,
+"Playbook diagrams: futsal court backdrop (40x20 m)"), and because
+`renderDiagram.ts`, `geometry.ts` and `types.ts` are all in the byte-identical
+set, mobile took **the whole three files** from that commit rather than
+hand-applying the hunk — the editing rule working as intended, web first.
+
+- **What arrived.** `backdrop()` gains one branch after `full-pitch`: a 40 x 20 m
+  court drawn to scale on the 100 x 140 full-pitch viewBox at **1 m = 3.3 u**
+  (court 66 x 132 u, inset x 17 / y 4, centre 50, 70), centre circle r 3 m, each
+  6 m goal area as two quarter circles r 6 m centred 1.58 m either side of the
+  goal joined by a 3.16 m line, penalty marks at 6 m and 10 m, 3 m goals with the
+  net drawn 1 m deep. `dims()` returns `[100, 140]` for `futsal` as well as
+  `full-pitch`, and the `Backdrop` union gains `'futsal'`.
+- **NO MOBILE-ONLY CODE NEEDED CHANGING, and that was checked rather than
+  assumed.** The boards take their size from the renderer's own `dims()`
+  (`DiagramBoard.tsx:180`, `StillBoard.tsx:89`) and their picture from
+  `render()`, so a new backdrop flows through them; `grep` finds **no mobile-only
+  code that branches on a backdrop value** — the only non-`diagram/` mentions are
+  hardcoded `'full-pitch'` / `'zoom-goal-top'` uses in `MovementPanel.tsx`,
+  `usePlaybookBook.ts` and the `__DEV__` fixtures, none of which a new union
+  member affects.
+- **The change is ADDITIVE, proved not asserted.** `renderDiagram.ts` is 36
+  insertions and **0 deletions**; the only `b === ` line the diff touches is the
+  added `'futsal'` one. Every existing figure renders byte-identical: the 44
+  diagrams in the frozen data file, both languages, 50 ms steps through each
+  one's full cycle plus its still, and `backdrop()` called directly for all five
+  old backdrop values plus `undefined` and an unknown string at four board sizes
+  — **7,604 renders, combined sha256 `fec8c9c11eacd82e…` before and after**.
+- **Why the futsal court had to arrive before the next build:** FM5v5 is live in
+  prod on the `futsal` backdrop (web content batch 1, `362e81e`). A renderer
+  without this branch draws it on a blank 100 x 64 board with most players off
+  the edge. Source: `thrive-and-score/docs/recon/playbook-futsal-backdrop-mirror.md`.
 
 **Nothing mirrored moved on 2026-11-02.** PLAYBOOK-DIAGRAM-TABS and
 PLAYBOOK-KEEPER-ANGLE were both built so the eight mirrored files and the data

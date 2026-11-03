@@ -75,9 +75,9 @@ export function head(p1: Point, p2: Point, color: string, w?: number): string {
   return `<polygon points="${p2[0]},${p2[1]} ${bx + px * s * 0.5},${by + py * s * 0.5} ${bx - px * s * 0.5},${by - py * s * 0.5}" fill="${color}"/>`;
 }
 
-/** viewBox of a diagram: full pitch is portrait 100x140, zoom boards 100x(h||64). */
+/** viewBox of a diagram: full pitch and futsal are portrait 100x140, zoom boards 100x(h||64). */
 export function dims(d: Diagram): [number, number] {
-  return d.backdrop === 'full-pitch' ? [100, 140] : [100, d.h || 64];
+  return d.backdrop === 'full-pitch' || d.backdrop === 'futsal' ? [100, 140] : [100, d.h || 64];
 }
 
 /** How long one pass of the animation runs, including the trailing hold. */

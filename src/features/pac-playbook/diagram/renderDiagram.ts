@@ -132,6 +132,42 @@ export function backdrop(b: string | undefined, w: number, h: number): string {
       `<line x1="${w / 2 - 9}" y1="3.4" x2="${w / 2 + 9}" y2="3.4" stroke="${CLR.ink}" stroke-width="1.4"/>`
     );
   }
+  if (b === 'futsal') {
+    // FUTSAL (2026-11-02). A 40 x 20 m court drawn TO SCALE on the full-pitch
+    // viewBox (100 x 140), portrait, attack UP. SCALE: 1 m = 3.3 u, so the
+    // court is 66 x 132 u, inset x 17 / y 4 (centre 50, 70). Centre circle
+    // r 3 m. Each goal area is two quarter circles r 6 m centred 1.58 m either
+    // side of the goal's centre, joined by a 3.16 m line (6 m out). Penalty
+    // marks at 6 m and 10 m. Goals 3 m wide (their 2 m height cannot show from
+    // above), the net drawn 1 m deep behind the line.
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    const u = (m: number) => r2(m * 3.3); // metres -> viewBox units
+    const st = `stroke="${CLR.chalk}" stroke-width="0.5" fill="none" opacity="0.45"`;
+    const dot = (y: number) => `<circle cx="${w / 2}" cy="${y}" r="0.5" fill="${CLR.chalk}" opacity="0.45"/>`;
+    const x0 = r2(w / 2 - u(10));
+    const y0 = r2(h / 2 - u(20));
+    const y1 = r2(h / 2 + u(20));
+    const end = (g: number, dir: 1 | -1) => {
+      const a = r2(g + dir * u(6)); // the area line
+      const sw = dir === 1 ? 0 : 1;
+      const net = dir === 1 ? r2(g - u(1)) : g;
+      return (
+        `<path d="M ${r2(w / 2 - u(1.58) - u(6))} ${g} A ${u(6)} ${u(6)} 0 0 ${sw} ${r2(w / 2 - u(1.58))} ${a} L ${r2(w / 2 + u(1.58))} ${a} A ${u(6)} ${u(6)} 0 0 ${sw} ${r2(w / 2 + u(1.58) + u(6))} ${g}" ${st}/>` +
+        dot(a) +
+        dot(r2(g + dir * u(10))) +
+        `<rect x="${r2(w / 2 - u(1.5))}" y="${net}" width="${u(3)}" height="${u(1)}" ${st}/>` +
+        `<line x1="${r2(w / 2 - u(1.5))}" y1="${g}" x2="${r2(w / 2 + u(1.5))}" y2="${g}" stroke="${CLR.ink}" stroke-width="1.4"/>`
+      );
+    };
+    return (
+      `<rect x="${x0}" y="${y0}" width="${u(20)}" height="${u(40)}" rx="0.6" ${st}/>` +
+      `<line x1="${x0}" y1="${h / 2}" x2="${r2(w / 2 + u(10))}" y2="${h / 2}" ${st}/>` +
+      `<circle cx="${w / 2}" cy="${h / 2}" r="${u(3)}" ${st}/>` +
+      dot(h / 2) +
+      end(y0, 1) +
+      end(y1, -1)
+    );
+  }
   return '';
 }
 

@@ -7,7 +7,8 @@
  * stored in `playbook_blocks.data` for kind = 'diagram'.
  *
  * Coordinate spaces: ZOOM boards are viewBox 100 x (d.h || 64); FULL PITCH is
- * 100 x 140 portrait, attack direction up.
+ * 100 x 140 portrait, attack direction up; FUTSAL is the same 100 x 140, a
+ * 40 x 20 m court to scale at 3.3 u per metre (renderDiagram.ts backdrop()).
  */
 
 export type Bilingual = { en?: string; es?: string };
@@ -17,6 +18,7 @@ export type Backdrop =
   | 'zoom-goal'
   | 'zoom-touchline'
   | 'full-pitch'
+  | 'futsal'
   | 'none';
 
 export type Point = [number, number];

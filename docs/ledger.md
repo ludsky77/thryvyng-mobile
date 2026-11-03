@@ -1849,3 +1849,63 @@ it. Nothing here has been seen by a human on a real phone.
   `staffTeams.ts:63-99` (re-exports :73-74, `teamBucket` :96);
   `ChatScreen.tsx:35` (import), `:1637-1649` (copies deleted, chip list),
   `:1657` (filter), `:2586-2591` (meta line).
+
+## Landed — Nov 3 2026 (Playbook futsal court backdrop, mirrored from web)
+
+- **PLAYBOOK-FUTSAL-BACKDROP (mobile side) · `BUILT-UNCOMMITTED` · SIMULATOR
+  LOOK OWED (look batch, Nov 3) · agent session 2026-11-03.** The web's futsal
+  court backdrop is now in the mobile renderer, so **FM5v5 — live in prod since
+  Nov 2 on the `futsal` backdrop** — draws correctly on a phone. Nothing here
+  has been seen by a human on a simulator or a device.
+  - **A MIRROR, NOT A BUILD.** Web first, as the editing rule requires: web
+    commit **`b31b922`** ("Playbook diagrams: futsal court backdrop (40x20 m);
+    existing figures byte-identical"). All three changed files —
+    `diagram/renderDiagram.ts`, `diagram/geometry.ts`, `diagram/types.ts` — are
+    in `MIRROR.md`'s byte-identical set, so mobile took **the whole files** from
+    that commit rather than hand-applying a hunk. `MIRROR.md`'s provenance and
+    table are updated to `b31b922`; the full record of what arrived is in that
+    file under "THREE MIRRORED FILES MOVED ON 2026-11-03".
+  - **The court.** 40 x 20 m, portrait, attack up, drawn to scale on the
+    full-pitch 100 x 140 viewBox at **1 m = 3.3 u** — court 66 x 132 u, inset
+    x 17 / y 4, centre (50, 70) · centre circle r 3 m · each 6 m goal area two
+    quarter circles r 6 m centred 1.58 m either side of the goal, joined by a
+    3.16 m line · penalty marks at **6 m and 10 m** · 3 m goals, net 1 m deep.
+    `dims()` now returns `[100, 140]` for `futsal` as well as `full-pitch`.
+  - **NO MOBILE-ONLY FILE NEEDED TO CHANGE, checked rather than assumed.** The
+    boards read their size from the renderer's own `dims()`
+    (`DiagramBoard.tsx:180`, `StillBoard.tsx:89`) and their picture from
+    `render()`, and **no mobile-only code branches on a backdrop value** — by
+    grep, every non-`diagram/` mention is a hardcoded `'full-pitch'` /
+    `'zoom-goal-top'` use (`MovementPanel.tsx`, `usePlaybookBook.ts`, the
+    `__DEV__` fixtures) that a new union member cannot affect.
+  - **EXISTING FIGURES BYTE-IDENTICAL — proved, not asserted.**
+    `renderDiagram.ts` is **36 insertions / 0 deletions** and the only `b === `
+    line the diff touches is the added `'futsal'` one. The pure layer was
+    transpiled and run before and after over the 44 diagrams in the frozen data
+    file (both languages, 50 ms steps through each full cycle plus each still)
+    plus `backdrop()` called directly for all five old backdrop values and
+    `undefined` and an unknown string at four board sizes: **7,604 renders,
+    combined sha256 `fec8c9c11eacd82e339b36612fd7c9e4739228dfe3fdd28bdddf72485a2ef732`
+    on both sides.**
+  - **GATES.** `npx tsc --noEmit` **5 errors = baseline** — all five
+    pre-existing in `src/components/games/*` (`AnticipationArenaGame`,
+    `DribbleRushGame`, `PatternPlayGame`), **0 in any touched file**, and proved
+    baseline by re-running the typecheck with the three files reverted to HEAD:
+    same 5, same 3 files · **`MIRROR.md` drift check PASS** — silence from the
+    eight mirrored files and the data file, and exactly the one declared
+    `doodleArt.ts:209` `__DEV__` hunk.
+  - **Nothing SACRED.** No schema, migration, RLS, RPC, env, auth, delete,
+    dependency, `app.json` edit, EAS command or DB connection of any kind; no
+    edit in `thrive-and-score`.
+  - **NOT VERIFIED HERE: no simulator or device run, and no expo export.** What
+    is owed is a LOOK — open a `futsal` figure (FM5v5) in the reader and check
+    the court draws inside the board, the players sit on it at the zoom-board
+    default size (3.4), and the goals/penalty marks read right. Added to the
+    Nov 3 look batch.
+  - **SIDE EFFECT, stated: none beyond the figure itself.** No existing figure
+    can change (the sha above), and no backdrop other than `futsal` gained or
+    lost a line.
+  - Source: this session, 2026-11-03;
+    `thrive-and-score/docs/recon/playbook-futsal-backdrop-mirror.md` and web
+    commit `b31b922` (both declared read-only cross-repo reads);
+    `docs/recon/release-1.0.20-readiness.md`.

@@ -22,6 +22,12 @@
  * glance, and it uses `toneFor()` so it stays inside the section palette
  * (ruling PLAYBOOK-SECTION-RAIL's colours, used here for a list that has no
  * sections of its own).
+ *
+ * THE QUIZ SCORE CARRIES ITS TOTAL — QUIZ-SCORE-DENOM, Lu's device test. "best
+ * 6" is unreadable without knowing the run is eight questions long; "best 6 /
+ * 8" is a grade. `quizTotal` comes from the BOOK — `settings.quiz.rules.perRun`
+ * — and `PlaybookScreen` passes null if the book does not state one, in which
+ * case the bare number is printed exactly as before rather than guessed at.
  */
 
 import React, { useMemo, useState } from 'react';
@@ -42,10 +48,13 @@ interface TeamOpt {
 export function TeamProgressScreen({
   roster,
   loading,
+  quizTotal,
   onOpenPlayer,
 }: {
   roster: RosterRow[];
   loading: boolean;
+  /** Questions in one run (`rules.perRun`), or null if the book is silent. */
+  quizTotal?: number | null;
   onOpenPlayer: (playerId: string) => void;
 }) {
   const { lang } = useLang();
@@ -92,6 +101,10 @@ export function TeamProgressScreen({
     return teams.map((t) => ({ team: t, rows: sorted.filter((r) => r.team_id === t.id) }));
   }, [showing, sorted, teams]);
 
+  /** "6 / 8", or "6" where the book states no run length. */
+  const outOf = (score: number | null) =>
+    quizTotal ? `${score ?? 0} / ${quizTotal}` : String(score ?? 0);
+
   const playerRow = (r: RosterRow) => {
     const pct = pctOf(r.got_it_count, r.total_cards);
     const tone = toneOf(r.team_id);
@@ -118,9 +131,9 @@ export function TeamProgressScreen({
         </View>
         <Text style={pbk.ctMeta}>
           {r.quiz_runs > 0
-            ? `${es ? 'Quiz' : 'Quiz'} ${es ? 'mejor' : 'best'} ${r.quiz_best_score ?? 0}${
+            ? `${es ? 'Quiz' : 'Quiz'} ${es ? 'mejor' : 'best'} ${outOf(r.quiz_best_score)}${
                 medal ? ` · ${medal === 'gold' ? (es ? 'oro' : 'gold') : es ? 'plata' : 'silver'}` : ''
-              } · ${es ? 'último' : 'last'} ${r.quiz_last_score ?? 0}`
+              } · ${es ? 'último' : 'last'} ${outOf(r.quiz_last_score)}`
             : es
               ? 'Sin quiz todavía'
               : 'No quiz yet'}

@@ -25,14 +25,40 @@
  * foot doodle band and puts both of its marks in the top band
  * (`doodleArt.ts`, `ZONES.cover = { top: 2, foot: 0 }`). Mobile inherits that
  * from the same ruling data.
+ *
+ * TWO BLOCKS OF DOORS, added 2026-11-02 (PLAYBOOK-COVER-POLISH, Lu's device
+ * test). The cover was a page you read once and never came back to; it is now
+ * also the reader's own desk:
+ *
+ *   STAFF-ROWS-ON-COVER     "Team progress" and "Questions (n)" moved here
+ *                           from the BOTTOM of the contents screen, where a
+ *                           coach had to scroll past the whole index to find
+ *                           them. Same two rows, same visibility rules (R1 /
+ *                           R2 — a roster for progress, can-answer for the
+ *                           inbox), one screen earlier.
+ *   FAMILY-MESSAGES-ON-COVER the newest three messages this family has sent,
+ *                           with the coach's latest reply and a dot on
+ *                           anything unseen, and one door to all of them.
+ *
+ * BOTH ARE ABSENT BY DEFAULT. A reader who is neither staff nor has ever
+ * written a message sees the cover exactly as it was — the blocks are not
+ * empty states, they are not rendered. A staff user who is ALSO a parent sees
+ * both, which is the one case worth saying out loud.
+ *
+ * THEY SIT BELOW THE LEAD AND ABOVE "HOW TO USE IT": the book says what it is
+ * (title, subtitle, lead), then hands you your own things, then explains
+ * itself. Putting them above the lead would have the book open on a list of
+ * chores.
  */
 
 import React from 'react';
 import { Text, View } from 'react-native';
 import Svg, { Circle, G, Path } from 'react-native-svg';
-import type { ChapterRow } from '../types';
+import type { Card, ChapterRow } from '../types';
+import type { MyMessage } from '../familyRpc';
 import { pick, useLang } from '../strings';
-import { Btn, Cta, Stamp, Tape } from '../ui';
+import { Btn, Chev, Cta, Row, RowEnd, Stamp, Tape } from '../ui';
+import { MessageItem, useMessageWhere } from './MessagesScreen';
 import { pbk } from '../styles';
 
 const STEPS = {
@@ -101,18 +127,48 @@ function CoverArt() {
   );
 }
 
+/** The staff block's inputs, or `null` for a reader who is not staff. */
+export interface CoverStaff {
+  isStaff: boolean;
+  /** R2: false hides the Questions row — a team manager never sees it. */
+  canAnswer: boolean;
+  openCount: number;
+  onProgress: () => void;
+  onInbox: () => void;
+}
+
+/** The family block's inputs. An empty `messages` hides the whole block. */
+export interface CoverMail {
+  messages: MyMessage[];
+  /** Replies the reader has not looked at yet. */
+  newCount: number;
+  isNew: (m: MyMessage) => boolean;
+  onAll: () => void;
+}
+
 export function CoverScreen({
   chapters,
+  cards,
   author,
   onOpen,
+  staff,
+  mail,
 }: {
   chapters: ChapterRow[];
+  /** Only to name the card a message is about; the cover lists no cards. */
+  cards: Card[];
   author: string;
   onOpen: () => void;
+  staff?: CoverStaff | null;
+  mail?: CoverMail | null;
 }) {
   const { lang } = useLang();
   const es = lang === 'es';
   const steps = STEPS[es ? 'es' : 'en'];
+  const where = useMessageWhere(chapters, cards);
+
+  const showStaff = !!staff?.isStaff;
+  const newest = mail?.messages.slice(0, 3) ?? [];
 
   return (
     <View style={pbk.cover}>
@@ -138,6 +194,94 @@ export function CoverScreen({
           ? 'Cómo vemos el juego, cómo lo jugamos y cómo pensamos — el mismo idioma para cada equipo PAC, de 5v5 a 11v11, para jugadoras, jugadores y sus familias.'
           : 'How we see the game, how we play it and how we think — one language for every PAC team, from 5v5 to 11v11, for our players and their families.'}
       </Text>
+
+      {/* THE STAFF DOORS — R1 / R2. The book's own `Row`: same hairline, same
+          dashed `qrow` face as the contents screen's "Questions & notes", same
+          58pt target. `RowEnd` appends the one chevron itself
+          (PLAYBOOK-TYPE-PASS-E), so the count goes in and nothing else. */}
+      {showStaff ? (
+        <View style={pbk.coverBlk}>
+          <Text style={pbk.blockLabel}>{es ? 'Tu equipo' : 'Your team'}</Text>
+          <Row right={<Chev />} onPress={staff?.onProgress} style={pbk.qrow}>
+            <Text style={[pbk.rowName, pbk.rowNameSm]}>
+              {es ? 'Progreso del equipo' : 'Team progress'}
+            </Text>
+            <Text style={pbk.rowDesc}>
+              {es
+                ? 'Quién va leyendo, y quién necesita un empujón.'
+                : 'Who is reading, and who needs a nudge.'}
+            </Text>
+          </Row>
+
+          {staff?.canAnswer ? (
+            <Row
+              onPress={staff.onInbox}
+              style={pbk.qrow}
+              right={
+                <RowEnd>
+                  {staff.openCount ? (
+                    <View style={pbk.ctBadge}>
+                      <Text style={pbk.ctBadgeText}>{staff.openCount}</Text>
+                    </View>
+                  ) : null}
+                </RowEnd>
+              }
+            >
+              <Text style={[pbk.rowName, pbk.rowNameSm]}>{es ? 'Preguntas' : 'Questions'}</Text>
+              <Text style={pbk.rowDesc}>
+                {staff.openCount
+                  ? es
+                    ? `${staff.openCount} sin responder.`
+                    : `${staff.openCount} waiting for an answer.`
+                  : es
+                    ? 'Nada pendiente.'
+                    : 'Nothing waiting.'}
+              </Text>
+            </Row>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* THE FAMILY'S OWN MESSAGES — hidden entirely for a reader who has
+          never sent one, which is why there is no empty state here. */}
+      {newest.length ? (
+        <View style={pbk.coverBlk}>
+          <Text style={pbk.blockLabel}>{es ? 'Tus mensajes' : 'Your messages'}</Text>
+          <View style={pbk.qlist}>
+            {newest.map((m) => (
+              <MessageItem key={m.id} m={m} where={where(m)} isNew={!!mail?.isNew(m)} />
+            ))}
+          </View>
+          <Row
+            onPress={mail?.onAll}
+            style={pbk.qrow}
+            right={
+              <RowEnd>
+                {mail?.newCount ? (
+                  <View style={pbk.ctBadge}>
+                    <Text style={pbk.ctBadgeText}>{mail.newCount}</Text>
+                  </View>
+                ) : null}
+              </RowEnd>
+            }
+          >
+            <Text style={[pbk.rowName, pbk.rowNameSm]}>
+              {es ? 'Ver todos los mensajes' : 'See all messages'}
+            </Text>
+            <Text style={pbk.rowDesc}>
+              {mail?.newCount
+                ? es
+                  ? `${mail.newCount} respuesta${mail.newCount === 1 ? '' : 's'} nueva${
+                      mail.newCount === 1 ? '' : 's'
+                    }.`
+                  : `${mail.newCount} new ${mail.newCount === 1 ? 'reply' : 'replies'}.`
+                : es
+                  ? `${mail?.messages.length ?? 0} en total.`
+                  : `${mail?.messages.length ?? 0} in all.`}
+            </Text>
+          </Row>
+        </View>
+      ) : null}
 
       <View style={pbk.coverHow}>
         <Text style={pbk.blockLabel}>{es ? 'Cómo usarlo' : 'How to use it'}</Text>

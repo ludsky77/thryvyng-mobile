@@ -11,6 +11,12 @@
  * makes: `P0044 not_player_staff` is already in `playbookErrors`, so a
  * manager who reached this screen gets the sentence, not a crash, and their
  * text stays in the box.
+ *
+ * THE STAMP'S SECOND LINE IS THE LATEST REPLY'S AGE once this is answered —
+ * THREAD-STAMP-TIME, Lu's device test, 2026-11-02. It used to read the age of
+ * the QUESTION, so a thread answered a minute ago was stamped "ANSWERED · 72 h"
+ * and looked stale. Open threads are unchanged and still read the question's
+ * age, because that is how long somebody has been waiting.
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
@@ -97,6 +103,18 @@ export function ThreadScreen({
     }
   };
 
+  /**
+   * THREAD-STAMP-TIME. The replies this screen loaded are the freshest source
+   * — the last one is the newest, because `fetchThreadReplies` orders them
+   * ascending — and `last_reply_at` off the inbox row is the fallback for the
+   * instant before they arrive. A reply just sent lands in `replies` through
+   * `load()`, so the stamp catches up on its own.
+   */
+  const lastReply = replies.length
+    ? replies[replies.length - 1].created_at
+    : question.last_reply_at;
+  const stampAt = answered && lastReply ? lastReply : question.created_at;
+
   const where = [pickName(question.chapter_name, lang), pickName(question.card_name, lang)]
     .filter(Boolean)
     .join(' · ');
@@ -109,7 +127,7 @@ export function ThreadScreen({
           <Stamp
             lines={[
               answered ? (es ? 'resuelta' : 'answered') : es ? 'abierta' : 'open',
-              ago(question.created_at, es),
+              ago(stampAt, es),
             ]}
           />
         }

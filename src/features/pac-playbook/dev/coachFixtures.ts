@@ -21,7 +21,8 @@
  * `MARK` is the string to grep an export for. It must not appear.
  */
 
-import type { InboxRow, RosterRow } from '../coachRpc';
+import type { InboxRow, RosterRow, ThreadReply } from '../coachRpc';
+import type { MyMessage } from '../familyRpc';
 
 /** The grep token. If an export contains this, the fixture shipped. */
 export const MARK = 'PLAYBOOK-DEV-COACHFIX';
@@ -79,7 +80,9 @@ const question = (
   chapter: { key: string; name: { en: string; es: string } },
   card: { key: string; name: { en: string; es: string } } | null,
   hours: number,
-  replies: number
+  replies: number,
+  /** How long ago the latest reply landed; defaults to two hours after. */
+  replyHours?: number
 ): InboxRow => ({
   question_id: id,
   kind,
@@ -100,7 +103,7 @@ const question = (
   sender_user_id: `dev-user-${from.player_id}`,
   sender_kind: from.player_id === 'dev-p2' ? 'parent' : 'player',
   reply_count: replies,
-  last_reply_at: replies ? hoursAgo(Math.max(0, hours - 2)) : null,
+  last_reply_at: replies ? hoursAgo(replyHours ?? Math.max(0, hours - 2)) : null,
 });
 
 const CH_PRINCIPLES = { key: 'principles', name: { en: 'Principles', es: 'Principios' } };
@@ -150,15 +153,38 @@ export const DEV_INBOX: InboxRow[] = [
     CH_PRINCIPLES,
     { key: 'P9', name: { en: 'The +1', es: 'El +1' } },
     72,
-    1
+    1,
+    /* ASKED THREE DAYS AGO, ANSWERED FOUR MINUTES AGO — THREAD-STAMP-TIME's
+       whole point in one row. The stamp used to read "72 h" here. */
+    4 / 60
   ),
 ];
+
+/**
+ * The replies a thread loads, by question id. Only the answered one has any.
+ *
+ * `author_user_id` is a coach's, not the asker's, because the thread labels
+ * every reply "Coach reply" — the staff screen is the only writer of them
+ * (`playbook_reply_question`).
+ */
+export const DEV_THREAD_REPLIES: Record<string, ThreadReply[]> = {
+  'dev-q4': [
+    {
+      id: 'dev-r1',
+      question_id: 'dev-q4',
+      body: `[${MARK}] The +1 is always the spare one — at 2-0 down it is usually you, pushing up. Ask me at training and I will show you with cones.`,
+      created_at: new Date(Date.now() - 4 * 6e4).toISOString(),
+      author_user_id: 'dev-user-coach',
+    },
+  ],
+};
 
 /** The whole `OfflineStaff` shape, ready for the harness. */
 export const DEV_STAFF = {
   roster: DEV_ROSTER,
   inbox: DEV_INBOX,
   canAnswer: true,
+  replies: DEV_THREAD_REPLIES,
 };
 
 /**
@@ -170,4 +196,89 @@ export const DEV_STAFF_MANAGER = {
   roster: DEV_ROSTER,
   inbox: [] as InboxRow[],
   canAnswer: false,
+};
+
+/* ------------------------------- the family's side of the same thread ----- */
+
+/**
+ * THE FAMILY'S OWN MESSAGES — `__DEV__` only, PLAYBOOK-COVER-POLISH.
+ *
+ * `FAMILY-MESSAGES-ON-COVER` needs four states visible in one screenshot and
+ * the harness has no session to have sent anything, so they are invented here:
+ *
+ *   ONE ANSWERED WITH A FRESH REPLY  (5 min ago) — newer than `DEV_SEEN_AT`,
+ *                                    so it carries the "new reply" dot.
+ *   ONE ANSWERED WITH AN OLD REPLY   (30 h ago) — older than `DEV_SEEN_AT`,
+ *                                    so it does NOT. The dot rule is only
+ *                                    proven by having both.
+ *   TWO STILL WAITING                so the See-all screen has a second group.
+ *
+ * `chapter_id` and `card_id` are the OFFLINE book's ids, which are its keys
+ * (`offlineBook.ts` maps `id: String(c.id)`) — so a tap resolves to a real
+ * chapter and opens its Questions & notes screen.
+ */
+const minsAgo = (m: number) => new Date(Date.now() - m * 6e4).toISOString();
+
+/** The pretend "last time this reader looked", six hours back. */
+export const DEV_SEEN_AT = minsAgo(6 * 60);
+
+export const DEV_MY_MESSAGES: MyMessage[] = [
+  {
+    id: 'dev-m3',
+    kind: 'question',
+    status: 'open',
+    body: `[${MARK}] On the 1-2-1 — if their 6 steps up, is that still the same press or do we drop?`,
+    created_at: minsAgo(40),
+    chapter_id: 'formations',
+    card_id: null,
+    replies: [],
+  },
+  {
+    id: 'dev-m1',
+    kind: 'question',
+    status: 'answered',
+    body: `[${MARK}] Is "regain" the same as winning the ball back, or does it mean the five seconds after?`,
+    created_at: minsAgo(8 * 60),
+    chapter_id: 'foundations',
+    card_id: 'F2',
+    replies: [
+      {
+        id: 'dev-mr1',
+        body: `[${MARK}] Regain is the MOMENT you win it. What you do in the next five seconds is the card right after this one — read them together and it clicks.`,
+        created_at: minsAgo(5),
+      },
+    ],
+  },
+  {
+    id: 'dev-m2',
+    kind: 'comment',
+    status: 'answered',
+    body: `[${MARK}] We read Delay together at home and she tried it on Saturday. She slowed him down twice.`,
+    created_at: minsAgo(50 * 60),
+    chapter_id: 'principles',
+    card_id: 'P4',
+    replies: [
+      {
+        id: 'dev-mr2',
+        body: `[${MARK}] Saw both of them — that is exactly the card. Tell her the second one was the better of the two.`,
+        created_at: minsAgo(30 * 60),
+      },
+    ],
+  },
+  {
+    id: 'dev-m4',
+    kind: 'suggestion',
+    status: 'open',
+    body: `[${MARK}] Could the quiz have a practice mode that does not count towards the medal?`,
+    created_at: minsAgo(72 * 60),
+    chapter_id: 'mind',
+    card_id: null,
+    replies: [],
+  },
+];
+
+/** The whole `OfflineMessages` shape, ready for the harness. */
+export const DEV_MAIL = {
+  messages: DEV_MY_MESSAGES,
+  seenAt: DEV_SEEN_AT,
 };

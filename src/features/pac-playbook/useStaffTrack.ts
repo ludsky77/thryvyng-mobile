@@ -35,6 +35,7 @@ import {
   fetchStaffRoster,
   type InboxRow,
   type RosterRow,
+  type ThreadReply,
 } from './coachRpc';
 
 /** The `__DEV__` harness's staff data; never set on the real route. */
@@ -42,6 +43,13 @@ export interface OfflineStaff {
   roster: RosterRow[];
   inbox: InboxRow[];
   canAnswer: boolean;
+  /**
+   * Replies per question id, so an ANSWERED thread can be looked at with its
+   * reply in place — which is what THREAD-STAMP-TIME needs to photograph: the
+   * stamp reads the LATEST REPLY's age, and with no replies the screen falls
+   * back to `last_reply_at` and the rule cannot be seen working.
+   */
+  replies?: Record<string, ThreadReply[]>;
 }
 
 export interface StaffTrack {

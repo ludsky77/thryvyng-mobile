@@ -572,7 +572,7 @@ export function KeeperAnglePanel({
 
           {/* Props, not strings — everything that moves. */}
           <Svg
-            style={{ position: 'absolute', inset: 0 }}
+            style={StyleSheet.absoluteFill}
             viewBox={`0 0 ${VB.w} ${VB.h}`}
             preserveAspectRatio="xMidYMid meet"
             pointerEvents="none"

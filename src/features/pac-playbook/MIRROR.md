@@ -98,6 +98,14 @@ static fallback until a web slice builds one — Lu's ruling, mobile first. They
 are named here so a future re-mirror does not go looking for a web original
 that does not exist.
 
+**MOBILE-ONLY, added 2026-11-02 (PLAYBOOK-COVER-POLISH):** `familyRpc.ts`,
+`useMyMessages.ts` and `screens/MessagesScreen.tsx` — the family's own messages
+across the whole book, the local last-seen timestamp behind the "new reply" dot,
+and the screen that lists them. `familyRpc.ts` exists FOR this manifest:
+`rpc.ts`'s `fetchMyQuestions` is per chapter and is mirrored, so the
+all-chapters read was added beside it rather than inside it, the same move
+`coachRpc.ts` made for the coach track. The web has none of these screens yet.
+
 **Nothing mirrored moved on 2026-11-02.** PLAYBOOK-DIAGRAM-TABS and
 PLAYBOOK-KEEPER-ANGLE were both built so the eight mirrored files and the data
 file stay byte-identical: the tab row lives in `CardBoard.tsx` and

@@ -241,7 +241,13 @@ export function ChapterEndScreen({
                     <Text style={pbk.qmeta}>
                       {kindLabel((q as { kind?: string }).kind || 'question', es)} ·{' '}
                       {pick(chapter.content?.name, lang)}
-                      {card ? ' · ' + pick(card.content?.name, lang) : ''} · {ago(q.created_at, es)}
+                      {card ? ' · ' + pick(card.content?.name, lang) : ''} ·{' '}
+                      {/* THREAD-STAMP-TIME: an answered message is stamped
+                          with the COACH'S latest reply, not with when it was
+                          asked — the same rule the staff thread follows. */}
+                      {q.status === 'answered' && rs.length
+                        ? `✓ ${ago(rs[rs.length - 1].created_at, es)}`
+                        : ago(q.created_at, es)}
                     </Text>
                     {q.status === 'answered' ? (
                       <Chip green>{es ? 'Respondida ✓' : 'Answered ✓'}</Chip>

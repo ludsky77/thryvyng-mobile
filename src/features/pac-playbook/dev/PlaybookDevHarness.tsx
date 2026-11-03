@@ -61,7 +61,7 @@ import { STRENGTH, doodlePlan, withDoodleColors } from '../doodleArt';
 import { withChalkEdge } from '../doodleChalk';
 import PlaybookScreen, { type PlaybookOffline } from '../PlaybookScreen';
 import { withTestCards } from './testCards';
-import { DEV_INBOX, DEV_ROSTER, DEV_STAFF, DEV_STAFF_MANAGER } from './coachFixtures';
+import { DEV_INBOX, DEV_MAIL, DEV_ROSTER, DEV_STAFF, DEV_STAFF_MANAGER } from './coachFixtures';
 import {
   OFFLINE_BOOK,
   OFFLINE_COUNTS,
@@ -133,6 +133,13 @@ type TapReadout = {
  *   …&coach=mgr                                           …as a team MANAGER (R2)
  *   …&screen=progress&coach=1                             team progress
  *   …&screen=inbox&coach=1                                the question inbox
+ *   …&msg=1                                               + the family's messages
+ *   …&msg=1&screen=messages                               see-all messages
+ *
+ * `msg` is PLAYBOOK-COVER-POLISH's family block. WITHOUT it the cover shows no
+ * "Your messages" section at all, which is the empty state the ruling asks for
+ * — "hide the section entirely if the user has never sent one" — so the hidden
+ * case needs no param of its own, only the absence of this one.
  *
  * `tab`, `kp` and `kpball` are `PlaybookLook` — the same reason `screen` and
  * `y` exist. A 4th tab, a second mode and a preset are all behind a PRESS, and
@@ -194,6 +201,8 @@ function navFromParams(params: Record<string, string>): PlaybookOffline['initial
       return { screen: 'progress' };
     case 'inbox':
       return { screen: 'inbox' };
+    case 'messages':
+      return { screen: 'messages' };
     /* `player` and `thread` are normally reached by TAPPING a row, and this
        simulator still cannot be tapped from a shell. `pl` / `th` name the
        fixture row to open on. A `thread` needs the whole row, not an id, so
@@ -248,6 +257,14 @@ function ReaderHost({
           : null,
     [params.coach]
   );
+  /**
+   * `msg=1` hands the reader a fake set of its own messages, one of them
+   * answered five minutes ago and one thirty hours ago, against a pretend
+   * last-look six hours back — so the "new reply" dot is visible AND visibly
+   * absent on the other (PLAYBOOK-COVER-POLISH). Without the param the family
+   * block is not rendered, which is the ruling's own empty state.
+   */
+  const mail = useMemo(() => (params.msg === '1' ? DEV_MAIL : null), [params.msg]);
   /** The two interactive boards' initial state — see `PlaybookLook`. */
   const look = useMemo(
     () => ({
@@ -263,7 +280,7 @@ function ReaderHost({
           the key remounts the shell rather than quietly ignoring the new
           screen. Harness-only — the app never changes these params. */}
       <PlaybookScreen
-        key={`${params.screen || 'cover'}|${params.ch || ''}|${params.id || ''}|${params.q || ''}|${params.start || ''}|${params.autoplay || ''}|${params.dz || ''}|${params.y || ''}|${params.lang || ''}|${params.fix || ''}|${params.tab || ''}|${params.kp || ''}|${params.kpball || ''}|${params.coach || ''}|${params.pl || ''}|${params.th || ''}`}
+        key={`${params.screen || 'cover'}|${params.ch || ''}|${params.id || ''}|${params.q || ''}|${params.start || ''}|${params.autoplay || ''}|${params.dz || ''}|${params.y || ''}|${params.lang || ''}|${params.fix || ''}|${params.tab || ''}|${params.kp || ''}|${params.kpball || ''}|${params.coach || ''}|${params.pl || ''}|${params.th || ''}|${params.msg || ''}`}
         offline={{
           book,
           progress: OFFLINE_PROGRESS,
@@ -278,6 +295,7 @@ function ReaderHost({
           initialScrollY: params.y ? Number(params.y) : undefined,
           look,
           staff,
+          messages: mail,
           lang: params.lang === 'es' ? 'es' : 'en',
           dz: params.dz ? `dz=${params.dz}` : undefined,
         }}

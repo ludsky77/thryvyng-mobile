@@ -16,6 +16,11 @@
  * AN ITEM SAYS WHO AND WHERE BEFORE IT SAYS WHAT: the kind pill, the player's
  * name and team, then the chapter and card it is about, then the message. A
  * coach triaging twenty of these is scanning for the name and the card.
+ *
+ * AN ANSWERED ITEM'S AGE IS ITS LATEST REPLY'S — THREAD-STAMP-TIME, the same
+ * rule the thread's stamp follows, marked with a `✓` so the two ages are not
+ * mistaken for each other. An open item's age is the question's, which is how
+ * long it has been waiting.
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
@@ -85,7 +90,11 @@ export function InboxScreen({
             {fullName(q.first_name, q.last_name, es)}
             {q.team_name ? ` · ${q.team_name}` : ''}
           </Text>
-          <Text style={pbk.ctMeta}>{ago(q.created_at, es)}</Text>
+          <Text style={pbk.ctMeta}>
+            {q.status === 'answered' && q.last_reply_at
+              ? `✓ ${ago(q.last_reply_at, es)}`
+              : ago(q.created_at, es)}
+          </Text>
         </View>
         <Text style={pbk.ctMeta}>
           {where}

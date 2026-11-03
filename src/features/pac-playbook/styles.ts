@@ -992,6 +992,27 @@ export const pbk = StyleSheet.create({
   },
   ctList: { gap: space.px8 },
 
+  /* ------------------------------ the family's messages (PLAYBOOK-COVER-POLISH) */
+
+  /**
+   * FAMILY-MESSAGES-ON-COVER. The item itself is the book's own `qitem` /
+   * `qreply` — the same card the end-of-chapter screen draws, so a message
+   * looks the same wherever it is read. What is new is two things:
+   *
+   *   `msgDot`   the unseen-reply mark. A DOT, not a badge with a number:
+   *              the number is already on the "See all" row, and this has to
+   *              sit inside a line of text without pushing it.
+   *   `coverBlk` a block of doors on the cover, under its own label, which
+   *              the cover had no such thing as before.
+   */
+  msgDot: {
+    width: space.px8,
+    height: space.px8,
+    borderRadius: space.px4,
+    backgroundColor: color.pink,
+  },
+  coverBlk: { gap: space.px6 },
+
   /** `.cueline` — "Your cue", with the ringed dot. */
   cueline: { flexDirection: 'row', gap: space.px10, alignItems: 'flex-start' },
   cuelineDot: {

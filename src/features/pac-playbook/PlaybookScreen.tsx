@@ -58,8 +58,10 @@ import { TeamProgressScreen } from './screens/TeamProgressScreen';
 import { PlayerProgressScreen } from './screens/PlayerProgressScreen';
 import { InboxScreen } from './screens/InboxScreen';
 import { ThreadScreen } from './screens/ThreadScreen';
+import { MessagesScreen } from './screens/MessagesScreen';
 import { fetchQuestionWhere, fetchStaffInbox, type InboxRow } from './coachRpc';
 import { useStaffTrack, type OfflineStaff } from './useStaffTrack';
+import { useMyMessages, type OfflineMessages } from './useMyMessages';
 import { ChapterScreen } from './screens/ChapterScreen';
 import { CardScreen } from './screens/CardScreen';
 import { ChapterEndScreen } from './screens/ChapterEndScreen';
@@ -96,7 +98,12 @@ type Nav =
   | { screen: 'progress' }
   | { screen: 'player'; id: string }
   | { screen: 'inbox' }
-  | { screen: 'thread'; q: InboxRow };
+  | { screen: 'thread'; q: InboxRow }
+  /* The family's own messages across every chapter — PLAYBOOK-COVER-POLISH,
+     FAMILY-MESSAGES-ON-COVER. Still the ONE route (R-2); the door is on the
+     cover and a tap from here opens the chapter's existing questions screen,
+     so this screen owns no thread of its own. */
+  | { screen: 'messages' };
 
 /**
  * Everything the `__DEV__` harness injects so the reader can be opened with no
@@ -162,6 +169,8 @@ export interface PlaybookOffline {
   look?: PlaybookLook;
   /** The harness's staff roster and inbox — PLAYBOOK-COACH-TRACK-MOBILE. */
   staff?: OfflineStaff | null;
+  /** The harness's family messages and a pretend last-look timestamp. */
+  messages?: OfflineMessages | null;
 }
 
 export interface PlaybookScreenProps {
@@ -253,6 +262,14 @@ function Reader({
    * from a team manager (ruling R2).
    */
   const staff = useStaffTrack(!!content, offline?.staff);
+
+  /**
+   * THE FAMILY'S MESSAGES — FAMILY-MESSAGES-ON-COVER. Gated on a player, so a
+   * staff-only reader never makes the call: `playerId` is the role's own
+   * `entity_id` (R-4), which only a player or a parent has. One load per
+   * reader, like the staff track's, and its empty answer hides the block.
+   */
+  const messages = useMyMessages(playerId, !!content, offline?.messages);
 
   const [nav, setNav] = useState<Nav>(offline?.initialNav ?? { screen: 'cover' });
   const [trail, setTrail] = useState<string[]>([]);
@@ -477,6 +494,18 @@ function Reader({
     );
 
   const { book } = content;
+  /**
+   * QUIZ-SCORE-DENOM. The authoritative run length is the BOOK's own
+   * `settings.quiz.rules.perRun`, and it is authoritative because the server
+   * enforces it: `playbook_start_quiz` deals exactly that many questions and
+   * RAISES if the bank cannot fill a run (schema :1306, :1336-1338), so every
+   * score ever written was out of this number. Nothing is stored alongside a
+   * result — `playbook_quiz_results` has `best_score` and no total — so a book
+   * that states no `perRun` gets null here and the staff screens print the
+   * bare score rather than a guessed denominator.
+   */
+  const perRun = book.settings?.quiz?.rules?.perRun;
+  const quizTotal = typeof perRun === 'number' && perRun > 0 ? perRun : null;
   const title = pick(book.meta?.title, lang) || 'PAC Playbook';
   const author = book.meta?.author || book.author_name;
   const got = playerId ? progress.got : null;
@@ -538,6 +567,11 @@ function Reader({
       label: es ? 'Progreso' : 'Progress',
       go: () => go({ screen: 'progress' }),
     };
+  } else if (nav.screen === 'messages') {
+    pageKey = 'messages';
+    sub = es ? 'Tus mensajes' : 'Your messages';
+    /* Back is the COVER, because that is the only door into this screen. */
+    back = { label: es ? 'Portada' : 'Cover', go: () => go({ screen: 'cover' }) };
   } else if (nav.screen === 'inbox') {
     pageKey = 'inbox';
     sub = es ? 'Preguntas' : 'Questions';
@@ -565,7 +599,42 @@ function Reader({
 
   if (nav.screen === 'cover') {
     body = (
-      <CoverScreen chapters={chapters} author={author} onOpen={() => go({ screen: 'home' })} />
+      <CoverScreen
+        chapters={chapters}
+        cards={cards}
+        author={author}
+        onOpen={() => go({ screen: 'home' })}
+        /* STAFF-ROWS-ON-COVER / FAMILY-MESSAGES-ON-COVER. Both blocks are
+           null-by-default on the cover itself; what decides whether they
+           render is the server (a roster, a can-answer probe, a message the
+           family actually sent), never a role string read here. */
+        staff={
+          staff.isStaff
+            ? {
+                isStaff: true,
+                canAnswer: staff.canAnswer,
+                openCount: staff.openCount,
+                onProgress: () => go({ screen: 'progress' }),
+                onInbox: () => go({ screen: 'inbox' }),
+              }
+            : null
+        }
+        mail={
+          messages.messages.length
+            ? {
+                messages: messages.messages,
+                newCount: messages.newCount,
+                isNew: messages.isNew,
+                /* Opening the list IS the look that clears the count; the
+                   per-item dots stay put (see `useMyMessages`). */
+                onAll: () => {
+                  messages.markSeen();
+                  go({ screen: 'messages' });
+                },
+              }
+            : null
+        }
+      />
     );
   } else if (nav.screen === 'home') {
     const nx = nextUnread();
@@ -588,11 +657,6 @@ function Reader({
         }}
         onOpenCover={() => go({ screen: 'cover' })}
         onOpenQuiz={() => go({ screen: 'quiz' })}
-        isStaff={staff.isStaff}
-        canAnswer={staff.canAnswer}
-        openCount={staff.openCount}
-        onOpenTeamProgress={() => go({ screen: 'progress' })}
-        onOpenInbox={() => go({ screen: 'inbox' })}
         onContinue={() => nx && openCard(nx.key)}
       />
     );
@@ -678,11 +742,26 @@ function Reader({
         />
       );
     }
+  } else if (nav.screen === 'messages') {
+    body = (
+      <MessagesScreen
+        messages={messages.messages}
+        chapters={chapters}
+        cards={cards}
+        isNew={messages.isNew}
+        loading={messages.loading}
+        /* The chapter's own Questions & notes screen — `openEnd` already
+           sends a staff viewer to the chapter list instead (R-1), and only a
+           reader WITH a player has messages at all. */
+        onOpenChapter={openEnd}
+      />
+    );
   } else if (nav.screen === 'progress') {
     body = (
       <TeamProgressScreen
         roster={staff.roster}
         loading={staff.loading}
+        quizTotal={quizTotal}
         onOpenPlayer={(id) => go({ screen: 'player', id })}
       />
     );
@@ -694,6 +773,7 @@ function Reader({
           player={p}
           chapters={chapters}
           cards={cards}
+          quizTotal={quizTotal}
           offlineGot={offline?.staff ? Array.from(progress.got) : null}
         />
       );
@@ -709,7 +789,9 @@ function Reader({
     body = (
       <ThreadScreen
         question={nav.q}
-        offlineReplies={offline?.staff ? [] : null}
+        offlineReplies={
+          offline?.staff ? (offline.staff.replies?.[nav.q.question_id] ?? []) : null
+        }
         onAnswered={staff.reload}
       />
     );

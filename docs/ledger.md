@@ -1546,3 +1546,102 @@ Lu's rulings of the same day.
   - Source: this session, 2026-11-02; `thrive-and-score/docs/recon/coach-track-recon.md`
     and migration `20261102033000_playbook_coach_track.sql`; Lu's rulings R1–R4 and
     the Oct 28 "parent Got-it counts for the child / anyone can send" ruling.
+
+## Landed — Nov 2 2026 (Playbook cover polish, after Lu's device test)
+
+- **PLAYBOOK-COVER-POLISH · the staff doors and the family's messages move to
+  the cover; an answered age means the reply; the quiz score gains its total**
+  — mobile (`thryvyng-mobile`), `src/features/pac-playbook/**`. Status:
+  **agent-verified; DEVICE LOOK PENDING.** Four ROUTINE fixes from Lu's Nov 2
+  device test of the coach track, plus one lint nit. No schema, no migration,
+  no DB connection of any kind.
+
+  - **1 · STAFF-ROWS-ON-COVER.** "Team progress" and "Questions (n)" were at the
+    BOTTOM of the contents screen — below the whole index — so a coach scrolled
+    the entire book to reach the two rows they opened it for. They now sit near
+    the top of the **cover**, under a `YOUR TEAM` / `TU EQUIPO` label, and are
+    gone from contents. **The visibility rules did not move with them**: a
+    non-empty `playbook_staff_roster()` draws the progress row (R1), and the
+    separate `playbook_can_answer_for_player` probe draws the Questions row
+    (R2), so a **team manager still sees progress and no inbox**. Same `Row`,
+    same dashed `qrow` face, same one chevron.
+  - **2 · FAMILY-MESSAGES-ON-COVER.** A new `Your messages` block on the cover:
+    the **newest three**, each with the coach's latest reply snippet, and a
+    small **pink dot** on any whose reply is newer than this reader's last look.
+    `See all messages` opens a new screen listing every message across every
+    chapter, **grouped Answered / Waiting**, each one tapping through to that
+    chapter's Questions & notes screen — where the thread and the box to write
+    another already live. **The block is not rendered at all** for a reader who
+    has never sent one (no empty state), which is the ruling's own rule.
+  - **THE DOT IS LOCAL AND PER DEVICE, deliberately.** "A reply you have not
+    seen" needs a last-seen timestamp and there is no column for one — so it is
+    an `AsyncStorage` key per USER (`pbk.messages.seen.<uid>`), the dependency
+    this app already ships (`@react-native-async-storage/async-storage` 2.2.0,
+    `src/lib/supabase.ts`). **NO SCHEMA CHANGE, which was not in scope.** The
+    cost, stated rather than hidden: read your replies on a phone and a tablet
+    still shows the dot. Opening the list clears the COVER's count but leaves
+    the per-item dots alone, so the screen you opened to find them does not
+    blank itself.
+  - **The wider read is a NEW non-mirrored file.** `rpc.ts`'s `fetchMyQuestions`
+    is per CHAPTER and is a declared mirror, so the all-chapters read lives in a
+    new `familyRpc.ts` beside `coachRpc.ts`. **It is not a new permission** —
+    the same two tables under the same policies (`playbook_questions`'s SELECT:
+    sender, family, answerer; replies inherit the three arms through
+    `playbook_question_visible`, migration `20261102033000` :200-225). Dropping
+    the chapter filter asks for more ROWS, never for wider access.
+  - **3 · THREAD-STAMP-TIME.** An **answered** thread's stamp now reads the age
+    of the **latest reply**, not of the question: a thread answered four minutes
+    ago used to be stamped "ANSWERED · 72 H". Open threads are unchanged and
+    still carry the question's age, because that is how long somebody has been
+    waiting. The same rule, marked with a `✓` so the two ages cannot be
+    confused, applies in the **inbox list** (`last_reply_at`) and on the
+    **family's own messages** (the last reply's `created_at`) — the three places
+    an answered age shows.
+  - **4 · QUIZ-SCORE-DENOM — the total EXISTS and is the book's.** The
+    authoritative run length is `playbook_books.settings.quiz.rules.perRun`
+    (**8** in the seeded book), and it is authoritative because the SERVER
+    enforces it: `playbook_start_quiz` deals exactly that many and RAISES if the
+    bank cannot fill a run (`20261028190000_playbook_v1_schema.sql` :1306,
+    :1336-1338). So every score ever written was out of this number. **Nothing
+    is stored next to a result** — `playbook_quiz_results` has `best_score`,
+    `last_score`, `runs` and no total — so the roster row and the player card
+    now print `best 6 / 8 · last 6 / 8`, and a book that states no `perRun`
+    prints the bare number exactly as before rather than a guessed denominator.
+    **Caveat worth knowing:** change `perRun` later and historical bests are
+    re-labelled against the new total, because the old one was never recorded.
+  - **5 · Lint nit.** `KeeperAnglePanel`'s live `<Svg>` used `{ position:
+    'absolute', inset: 0 }`; it now uses `StyleSheet.absoluteFill`, which the
+    static `Chalk` layer beside it already did (P-05c RECOMMEND 1).
+  - **NOTHING MIRRORED MOVED.** `rpc.ts`, `types.ts` and `search.ts` show no git
+    diff at all; the drift check is the one declared `doodleArt.ts` hunk and
+    silence everywhere else.
+  - **Files (16).** New: `familyRpc.ts` · `useMyMessages.ts` ·
+    `screens/MessagesScreen.tsx`. Changed: `screens/CoverScreen.tsx` ·
+    `screens/ContentsScreen.tsx` · `screens/ThreadScreen.tsx` ·
+    `screens/InboxScreen.tsx` · `screens/ChapterEndScreen.tsx` ·
+    `screens/TeamProgressScreen.tsx` · `screens/PlayerProgressScreen.tsx` ·
+    `PlaybookScreen.tsx` · `useStaffTrack.ts` · `styles.ts` ·
+    `panels/KeeperAnglePanel.tsx` · `dev/coachFixtures.ts` ·
+    `dev/PlaybookDevHarness.tsx`. Plus `MIRROR.md` and this ledger.
+  - **Gates:** `npx tsc --noEmit` **5 errors, all pre-existing in
+    `src/components/games/*`, 0 new** · `eslint` on the 15 touched source files
+    **0 errors** (1 new warning, `no-console` on the messages read's failure
+    path — the `usePlaybookBook.ts` idiom) · `npx expo export --platform ios`
+    **exit 0** · **MIRROR.md drift check clean**.
+  - **SEEN ON THE SIMULATOR** (iPhone 17 Pro `DEEE9FA3`, dev client over Metro,
+    `__DEV__` fixture): the cover with both staff rows and the pink **3** badge ·
+    the cover with Your messages, **one dot on the 7-minute reply and none on
+    the 30-hour one** · See-all grouped Answered (2) / Waiting (2) · the cover
+    with **no messages block at all** · a thread stamped **ANSWERED · 7 MIN**
+    where the question is three days old · the roster reading `best 6 / 8 · last
+    6 / 8` · the player card reading `Best 8 / 8 · last 7 / 8 · 3 runs` · the
+    contents screen with the staff rows **gone** · and both blocks together in
+    Spanish for a coach who is also a parent.
+  - **NOT VERIFIED HERE.** Still the fixture, still no DB call: the live test
+    plan under PLAYBOOK-COACH-TRACK-MOBILE is unchanged and now also covers the
+    family block (does a real family's cover show their own messages, and does
+    the dot behave across two devices?) and the quiz denominator against a real
+    `playbook_quiz_results` row.
+  - Source: this session, 2026-11-02; Lu's Nov 2 device-test rulings 1–5;
+    `20261028190000_playbook_v1_schema.sql` (the quiz run length) and
+    `20261102033000_playbook_coach_track.sql` (the question policies).

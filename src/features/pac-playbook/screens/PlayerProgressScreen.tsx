@@ -29,11 +29,17 @@ export function PlayerProgressScreen({
   player,
   chapters,
   cards,
+  quizTotal,
   offlineGot,
 }: {
   player: RosterRow;
   chapters: ChapterRow[];
   cards: Card[];
+  /**
+   * QUIZ-SCORE-DENOM. Questions in one run (`settings.quiz.rules.perRun`),
+   * so "Best 6" prints as "Best 6 / 8". Null prints the bare number.
+   */
+  quizTotal?: number | null;
   /** The harness's card-id set; the real route reads it from the server. */
   offlineGot?: string[] | null;
 }) {
@@ -73,6 +79,8 @@ export function PlayerProgressScreen({
 
   const total = cards.length;
   const gotTotal = cards.filter((c) => got.has(c.id)).length;
+  const outOf = (score: number | null) =>
+    quizTotal ? `${score ?? 0} / ${quizTotal}` : String(score ?? 0);
   const medal =
     player.quiz_best_medal && player.quiz_best_medal !== 'none' ? player.quiz_best_medal : null;
 
@@ -99,9 +107,9 @@ export function PlayerProgressScreen({
           </View>
           <Text style={pbk.rolepanelText}>
             {player.quiz_runs > 0
-              ? `${es ? 'Mejor' : 'Best'} ${player.quiz_best_score ?? 0} · ${
+              ? `${es ? 'Mejor' : 'Best'} ${outOf(player.quiz_best_score)} · ${
                   es ? 'último' : 'last'
-                } ${player.quiz_last_score ?? 0} · ${player.quiz_runs} ${
+                } ${outOf(player.quiz_last_score)} · ${player.quiz_runs} ${
                   es ? 'intentos' : 'runs'
                 } · ${ago(player.quiz_last_run_at, es)}`
               : es

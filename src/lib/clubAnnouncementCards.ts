@@ -7,27 +7,45 @@
  * `docs/recon/club-announcements.md` (§B6–B12, §LB-1..5, §P-1..5) and
  * `docs/recon/club-announcements-v1-mobile.md` (this build).
  *
- * THE SERVER SIDE IS NOT APPLIED YET. It is being prepared in the web repo in
- * parallel, so every read and write here is written against the agreed shape
- * and is required to DEGRADE rather than crash while it is absent:
+ * THE SERVER SIDE IS WRITTEN AND NOT APPLIED. Every limit, column name, kind
+ * and refusal sentinel below was read on 2026-11-03 out of the migration
+ * itself — thrive-and-score
+ * `supabase/migrations/20261103031500_club_announcements_v1.sql` (BUILT,
+ * UNAPPLIED) — not inferred from a convention. It is still required to
+ * DEGRADE rather than crash while the objects are absent:
  *
- *   comm_messages.title       text NULL, ≤ 80 chars. The content of a titled
- *                             message is `title + "\n\n" + body`, so a client
- *                             that has never heard of the column still renders
- *                             a readable message — which matters because
- *                             `comm_messages` rows are drawn by BOTH apps
- *                             (recon §LB-3a).
- *   comm_message_actions      (message_id, kind, target, label, sort_order).
- *                             `kind` is one of 'playbook' | 'playbook_card' |
- *                             'courses'; `target` carries the CARD KEY for
- *                             'playbook_card' and is unused by the other two.
- *                             Members may SELECT. NOBODY inserts directly.
+ *   comm_messages.title       text NULL, CHECK `title IS NULL OR
+ *                             char_length(btrim(title)) BETWEEN 1 AND 80`
+ *                             (migration PART 1). The content of a titled
+ *                             message is `title || E'\n\n' || body`, written
+ *                             by the RPC, so a client that has never heard of
+ *                             the column still renders a readable message —
+ *                             which matters because `comm_messages` rows are
+ *                             drawn by BOTH apps (recon §LB-3a).
+ *   comm_message_actions      (id, message_id, kind, target, label,
+ *                             sort_order, created_by, created_at) — migration
+ *                             PART 2. `kind` is CHECKed against 'playbook' |
+ *                             'playbook_card' | 'courses'; `target` is the CARD
+ *                             KEY for 'playbook_card', matched against
+ *                             `^[A-Za-z0-9_-]{1,16}$`, and must be NULL for the
+ *                             other two kinds; `label` is CHECKed 1–40 chars
+ *                             after trim. `authenticated` holds SELECT only —
+ *                             INSERT/UPDATE/DELETE are REVOKEd, so nobody
+ *                             inserts directly even with a policy.
  *   post_club_announcement(p_channel_id uuid, p_title text, p_body text,
- *                          p_actions jsonb) → the new message's id.
- *                             The server refuses a non-staff caller. This is
- *                             the ONLY door: the client never inserts a
+ *                          p_actions jsonb DEFAULT '[]') → uuid, the new
+ *                             message's id. SECURITY DEFINER, EXECUTE granted
+ *                             to `authenticated` only. Refuses with ERRCODE
+ *                             P0070–P0074 + a HINT sentinel. This is the ONLY
+ *                             door: the client never inserts a
  *                             `comm_message_actions` row and never writes
  *                             `title` itself.
+ *
+ * THE RPC'S GATE ORDER, which is why a refusal can be about a thing the
+ * composer never showed: signed in → channel exists → `is_channel_staff` →
+ * the chat is the club's default (`channel_type = 'club' AND is_default`) →
+ * not archived → title → body → the buttons, all of them validated before
+ * anything is written.
  *
  * WHO MAY POST is the server's answer and nothing else's — `is_channel_staff`,
  * the same predicate the `msg_insert` policy asks (ruling FND-4d3, and
@@ -42,10 +60,41 @@
 import { supabase } from './supabase';
 import { isAnnounceCardKey } from '../constants/announceCardKey';
 
-/** The agreed ceiling on `comm_messages.title`. The server owns the real one. */
+/**
+ * The limits the RPC enforces, copied from the migration so the composer
+ * refuses what the server would refuse instead of spending a round trip on it.
+ * The server still owns every one of them — these only decide what compose
+ * will let someone TRY.
+ *
+ *   title   `char_length(btrim(p_title)) BETWEEN 1 AND 80`   → P0073 title_invalid
+ *   body    `char_length(btrim(p_body)) BETWEEN 1 AND 4000`  → P0073 body_invalid
+ *   label   `char_length(btrim(label)) BETWEEN 1 AND 40`     → P0074 action_label_invalid
+ *   buttons `jsonb_array_length(p_actions) <= 3`             → P0074 too_many_actions
+ */
 export const ANNOUNCEMENT_TITLE_MAX = 80;
 
-/** How many buttons one announcement may carry (ruling 2026-11-03 01:57). */
+/**
+ * A TITLE IS REQUIRED — Lu's ruling, 2026-11-03, and the RPC agrees: there is
+ * no branch in `post_club_announcement` that accepts a NULL or blank
+ * `p_title`, so an untitled announcement is not a quieter card, it is a
+ * refusal. Compose keeps Send disabled until this many characters survive the
+ * trim, and the write path never sends null.
+ *
+ * Existing untitled rows are a different question and still render: they
+ * predate the column, and `splitAnnouncement` derives a headline for them.
+ */
+export const ANNOUNCEMENT_TITLE_MIN = 1;
+
+/** `comm_messages.content` is unbounded; the RPC's `p_body` is not. */
+export const ANNOUNCEMENT_BODY_MAX = 4000;
+
+/** `comm_message_actions_label_check`, 1–40 after trim. */
+export const ANNOUNCEMENT_ACTION_LABEL_MAX = 40;
+
+/**
+ * How many buttons one announcement may carry (ruling 2026-11-03 01:57), and
+ * the RPC's own cap — `jsonb_array_length(v_actions) > 3` refuses.
+ */
 export const ANNOUNCEMENT_MAX_ACTIONS = 3;
 
 /**
@@ -112,6 +161,17 @@ export function isAnnouncementActionKind(
  * the push branch (`src/constants/announceCardKey.ts`). Whether a card by that
  * key exists, and whether this viewer's book holds it, is the READER's
  * question and is deliberately not asked here (see that file).
+ *
+ * The LABEL CEILING is checked here too, not only by the input's `maxLength`:
+ * `comm_message_actions_label_check` is 1–40 after trim, and a label can reach
+ * this function from somewhere other than that input — a paste that outran it,
+ * or a future caller. A row the table would reject is dropped rather than sent
+ * and refused, which is what the whole announcement would be (P0074
+ * `action_label_invalid` aborts the call before the message is written).
+ *
+ * A TARGET ON THE WRONG KIND is NOT tested here on purpose: the builder nulls
+ * it (`comm_message_actions_target_check` demands NULL for the other two
+ * kinds), so a stray key costs the key and never the button.
  */
 export function isSendableAction(action: {
   kind: unknown;
@@ -119,7 +179,8 @@ export function isSendableAction(action: {
   label?: string | null;
 }): boolean {
   if (!isAnnouncementActionKind(action.kind)) return false;
-  if (!action.label?.trim()) return false;
+  const label = action.label?.trim() ?? '';
+  if (!label || label.length > ANNOUNCEMENT_ACTION_LABEL_MAX) return false;
   if (action.kind === 'playbook_card') return isAnnounceCardKey(action.target);
   return true;
 }
@@ -377,31 +438,91 @@ export async function fetchAnnouncementActions(
 /* ──────────────────────────── the one write ──────────────────────────── */
 
 /**
- * The hint sentinels `post_club_announcement` is expected to raise with, in the
- * shape `close_poll` and `set_channel_announcement_mode` already use
- * (`./channelStaff`, `./announcementChannel`).
+ * EVERY refusal `post_club_announcement` can raise, as the migration raises it.
  *
- * PROVISIONAL — the function is not applied yet, so these names are the
- * convention and not a read fact. Nothing depends on being right about them:
+ * READ, NOT GUESSED (2026-11-03). The previous version of this map was five
+ * invented sentinels in the `close_poll` convention — `title_too_long`,
+ * `body_required`, `actions_invalid` and two that happened to be right. Three
+ * of them do not exist in the applied-shape function, so three of its ten
+ * refusals would have fallen through to "Could not send this announcement.
+ * Please try again." the moment a layer in between dropped the message. The
+ * names below are the HINT strings in
+ * `20261103031500_club_announcements_v1.sql` lines 311–394, in the order the
+ * function checks them.
+ *
+ * THE HINT IS THE SENTINEL, THE ERRCODE IS THE CLASS. The function uses the
+ * 4b P0024 shape: a printable MESSAGE, an ERRCODE that says which KIND of
+ * refusal it is, and a HINT that names the exact one. Codes are coarse on
+ * purpose — P0071 covers "no such chat", "wrong chat" and "archived chat" —
+ * so the hint, not the code, picks the sentence.
+ *
+ * NOTHING DEPENDS ON THIS MAP BEING COMPLETE.
  * `describePostAnnouncementFailure` prefers the SERVER'S OWN MESSAGE and only
- * falls back to the map below when a layer in between dropped it. If the
- * applied function uses other names, the sentences below are simply never
- * reached and the server's words are shown instead.
+ * reaches these when it is missing; an eleventh refusal added later still
+ * reads as a sentence.
  */
-const NOT_CHANNEL_STAFF_HINT = 'not_channel_staff';
-const CHANNEL_NOT_FOUND_HINT = 'channel_not_found';
-const TITLE_TOO_LONG_HINT = 'title_too_long';
-const BODY_REQUIRED_HINT = 'body_required';
-const ACTIONS_INVALID_HINT = 'actions_invalid';
+const REFUSAL_HINTS = {
+  /** P0070 — auth.uid() is NULL. */
+  not_signed_in: 'Sign in to post an announcement',
+  /** P0071 — no such chat, or a NULL channel id. */
+  channel_not_found: 'Chat not found',
+  /** P0072 — is_channel_staff said no. The one that gates the door. */
+  not_channel_staff: 'Only a club admin or club staff can post announcements',
+  /** P0071 — not the club's default chat. Mobile should never reach this: the
+   *  channel comes from `getClubAnnouncementsChannel`, which asks for exactly
+   *  `channel_type = 'club' AND is_default`. Mapped anyway, because "should
+   *  never" is not "cannot" — a stale channel id in a navigation param would. */
+  not_club_announcements:
+    "Announcements can only be posted to the club's announcements chat",
+  /** P0071 — the chat was archived, plausibly after this screen opened. */
+  channel_archived: 'This chat is archived',
+  /** P0073 — NULL, blank, or over 80 after trim. */
+  title_invalid: `A title is required, up to ${ANNOUNCEMENT_TITLE_MAX} characters`,
+  /** P0073 — NULL, blank, or over 4000 after trim. */
+  body_invalid: `A message is required, up to ${ANNOUNCEMENT_BODY_MAX} characters`,
+  /** P0074 — `p_actions` was not a JSON array. The builder always sends one,
+   *  so this can only be a caller that bypassed it. */
+  actions_not_array: 'Buttons must be a list',
+  /** P0074 — more than three. The builder slices to three first. */
+  too_many_actions: `An announcement can have at most ${ANNOUNCEMENT_MAX_ACTIONS} buttons`,
+  /** P0074 — an element was not a JSON object. */
+  action_invalid: 'One of the buttons could not be saved',
+  /** P0074 — `kind` off the allow-list. */
+  action_kind_invalid: 'One of the buttons has a type this app cannot send',
+  /** P0074 — a `playbook_card` whose target is not key-shaped. */
+  action_card_key_invalid: 'That Playbook card key is not valid',
+  /** P0074 — a target on a kind that takes none. The builder nulls it. */
+  action_target_invalid: 'One of the buttons has a destination it cannot take',
+  /** P0074 — label blank or over 40 after trim. */
+  action_label_invalid: `Each button label must be 1 to ${ANNOUNCEMENT_ACTION_LABEL_MAX} characters`,
+} as const;
 
-export const POST_ANNOUNCEMENT_REFUSED_MESSAGE =
-  'Only a coach, manager or club admin of this chat can post an announcement';
-export const POST_ANNOUNCEMENT_CHANNEL_NOT_FOUND_MESSAGE = 'Chat not found';
-export const POST_ANNOUNCEMENT_TITLE_TOO_LONG_MESSAGE = `Keep the title to ${ANNOUNCEMENT_TITLE_MAX} characters or fewer`;
-export const POST_ANNOUNCEMENT_BODY_REQUIRED_MESSAGE =
-  'Write a message before sending';
-export const POST_ANNOUNCEMENT_ACTIONS_INVALID_MESSAGE =
-  'One of the buttons could not be saved. Check the card key and try again.';
+/**
+ * The ERRCODEs the function refuses with. Every one carries a HINT, so the
+ * refusal is recognised by the hint alone in practice; the codes are matched
+ * as well so a refusal whose hint was stripped in transit is still reported as
+ * a RULE ("the server said no") rather than as "we could not reach it".
+ *
+ * `42501` is the RLS/privilege refusal and belongs with them for the same
+ * reason. `P0001` stays: it is what a bare plpgsql RAISE reports as, and a
+ * hand-applied or older build of the function may not set an ERRCODE at all.
+ */
+const REFUSAL_CODES = [
+  'P0070',
+  'P0071',
+  'P0072',
+  'P0073',
+  'P0074',
+  'P0001',
+  '42501',
+];
+
+/** Kept as a named export: `ComposeAnnouncementScreen` imports it. */
+export const POST_ANNOUNCEMENT_REFUSED_MESSAGE = REFUSAL_HINTS.not_channel_staff;
+export const POST_ANNOUNCEMENT_CHANNEL_NOT_FOUND_MESSAGE =
+  REFUSAL_HINTS.channel_not_found;
+export const POST_ANNOUNCEMENT_TITLE_INVALID_MESSAGE = REFUSAL_HINTS.title_invalid;
+export const POST_ANNOUNCEMENT_BODY_INVALID_MESSAGE = REFUSAL_HINTS.body_invalid;
 /** Shown when the call never got an answer — offline, 500, dropped request. */
 export const POST_ANNOUNCEMENT_FAILED_MESSAGE =
   'Could not send this announcement. Please try again.';
@@ -411,25 +532,34 @@ export const POST_ANNOUNCEMENT_FAILED_MESSAGE =
  *
  * The server's own message first, so the copy lives in ONE place — the
  * function — and an ERRCODE this client has never heard of still reads as a
- * sentence rather than as "something went wrong".
+ * sentence rather than as "something went wrong". Then the hint map above,
+ * then the one generic line.
  */
 export function describePostAnnouncementFailure(error: MaybePostgrestError): string {
   const message = error?.message?.trim();
   if (message) return message;
-  switch (error?.hint) {
-    case CHANNEL_NOT_FOUND_HINT:
-      return POST_ANNOUNCEMENT_CHANNEL_NOT_FOUND_MESSAGE;
-    case NOT_CHANNEL_STAFF_HINT:
-      return POST_ANNOUNCEMENT_REFUSED_MESSAGE;
-    case TITLE_TOO_LONG_HINT:
-      return POST_ANNOUNCEMENT_TITLE_TOO_LONG_MESSAGE;
-    case BODY_REQUIRED_HINT:
-      return POST_ANNOUNCEMENT_BODY_REQUIRED_MESSAGE;
-    case ACTIONS_INVALID_HINT:
-      return POST_ANNOUNCEMENT_ACTIONS_INVALID_MESSAGE;
-    default:
-      return POST_ANNOUNCEMENT_FAILED_MESSAGE;
+  const hint = error?.hint?.trim();
+  if (hint && hint in REFUSAL_HINTS) {
+    return REFUSAL_HINTS[hint as keyof typeof REFUSAL_HINTS];
   }
+  return POST_ANNOUNCEMENT_FAILED_MESSAGE;
+}
+
+/**
+ * Did the server say NO, as opposed to not answering?
+ *
+ * A refusal code, or ANY hint at all — not only a hint this map knows.
+ * `RAISE ... USING HINT` is something a function sets deliberately; a dropped
+ * request and a 500 carry no hint, so its presence is the server having
+ * reached a decision. An eleventh sentinel added to the function later is
+ * therefore still reported as a rule, with the server's own sentence, rather
+ * than as "try again".
+ */
+export function isPostAnnouncementRefusal(error: MaybePostgrestError): boolean {
+  if (!error) return false;
+  const code = error.code?.trim();
+  if (code && REFUSAL_CODES.includes(code)) return true;
+  return !!error.hint?.trim();
 }
 
 export type PostAnnouncementResult =
@@ -459,9 +589,15 @@ export async function postClubAnnouncement(args: {
   body: string;
   actions: ReadonlyArray<{ kind: AnnouncementActionKind; target?: string | null; label: string }>;
 }): Promise<PostAnnouncementResult> {
+  // NEVER `|| null`. The old line sent null for a blank title, which reads as
+  // "no title" and is not a state the RPC has: `p_title` NULL raises P0073
+  // `title_invalid`, so the blank would have cost a round trip to be told what
+  // the Send button already knows. Compose keeps Send disabled until there is
+  // a title (ANNOUNCEMENT_TITLE_MIN); this sends whatever survives the trim
+  // and lets the server have the last word on it.
   const { data, error } = await supabase.rpc('post_club_announcement', {
     p_channel_id: args.channelId,
-    p_title: args.title.trim() || null,
+    p_title: args.title.trim(),
     p_body: args.body.trim(),
     p_actions: buildAnnouncementActionsPayload(args.actions),
   });
@@ -472,9 +608,7 @@ export async function postClubAnnouncement(args: {
 
   if (isAnnouncementContractMissing(error)) return { status: 'setup_pending' };
 
-  // P0001 is what a plpgsql RAISE reports as; 42501 is the RLS refusal. Both
-  // are the server saying no, which is not the same as not answering.
-  if (error.code === 'P0001' || error.code === '42501' || error.hint) {
+  if (isPostAnnouncementRefusal(error)) {
     return { status: 'refused', message: describePostAnnouncementFailure(error) };
   }
 

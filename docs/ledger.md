@@ -2137,15 +2137,57 @@ it. Nothing here has been seen by a human on a real phone.
   01:57 (Lu) · agent session 2026-11-03.** Nothing here has been tapped by a
   human: no simulator run, no device run, no `expo export`.
   - **TWO THINGS GATE THE FEATURE AND NEITHER IS IN THIS REPO.** (1) The server
-    side is being prepared in the **web** repo and is **not applied**:
-    `comm_messages.title text NULL` (≤80), `comm_message_actions
-    (message_id, kind ∈ {playbook, playbook_card, courses}, target, label,
-    sort_order)` with member SELECT and no direct insert, and
-    `post_club_announcement(p_channel_id, p_title, p_body, p_actions) → id`
-    which refuses a non-staff caller. (2) **Lu must approve the wording before
-    anything is sent to the real channel** — every row inserted into
-    `club-announcements` pushes ~231 PAC families and there is no per-message
-    push switch (recon §B11).
+    side is **written and still not applied** — thrive-and-score
+    `supabase/migrations/20261103031500_club_announcements_v1.sql`:
+    `comm_messages.title text NULL` (CHECK 1–80 after trim),
+    `comm_message_actions (id, message_id, kind ∈ {playbook, playbook_card,
+    courses}, target, label, sort_order, created_by, created_at)` with SELECT
+    only for `authenticated` and INSERT/UPDATE/DELETE **REVOKEd**, and
+    `post_club_announcement(p_channel_id, p_title, p_body, p_actions) → uuid`
+    which refuses with ERRCODE **P0070–P0074 + a HINT sentinel**. (2) **Lu must
+    approve the wording before anything is sent to the real channel** — every
+    row inserted into `club-announcements` pushes ~231 PAC families and there
+    is no per-message push switch (recon §B11).
+  - **SECOND PASS, 2026-11-03 — ALIGNED TO THE MIGRATION, 28-POINT SWEEP.** The
+    first pass was written against the AGREED shape; the migration now exists as
+    a file, so every point was re-checked against it and against
+    `notify-chat-message/core.ts`. **22 already matched, 6 were mobile-side
+    mismatches, all 6 fixed** (recon § 1.4 holds the table):
+    - **A TITLE IS NOW REQUIRED** (Lu's ruling, and the RPC has no untitled
+      branch). The write path sent `p_title: trim() || null`, which made a
+      blank field a round trip whose only outcome was P0073. Send is disabled
+      until 1–80 chars survive the trim, the hint reads *"Add a title: it's
+      what families see on the card."*, and **null is never sent**.
+    - **THE REFUSAL MAP WAS THREE-FIFTHS INVENTED.** It carried five sentinels
+      in the `close_poll` convention; three (`title_too_long`, `body_required`,
+      `actions_invalid`) do not exist, so three of the function's refusals
+      would have printed "try again" for a rule the server had already
+      explained. All **14** HINTs now map to plain sentences, read from
+      migration lines 311–394, and P0070–P0074 are matched as refusal codes.
+      **The ladder is unchanged:** the server's own message still wins, so an
+      eleventh refusal added later still reads as a sentence.
+    - **TWO CEILINGS WERE MISSING:** `p_body` 1–4000 (P0073 `body_invalid`) had
+      no limit anywhere, and the button `label` CHECK of 1–40 was only tested
+      as "non-blank" in the lib. Both are constants now, enforced in the
+      allow-list and on the inputs.
+    - Verified unchanged and correct: RPC name and all four parameter
+      names/types, the three action keys, every `comm_message_actions` column,
+      the card-key regex (character-for-character), `target` nulled on the
+      other two kinds, the `title`/content composition and its
+      not-a-prefix guard, the push `data.announcement` / `type` / `channel_id`
+      keys, and `channel_type='club' AND is_default AND NOT is_archived`.
+    - **Known and deliberate:** mobile sends a `sort_order` the RPC ignores
+      (it uses `WITH ORDINALITY`, so the ARRAY ORDER decides). The two are
+      provably equal and an extra jsonb key cannot refuse; it stays so the
+      payload mirrors the table.
+  - **PROOF, SECOND PASS:** `npx tsc --noEmit` = **5 errors, the baseline**, all
+    pre-existing in `src/components/games/*`, **0 outside it**; eslint on both
+    touched files **0 errors 0 warnings**; logic smoke **120 assertions, ALL
+    PASS, 0 failures** against a stub client (ten groups; 59 of them new for
+    the title rule and the error map). **STILL NOT TAPPED BY A HUMAN** — no
+    simulator, no device, no `expo export`. The smoke harness is **not in the
+    repo** (scratchpad only) and had to be rebuilt from the recon's prose this
+    session — see the RECOMMEND in recon § 7.
   - **IT DOES NOT CRASH WHILE THE SERVER IS BEHIND, and that is a built state,
     not luck.** The feed probes the contract once on open (two of the cheapest
     possible reads) and compose finds out from the RPC itself; both then show

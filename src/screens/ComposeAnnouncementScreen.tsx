@@ -22,8 +22,11 @@ import {
   ANNOUNCEMENTS_SETUP_PENDING_DETAIL,
   ANNOUNCEMENTS_SETUP_PENDING_MESSAGE,
   ANNOUNCEMENT_ACTION_LABELS,
+  ANNOUNCEMENT_ACTION_LABEL_MAX,
+  ANNOUNCEMENT_BODY_MAX,
   ANNOUNCEMENT_MAX_ACTIONS,
   ANNOUNCEMENT_TITLE_MAX,
+  ANNOUNCEMENT_TITLE_MIN,
   POST_ANNOUNCEMENT_FAILED_MESSAGE,
   POST_ANNOUNCEMENT_REFUSED_MESSAGE,
   isSendableAction,
@@ -149,6 +152,19 @@ export default function ComposeAnnouncementScreen({
   const trimmedTitle = title.trim();
   const trimmedBody = body.trim();
   const titleOverLong = trimmedTitle.length > ANNOUNCEMENT_TITLE_MAX;
+  const bodyOverLong = trimmedBody.length > ANNOUNCEMENT_BODY_MAX;
+
+  /**
+   * A TITLE IS REQUIRED — Lu's ruling, 2026-11-03, and the RPC's own rule:
+   * `p_title` NULL or blank raises P0073 `title_invalid` and nothing is
+   * written. So the field is not optional-with-a-fallback; an empty one is a
+   * send that cannot succeed, and Send stays down until it is filled.
+   *
+   * `titleMissing` is kept apart from `canSend` so the hint can be shown only
+   * once someone has started the message — a form that opens already
+   * complaining is worse than one that waits.
+   */
+  const titleMissing = trimmedTitle.length < ANNOUNCEMENT_TITLE_MIN;
 
   /** Which drafted buttons would actually be sent. */
   const sendableCount = useMemo(
@@ -159,8 +175,10 @@ export default function ComposeAnnouncementScreen({
 
   const canSend =
     !!channelId &&
-    !!trimmedBody &&
+    !titleMissing &&
     !titleOverLong &&
+    !!trimmedBody &&
+    !bodyOverLong &&
     incompleteActions === 0 &&
     !sending;
 
@@ -305,6 +323,10 @@ export default function ComposeAnnouncementScreen({
           {/* ONE audience, said once — the same sentence the old step showed. */}
           <Text style={styles.audience}>{clubAnnouncementsAudienceLine(clubName)}</Text>
 
+          {/* REQUIRED, and labelled as required. The RPC has no untitled
+              branch (P0073 `title_invalid`), and the title is the whole card
+              in the feed — a family scrolling the list sees this line and
+              nothing else. */}
           <Text style={styles.fieldLabel}>Title</Text>
           <TextInput
             style={[styles.input, titleOverLong && styles.inputError]}
@@ -314,20 +336,39 @@ export default function ComposeAnnouncementScreen({
             placeholderTextColor="#64748b"
             maxLength={ANNOUNCEMENT_TITLE_MAX}
           />
-          <Text style={[styles.counter, titleOverLong && styles.counterError]}>
-            {trimmedTitle.length}/{ANNOUNCEMENT_TITLE_MAX}
-          </Text>
+          {/* The hint waits for the message: an empty form that already
+              complains reads as an error, not as guidance. Once there is
+              something to send, the missing title is the thing in the way. */}
+          {titleMissing && !!trimmedBody ? (
+            <Text style={[styles.counter, styles.counterError]}>
+              Add a title: it&rsquo;s what families see on the card.
+            </Text>
+          ) : (
+            <Text style={[styles.counter, titleOverLong && styles.counterError]}>
+              {trimmedTitle.length}/{ANNOUNCEMENT_TITLE_MAX}
+            </Text>
+          )}
 
           <Text style={styles.fieldLabel}>Message</Text>
           <TextInput
-            style={[styles.input, styles.inputMultiline]}
+            style={[styles.input, styles.inputMultiline, bodyOverLong && styles.inputError]}
             value={body}
             onChangeText={setBody}
             placeholder="What everyone needs to know"
             placeholderTextColor="#64748b"
             multiline
             textAlignVertical="top"
+            maxLength={ANNOUNCEMENT_BODY_MAX}
           />
+          {/* The count appears only near the ceiling. `p_body` is capped at
+              4000 by the RPC (P0073 `body_invalid`) and almost no
+              announcement comes close, so a permanent counter would be noise
+              on every message to warn about a limit nobody reaches. */}
+          {trimmedBody.length > ANNOUNCEMENT_BODY_MAX - 200 ? (
+            <Text style={[styles.counter, bodyOverLong && styles.counterError]}>
+              {trimmedBody.length}/{ANNOUNCEMENT_BODY_MAX}
+            </Text>
+          ) : null}
 
           {/* ── buttons ─────────────────────────────────────────────────── */}
           <Text style={styles.fieldLabel}>
@@ -354,7 +395,7 @@ export default function ComposeAnnouncementScreen({
                   onChangeText={(value) => updateAction(action.id, { label: value })}
                   placeholder="Button text"
                   placeholderTextColor="#64748b"
-                  maxLength={40}
+                  maxLength={ANNOUNCEMENT_ACTION_LABEL_MAX}
                 />
                 {action.kind === 'playbook_card' ? (
                   <>
@@ -437,8 +478,12 @@ export default function ComposeAnnouncementScreen({
           <Text style={styles.fieldLabel}>Preview</Text>
           <View style={styles.previewCard}>
             <Text style={styles.previewDate}>Today</Text>
+            {/* THE TITLE, or the slot waiting for it — never the body. The
+                card in the feed is the title and nothing else, and a title is
+                required, so previewing the body as a headline would show a
+                card that cannot be posted. */}
             <Text style={styles.previewTitle} numberOfLines={2}>
-              {trimmedTitle || trimmedBody || 'Your announcement'}
+              {trimmedTitle || 'Your title goes here'}
             </Text>
             <Text style={styles.previewSender}>You · Staff</Text>
             {actions.map((action) => (

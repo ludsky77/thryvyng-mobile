@@ -35,9 +35,9 @@ import { CHAT_FALLBACK_NAME } from '../lib/memberNames';
 import {
   CLUB_ANNOUNCEMENTS_MISSING_MESSAGE,
   CLUB_ANNOUNCEMENTS_UNREACHABLE_MESSAGE,
-  clubAnnouncementsAudienceLine,
   getClubAnnouncementsChannel,
 } from '../lib/clubAnnouncements';
+import { isDefaultClubChannel } from '../lib/channelLeave';
 import {
   canHideChannelType,
   setChannelHidden,
@@ -136,11 +136,12 @@ function getChannelColor(conversation: EnrichedConversation): string {
     return '#9B7BB5';
   }
   const name = (conversation.name || conversation.displayName || '').toLowerCase();
+  // No `broadcast` arm: the live CHECK constraint does not allow that value, so
+  // the test could never fire (docs/recon/club-announcements.md §FC-2).
   if (
     name.includes('announcement') ||
     name.includes('club') ||
-    conversation.channel_type === 'club' ||
-    conversation.channel_type === 'broadcast'
+    conversation.channel_type === 'club'
   ) {
     return '#C4976D';
   }
@@ -703,7 +704,26 @@ function ConversationItem({
   );
 }
 
-type NewChatStep = 'choose' | 'dm' | 'group' | 'team' | 'club';
+/**
+ * The new-chat modal's steps. `'club'` was REMOVED on 2026-11-03: the
+ * club-wide step was one line and one button, and its own comment said it was
+ * temporary until the card compose landed (ruling 2026-11-03 01:57). The
+ * Club-Wide Message tile now opens `ComposeAnnouncement` directly.
+ */
+type NewChatStep = 'choose' | 'dm' | 'group' | 'team';
+
+/**
+ * Which club a club-wide announcement is written to, and what it is called.
+ *
+ * RETURNED as well as stored in state, because a tap on the Club-Wide Message
+ * tile may land before the prefetch has: reading the id out of state in that
+ * frame gives null and the tile would say the club could not be loaded.
+ * `clubName` is cosmetic — the channel is chosen by the id, never by the name.
+ */
+interface ClubWideTarget {
+  clubId: string | null;
+  clubName: string | null;
+}
 
 interface ProfileResult {
   id: string;
@@ -778,6 +798,29 @@ export default function ChatScreen({ navigation, route }: any) {
   const [customChannelIds, setCustomChannelIds] = useState<Set<string>>(
     () => new Set()
   );
+  /**
+   * The club chats that are their club's DEFAULT club channel — the
+   * announcements chat. Tapping one of these rows opens the CARD FEED, not
+   * `TeamChatRoom` (ruling 2026-11-03 01:57).
+   *
+   * Identified by the ROW, through the shared `isDefaultClubChannel` pair
+   * (`channel_type = 'club' AND is_default = true`, src/lib/channelLeave.ts),
+   * never by the name: default channels have been renamed before, and the
+   * club's other seeded channel `coaches-lounge` is private and NOT default,
+   * so it can never be matched.
+   *
+   * It needs its own read for the same reason `customChannelIds` does —
+   * `get_my_conversations` is not known to return `is_default` — and it cannot
+   * share that one: that effect's id list is filtered to channels WITH a
+   * `team_id`, and a club chat has none. The two id sets are disjoint.
+   *
+   * An unanswered or failed read leaves the set EMPTY, so the row opens the
+   * chat room exactly as it does today. Degrading to the old behaviour is the
+   * safe way to be wrong here.
+   */
+  const [clubDefaultChannelIds, setClubDefaultChannelIds] = useState<
+    Set<string>
+  >(() => new Set());
   /** Club chip filter (ruling 2). null = All. */
   const [clubFilter, setClubFilter] = useState<string | null>(null);
   /** Is the "Hidden (n)" section expanded? (ruling 8) */
@@ -1019,6 +1062,51 @@ export default function ChatScreen({ navigation, route }: any) {
       alive = false;
     };
   }, [teamChannelIdKey]);
+
+  /** The ids of every CLUB channel on screen, as a stable string key. */
+  const clubChannelIdKey = useMemo(() => {
+    const rows: Array<{ channel_id?: string | null; channel_type?: string | null }> =
+      [...mainRows, ...pastRows, ...hiddenRows];
+    const ids = rows
+      .filter((row) => row?.channel_id && row?.channel_type === 'club')
+      .map((row) => row.channel_id as string);
+    return Array.from(new Set(ids)).sort().join(',');
+  }, [mainRows, pastRows, hiddenRows]);
+
+  useEffect(() => {
+    const ids = clubChannelIdKey ? clubChannelIdKey.split(',') : [];
+    if (ids.length === 0) {
+      setClubDefaultChannelIds(new Set());
+      return;
+    }
+    let alive = true;
+    (async () => {
+      const { data, error } = await supabase
+        .from('comm_channels')
+        .select('id, channel_type, is_default')
+        .in('id', ids);
+      if (!alive) return;
+      if (error) {
+        // Not "none of them is the announcements chat": we could not ask. Every
+        // row keeps opening the chat room, which is what it did before this
+        // feature existed.
+        logError('ChatScreen.fetchClubDefaults', error, {
+          channelCount: ids.length,
+        });
+        return;
+      }
+      setClubDefaultChannelIds(
+        new Set(
+          (data ?? [])
+            .filter((row) => isDefaultClubChannel(row))
+            .map((row) => row.id as string)
+        )
+      );
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [clubChannelIdKey]);
 
   const allConversations = useMemo(
     () => sortByRecent(mainRows.map(toConversation)),
@@ -1541,7 +1629,8 @@ export default function ChatScreen({ navigation, route }: any) {
       .from('comm_channels')
       .select('id, name, channel_type, team_id')
       .in('id', channelIds)
-      .in('channel_type', ['team', 'broadcast', 'club'])
+      // Two values, not three: no row can be typed `broadcast` (§FC-2).
+      .in('channel_type', ['team', 'club'])
       .order('name');
     const withTeams: TeamChannelOption[] = (data || []).map((c: any) => ({
       ...c,
@@ -1614,12 +1703,12 @@ export default function ChatScreen({ navigation, route }: any) {
    * one club, and maybeSingle() errored on 2+ rows -- which silently stripped
    * club-wide messaging from exactly the multi-club staff.
    *
-   * The name is cosmetic. If its read fails the step still opens and the line
-   * says "your club" (`clubAnnouncementsAudienceLine`); the channel it opens
-   * is decided by the id, never by the name.
+   * The name is cosmetic. If its read fails compose still opens and its
+   * audience line says "your club" (`clubAnnouncementsAudienceLine`, now read
+   * on that screen); the channel is decided by the id, never by the name.
    */
-  const fetchClubWideTarget = useCallback(async () => {
-    if (!user?.id) return;
+  const fetchClubWideTarget = useCallback(async (): Promise<ClubWideTarget> => {
+    if (!user?.id) return { clubId: null, clubName: null };
     const { data: clubStaffRows, error: clubStaffError } = await supabase
       .from('club_staff')
       .select('club_id')
@@ -1629,13 +1718,13 @@ export default function ChatScreen({ navigation, route }: any) {
       if (__DEV__) console.warn('[Chat] club_staff lookup failed:', clubStaffError);
       setClubWideClubId(null);
       setClubWideClubName(null);
-      return;
+      return { clubId: null, clubName: null };
     }
     const staffClubId = clubStaffRows?.[0]?.club_id ?? null;
     setClubWideClubId(staffClubId);
     if (!staffClubId) {
       setClubWideClubName(null);
-      return;
+      return { clubId: null, clubName: null };
     }
     const { data: club, error: clubError } = await supabase
       .from('clubs')
@@ -1646,16 +1735,26 @@ export default function ChatScreen({ navigation, route }: any) {
     // "your club", and the channel is chosen by the id either way.
     if (clubError) {
       setClubWideClubName(null);
-      return;
+      return { clubId: staffClubId, clubName: null };
     }
-    setClubWideClubName(club?.name ?? null);
+    const resolvedName = club?.name ?? null;
+    setClubWideClubName(resolvedName);
+    return { clubId: staffClubId, clubName: resolvedName };
   }, [user?.id]);
 
+  /**
+   * Prefetched when the modal OPENS rather than when a step is entered: the
+   * club-wide step is gone, so the tile below is the first and only thing that
+   * needs the answer, and it should not have to wait for a round trip after
+   * the tap. `openClubAnnouncementCompose` still awaits the call itself when
+   * this has not landed, so the prefetch is a speed-up and never the
+   * correctness.
+   */
   useEffect(() => {
-    if (showNewChatModal && newChatStep === 'club') {
+    if (showNewChatModal && isClubAdmin) {
       fetchClubWideTarget();
     }
-  }, [showNewChatModal, newChatStep, fetchClubWideTarget]);
+  }, [showNewChatModal, isClubAdmin, fetchClubWideTarget]);
 
   const filteredTeamChannels = teamChannels.filter(
     (ch) =>
@@ -1668,33 +1767,49 @@ export default function ChatScreen({ navigation, route }: any) {
   );
 
   /**
-   * Open the club's announcements chat.
+   * The Club-Wide Message tile: straight to COMPOSE.
    *
-   * THE LOOKUP MOVED TO `src/lib/clubAnnouncements.ts` and changed what it
-   * asks for: `channel_type = 'club' AND is_default AND club_id = <this club>`
-   * instead of `channel_type = 'broadcast'`, which no row can hold and none
-   * ever did (§A1/§FC-2, PROVEN against prod 2026-11-03). That single wrong
-   * string is why this button has never once opened a chat.
+   * It used to open a step with one sentence and one button, which then opened
+   * the announcements chat room. Ruling 2026-11-03 01:57 replaced both with the
+   * card compose, so the tile resolves the channel and pushes
+   * `ComposeAnnouncement` — one tap fewer, and the destination is the screen
+   * that actually writes an announcement.
    *
-   * THREE OUTCOMES, THREE SENTENCES. The old code read `data` only and threw
-   * `error` away, so offline and RLS printed the same "contact admin" line as
-   * a club that genuinely has no announcements chat. They are now told apart.
+   * THE LOOKUP IS `src/lib/clubAnnouncements.ts` and asks for
+   * `channel_type = 'club' AND is_default AND club_id = <this club>`. The club
+   * id is REQUIRED for correctness: two clubs each hold their own
+   * announcements row, so an unfiltered `limit(1)` can hand a PAC admin the
+   * other club's channel (§FC-3②).
+   *
+   * THREE OUTCOMES, THREE SENTENCES — not found, could-not-ask, and no club id
+   * are told apart, which is the defect the helper was written to end.
+   *
+   * WHO MAY POST is still the SERVER'S answer: this tile is gated on
+   * `isClubAdmin` (a client role read) only so it stays out of a parent's
+   * modal. `ComposeAnnouncement` asks `is_channel_staff` before it draws a
+   * form, and the RPC refuses regardless.
    */
-  const sendClubWideMessage = async () => {
-    if (!clubWideClubId) {
+  const openClubAnnouncementCompose = async () => {
+    setClubWideOpening(true);
+    // Await the lookup when the prefetch has not landed, so a fast tap cannot
+    // read a null out of state and claim the club could not be loaded.
+    const target: ClubWideTarget = clubWideClubId
+      ? { clubId: clubWideClubId, clubName: clubWideClubName }
+      : await fetchClubWideTarget();
+    if (!target.clubId) {
+      setClubWideOpening(false);
       Alert.alert(
         'Unable to Load',
         'Club information could not be loaded. Please try again.'
       );
       return;
     }
-    setClubWideOpening(true);
     const { data: channel, error } = await getClubAnnouncementsChannel(
-      clubWideClubId
+      target.clubId
     );
     setClubWideOpening(false);
     if (error) {
-      logError('ChatScreen.clubAnnouncements', error, { clubId: clubWideClubId });
+      logError('ChatScreen.clubAnnouncements', error, { clubId: target.clubId });
       Alert.alert('Club announcements', CLUB_ANNOUNCEMENTS_UNREACHABLE_MESSAGE);
       return;
     }
@@ -1703,13 +1818,12 @@ export default function ChatScreen({ navigation, route }: any) {
       return;
     }
     closeModal();
-    navigation.navigate('TeamChatRoom', {
+    navigation.navigate('ComposeAnnouncement', {
       channelId: channel.id,
-      // The channel's own name, which is what the chat list and the room
-      // header already print for this row -- not a second label of our own.
+      // The channel's own name, which is what the chat list and the feed header
+      // already print for this row -- not a second label of our own.
       channelName: channel.name || 'Announcements',
-      teamName: undefined,
-      channelType: 'club',
+      clubName: target.clubName,
     });
   };
 
@@ -2027,6 +2141,18 @@ export default function ChatScreen({ navigation, route }: any) {
     setOpenSwipeKey(null);
     if (conversation.displayType === 'dm') {
       navigation.navigate('DMChat', { channelId: conversation.id });
+    } else if (clubDefaultChannelIds.has(conversation.id)) {
+      /* The club's announcements chat is a FEED OF CARDS, not a bubble room
+         (ruling 2026-11-03 01:57). Same row, same unread count, same
+         mark-read; a different screen behind it. The set is filled from the
+         channel ROW and is empty until that read lands, so a tap in the first
+         moment after launch opens the chat room — which is what it did before
+         this feature and is never a dead end. */
+      navigation.navigate('AnnouncementsFeed', {
+        channelId: conversation.id,
+        channelName: conversation.name || conversation.displayName,
+        clubName: conversation.clubName ?? null,
+      });
     } else {
       navigation.navigate('TeamChatRoom', {
         channelId: conversation.id,
@@ -2122,17 +2248,19 @@ export default function ChatScreen({ navigation, route }: any) {
                 <Text style={styles.adminLabel}>👑 Club Admin</Text>
                 <TouchableOpacity
                   style={styles.typeOption}
-                  onPress={() => {
-                    fetchClubWideTarget();
-                    setNewChatStep('club');
-                  }}
+                  onPress={openClubAnnouncementCompose}
+                  disabled={clubWideOpening}
                 >
                   <View style={[styles.typeIconContainer, { backgroundColor: '#F59E0B20' }]}>
                     <Text style={styles.typeIcon}>📣</Text>
                   </View>
                   <View style={styles.typeContent}>
                     <Text style={styles.typeTitle}>Club-Wide Message</Text>
-                    <Text style={styles.typeDescription}>Send to all members of your club</Text>
+                    <Text style={styles.typeDescription}>
+                      {clubWideOpening
+                        ? 'Opening…'
+                        : 'Write an announcement for your whole club'}
+                    </Text>
                   </View>
                   <Text style={styles.typeArrow}>→</Text>
                 </TouchableOpacity>
@@ -2422,56 +2550,6 @@ export default function ChatScreen({ navigation, route }: any) {
               </Text>
             </TouchableOpacity>
           )}
-        </View>
-      );
-    }
-
-    if (newChatStep === 'club') {
-      /**
-       * One destination, one sentence, one button.
-       *
-       * What used to be here: All-teams / filter-by-age-and-gender / pick
-       * teams, three screens of chips feeding a navigation param that nothing
-       * read (docs/recon/club-announcements.md §A1). Every message went to the
-       * whole club regardless, so the picker promised a split that did not
-       * exist. Announcements go to the club's one announcements channel; a
-       * message for one team belongs in that team's chat.
-       *
-       * THIS STEP IS TEMPORARY. The card compose replaces it later in 1.0.20
-       * (ruling 2026-11-03 01:57), which is why it stays this plain.
-       */
-      return (
-        <View style={styles.fullScreenContainer}>
-          <View style={styles.clubHeader}>
-            <TouchableOpacity
-              onPress={() => setNewChatStep('choose')}
-              style={styles.backButton}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.clubTitle}>Club-Wide Message</Text>
-          </View>
-
-          <View style={styles.clubListContent}>
-            <Text style={styles.sectionLabel}>
-              {clubAnnouncementsAudienceLine(clubWideClubName)}
-            </Text>
-          </View>
-
-          <View style={styles.fixedBottom}>
-            <TouchableOpacity
-              style={[
-                styles.sendButton,
-                clubWideOpening && styles.sendButtonDisabled,
-              ]}
-              onPress={sendClubWideMessage}
-              disabled={clubWideOpening}
-            >
-              <Text style={styles.sendButtonText}>
-                {clubWideOpening ? 'Opening…' : 'Open announcements'}
-              </Text>
-            </TouchableOpacity>
-          </View>
         </View>
       );
     }
@@ -3481,12 +3559,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
-  sectionLabel: {
-    color: '#9CA3AF',
-    fontSize: 14,
-    marginBottom: 12,
-    marginTop: 8,
-  },
   optionIcon: {
     fontSize: 24,
     marginRight: 12,
@@ -3497,45 +3569,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#0f172a',
     borderRadius: 12,
     padding: 16,
-  },
-  fullScreenContainer: {
-    flex: 1,
-    backgroundColor: '#1a1a2e',
-  },
-  clubHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#374151',
-  },
-  backButton: {
-    marginRight: 12,
-  },
-  backButtonText: {
-    color: '#8B5CF6',
-    fontSize: 16,
-  },
-  clubTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  clubListContent: {
-    padding: 16,
-    paddingBottom: 100,
-  },
-  fixedBottom: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 16,
-    paddingBottom: 24,
-    backgroundColor: '#1a1a2e',
-    borderTopWidth: 1,
-    borderTopColor: '#374151',
   },
   filterLabel: {
     color: '#9CA3AF',
@@ -3681,21 +3714,6 @@ const styles = StyleSheet.create({
   selectAllText: {
     color: '#8B5CF6',
     fontSize: 14,
-    fontWeight: '600',
-  },
-  sendButton: {
-    backgroundColor: '#F59E0B',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  sendButtonDisabled: {
-    backgroundColor: '#374151',
-  },
-  sendButtonText: {
-    color: '#000',
-    fontSize: 16,
     fontWeight: '600',
   },
 });

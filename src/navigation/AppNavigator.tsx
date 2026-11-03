@@ -16,6 +16,11 @@ import { linking, type RootStackParamList } from './linking';
 // src/constants/playbookLaunch.ts for why it is a leaf module, and why it
 // lives with the app's constants rather than with the feature.
 import { playbookVisible } from '../constants/playbookLaunch';
+// One more leaf constant: the card-key SHAPE test, shared with the announcement
+// compose and detail screens. It used to be a file-local const here; that file
+// carries the whole argument for why this layer tests the shape and leaves "does
+// this card exist, and may this viewer read it" to the reader.
+import { isAnnounceCardKey } from '../constants/announceCardKey';
 import { addNotificationListeners } from '../services/notifications';
 // Only for the cold-start tap below. Every other notification path in this app
 // goes through `addNotificationListeners` (src/services/notifications.ts); the
@@ -70,6 +75,12 @@ const ChannelPollsScreen = lazy(() => import('../screens/ChannelPollsScreen'));
 const ChannelFilesScreen = lazy(() => import('../screens/ChannelFilesScreen'));
 const ChannelLinksScreen = lazy(() => import('../screens/ChannelLinksScreen'));
 const StaffMessageScreen = lazy(() => import('../screens/StaffMessageScreen'));
+// CLUB-ANNOUNCE-V1-MOBILE. Lazy, like every chat screen that is not the list
+// or the room: the feed is opened from a chat-list row, the Club-Wide Message
+// tile or a push tap, never at boot.
+const AnnouncementsFeedScreen = lazy(() => import('../screens/AnnouncementsFeedScreen'));
+const AnnouncementDetailScreen = lazy(() => import('../screens/AnnouncementDetailScreen'));
+const ComposeAnnouncementScreen = lazy(() => import('../screens/ComposeAnnouncementScreen'));
 const PollDetailScreen = lazy(() => import('../screens/PollDetailScreen'));
 const SurveyResponseScreen = lazy(() => import('../screens/SurveyResponseScreen'));
 const SurveyListScreen = lazy(() => import('../screens/SurveyListScreen'));
@@ -146,30 +157,17 @@ const MatchSummaryScreen = lazy(() => import('../screens/game-stats/MatchSummary
 const LiveSpectatorScreen = lazy(() => import('../screens/game-stats/LiveSpectatorScreen'));
 
 /**
- * PLAYBOOK-ANNOUNCE-PUSH (ruling B, Lu, 2026-11-03 01:19). The shape a card
- * key is allowed to have when it arrives from a PUSH PAYLOAD, which is the one
- * place a key reaches the reader from outside the app.
+ * PLAYBOOK-ANNOUNCE-PUSH (ruling B, Lu, 2026-11-03 01:19) decided the shape a
+ * card key is allowed to have when it arrives from outside the reader, and
+ * this file held the pattern because a push tap was then the only way in.
  *
- * WHY A PATTERN AND NOT A LOOKUP. The navigator holds no book: the content is
- * fetched inside the reader, under RLS, so only the reader knows which cards
- * exist and which THIS viewer may read. It already answers that question --
- * `PlaybookScreen.tsx:358-362` opens the card only `if (cardParam &&
- * cardsByKey.has(cardParam))` and otherwise leaves the reader on the cover.
- * So "the card exists and the viewer can read it" is enforced there, against
- * the book the viewer was actually served, and duplicating it here would be a
- * second source of truth that could disagree with the first.
- *
- * What is left for this layer is the part the reader should never have to
- * defend against: a key that is not key-SHAPED. Anything with a path
- * separator, whitespace, a dot, a quote or a non-ASCII character is rejected
- * and the tap opens the cover.
- *
- * THE REAL KEYS ARE SHORTER THAN THIS. All 69 in the frozen book are
- * `[A-Z0-9]{2,6}` -- F0..F5, P1..P19, MV0..MV2, GF1..GF7, PL1..PL4, M1..M4,
- * SET, HUNT, HOLD, STORM. The bound is 16 with `_` and `-` allowed purely as
- * headroom, so a future chapter cannot be locked out by this line.
+ * CLUB-ANNOUNCE-V1-MOBILE gave it a second caller — an announcement card's
+ * `playbook_card` button, validated at compose time and again when it is read
+ * back — so the pattern moved to `src/constants/announceCardKey.ts`, a leaf
+ * that imports nothing, and that file carries the whole argument for why this
+ * layer tests the SHAPE and leaves "does this card exist, and may this viewer
+ * read it" to the reader. One definition, three callers.
  */
-const ANNOUNCE_CARD_KEY = /^[A-Za-z0-9_-]{1,16}$/;
 
 const Stack = createNativeStackNavigator();
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -646,6 +644,23 @@ function ChatStack() {
       <Stack.Screen name="StaffMessage" options={{ headerShown: false }}>
         {(props) => <LazyScreen component={StaffMessageScreen} {...props} />}
       </Stack.Screen>
+      {/* CLUB-ANNOUNCE-V1-MOBILE (ruling 2026-11-03 01:57). The club's
+          announcements as a feed of cards, one card in full, and staff compose.
+          All three live in ChatStack and not on the root stack: the feed
+          REPLACES TeamChatRoom for the club's default club chat, it is reached
+          from the same chat-list row, and a root-stack screen would cover the
+          tab bar — the same reason the Playbook reader sits inside HomeStack.
+          A push tap routes here too (routeNotification's chat branch, when the
+          payload carries `announcement: true`). */}
+      <Stack.Screen name="AnnouncementsFeed" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={AnnouncementsFeedScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="AnnouncementDetail" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={AnnouncementDetailScreen} {...props} />}
+      </Stack.Screen>
+      <Stack.Screen name="ComposeAnnouncement" options={{ headerShown: false }}>
+        {(props) => <LazyScreen component={ComposeAnnouncementScreen} {...props} />}
+      </Stack.Screen>
       <Stack.Screen name="PollDetail" options={{ headerShown: false }}>
         {(props) => <LazyScreen component={PollDetailScreen} {...props} />}
       </Stack.Screen>
@@ -1009,9 +1024,29 @@ export default function AppNavigator() {
     if (type === 'chat_message' || type === 'chat' || type === 'message') {
       const channelId = data.channel_id ?? data.chat_id ?? data.reference_id;
       if (channelId) {
+        /* CLUB-ANNOUNCE-V1-MOBILE. A club announcement pushes as an ordinary
+           chat message — the trigger on `comm_messages` is the only sender and
+           it does not know what a card is (recon §B11) — so the TYPE cannot
+           tell the two apart. The club chat's payload carries
+           `announcement: true` instead, and a tap on it opens the CARD FEED
+           rather than the bubble room. Anything else, including the club chat
+           with no flag, lands exactly where it does today.
+
+           Accepted truthily: a REMOTE push's `data` values arrive as strings
+           (`docs/recon/announce-push-test.md` — the whole payload is JSON in
+           `userInfo["body"]`), so `"true"` has to mean the same as `true` or
+           the flag would work on the simulator and nowhere else. */
+        const announcement =
+          data.announcement === true ||
+          data.announcement === 'true' ||
+          data.announcement === 1 ||
+          data.announcement === '1';
         nav.navigate('Main', {
           screen: 'ChatTab',
-          params: { screen: 'TeamChatRoom', params: { channelId } },
+          params: {
+            screen: announcement ? 'AnnouncementsFeed' : 'TeamChatRoom',
+            params: { channelId },
+          },
         });
       }
     } else if (
@@ -1089,7 +1124,7 @@ export default function AppNavigator() {
                               without one, or when the key is not key-shaped,
                               or when the key names a card this viewer's book
                               does not hold (the reader's own fallback, see
-                              ANNOUNCE_CARD_KEY).
+                              src/constants/announceCardKey.ts).
            courses_open    -> the Courses screen.
 
          THE GATE IS CHECKED HERE, not only at the route. `playbookVisible`
@@ -1115,8 +1150,7 @@ export default function AppNavigator() {
         nav.navigate('Main', { screen: 'HomeTab', params: { screen: 'Dashboard' } });
       } else {
         const rawCard = data.card ?? data.card_key;
-        const card =
-          typeof rawCard === 'string' && ANNOUNCE_CARD_KEY.test(rawCard) ? rawCard : undefined;
+        const card = isAnnounceCardKey(rawCard) ? rawCard : undefined;
         nav.navigate('Main', {
           screen: 'HomeTab',
           params: { screen: 'Playbook', params: { card } },

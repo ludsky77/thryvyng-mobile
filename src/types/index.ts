@@ -6,7 +6,15 @@ export interface Channel {
     club_id: string | null;
     name: string;
     description: string | null;
-    channel_type: 'team' | 'club' | 'dm' | 'group_dm' | 'direct' | 'group' | 'broadcast';
+    /**
+     * The live CHECK constraint `comm_channels_channel_type_check` allows
+     * exactly `team, club, dm, group_dm` (measured against prod,
+     * docs/recon/club-announcements.md §FC-2). `direct` and `group` are kept
+     * because web's shared type carries them; `broadcast` was REMOVED on
+     * 2026-11-03 — no row can hold it and the one path that asked for it, the
+     * club-wide message lookup, is fixed (`src/lib/clubAnnouncements.ts`).
+     */
+    channel_type: 'team' | 'club' | 'dm' | 'group_dm' | 'direct' | 'group';
     is_default: boolean;
     is_private: boolean;
     is_archived: boolean;
@@ -23,7 +31,11 @@ export interface Channel {
       avatar_url: string | null;
       email?: string | null;
     } | null;
-    // Broadcast channel field
+    /**
+     * Announcement mode: FALSE means only channel staff may post text
+     * (`src/lib/announcementChannel.ts`, Phase D slice 4b). Nullable with
+     * DEFAULT true, which is why every reader tests `!== false`.
+     */
     allow_member_text?: boolean;
   }
   
@@ -57,6 +69,17 @@ export interface Channel {
     channel_id: string;
     user_id: string;
     content: string;
+    /**
+     * CLUB-ANNOUNCE-V1-MOBILE. `comm_messages.title`, nullable, ≤ 80 chars —
+     * the headline of an announcement card. OPTIONAL on purpose: the column is
+     * being added on the server in parallel, so a build running against a
+     * server without it gets `undefined` here and every reader falls back to
+     * the first ~80 characters of `content`
+     * (`src/lib/clubAnnouncementCards.ts`, `splitAnnouncement`). A titled
+     * message's `content` IS `title + "\n\n" + body`, which is what keeps an
+     * announcement readable in the ordinary chat bubble and on the web.
+     */
+    title?: string | null;
     message_type: 'standard' | 'alert' | 'system' | 'poll' | 'survey';
     parent_id: string | null;
     poll_id?: string | null; // Link to poll for poll messages

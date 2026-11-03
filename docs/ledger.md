@@ -2128,3 +2128,137 @@ it. Nothing here has been seen by a human on a real phone.
   function, DB connection, dependency, `app.json`, EAS or commit; no edit in
   `thrive-and-score`; `src/components/games/*` and `src/lib/permissions.ts`
   untouched; nothing sent at runtime.
+
+## Landed — Nov 3 2026 (club announcement cards, v1 mobile)
+
+- **CLUB-ANNOUNCE-V1-MOBILE · the club's announcements become a feed of cards,
+  with a tap-through detail and a staff compose · `BUILT-UNCOMMITTED` ·
+  **NEEDS THE SERVER SIDE APPLIED** · SIMULATOR TEST OWED · ruling 2026-11-03
+  01:57 (Lu) · agent session 2026-11-03.** Nothing here has been tapped by a
+  human: no simulator run, no device run, no `expo export`.
+  - **TWO THINGS GATE THE FEATURE AND NEITHER IS IN THIS REPO.** (1) The server
+    side is being prepared in the **web** repo and is **not applied**:
+    `comm_messages.title text NULL` (≤80), `comm_message_actions
+    (message_id, kind ∈ {playbook, playbook_card, courses}, target, label,
+    sort_order)` with member SELECT and no direct insert, and
+    `post_club_announcement(p_channel_id, p_title, p_body, p_actions) → id`
+    which refuses a non-staff caller. (2) **Lu must approve the wording before
+    anything is sent to the real channel** — every row inserted into
+    `club-announcements` pushes ~231 PAC families and there is no per-message
+    push switch (recon §B11).
+  - **IT DOES NOT CRASH WHILE THE SERVER IS BEHIND, and that is a built state,
+    not luck.** The feed probes the contract once on open (two of the cheapest
+    possible reads) and compose finds out from the RPC itself; both then show
+    **"Announcements are being set up"**. The state fires for **exactly six
+    codes** — `42703`, `42P01`, `42883`, `PGRST202/204/205` — and for nothing
+    else. An RLS refusal (`42501`), a code-less 500 and offline each keep their
+    own sentence, because telling someone a feature is being installed when the
+    truth is "we could not reach the server" is the mistake
+    `getClubAnnouncementsChannel` was written to end (recon §FC-3).
+  - **FIVE NEW FILES.** `src/lib/clubAnnouncementCards.ts` (482) holds the whole
+    contract — the title split, the action allow-list, the jsonb builder, the
+    probe, the one write, the refusal ladder.
+    `src/screens/AnnouncementsFeedScreen.tsx` (781),
+    `AnnouncementDetailScreen.tsx` (462),
+    `ComposeAnnouncementScreen.tsx` (706), and
+    `src/constants/announceCardKey.ts` (44) — the card-key pattern **moved**
+    out of `AppNavigator.tsx`, where ruling B had put it, so the push branch,
+    compose and detail share ONE definition instead of three. Changed:
+    `AppNavigator.tsx`, `ChatScreen.tsx`, `src/types/index.ts`,
+    `src/lib/permissions.ts` (+269/−199).
+  - **THE FEED REUSES `useMessages` WHOLE** rather than growing a second message
+    fetch: realtime inserts, the reaction reconcile and the edit/soft-delete
+    UPDATE stream all come with it, and `select('*')` returns `title` the moment
+    the column exists. The detail screen does the same, because `useMessages` is
+    the only reader in this app that keeps a message's reactions correct while it
+    is on screen (it refetches the shown rows on every reaction event rather than
+    trusting the payload). Reactions are `toggleReaction` + `ReactionPicker`,
+    untouched.
+  - **THE "NEW" BADGE IS A SNAPSHOT, BY NECESSITY.** Read state is per CHANNEL,
+    never per message (recon §B9; a per-message table is SACRED and bigger than
+    this whole feature). `last_read_at` is captured ONCE when the screen opens,
+    **before** the channel is marked read — after that the stamp is `now()` and
+    nothing could be told apart. The badge rule is the server's own
+    (`user_id <> me AND created_at > COALESCE(last_read_at, now() - 30 days)`),
+    so a badge and the chat list's count cannot disagree. **Badges clear on the
+    second visit**, exactly as the row's unread count does today.
+  - **FOUR ENTRY POINTS, each proved by grep.** (1) the chat-list row for the
+    club's default club chat → the feed, identified by the ROW through the
+    shared `isDefaultClubChannel` (`channel_type = 'club' AND is_default`),
+    never by name, from one extra read because `get_my_conversations` is not
+    known to return `is_default` — **a failed read leaves the set empty and the
+    row opens the chat room**, the pre-feature behaviour; (2) the Club-Wide
+    Message tile → compose directly (one tap fewer; the temporary `'club'` step
+    and its 11 orphaned styles are deleted); (3) a push tap carrying
+    `announcement: true` → the feed, which **inherits foreground, background and
+    cold start for free** because it sits inside `routeNotification`, and accepts
+    `"true"` as well as `true` since a remote push's `data` values arrive as
+    strings; (4) the feed's ✎ button, **gated on the server's
+    `is_channel_staff`** and absent while the question is in flight.
+  - **WHO MAY POST IS THE SERVER'S ANSWER, in all three places that ask.**
+    Compose will not draw a form until `is_channel_staff` says yes, the feed's ✎
+    is gated on the same answer, and the RPC refuses regardless (ruling FND-4d3).
+    The tile's `isClubAdmin` gate is a convenience that keeps it out of a
+    parent's modal and is **not** the permission.
+  - **ONE CALL, NOT THREE.** Title, body and buttons go to the RPC together:
+    three separate writes is exactly what leaves a poll with options and no card
+    when the third is refused (recon §P-4). A `playbook_card` button with no
+    key-shaped target is blocked at compose and **dropped at read**, so a button
+    this build cannot navigate to is never drawn.
+  - **"ADD A POLL" IS A SECOND MESSAGE, deliberately** — the existing
+    `CreatePollModal` on the same channel, rendering through the existing
+    `PollCard` in the feed (recon §P-5). Folding a poll into the announcement
+    RPC is a server change nobody has ruled on.
+  - **CUT FROM v1, each for a named reason:** the calendar-event destination (it
+    needs an event picker at compose time — its own screen); per-card unread and
+    a per-message push toggle (both need schema, recon §B12 rows 7 and 10);
+    reacting from the feed's cards (the chips are read-only so a scroll cannot
+    leave a reaction behind).
+  - **DEAD CODE REMOVED.** `canCreatePollInChannel` in `src/lib/permissions.ts`
+    — the old global-role list, carrying the same ghost `broadcast` channel type
+    as the club-wide bug; `grep -rn canCreatePollInChannel src/` returned ONE
+    hit, the definition, before deleting it (slice 4i left it unimported, ledger
+    I7). `broadcast` is gone from `Channel.channel_type`, from
+    `getChannelColor`'s arm and from the `channel_type IN (…)` filter.
+    `grep "'broadcast'" src/` → **1 hit, and it is prose**:
+    `src/lib/clubAnnouncements.ts:5`, the header explaining the defect that
+    module fixed.
+  - **FOUND (outside scope) — `src/lib/permissions.ts` is entirely unimported.**
+    The four role helpers left in it have no caller anywhere in `src/`.
+    RECOMMEND deleting the file in whatever slice next touches client-side role
+    checks; not done here, it is outside the ruling.
+  - **FOUND (outside scope, unchanged) — 🛡 `comm_poll_votes_insert` is still the
+    pre-4a reactions hole** (recon §P-2), and it matters more now that polls can
+    appear in a club-wide feed. SACRED, Lu's call.
+  - **DOC CORRECTION.** `docs/recon/club-announcements.md` §LB-2 claimed
+    `playbookVisible = PLAYBOOK_LIVE || __DEV__` with `PLAYBOOK_LIVE = false`.
+    Both halves were stale: `src/constants/playbookLaunch.ts:55` reads `true` and
+    `:58` has no `__DEV__` branch since the Nov 1 flip. A CORRECTION section was
+    added to §LB-2 and §LB-5's sequencing note marked superseded. The
+    `playbookVisible` checks are **kept anyway** in compose and detail — it is
+    the feature's kill switch and costs one boolean read.
+  - **GATES.** `npx tsc --noEmit` → **5 errors = baseline**, all pre-existing in
+    `src/components/games/*`, **0 in any touched or new file**. `eslint`: **0
+    errors everywhere**; **0 warnings in all five new files**; warnings unchanged
+    vs HEAD in the four changed ones (ChatScreen 79 → 79, AppNavigator 23 → 23,
+    types 1 → 1, permissions 0 → 0). **LOGIC SMOKE, 38 assertions, ALL PASS** —
+    the pure helpers transpiled with `tsc` and run against a stub client, nothing
+    left the process: the title split in six shapes, the compose round trip
+    (preview text == what the feed splits), the action allow-list against `F3`,
+    `../../etc/passwd`, a 17-char key, `F7.json` and a non-string, the jsonb
+    builder's drop/renumber/null-stray-target/cap-at-3, the six "not applied yet"
+    codes vs `42501`/500/offline, the refusal-copy ladder, and the exact queries
+    built. **No simulator run, no device run, no `expo export`.**
+  - **Nothing SACRED, and nothing forbidden touched.** No SQL, migration, edge
+    function, DB connection, dependency, `app.json`, EAS or commit; no edit in
+    `thrive-and-score`; `src/components/games/*` untouched; nothing was sent at
+    runtime and no announcement was posted.
+  - **TEST PLAN FOR LU: `docs/recon/club-announcements-v1-mobile.md` § 5** —
+    four stages, one tap at a time. **A sends nothing and is safe today** (it
+    ends by proving Send shows "being set up" and posts nothing); **B runs the
+    moment the server is applied, still sending nothing**; **C is optional and
+    needs a throwaway channel, which is a DB write and therefore Lu's**; **D is
+    the real send and starts with "Lu approves the exact wording".**
+  - Source: this session, 2026-11-03; Lu's ruling of 01:57;
+    `docs/recon/club-announcements.md` (§B6–B12, §LB-1..5, §P-1..5);
+    `docs/recon/club-announcements-v1-mobile.md`.

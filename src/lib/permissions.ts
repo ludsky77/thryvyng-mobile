@@ -35,26 +35,22 @@ export const STAFF_ROLES = [
     return STAFF_ROLES.includes(role as StaffRole);
   };
   
-  /**
-   * Check if user can create polls in a specific channel type
-   * - Team/Club/Broadcast channels: only staff
-   * - Group channels: any member
+  /*
+   * DELETED 2026-11-03 (CLUB-ANNOUNCE-V1-MOBILE): `canCreatePollInChannel`.
+   *
+   * It answered "may this role create a poll here?" from a GLOBAL role list,
+   * and it listed the channel type `broadcast` among its arms — a value the live
+   * CHECK constraint `comm_channels_channel_type_check` does not allow, so no
+   * row could ever hold it (docs/recon/club-announcements.md §A1/§FC-2,
+   * PROVEN). The same ghost string was the club-wide message bug.
+   *
+   * Phase D slice 4i replaced it with the server's own answer:
+   * `is_channel_staff` (`src/lib/channelStaff.ts`), which is the predicate the
+   * `msg_insert` policy and `close_poll` ask, so creating and closing a poll
+   * cannot disagree about who staff is (rulings I4 A / I5 A, ledger row I7).
+   * It has been unimported since; `grep -rn canCreatePollInChannel src/`
+   * returned ONE hit, the definition itself, before this deletion.
+   *
+   * The role helpers above are left in place: they are outside this slice and
+   * are also unimported — see RECOMMEND in the Nov 3 handoff.
    */
-  export const canCreatePollInChannel = (
-    channelType: string | undefined | null,
-    userRole: string | undefined | null
-  ): boolean => {
-    if (!channelType) return false;
-    
-    // In team/club/broadcast channels, only staff can create polls
-    if (['team', 'club', 'broadcast'].includes(channelType)) {
-      return isStaffRole(userRole);
-    }
-    
-    // In group channels, any member can create polls
-    if (['group', 'group_dm'].includes(channelType)) {
-      return true;
-    }
-    
-    return false;
-  };

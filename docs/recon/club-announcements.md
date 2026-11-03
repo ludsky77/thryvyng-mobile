@@ -557,13 +557,40 @@ copy from `routeNotification`:
 
 | Destination | Route that already exists | Cite | Catch |
 |---|---|---|---|
-| **Playbook (cover)** | `Main → HomeTab → Playbook` | `AppNavigator.tsx:1100-1110` | **Gated on `playbookVisible`**, which is `PLAYBOOK_LIVE \|\| __DEV__` and `PLAYBOOK_LIVE = false` — so in a **store build the screen is not registered at all** (ledger, PLAYBOOK-M4 row). The handler's own answer is to send such a viewer to the Dashboard (`:1104`). A card button must be **hidden**, not dead, in release until the flag flips |
-| **Playbook card** | same route, `params: { card }` | `:1105-1110` | Key validation already written: **`ANNOUNCE_CARD_KEY = /^[A-Za-z0-9_-]{1,16}$/`** (`:167`), with the reader's own fallback to the cover for a key this viewer's book does not hold. **Reuse it — do not write a second validator** |
+| **Playbook (cover)** | `Main → HomeTab → Playbook` | `AppNavigator.tsx:1100-1110` | **Gated on `playbookVisible`, which is `true` on this branch** — see the CORRECTION below. The route IS registered in a store build. The gate stays worth keeping as the feature's kill switch: flipped back to `false`, the screen is not registered at all and the handler sends such a viewer to the Dashboard (`:1104`), so a card button should be **hidden** rather than dead |
+| **Playbook card** | same route, `params: { card }` | `:1105-1110` | Key validation already written: **`ANNOUNCE_CARD_KEY = /^[A-Za-z0-9_-]{1,16}$/`**, with the reader's own fallback to the cover for a key this viewer's book does not hold. **Reuse it — do not write a second validator.** It was reused, and MOVED on 2026-11-03 from `AppNavigator.tsx:167` to **`src/constants/announceCardKey.ts`** so the push branch, the compose screen and the detail screen share one definition |
 | **Courses** | `Main → HomeTab → Courses` | `:1101` | None |
 | **Calendar event** | `nav.navigate('EventDetail', { eventId, onRefetch })` | `:1011`, `:1030`; screen registered three times (`:513`, `:677`, `:889`) | The event must still exist and be visible to the viewer — `EventDetail` is already the push target for `event`/`event_reminder`/`event_created`, so the "row is gone" case is already handled there (`:1014`) |
 
 **So the allow-list is free on the navigation side.** The regex, the gate and the
 nested-navigate shape are all written and in use.
+
+### ⚠ CORRECTION to §LB-2 — `PLAYBOOK_LIVE` is `true`, not `false` (2026-11-03)
+
+Pass 2 of this audit read the launch switch as `playbookVisible = PLAYBOOK_LIVE || __DEV__`
+with `PLAYBOOK_LIVE = false`. **Both halves were already out of date when it was written.**
+The switch was flipped at the Nov 1 release and the `__DEV__` arm was removed in the same
+edit:
+
+```
+src/constants/playbookLaunch.ts:55   export const PLAYBOOK_LIVE = true;
+src/constants/playbookLaunch.ts:58   export const playbookVisible = PLAYBOOK_LIVE;
+```
+
+There is **no environment branch left in that file** (its own header, `:22-34`, records the
+removal), and the module moved from `src/features/pac-playbook/launch.ts` to
+`src/constants/` on 2026-10-30. So:
+
+* a Playbook button on an announcement card **does not need hiding in release** on this
+  branch — the route is registered and the reader loads on first navigation;
+* the `playbookVisible` check is **kept anyway** in the compose allow-list and in the
+  detail screen's buttons. It is the feature's kill switch, it costs one boolean read, and
+  if it is ever flipped back the button must be absent rather than dead.
+
+**The ledger was right and this audit was wrong.** Recorded the same day in the ledger's
+Nov 3 push section as a FOUND, and carried here so §LB-2 cannot mislead the next reader.
+§LB-2's release-order warning about adding `/playbook` to the AASA is **unaffected and
+still stands**.
 
 ## LB-3. Where the destination could live — three options, one recommendation
 
@@ -624,6 +651,11 @@ cheaper; if `sv_chat_shares` exists with usable RLS, option (b) has a policy to 
 **Cheapest sequencing (suggestion):** ship the allow-list with **courses + calendar event**
 first — neither is gated and both routes are live — and add the two playbook destinations in
 the same release as the `PLAYBOOK_LIVE` flip, so the button is never visible-but-dead.
+
+> **SUPERSEDED by the correction to §LB-2 above.** The flip already happened (2026-11-01),
+> so there is no release to wait for: v1 shipped **playbook + playbook_card + courses** in
+> one pass, and **calendar event was cut** — it needs an event picker at compose time,
+> which is its own screen. See `docs/recon/club-announcements-v1-mobile.md`.
 
 ---
 

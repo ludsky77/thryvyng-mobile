@@ -154,26 +154,39 @@ async function run(t, env) {
   );
 
   /*
-   * FOUND, 2026-11-03, BY THIS ASSERTION — reported, NOT fixed (outside the
-   * SURVEY-SHARE-FIX-MOBILE scope). `isSendableAction` tests the card key
-   * UNTRIMMED, while `buildAnnouncementActionsPayload` trims it and
-   * `ComposeAnnouncementScreen.tsx:380` trims it for the inline "bad key"
-   * warning. So a key with a trailing space — `'P7 '` — shows NO warning next
-   * to the field, yet counts as an incomplete action, and `canSend`
-   * (`:179`, `incompleteActions === 0`) goes DOWN with nothing on screen
-   * saying why. The two assertions below pin the behaviour as it is today, so
-   * a fix flips them deliberately rather than by accident.
+   * FOUND BY THIS ASSERTION on 2026-11-03 and FIXED on 2026-11-03.
+   *
+   * `isSendableAction` tested the card key UNTRIMMED while the two other
+   * places that ask the same question both trimmed —
+   * `buildAnnouncementActionsPayload`, and the inline "bad key" warning at
+   * `ComposeAnnouncementScreen.tsx:380`. So a key typed `'P7 '` showed NO
+   * warning next to the field, yet counted as an incomplete action, and
+   * `canSend` (`:179`, `incompleteActions === 0`) went DOWN with nothing on
+   * screen saying why. The trim now lives in `isSendableAction`, so all three
+   * agree; these two assertions were written inverted to pin the defect and
+   * are flipped here to pin the fix.
    */
   t.ok(
-    !A.isSendableAction({ kind: 'playbook_card', target: 'P7 ', label: 'Open' }),
-    "FOUND: a card key with a trailing space is NOT sendable (untrimmed test) — compose's own warning trims and stays silent"
+    A.isSendableAction({ kind: 'playbook_card', target: 'P7 ', label: 'Open' }),
+    'a card key with a trailing space IS sendable — the same answer compose`s own warning gives'
   );
   t.deepEq(
     A.buildAnnouncementActionsPayload([
       { kind: 'playbook_card', target: ' P7 ', label: 'Open this card' },
     ]),
-    [],
-    'FOUND: and the builder therefore drops it, although its own map would have trimmed it'
+    [{ kind: 'playbook_card', target: 'P7', label: 'Open this card', sort_order: 0 }],
+    'and the builder keeps it, storing the key trimmed'
+  );
+  // The whitespace is trimmed, not tolerated: a key that is ONLY whitespace,
+  // or whose non-space characters are still not key-shaped, is as unsendable
+  // as it ever was.
+  t.ok(
+    !A.isSendableAction({ kind: 'playbook_card', target: '   ', label: 'Open' }),
+    'a whitespace-only card key is still NOT sendable'
+  );
+  t.ok(
+    !A.isSendableAction({ kind: 'playbook_card', target: ' ../x ', label: 'Open' }),
+    'trimming does not rescue a key that is not key-shaped'
   );
   t.eq(
     A.buildAnnouncementActionsPayload([

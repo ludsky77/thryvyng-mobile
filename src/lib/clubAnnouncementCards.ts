@@ -172,6 +172,15 @@ export function isAnnouncementActionKind(
  * A TARGET ON THE WRONG KIND is NOT tested here on purpose: the builder nulls
  * it (`comm_message_actions_target_check` demands NULL for the other two
  * kinds), so a stray key costs the key and never the button.
+ *
+ * THE TARGET IS TRIMMED BEFORE IT IS TESTED, and that is a fix, not a detail
+ * (found by `scripts/smoke/announcements.smoke.js`, 2026-11-03). It used to be
+ * tested raw while the other two places that ask the same question both
+ * trimmed — `buildAnnouncementActionsPayload` below, and the inline "bad key"
+ * warning at `ComposeAnnouncementScreen.tsx:380`. So a key typed with a
+ * trailing space showed NO warning next to the field, yet counted as an
+ * incomplete action, and `canSend` went down with nothing on screen saying
+ * why. All three agree now, and the ONE trim that decides it is here.
  */
 export function isSendableAction(action: {
   kind: unknown;
@@ -181,7 +190,9 @@ export function isSendableAction(action: {
   if (!isAnnouncementActionKind(action.kind)) return false;
   const label = action.label?.trim() ?? '';
   if (!label || label.length > ANNOUNCEMENT_ACTION_LABEL_MAX) return false;
-  if (action.kind === 'playbook_card') return isAnnounceCardKey(action.target);
+  if (action.kind === 'playbook_card') {
+    return isAnnounceCardKey(action.target?.trim());
+  }
   return true;
 }
 

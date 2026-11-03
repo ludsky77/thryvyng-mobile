@@ -1,0 +1,14 @@
+{
+  "Simulator Target Bundle": "com.weolkn.thryvyng",
+  "aps": {
+    "alert": {
+      "title": "Playbook",
+      "body": "Malformed card key — must land on the COVER, not an error."
+    },
+    "sound": "default"
+  },
+  "body": {
+    "type": "playbook_open",
+    "card": "../../etc/passwd"
+  }
+}

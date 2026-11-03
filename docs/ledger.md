@@ -1909,3 +1909,97 @@ it. Nothing here has been seen by a human on a real phone.
     `thrive-and-score/docs/recon/playbook-futsal-backdrop-mirror.md` and web
     commit `b31b922` (both declared read-only cross-repo reads);
     `docs/recon/release-1.0.20-readiness.md`.
+
+## Landed — Nov 3 2026 (announcement push taps, receiving side)
+
+- **PLAYBOOK-ANNOUNCE-PUSH · two announcement push types, so a tap opens the
+  book or the course library · `BUILT-UNCOMMITTED` · SIMULATOR TAP TEST OWED ·
+  ruling B (Lu, 2026-11-03 01:19) · agent session 2026-11-03.** Nothing here
+  has been tapped by a human. **RECEIVING SIDE ONLY — there is no sender.**
+  - **What the app now understands**, in one new branch beside the two question
+    types it copies (`src/navigation/AppNavigator.tsx:1068-1111`):
+    - **`playbook_open`**, optional **`data.card`** (a card key such as `F7`)
+      → the Playbook reader, opened on that card; **the cover** when there is
+      no key, the key is not key-shaped, or the key names a card this viewer's
+      book does not hold; **the Dashboard** (Home) when the viewer cannot see
+      the book at all.
+    - **`courses_open`** → the **Courses** screen.
+  - **THREE GATES, EACH IN THE ONE PLACE THAT KNOWS THE ANSWER.** This is the
+    part worth reading before changing it:
+    1. **Shape** — `ANNOUNCE_CARD_KEY = /^[A-Za-z0-9_-]{1,16}$/`
+       (`AppNavigator.tsx:167`, its reasoning `:143-166`), applied with a
+       `typeof === 'string'`
+       guard, so a non-string or a key with a path separator, whitespace, a
+       dot, a quote or a non-ASCII character becomes `undefined` → cover.
+       **Proved:** all **69** card keys in the frozen book pass (they are
+       `[A-Z0-9]{2,6}` — F0..F5, P1..P19, MV0..MV2, GF1..GF7, PL1..PL4,
+       M1..M4, SET, HUNT, HOLD, STORM), and 14 of 15 malformed inputs are
+       rejected — `../../etc/passwd`, `F7 OR 1=1`, `F7/../F8`, `<script>`,
+       `$(whoami)`, `F7.json`, `café`, a 17-char key, empty and whitespace
+       among them. The 15th, the literal string `"null"`, IS key-shaped and is
+       passed on **by design** — gate 2 then finds no such card and opens the
+       cover.
+    2. **Existence and visibility of the CARD** — left to the reader, which
+       already does it: `PlaybookScreen.tsx:358-362` opens the card only
+       `if (cardParam && cardsByKey.has(cardParam))`, against the book the
+       viewer was actually served under RLS. **The navigator holds no book, so
+       it cannot answer this without becoming a second source of truth that
+       could disagree with the first.** That is why there is a pattern here
+       and not a lookup.
+    3. **Visibility of the BOOK** — `playbookVisible` is checked **in the
+       branch**, not only at the route. With the switch off the `Playbook`
+       screen is not registered (`:349`), so a navigate would land on nothing;
+       the viewer goes to the Dashboard instead. **The two older question
+       types do NOT do this** — they predate the ruling and still rely on the
+       route simply being absent.
+  - **`data.card` is the ruling's name; `data.card_key` is accepted too**,
+    because that is the spelling the server already sends on
+    `playbook_question` / `playbook_answer`, and one sender should not have to
+    learn two names for one thing.
+  - **ALL THREE TAP STATES COME FREE, because this is the same path.** Both
+    types are handled inside `routeNotification`, the single entry point for
+    the foreground/background listener (`:1142-1152`) and for the pending-tap
+    flush (`:1155-1161`) — no new wiring, exactly the coverage
+    `playbook_answer` has. **AND THAT COVERAGE HAS A PRE-EXISTING HOLE, which
+    this ruling did not create and did not fix:** the listener is a plain
+    `addNotificationResponseReceivedListener` in a `useEffect`, which **does
+    not replay a response that fired before it was registered**
+    (`expo-notifications/build/NotificationsEmitter.js:79-84`), and the app
+    **never calls `getLastNotificationResponse()`** (grep → 0 hits in `src/`).
+    So **true cold start is unproven for all TEN types**, not just these two.
+    The `pendingNotificationRef` stash covers a different race (listener fired,
+    navigator not mounted). Recorded here as FOUND; the fix is one hook and is
+    outside this ruling's scope.
+  - **The signed-out case is also unhandled, for all ten types.** A tap by a
+    signed-out user navigates and is then `reset()` to `Welcome` by the auth
+    guard (`:938-961`, allow-list `:943-955`), losing the destination. See
+    `docs/recon/playbook-share-links.md` § 1.
+  - **SENDER = LATER, and it is server-side with NO BUILD.** Nothing sends
+    either type. Once the app ships, a sender can start emitting
+    `playbook_open` / `courses_open` and existing installs will route them —
+    **who may push a whole club is a ruling, not a task.**
+  - **OPTION C (an `https://` link that opens the app) IS DEFERRED to the
+    links-consistency slice.** **⚠ WARNING, and it is a release-order trap:**
+    adding `/playbook` to the AASA is a *web deploy*, so it takes effect for
+    **every installed iPhone at once, including 1.0.19** — and 1.0.19 has no
+    deep-link path into the reader (it is `__DEV__`-only), so those phones
+    would open the app and land on **NotFound**. **Do not add `/playbook` to
+    the AASA until 1.0.20 is widely installed.** Source:
+    `docs/recon/playbook-share-links.md`, EVIDENCE line 2 and § 7 row U-1.
+  - **GATES.** `npx tsc --noEmit` **5 errors = baseline**, all pre-existing in
+    `src/components/games/*`, **0 in `AppNavigator.tsx`**. No simulator run, no
+    device run, no `expo export`.
+  - **Nothing SACRED, and nothing forbidden touched.** No sender, edge
+    function, SQL, migration or DB connection of any kind; no `linking.ts`,
+    `app.json`, AASA, dependency or EAS change; no edit in
+    `thrive-and-score`; `src/components/games/*` untouched.
+  - **Test recipe: `docs/recon/announce-push-test.md`**, with payloads in
+    `docs/recon/test-payloads/`. **It carries one finding worth knowing before
+    anyone writes a sender:** for a remote push, `content.data` is
+    **`userInfo["body"]`**, not the top-level keys
+    (`EXNotificationSerializer.m:79-83`) — so the data must sit in a top-level
+    `body` object, which is the envelope Expo's push service already uses. A
+    payload with `type` at the top level routes to the Notifications screen
+    and looks like broken code.
+  - Source: this session, 2026-11-03; Lu's ruling B of 01:19;
+    `docs/recon/playbook-share-links.md`.

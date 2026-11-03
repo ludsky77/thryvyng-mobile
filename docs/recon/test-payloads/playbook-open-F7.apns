@@ -1,0 +1,14 @@
+{
+  "Simulator Target Bundle": "com.weolkn.thryvyng",
+  "aps": {
+    "alert": {
+      "title": "New in the Playbook",
+      "body": "Coach wants the team to read Pressing Triggers."
+    },
+    "sound": "default"
+  },
+  "body": {
+    "type": "playbook_open",
+    "card": "F7"
+  }
+}

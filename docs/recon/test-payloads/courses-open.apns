@@ -1,0 +1,13 @@
+{
+  "Simulator Target Bundle": "com.weolkn.thryvyng",
+  "aps": {
+    "alert": {
+      "title": "New course available",
+      "body": "A new course was added to the library."
+    },
+    "sound": "default"
+  },
+  "body": {
+    "type": "courses_open"
+  }
+}

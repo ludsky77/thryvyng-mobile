@@ -140,6 +140,32 @@ const StatsConsoleScreen = lazy(() => import('../screens/game-stats/StatsConsole
 const MatchSummaryScreen = lazy(() => import('../screens/game-stats/MatchSummaryScreen'));
 const LiveSpectatorScreen = lazy(() => import('../screens/game-stats/LiveSpectatorScreen'));
 
+/**
+ * PLAYBOOK-ANNOUNCE-PUSH (ruling B, Lu, 2026-11-03 01:19). The shape a card
+ * key is allowed to have when it arrives from a PUSH PAYLOAD, which is the one
+ * place a key reaches the reader from outside the app.
+ *
+ * WHY A PATTERN AND NOT A LOOKUP. The navigator holds no book: the content is
+ * fetched inside the reader, under RLS, so only the reader knows which cards
+ * exist and which THIS viewer may read. It already answers that question --
+ * `PlaybookScreen.tsx:358-362` opens the card only `if (cardParam &&
+ * cardsByKey.has(cardParam))` and otherwise leaves the reader on the cover.
+ * So "the card exists and the viewer can read it" is enforced there, against
+ * the book the viewer was actually served, and duplicating it here would be a
+ * second source of truth that could disagree with the first.
+ *
+ * What is left for this layer is the part the reader should never have to
+ * defend against: a key that is not key-SHAPED. Anything with a path
+ * separator, whitespace, a dot, a quote or a non-ASCII character is rejected
+ * and the tap opens the cover.
+ *
+ * THE REAL KEYS ARE SHORTER THAN THIS. All 69 in the frozen book are
+ * `[A-Z0-9]{2,6}` -- F0..F5, P1..P19, MV0..MV2, GF1..GF7, PL1..PL4, M1..M4,
+ * SET, HUNT, HOLD, STORM. The bound is 16 with `_` and `-` allowed purely as
+ * headroom, so a future chapter cannot be locked out by this line.
+ */
+const ANNOUNCE_CARD_KEY = /^[A-Za-z0-9_-]{1,16}$/;
+
 const Stack = createNativeStackNavigator();
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
@@ -1039,6 +1065,50 @@ export default function AppNavigator() {
           },
         },
       });
+    } else if (type === 'playbook_open' || type === 'courses_open') {
+      /* PLAYBOOK-ANNOUNCE-PUSH (ruling B, Lu, 2026-11-03 01:19). Two
+         announcement taps -- "read this" rather than "someone wrote to you",
+         which is what the two question types above are. RECEIVING SIDE ONLY:
+         nothing in this app sends either type yet.
+
+           playbook_open   -> the book. With `data.card` (a card key such as
+                              "F7") it opens on that card, and on the cover
+                              without one, or when the key is not key-shaped,
+                              or when the key names a card this viewer's book
+                              does not hold (the reader's own fallback, see
+                              ANNOUNCE_CARD_KEY).
+           courses_open    -> the Courses screen.
+
+         THE GATE IS CHECKED HERE, not only at the route. `playbookVisible`
+         false means the `Playbook` screen is not registered at all
+         (:349 below), so navigating to it would land on nothing; a viewer who
+         cannot see the book is sent to the Dashboard -- the Home tab's first
+         screen -- instead of into a dead navigate. The two question types
+         above predate this ruling and still rely on the route being absent.
+
+         `data.card` is the ruling's name for the key. `data.card_key` is
+         accepted too, because that is what the server already sends on the
+         two question types and one sender should not have to learn two
+         spellings for one thing.
+
+         Nested navigate (Main -> HomeTab -> <screen>): both targets live in
+         HomeStack, so the root navigator cannot resolve either by name. Same
+         shape as every branch above, which is also why both types inherit the
+         foreground, background and pre-navigator paths with no extra wiring
+         -- see the listener and the pending-tap flush below. */
+      if (type === 'courses_open') {
+        nav.navigate('Main', { screen: 'HomeTab', params: { screen: 'Courses' } });
+      } else if (!playbookVisible) {
+        nav.navigate('Main', { screen: 'HomeTab', params: { screen: 'Dashboard' } });
+      } else {
+        const rawCard = data.card ?? data.card_key;
+        const card =
+          typeof rawCard === 'string' && ANNOUNCE_CARD_KEY.test(rawCard) ? rawCard : undefined;
+        nav.navigate('Main', {
+          screen: 'HomeTab',
+          params: { screen: 'Playbook', params: { card } },
+        });
+      }
     } else if (type === 'survey' || type === 'survey_reminder') {
       if (data.survey_id) {
         nav.navigate('Main', {

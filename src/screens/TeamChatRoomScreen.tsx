@@ -44,6 +44,7 @@ import { useChannelMembers } from '../hooks/useChannelMembers';
 import { useChatSenderLabels } from '../hooks/useChatSenderLabels';
 import { CHAT_FALLBACK_NAME, chatPersonName } from '../lib/memberNames';
 import { isChannelStaff } from '../lib/channelStaff';
+import { shareSurveyToChat } from '../lib/surveyShare';
 import { allowsMemberText, canSendText } from '../lib/announcementChannel';
 import { useTypingPresence } from '../hooks/useTypingPresence';
 import { TypingIndicator } from '../components/chat/TypingIndicator';
@@ -431,42 +432,68 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
     setMissedCount(0);
   }, [channelId]);
 
+  /**
+   * Share a survey into this chat. The write lives in `lib/surveyShare.ts`;
+   * this is only the screen's half — close the picker, refresh on success,
+   * SAY SO on failure.
+   *
+   * It used to write `channel_id` and `posted_by` to `sv_chat_shares` (neither
+   * is a column) and omit `team_id` (NOT NULL), while destructuring neither
+   * insert's `error` — so every share failed and nothing was ever shown. The
+   * audit is `thrive-and-score/docs/recon/club-announcements-v1-server.md` §7.
+   *
+   * A failed share NEVER passes silently now, and a share row refused after
+   * the message landed takes the orphan message with it (see the module).
+   */
   const handleShareSurvey = async (surveyId: string, surveyTitle: string) => {
     setSurveyPickerVisible(false);
     if (!channelId || !user?.id) return;
-    try {
-      const { data: msgData } = await supabase
-        .from('comm_messages')
-        .insert({
-          channel_id: channelId,
-          user_id: user.id,
-          content: surveyTitle,
-          message_type: 'survey',
-        })
-        .select('id')
-        .single();
 
-      if (msgData?.id) {
-        await supabase.from('sv_chat_shares').insert({
-          survey_id: surveyId,
-          channel_id: channelId,
-          posted_by: user.id,
-          message_id: msgData.id,
-        });
-        refetch();
-      }
-    } catch (err) {
-      Alert.alert('Error', 'Failed to share survey. Please try again.');
+    const result = await shareSurveyToChat({
+      channelId,
+      teamId: channelTeamId,
+      surveyId,
+      surveyTitle,
+      userId: user.id,
+    });
+
+    if (result.status === 'ok') {
+      await refetch();
+      return;
     }
+
+    logError(
+      'TeamChatRoom.handleShareSurvey',
+      result.status === 'no-team' ? result.status : result.error,
+      {
+        channelId,
+        surveyId,
+        status: result.status,
+        rolledBack:
+          result.status === 'share-failed' ? result.rolledBack : undefined,
+      }
+    );
+    Alert.alert('Error', result.message);
   };
 
   const handleSendMessage = async (
     content: string,
     attachment?: AttachmentData
   ) => {
-    // Intercept /survey command
+    // Intercept /survey command.
+    //
+    // The gate is `isStaffHere`, the SERVER's `is_channel_staff` — the same
+    // answer `sv_chat_shares`' own RLS reaches, and the same one the poll and
+    // send gates use (ruling FND-4d3, slice 4i). It was `isStaffInChannel`,
+    // the `get_channel_member_labels` answer, which means "team staff anywhere
+    // in this chat's club" and disagrees with the policy about real people in
+    // both directions: a club_admin the labels RPC has never heard of was told
+    // "Not Authorized", and a coach of ANOTHER team in the club was offered a
+    // share the database would refuse. `undefined` (still in flight) reads as
+    // not staff, so the refusal is never shown to someone who does have it —
+    // it is shown only to someone the server has already said no about.
     if (content.trim().toLowerCase() === '/survey' && !attachment) {
-      if (!isStaffInChannel) {
+      if (isStaffHere !== true) {
         Alert.alert('Not Authorized', 'Only team staff can share surveys in chat.');
         return;
       }
@@ -1103,11 +1130,13 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
         }}
       />
 
+      {/* The picker's own "staff only" screen reads the SAME server answer as
+          the `/survey` gate that opens it, so the two can never disagree. */}
       <SurveyPickerModal
         visible={surveyPickerVisible}
         channelId={channelId}
         teamId={channelTeamId}
-        isStaff={isStaffInChannel}
+        isStaff={isStaffHere === true}
         onClose={() => setSurveyPickerVisible(false)}
         onShare={handleShareSurvey}
       />

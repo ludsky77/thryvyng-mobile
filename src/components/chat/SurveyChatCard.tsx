@@ -9,6 +9,12 @@ import {
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { fetchSurveyShare } from '../../lib/surveyShare';
+import {
+  CHAT_FALLBACK_NAME,
+  chatPersonName,
+  fetchChatProfileNames,
+} from '../../lib/memberNames';
 
 interface SurveyCardData {
   surveyId: string;
@@ -16,8 +22,10 @@ interface SurveyCardData {
   closesAt: string | null;
   status: string;
   publicSlug: string | null;
-  postedByName: string | null;
-  postedAt: string;
+  /** `sv_chat_shares.shared_by`, resolved through `get_chat_profiles`. */
+  sharedByName: string | null;
+  /** `sv_chat_shares.shared_at`. Null on a row the read could not resolve. */
+  sharedAt: string | null;
 }
 
 interface SurveyChatCardProps {
@@ -50,32 +58,41 @@ export default function SurveyChatCard({ messageId, navigation }: SurveyChatCard
 
   const loadCard = useCallback(async () => {
     try {
-      // Single query: sv_chat_shares + sv_surveys + poster profile
-      const { data: shareData, error: shareErr } = await supabase
-        .from('sv_chat_shares')
-        .select(`
-          survey_id,
-          posted_by,
-          created_at,
-          poster:profiles!posted_by(full_name),
-          sv_surveys!inner(id, title, closes_at, status, public_slug)
-        `)
-        .eq('message_id', messageId)
-        .single();
+      /*
+       * The share row, through `lib/surveyShare.ts`, which owns the column
+       * names. This query used to ask for `posted_by`, `created_at` and
+       * `poster:profiles!posted_by(full_name)` — the first two are not columns
+       * (they are `shared_by` and `shared_at`) and the third assumed a declared
+       * FK to `profiles` that nothing in this repo can confirm, on a table RLS
+       * refuses to an ordinary parent or player viewer anyway. One bad column
+       * name fails the WHOLE select, so the card resolved to nothing and the
+       * `catch` said nothing — the audit is
+       * `thrive-and-score/docs/recon/club-announcements-v1-server.md` § 7d.
+       */
+      const share = await fetchSurveyShare(messageId);
+      if (!share) return;
 
-      if (shareErr || !shareData) return;
-
-      const survey = (shareData as any).sv_surveys;
-      const poster = (shareData as any).poster;
+      // The NAME is a separate, membership-gated call: `get_chat_profiles`,
+      // the app-wide path for every other person's name in a chat (ruling
+      // FND-1). It carries the server's own ladder, which ends at
+      // 'Thryvyng member' rather than null, so a nameless profile is still a
+      // named row and the footer never reads 'Shared by undefined'.
+      let sharedByName: string | null = null;
+      if (share.sharedBy) {
+        const names = await fetchChatProfileNames([share.sharedBy]);
+        sharedByName = chatPersonName(
+          names.get(share.sharedBy)?.name ?? CHAT_FALLBACK_NAME
+        );
+      }
 
       setCard({
-        surveyId: shareData.survey_id,
-        title: survey?.title ?? 'Survey',
-        closesAt: survey?.closes_at ?? null,
-        status: survey?.status ?? 'open',
-        publicSlug: survey?.public_slug ?? null,
-        postedByName: poster?.full_name ?? null,
-        postedAt: shareData.created_at,
+        surveyId: share.surveyId,
+        title: share.title ?? 'Survey',
+        closesAt: share.closesAt,
+        status: share.status ?? 'open',
+        publicSlug: share.publicSlug,
+        sharedByName,
+        sharedAt: share.sharedAt,
       });
 
       // Check if current user has already responded
@@ -83,7 +100,7 @@ export default function SurveyChatCard({ messageId, navigation }: SurveyChatCard
         const { data: dist } = await supabase
           .from('sv_distributions')
           .select('id')
-          .eq('survey_id', shareData.survey_id)
+          .eq('survey_id', share.surveyId)
           .eq('user_id', user.id)
           .not('completed_at', 'is', null)
           .maybeSingle();
@@ -166,8 +183,12 @@ export default function SurveyChatCard({ messageId, navigation }: SurveyChatCard
       )}
 
       {/* Footer */}
+      {/* `shared_at` has a default of now() so it is never null in practice;
+          the guard is here because the TYPE allows null and a missing date
+          must not render as 'NaNd ago'. */}
       <Text style={styles.footer}>
-        {card.postedByName ? `Shared by ${card.postedByName}` : 'Shared'} · {timeAgo(card.postedAt)}
+        {card.sharedByName ? `Shared by ${card.sharedByName}` : 'Shared'}
+        {card.sharedAt ? ` · ${timeAgo(card.sharedAt)}` : ''}
       </Text>
     </View>
   );

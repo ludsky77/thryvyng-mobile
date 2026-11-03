@@ -21,6 +21,7 @@ import {
   type ReactionDetailItem,
 } from '../components/chat/ReactionDetailsModal';
 import { PollCard } from '../components/chat/PollCard';
+import SurveyChatCard from '../components/chat/SurveyChatCard';
 import { playbookVisible } from '../constants/playbookLaunch';
 import {
   fetchAnnouncementActions,
@@ -251,6 +252,14 @@ export default function AnnouncementDetailScreen({
         {message.message_type === 'poll' && message.poll_id ? (
           <View style={styles.pollWrap}>
             <PollCard pollId={message.poll_id} />
+          </View>
+        ) : message.message_type === 'survey' ? (
+          /* A shared survey's own card, not its content. The content is
+             `[SURVEY:<uuid>] <title>` — the cross-app format in
+             `lib/surveyShare.ts` — so printing `body` here would show the
+             marker to the reader. */
+          <View style={styles.pollWrap}>
+            <SurveyChatCard messageId={message.id} navigation={navigation} />
           </View>
         ) : body ? (
           <Text style={styles.message}>{body}</Text>

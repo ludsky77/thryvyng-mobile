@@ -22,6 +22,7 @@ import { formatDayDivider } from '../utils/chatDays';
 import { CHAT_FALLBACK_NAME, chatPersonName } from '../lib/memberNames';
 import { isChannelStaff } from '../lib/channelStaff';
 import { PollCard } from '../components/chat/PollCard';
+import SurveyChatCard from '../components/chat/SurveyChatCard';
 import { setActiveChannelId } from '../services/notifications';
 import {
   CLUB_ANNOUNCEMENTS_MISSING_MESSAGE,
@@ -437,6 +438,25 @@ export default function AnnouncementsFeedScreen({
       return (
         <View style={styles.pollWrap}>
           <PollCard pollId={message.poll_id} compact />
+        </View>
+      );
+    }
+
+    /*
+     * A SHARED SURVEY, same treatment as a poll: the card it already has, and
+     * no second renderer. Without this branch the feed drew the row through
+     * the announcement card below, whose text is the message CONTENT — and a
+     * share's content is now `[SURVEY:<uuid>] <title>`, so a survey in a club
+     * chat would have read out its own marker as the headline.
+     *
+     * The card carries its own Respond CTA and resolves to nothing when the
+     * share row is missing, so there is no tap-through to a detail screen and
+     * nothing to show for a `'survey'` row that never got its share row.
+     */
+    if (message.message_type === 'survey') {
+      return (
+        <View style={styles.pollWrap}>
+          <SurveyChatCard messageId={message.id} navigation={navigation} />
         </View>
       );
     }

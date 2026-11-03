@@ -2304,3 +2304,160 @@ it. Nothing here has been seen by a human on a real phone.
   - Source: this session, 2026-11-03; Lu's ruling of 01:57;
     `docs/recon/club-announcements.md` (§B6–B12, §LB-1..5, §P-1..5);
     `docs/recon/club-announcements-v1-mobile.md`.
+
+## Landed — Nov 3 2026 (survey share fixed against the live table; the smoke harness gets a home)
+
+- **SURVEY-SHARE-FIX-MOBILE · sharing a survey into a chat writes the columns the
+  live table actually has, says so when it fails, and rolls back its own orphan ·
+  `BUILT-UNCOMMITTED` · **NEEDS THE SERVER SIDE APPLIED** · SIMULATOR TEST OWED ·
+  Lu's Q-05 column read 2026-11-03 12:41 MDT + the web audit
+  `thrive-and-score/docs/recon/club-announcements-v1-server.md` § 7 · agent session
+  2026-11-03.** Nothing here has been tapped by a human: no simulator run, no device
+  run, no `expo export`.
+  - **THE DEFECT, and it failed silently every single time.** The old inline handler
+    wrote `sv_chat_shares(survey_id, channel_id, posted_by, message_id)`.
+    **`channel_id` and `posted_by` are not columns** and `team_id` — **NOT NULL, no
+    default** — was omitted. Neither insert's `error` was ever destructured, and
+    supabase-js reports a refusal as a RETURNED error rather than a throw, so the
+    `try/catch` around two bare `await`s caught nothing: the message landed, the share
+    row never did, and the card that row would have drawn could never resolve. The
+    only user-visible outcome was an `Alert` on an exception that cannot happen.
+    **Live column list, Lu's own read (no migration in either repo creates this
+    table):** `id` default · `survey_id` NOT NULL · `team_id` NOT NULL · `shared_by`
+    NOT NULL · `message_id` NULL · `shared_at` default `now()`.
+  - **NEW, `src/lib/surveyShare.ts` — the one place the contract lives.** The column
+    names, the content format, the two-step write with its rollback, and the card's
+    read, all in one module, so the write and the read cannot disagree about what a
+    column is called — and all of it testable without a device, which the screen is
+    not. The screen's `handleShareSurvey` is now its half only: close the picker,
+    `refetch` on ok, `logError` + the one sentence *"Couldn't share the survey. Try
+    again."* on anything else. **Never silent again.**
+  - **THE CONTENT FORMAT IS A CROSS-APP CONTRACT, and mobile was breaking it.** A
+    share now posts `[SURVEY:<survey id>] <title>` — the exact shape **web's card
+    regex** reads (`thrive-and-score/src/components/comm/ChatPanel.tsx:511`), asserted
+    byte for byte by the smoke against web's own regex. Mobile sent the bare title, so
+    **every mobile share rendered on web as a plain text bubble with no card**, and
+    nothing on the mobile side ever looked wrong — mobile finds its own card by
+    message id in `sv_chat_shares`, not from the content. The fix had to be
+    deliberate, not reactive.
+  - **`team_id` IS CHECKED BEFORE ANYTHING IS WRITTEN.** NOT NULL with no default
+    means a chat with no team **cannot** carry a share row, so a message posted into
+    one would be a permanent orphan whose card can never resolve.
+    `shareSurveyToChat` refuses first with *"Surveys can only be shared in a team
+    chat."*; the smoke asserts **zero** writes for `null`, `undefined` and `''`.
+  - **THE ROLLBACK.** Two writes, no transaction, and the second is the one RLS is
+    most likely to refuse. A refused share row takes the message with it, through
+    **`soft_delete_message`** — the SAME door the chat's own "delete my message"
+    action uses — so the row leaves every reader's list exactly as a deleted message
+    does, on web as well as here. Web does the same thing with a direct
+    `update({ is_deleted: true })` (`TeamMessagesTab.tsx:526-529`, already fixed
+    there). A **failed rollback is reported, not hidden**: `rolledBack: false` rides
+    on the result and the user still sees the failure sentence.
+  - **THE GATE IS NOW THE SERVER'S ANSWER (FIX item 2 — and there is no "share
+    button": the entry is the `/survey` slash command, which opens
+    `SurveyPickerModal`).** Before: `isStaffInChannel` =
+    `labelKind.get(user.id) === 'staff'` from `get_channel_member_labels`, i.e. "team
+    staff anywhere in this chat's club". After: **`isStaffHere === true`**, the
+    server's `is_channel_staff` (`src/lib/channelStaff.ts`) — the answer
+    `sv_chat_shares`' own RLS reaches, and the one ruling FND-4d3 exists to insist on.
+    **The two disagree about real people in BOTH directions:** a **club_admin** the
+    labels RPC has never heard of was told *"Not Authorized"*, and a **coach of
+    another team in the same club** was offered a share the database would refuse.
+    `undefined` (in flight) reads as not-staff, so the refusal is never shown to
+    someone who does have it. The picker's own "staff only" screen reads the same
+    value, so the gate that opens it and the gate inside it cannot disagree.
+  - **THE CARD READS THE REAL COLUMNS, and gets the name the way the rest of the app
+    does.** `SurveyChatCard` asked for `posted_by`, `created_at` and
+    `poster:profiles!posted_by(full_name)`: the first two are not columns (they are
+    `shared_by` and `shared_at`), and the third assumed a declared FK to `profiles`
+    that **nothing in this repo can confirm**, on a table RLS refuses to an ordinary
+    parent or player viewer anyway. **One bad column name fails the WHOLE select**, so
+    the card resolved to nothing and the `catch` said nothing. Now: `shared_by`,
+    `shared_at`, `sv_surveys!inner`, `maybeSingle` — and the name comes from
+    **`fetchChatProfileNames` (`get_chat_profiles`, SECURITY DEFINER, gated on sharing
+    a channel)**, the app-wide path for every other person's name in a chat (ruling
+    FND-1), which carries the server's own ladder ending at `'Thryvyng member'` rather
+    than null. `shared_at` has a null guard so a missing date cannot render `NaNd ago`.
+  - **A `'survey'` ROW NOW DRAWS A CARD IN ALL THREE MESSAGE SCREENS.** `TeamChatRoom`
+    already did (`:834`); **`AnnouncementsFeedScreen` (`:456`) and
+    `AnnouncementDetailScreen` (`:256`) are new**, same shape as their existing poll
+    branches. Without them a survey in a club chat would have printed its own
+    `[SURVEY:<uuid>]` marker as the card headline — the content format fix makes this
+    branch **necessary**, not optional. `grep "message_type === 'survey'"` → exactly 3
+    hits, `SurveyChatCard` rendered at exactly those 3.
+  - **NEW, `scripts/smoke/` + `npm run smoke` — Lu approved it
+    (`docs/recon/club-announcements-v1-mobile.md` § 7 RECOMMEND).** The harness had
+    been rebuilt in a scratchpad twice and lost twice; the second pass had to
+    reconstruct the first's 38 assertions out of that document's prose before it could
+    add anything. **Plain node, NO new dependency** — the `typescript` and `node`
+    already installed; `package.json` changed by **one line, a script**. `run.js`
+    transpiles the **real source files, unchanged**, with the project's own `tsc` under
+    `--strict` into a temp dir (the flags recorded in
+    `docs/recon/chat-info-club-chats.md` § "Re-run the smoke", plus `--rootDir src`),
+    writes a six-line getter shim over the transpiled `lib/supabase.js`, and asserts
+    against what the modules then do. **The sources are never copied or edited, so the
+    smoke cannot drift from the code it tests**, and a tsc diagnostic naming one of
+    them aborts the run. **Isolation is asserted, not assumed:** the run ends by
+    checking `@supabase/supabase-js` was never even required, so no client was
+    constructed and nothing could open a socket. Two suites: the announcement contract
+    (the ten groups the lost harness covered, rebuilt against the committed module —
+    including all 14 refusal sentinels mapping to distinct sentences, and `p_title`
+    never null) and the survey insert shape (the exact key set, **both phantom columns
+    asserted ABSENT**, write order, no-team, each refusal, the rollback, the rollback
+    failing, and the card read's column names). **ALL PASS — 255 assertions, 0
+    failures.** Adding a suite: `<name>.smoke.js`, export `{ title, run(t, env) }`,
+    add it to `SUITES`. **What it cannot prove, stated in the file: it is not a device
+    test, and it is NOT a schema test** — the stub records what the code SENT and
+    cannot tell you a column exists. Live acceptance is the server dry run's V1/V2/V3.
+  - **GATES.** `npx tsc --noEmit` → **5 = baseline**, and the error list is
+    **byte-identical** to the before-run (`diff` empty); all 5 pre-existing in
+    `src/components/games/*`, **0 in any touched or new file**. `eslint` on the 4
+    changed + 1 new source file: **0 errors**, warnings **39 → 36, net −3, 0 new**
+    (`TeamChatRoomScreen` 36 → 35; `SurveyChatCard` 3 → 1, the two `as any` casts gone
+    and the 1 left is the pre-existing `navigation: any` prop; both announcement
+    screens 0 → 0; `src/lib/surveyShare.ts` **0/0**). `eslint scripts/smoke/` → **0
+    problems** (`run.js` carries a file-level `no-console` disable with its reason — it
+    is a CLI reporter, and nothing in `scripts/` is bundled: Metro's entry is
+    `index.ts`). `npm run smoke` → **ALL PASS, 255 assertions**. grep:
+    `posted_by` in `src/` → **5 hits, every one PROSE in a comment** recording the
+    defect; `channel_id` on `sv_chat_shares` → **2 hits, both prose**; **zero
+    executable occurrences of either.** **No simulator run, no device run, no
+    `expo export`.**
+  - **OWED ON A DEVICE, and item 1 WILL FAIL until the server applies.** (1) The share
+    itself as channel staff in a team chat with an open survey, **and web showing a
+    card for the same message** — **the live CHECK on `comm_messages.message_type`
+    does not list `'survey'` yet** (server migration PART 6), so the first insert is
+    refused with `23514`; the smoke pins that exact case, and the point of this build
+    is that it now REPORTS it instead of swallowing it. (2) A refused share rolls back
+    — no orphan `[SURVEY:…]` message left behind. (3) A **web** share renders on
+    mobile (mobile looks the card up by message id, which web writes — so both
+    directions should now work). (4) The gate: a club_admin who is not team staff can
+    share, a coach of another team in the club cannot — needs two accounts. (5) A
+    survey card in the announcements feed and detail screens.
+  - **FOUND outside scope, REPORTED not fixed.** **🔎 A card key with stray whitespace
+    disables Send with no visible reason** — found by a smoke assertion.
+    `isSendableAction` tests the `playbook_card` target **untrimmed**
+    (`clubAnnouncementCards.ts:185`), while `buildAnnouncementActionsPayload` trims it
+    (`:205`) and `ComposeAnnouncementScreen.tsx:380` trims it for the inline "bad key"
+    warning — so `P7 ` shows **no warning next to the field** yet counts as an
+    incomplete action, and `canSend` (`:179`) goes **down with nothing on screen saying
+    why**. **RECOMMEND (a suggestion): trim in `isSendableAction`**, which makes all
+    three agree in one edit; two smoke assertions marked `FOUND` pin today's behaviour
+    so a fix flips them deliberately. Also: **`DMChatScreen` branches on
+    `message_type` for nothing** (not polls, not surveys), so a card row there would
+    render as raw text — **unreachable today in both apps** (mobile's share needs the
+    chat's `team_id`, a DM has none; web's share only runs inside `TeamMessagesTab`,
+    whose channels are all team channels) and the same latent gap polls already have.
+    Carried forward unchanged: **🛡 `comm_poll_votes_insert` is still the pre-4a
+    reactions hole (SACRED — Lu's call)**, and `src/lib/permissions.ts` is still
+    entirely unimported.
+  - **Nothing SACRED, and nothing forbidden touched.** No SQL, migration, edge
+    function or DB connection; **no dependency** (`package.json` changed by one line, a
+    script); no `app.json`, no `eas.json`, no commit; no edit in `thrive-and-score`
+    (**READ-ONLY** there: the § 7 audit, `ChatPanel.tsx`, `TeamMessagesTab.tsx`);
+    `src/components/games/*` untouched; nothing was sent at runtime and no survey was
+    shared.
+  - Source: this session, 2026-11-03; Lu's Q-05 of 12:41 MDT;
+    **`docs/recon/survey-share-fix-mobile.md`** (the full write-up: the before/after
+    table, the gate change, the harness, the owed list, and the FOUND items);
+    `thrive-and-score/docs/recon/club-announcements-v1-server.md` § 7.

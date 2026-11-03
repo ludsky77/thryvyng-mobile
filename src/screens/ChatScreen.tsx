@@ -32,7 +32,12 @@ import {
   showsClubCrest,
 } from '../lib/chatHelpers';
 import { CHAT_FALLBACK_NAME } from '../lib/memberNames';
-import { getGenderLabel, normalizeGender } from '../utils/teamGender';
+import {
+  CLUB_ANNOUNCEMENTS_MISSING_MESSAGE,
+  CLUB_ANNOUNCEMENTS_UNREACHABLE_MESSAGE,
+  clubAnnouncementsAudienceLine,
+  getClubAnnouncementsChannel,
+} from '../lib/clubAnnouncements';
 import {
   canHideChannelType,
   setChannelHidden,
@@ -822,12 +827,20 @@ export default function ChatScreen({ navigation, route }: any) {
   const [teamChannels, setTeamChannels] = useState<TeamChannelOption[]>([]);
   const [teamChannelSearch, setTeamChannelSearch] = useState('');
 
-  const [clubWideMode, setClubWideMode] = useState<'all' | 'filter'>('all');
-  const [filterType, setFilterType] = useState<'age' | 'gender' | 'team' | null>(null);
-  const [selectedAgeGroups, setSelectedAgeGroups] = useState<string[]>([]);
-  const [selectedGenders, setSelectedGenders] = useState<string[]>([]);
-  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
-  const [clubTeams, setClubTeams] = useState<any[]>([]);
+  /**
+   * The club-wide step's two pieces of state: WHICH club is being written to,
+   * and its display name for the one line that says so.
+   *
+   * The age/gender/team audience picker that used to live here is GONE. It was
+   * decorative: the team-id list it produced was written as a navigation param
+   * that nothing in the tree ever read, so every message went to the whole
+   * club anyway (docs/recon/club-announcements.md §A1, PROVEN -- it names the
+   * dead param). Announcements are a club-wide channel; per-team sends are the
+   * team chats.
+   */
+  const [clubWideClubId, setClubWideClubId] = useState<string | null>(null);
+  const [clubWideClubName, setClubWideClubName] = useState<string | null>(null);
+  const [clubWideOpening, setClubWideOpening] = useState(false);
 
   /**
    * Row -> card. Hoisted to component level: it is pure given `allTeams`, and
@@ -1570,11 +1583,9 @@ export default function ChatScreen({ navigation, route }: any) {
     setGroupRoleFilter('all');
     setExistingGroupMatch(null);
     setTeamChannelSearch('');
-    setClubWideMode('all');
-    setFilterType(null);
-    setSelectedAgeGroups([]);
-    setSelectedGenders([]);
-    setSelectedTeamIds([]);
+    setClubWideClubId(null);
+    setClubWideClubName(null);
+    setClubWideOpening(false);
     Keyboard.dismiss();
   }, []);
 
@@ -1590,11 +1601,25 @@ export default function ChatScreen({ navigation, route }: any) {
     }
   }, [showNewChatModal, newChatStep, fetchTeamChannels]);
 
-  const fetchClubTeams = useCallback(async () => {
+  /**
+   * Which club this person writes announcements to, and what it is called.
+   *
+   * This is the old `fetchClubTeams` with the team list dropped: the audience
+   * picker it fed is gone (see the state above), and the one thing the step
+   * still needs from it is the CLUB ID the lookup must filter on -- required
+   * for correctness, because two clubs each hold their own announcements row
+   * (docs/recon/club-announcements.md §FC-3②).
+   *
+   * limit(1), not maybeSingle(): a user can hold club_staff rows at more than
+   * one club, and maybeSingle() errored on 2+ rows -- which silently stripped
+   * club-wide messaging from exactly the multi-club staff.
+   *
+   * The name is cosmetic. If its read fails the step still opens and the line
+   * says "your club" (`clubAnnouncementsAudienceLine`); the channel it opens
+   * is decided by the id, never by the name.
+   */
+  const fetchClubWideTarget = useCallback(async () => {
     if (!user?.id) return;
-    // limit(1), not maybeSingle(): a user can hold club_staff rows at more than
-    // one club, and maybeSingle() errored on 2+ rows -- which silently stripped
-    // club broadcast from exactly the multi-club staff.
     const { data: clubStaffRows, error: clubStaffError } = await supabase
       .from('club_staff')
       .select('club_id')
@@ -1602,27 +1627,35 @@ export default function ChatScreen({ navigation, route }: any) {
       .limit(1);
     if (clubStaffError) {
       if (__DEV__) console.warn('[Chat] club_staff lookup failed:', clubStaffError);
-      setClubTeams([]);
+      setClubWideClubId(null);
+      setClubWideClubName(null);
       return;
     }
-    const clubStaff = clubStaffRows?.[0];
-    if (!clubStaff?.club_id) {
-      setClubTeams([]);
+    const staffClubId = clubStaffRows?.[0]?.club_id ?? null;
+    setClubWideClubId(staffClubId);
+    if (!staffClubId) {
+      setClubWideClubName(null);
       return;
     }
-    const { data: teams } = await supabase
-      .from('teams')
-      .select('id, name, age_group, gender')
-      .eq('club_id', clubStaff.club_id)
-      .order('name');
-    setClubTeams(teams || []);
+    const { data: club, error: clubError } = await supabase
+      .from('clubs')
+      .select('name')
+      .eq('id', staffClubId)
+      .maybeSingle();
+    // Not reported: the name is cosmetic, the line below degrades to
+    // "your club", and the channel is chosen by the id either way.
+    if (clubError) {
+      setClubWideClubName(null);
+      return;
+    }
+    setClubWideClubName(club?.name ?? null);
   }, [user?.id]);
 
   useEffect(() => {
     if (showNewChatModal && newChatStep === 'club') {
-      fetchClubTeams();
+      fetchClubWideTarget();
     }
-  }, [showNewChatModal, newChatStep, fetchClubTeams]);
+  }, [showNewChatModal, newChatStep, fetchClubWideTarget]);
 
   const filteredTeamChannels = teamChannels.filter(
     (ch) =>
@@ -1634,63 +1667,50 @@ export default function ChatScreen({ navigation, route }: any) {
         .includes(teamChannelSearch.toLowerCase())
   );
 
-  // normalizeGender / getGenderLabel are the SHARED rule now
-  // (src/utils/teamGender.ts) — the copies that lived here are gone. The one
-  // difference this screen keeps is at its call sites, not in the rule: an
-  // unrecognised gender is 'unset' there, and here it must not become a filter
-  // chip and must print as nothing on a team row.
-  const ageGroups = [...new Set(clubTeams.map((t: any) => t.age_group).filter(Boolean))].sort();
-  const genders = [
-    ...new Set(
-      clubTeams
-        .map((t: any) => normalizeGender(t.gender))
-        .filter((g) => g !== 'unset')
-    ),
-  ];
-
-  const matchingTeams =
-    selectedAgeGroups.length > 0 || selectedGenders.length > 0
-      ? clubTeams.filter(
-          (t: any) =>
-            (selectedAgeGroups.length === 0 || selectedAgeGroups.includes(t.age_group)) &&
-            (selectedGenders.length === 0 ||
-              selectedGenders.includes(normalizeGender(t.gender)))
-        )
-      : clubTeams;
-
-  const canSendClubWide = () => {
-    if (clubWideMode === 'all') return clubTeams.length > 0;
-    return selectedTeamIds.length > 0;
-  };
-
-  const getSelectedTeamCount = () => {
-    if (clubWideMode === 'all') return clubTeams.length;
-    return selectedTeamIds.length;
-  };
-
+  /**
+   * Open the club's announcements chat.
+   *
+   * THE LOOKUP MOVED TO `src/lib/clubAnnouncements.ts` and changed what it
+   * asks for: `channel_type = 'club' AND is_default AND club_id = <this club>`
+   * instead of `channel_type = 'broadcast'`, which no row can hold and none
+   * ever did (§A1/§FC-2, PROVEN against prod 2026-11-03). That single wrong
+   * string is why this button has never once opened a chat.
+   *
+   * THREE OUTCOMES, THREE SENTENCES. The old code read `data` only and threw
+   * `error` away, so offline and RLS printed the same "contact admin" line as
+   * a club that genuinely has no announcements chat. They are now told apart.
+   */
   const sendClubWideMessage = async () => {
-    const targetTeamIds =
-      clubWideMode === 'all'
-        ? clubTeams.map((t: any) => t.id)
-        : selectedTeamIds;
-    const { data: clubChannel } = await supabase
-      .from('comm_channels')
-      .select('id')
-      .eq('channel_type', 'broadcast')
-      .limit(1)
-      .maybeSingle();
-    if (clubChannel) {
-      closeModal();
-      navigation.navigate('TeamChatRoom', {
-        channelId: clubChannel.id,
-        channelName: 'Club-Wide',
-        teamName: undefined,
-        channelType: 'broadcast',
-        broadcastToTeams: targetTeamIds,
-      });
-    } else {
-      Alert.alert('Info', 'Club broadcast channel not found. Contact admin.');
+    if (!clubWideClubId) {
+      Alert.alert(
+        'Unable to Load',
+        'Club information could not be loaded. Please try again.'
+      );
+      return;
     }
+    setClubWideOpening(true);
+    const { data: channel, error } = await getClubAnnouncementsChannel(
+      clubWideClubId
+    );
+    setClubWideOpening(false);
+    if (error) {
+      logError('ChatScreen.clubAnnouncements', error, { clubId: clubWideClubId });
+      Alert.alert('Club announcements', CLUB_ANNOUNCEMENTS_UNREACHABLE_MESSAGE);
+      return;
+    }
+    if (!channel) {
+      Alert.alert('Club announcements', CLUB_ANNOUNCEMENTS_MISSING_MESSAGE);
+      return;
+    }
+    closeModal();
+    navigation.navigate('TeamChatRoom', {
+      channelId: channel.id,
+      // The channel's own name, which is what the chat list and the room
+      // header already print for this row -- not a second label of our own.
+      channelName: channel.name || 'Announcements',
+      teamName: undefined,
+      channelType: 'club',
+    });
   };
 
   const conversationsByTeam = conversations
@@ -2103,13 +2123,8 @@ export default function ChatScreen({ navigation, route }: any) {
                 <TouchableOpacity
                   style={styles.typeOption}
                   onPress={() => {
-                    fetchClubTeams();
+                    fetchClubWideTarget();
                     setNewChatStep('club');
-                    setClubWideMode('all');
-                    setFilterType(null);
-                    setSelectedAgeGroups([]);
-                    setSelectedGenders([]);
-                    setSelectedTeamIds([]);
                   }}
                 >
                   <View style={[styles.typeIconContainer, { backgroundColor: '#F59E0B20' }]}>
@@ -2412,37 +2427,19 @@ export default function ChatScreen({ navigation, route }: any) {
     }
 
     if (newChatStep === 'club') {
-      const toggleGender = (g: string) => {
-        setSelectedGenders((prev) =>
-          prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]
-        );
-      };
-      const toggleAge = (age: string) => {
-        setSelectedAgeGroups((prev) =>
-          prev.includes(age) ? prev.filter((a) => a !== age) : [...prev, age]
-        );
-      };
-      const selectAllTeams = () => {
-        const matchingIds = matchingTeams.map((t: any) => t.id);
-        const allSelected = matchingIds.every((id: string) =>
-          selectedTeamIds.includes(id)
-        );
-        if (allSelected) {
-          setSelectedTeamIds((prev) =>
-            prev.filter((id) => !matchingIds.includes(id))
-          );
-        } else {
-          setSelectedTeamIds((prev) => [
-            ...new Set([...prev, ...matchingIds]),
-          ]);
-        }
-      };
-      const toggleTeam = (id: string) => {
-        setSelectedTeamIds((prev) =>
-          prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-        );
-      };
-
+      /**
+       * One destination, one sentence, one button.
+       *
+       * What used to be here: All-teams / filter-by-age-and-gender / pick
+       * teams, three screens of chips feeding a navigation param that nothing
+       * read (docs/recon/club-announcements.md §A1). Every message went to the
+       * whole club regardless, so the picker promised a split that did not
+       * exist. Announcements go to the club's one announcements channel; a
+       * message for one team belongs in that team's chat.
+       *
+       * THIS STEP IS TEMPORARY. The card compose replaces it later in 1.0.20
+       * (ruling 2026-11-03 01:57), which is why it stays this plain.
+       */
       return (
         <View style={styles.fullScreenContainer}>
           <View style={styles.clubHeader}>
@@ -2455,164 +2452,23 @@ export default function ChatScreen({ navigation, route }: any) {
             <Text style={styles.clubTitle}>Club-Wide Message</Text>
           </View>
 
-          <FlatList
-            data={clubWideMode === 'filter' ? matchingTeams : []}
-            keyExtractor={(item: any) => item.id}
-            contentContainerStyle={styles.clubListContent}
-            ListHeaderComponent={() => (
-              <View>
-                <Text style={styles.sectionLabel}>Send to:</Text>
-
-                <TouchableOpacity
-                  style={[
-                    styles.optionCard,
-                    clubWideMode === 'all' && styles.optionCardSelected,
-                  ]}
-                  onPress={() => {
-                    setClubWideMode('all');
-                    setSelectedTeamIds(clubTeams.map((t: any) => t.id));
-                  }}
-                >
-                  <View style={styles.optionContent}>
-                    <Text style={styles.optionTitle}>All Club Members</Text>
-                    <Text style={styles.optionSubtitle}>
-                      {clubTeams.length} teams, all members
-                    </Text>
-                  </View>
-                  {clubWideMode === 'all' && <Text style={styles.checkmark}>✓</Text>}
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.optionCard,
-                    clubWideMode === 'filter' && styles.optionCardSelected,
-                  ]}
-                  onPress={() => {
-                    setClubWideMode('filter');
-                    setSelectedTeamIds([]);
-                  }}
-                >
-                  <View style={styles.optionContent}>
-                    <Text style={styles.optionTitle}>Filter Recipients</Text>
-                    <Text style={styles.optionSubtitle}>
-                      By age group, gender, or specific teams
-                    </Text>
-                  </View>
-                  {clubWideMode === 'filter' && <Text style={styles.checkmark}>✓</Text>}
-                </TouchableOpacity>
-
-                {clubWideMode === 'filter' && (
-                  <View style={styles.filtersContainer}>
-                    <Text style={styles.filterTitle}>GENDER</Text>
-                    <View style={styles.chipRow}>
-                      {['male', 'female', 'coed'].map((g) => (
-                        <TouchableOpacity
-                          key={g}
-                          style={[
-                            styles.chip,
-                            selectedGenders.includes(g) && styles.chipSelected,
-                          ]}
-                          onPress={() => toggleGender(g)}
-                        >
-                          <Text
-                            style={[
-                              styles.chipText,
-                              selectedGenders.includes(g) && styles.chipTextSelected,
-                            ]}
-                          >
-                            {g === 'male' ? 'Boys' : g === 'female' ? 'Girls' : 'Coed'}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-
-                    <Text style={styles.filterTitle}>AGE GROUP</Text>
-                    <View style={styles.chipRow}>
-                      {ageGroups.map((age: string) => (
-                        <TouchableOpacity
-                          key={age}
-                          style={[
-                            styles.chip,
-                            selectedAgeGroups.includes(age) && styles.chipSelected,
-                          ]}
-                          onPress={() => toggleAge(age)}
-                        >
-                          <Text
-                            style={[
-                              styles.chipText,
-                              selectedAgeGroups.includes(age) && styles.chipTextSelected,
-                            ]}
-                          >
-                            {age}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-
-                    <View style={styles.teamsHeader}>
-                      <Text style={styles.filterTitle}>
-                        TEAMS ({matchingTeams.length})
-                      </Text>
-                      <TouchableOpacity onPress={selectAllTeams}>
-                        <Text style={styles.clubSelectAllText}>
-                          {matchingTeams.every((t: any) =>
-                            selectedTeamIds.includes(t.id)
-                          )
-                            ? 'Deselect All'
-                            : 'Select All'}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
-              </View>
-            )}
-            renderItem={({ item: team }: { item: any }) => (
-              <TouchableOpacity
-                style={styles.teamRow}
-                onPress={() => toggleTeam(team.id)}
-              >
-                <View
-                  style={[
-                    styles.clubCheckbox,
-                    selectedTeamIds.includes(team.id) && styles.clubCheckboxSelected,
-                  ]}
-                >
-                  {selectedTeamIds.includes(team.id) && (
-                    <Text style={styles.clubCheckmark}>✓</Text>
-                  )}
-                </View>
-                <View style={styles.teamInfo}>
-                  <Text style={styles.teamName}>{team.name}</Text>
-                  <Text style={styles.teamMeta}>
-                    {team.age_group} •{' '}
-                    {normalizeGender(team.gender) === 'unset'
-                      ? ''
-                      : getGenderLabel(normalizeGender(team.gender), false)}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            )}
-            ListEmptyComponent={() =>
-              clubWideMode === 'filter' ? (
-                <Text style={styles.emptyText}>No teams match your filters</Text>
-              ) : null
-            }
-          />
+          <View style={styles.clubListContent}>
+            <Text style={styles.sectionLabel}>
+              {clubAnnouncementsAudienceLine(clubWideClubName)}
+            </Text>
+          </View>
 
           <View style={styles.fixedBottom}>
             <TouchableOpacity
               style={[
                 styles.sendButton,
-                !canSendClubWide() && styles.sendButtonDisabled,
+                clubWideOpening && styles.sendButtonDisabled,
               ]}
               onPress={sendClubWideMessage}
-              disabled={!canSendClubWide()}
+              disabled={clubWideOpening}
             >
               <Text style={styles.sendButtonText}>
-                {clubWideMode === 'all'
-                  ? `Send to All (${clubTeams.length} teams)`
-                  : `Send to ${getSelectedTeamCount()} teams`}
+                {clubWideOpening ? 'Opening…' : 'Open announcements'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -3538,21 +3394,6 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     fontSize: 12,
   },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#8B5CF620',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  chipText: {
-    color: '#8B5CF6',
-    fontSize: 13,
-    fontWeight: '500',
-  },
   chipRemove: {
     color: '#8B5CF6',
     marginLeft: 8,
@@ -3646,40 +3487,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     marginTop: 8,
   },
-  optionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0f172a',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 10,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  optionCardSelected: {
-    borderColor: '#8B5CF6',
-  },
   optionIcon: {
     fontSize: 24,
     marginRight: 12,
-  },
-  optionContent: {
-    flex: 1,
-  },
-  optionTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  optionSubtitle: {
-    color: '#9CA3AF',
-    fontSize: 13,
-    marginTop: 2,
-  },
-  checkmark: {
-    color: '#8B5CF6',
-    fontSize: 20,
-    fontWeight: '700',
   },
   filterSection: {
     flex: 1,
@@ -3715,74 +3525,6 @@ const styles = StyleSheet.create({
   clubListContent: {
     padding: 16,
     paddingBottom: 100,
-  },
-  filtersContainer: {
-    marginTop: 16,
-  },
-  filterTitle: {
-    color: '#9CA3AF',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chipSelected: {
-    backgroundColor: '#8B5CF6',
-  },
-  chipTextSelected: {
-    color: '#FFFFFF',
-  },
-  teamsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  clubSelectAllText: {
-    color: '#8B5CF6',
-    fontSize: 14,
-  },
-  teamRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#374151',
-  },
-  clubCheckbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: '#6B7280',
-    marginRight: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  clubCheckboxSelected: {
-    backgroundColor: '#8B5CF6',
-    borderColor: '#8B5CF6',
-  },
-  clubCheckmark: {
-    color: '#FFFFFF',
-    fontSize: 14,
-  },
-  teamInfo: {
-    flex: 1,
-  },
-  teamName: {
-    color: '#FFFFFF',
-    fontSize: 16,
-  },
-  teamMeta: {
-    color: '#9CA3AF',
-    fontSize: 12,
-    marginTop: 2,
   },
   fixedBottom: {
     position: 'absolute',

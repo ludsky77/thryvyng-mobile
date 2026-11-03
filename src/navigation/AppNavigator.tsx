@@ -17,6 +17,11 @@ import { linking, type RootStackParamList } from './linking';
 // lives with the app's constants rather than with the feature.
 import { playbookVisible } from '../constants/playbookLaunch';
 import { addNotificationListeners } from '../services/notifications';
+// Only for the cold-start tap below. Every other notification path in this app
+// goes through `addNotificationListeners` (src/services/notifications.ts); the
+// one thing that module cannot do is answer "was this app LAUNCHED by a tap",
+// which is a one-shot read, not a subscription.
+import * as Notifications from 'expo-notifications';
 import {
   JoinTeamScreen,
   JoinStaffScreen,
@@ -924,6 +929,14 @@ export default function AppNavigator() {
   const { pendingProgramId, setPendingProgramId, registrationData } = useRegistration();
   const navigationRef = React.useRef<any>(null);
   const pendingNotificationRef = React.useRef<Record<string, any> | null>(null);
+  /**
+   * The notification ids this mount has already routed, so ONE tap can never
+   * route twice -- the guard for the two delivery paths in the effect below.
+   *
+   * A Set, not one id: a tap while the app is already open must still route
+   * even if a cold-start tap was handled minutes earlier.
+   */
+  const routedNotificationIdsRef = React.useRef<Set<string>>(new Set());
   const hasMountedNavRef = React.useRef(false);
 
   // Navigate when auth state changes
@@ -1137,17 +1150,71 @@ export default function AppNavigator() {
     }
   };
 
-  // Handle push notification taps (e.g. lineup_published, event_reminder)
+  /**
+   * Push taps (e.g. lineup_published, event_reminder) — BOTH paths.
+   *
+   * `handleResponse` is ONE door for a tapped notification, whichever path
+   * delivered it, and it lives inside the effect so the effect's dependencies
+   * are exactly what they were before the cold path was added.
+   *
+   *   LISTENER      a tap while the app is running or backgrounded.
+   *   COLD START    a tap that LAUNCHED the app from killed. Nothing was
+   *                 listening when it arrived: the native module stored the
+   *                 response, and until now nothing in this app ever asked for
+   *                 it -- so the tap opened the app on whatever screen it last
+   *                 had and the payload was dropped on the floor. Asked for
+   *                 exactly ONCE, here, and routed through the same door, so
+   *                 every type `routeNotification` knows (chat, events,
+   *                 lineups, the playbook types) inherits the cold path with
+   *                 no per-type wiring.
+   *
+   * ONE TAP NEVER ROUTES TWICE. Whether the listener ALSO receives the
+   * cold-start response depends on whether it subscribed before the native
+   * module handed the stored response over -- timing we do not control, so
+   * UNKNOWN by design. It does not matter: `routedNotificationIdsRef` is
+   * keyed on the notification's own `request.identifier`, so whichever path
+   * gets there first wins and the other returns. A tap is counted as routed
+   * the moment it is accepted, INCLUDING the case where the navigator does not
+   * exist yet and the payload is stashed -- the flush effect below replays
+   * that one, so counting it here is what stops the other path replaying it.
+   *
+   * A response with no identifier (not a shape the SDK is documented to
+   * produce) is routed without the guard rather than dropped: a tap that goes
+   * nowhere is the worse failure.
+   *
+   * try/catch, not a feature test: `getLastNotificationResponse` THROWS an
+   * `UnavailabilityError` when the native method is absent -- Expo Go and web
+   * (node_modules/expo-notifications/build/NotificationsEmitter.js:106).
+   * There is nothing to report: it means "this platform has no cold-start
+   * response", not that a tap was lost.
+   */
   React.useEffect(() => {
-    const unsubscribe = addNotificationListeners(undefined, (response) => {
-      const data = response.notification.request.content.data as Record<string, any> | undefined;
+    const handleResponse = (response: Notifications.NotificationResponse) => {
+      const id = response?.notification?.request?.identifier ?? null;
+      if (id) {
+        if (routedNotificationIdsRef.current.has(id)) return;
+        routedNotificationIdsRef.current.add(id);
+      }
+      const data = response?.notification?.request?.content?.data as
+        | Record<string, any>
+        | undefined;
       if (!data) return;
       if (!navigationRef.current) {
         pendingNotificationRef.current = data;
         return;
       }
       routeNotification(data);
-    });
+    };
+
+    const unsubscribe = addNotificationListeners(undefined, handleResponse);
+
+    try {
+      const coldStart = Notifications.getLastNotificationResponse();
+      if (coldStart) handleResponse(coldStart);
+    } catch {
+      // Platform has no stored response to hand over. Nothing to do.
+    }
+
     return unsubscribe;
   }, []);
 

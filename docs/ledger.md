@@ -2003,3 +2003,128 @@ it. Nothing here has been seen by a human on a real phone.
     and looks like broken code.
   - Source: this session, 2026-11-03; Lu's ruling B of 01:19;
     `docs/recon/playbook-share-links.md`.
+
+## Landed — Nov 3 2026 (club-wide message fix + push cold start)
+
+- **CLUB-WIDE-FIX · "Club-Wide Message" opens the club's announcements chat ·
+  `BUILT-UNCOMMITTED` · SIMULATOR TEST OWED · ruling 2026-11-03 01:57 (cards
+  ship in 1.0.20) · agent session 2026-11-03.** Nothing here has been tapped by
+  a human.
+  - **CAUSE — it was never a missing row. It was a row that cannot exist.** The
+    button asked for `comm_channels.channel_type = 'broadcast'` and printed
+    "Club broadcast channel not found. Contact admin." when that came back
+    empty, which it always did: the live CHECK constraint
+    `comm_channels_channel_type_check` allows exactly `team, club, dm,
+    group_dm`, and the club's real chat is `club-announcements`,
+    `channel_type = 'club'`, `is_default = true`
+    (Lu's read against prod, 2026-11-03 01:32 —
+    `docs/recon/club-announcements.md` §FC-1). Two different strings.
+  - **IT NEVER WORKED ON MOBILE — this is a build defect, not a regression.**
+    `git log -S"Club broadcast channel not found"` and `-S"sendClubWideMessage"`
+    each return **one** commit, `db5dedb` "Major Chat System Overhaul". No
+    migration has ever added or dropped a constraint on `comm_channels`, and
+    the Oct 22 PAC chat cleanup deleted no club channel (guard G3 refuses
+    `club-announcements` outright). Recon §A3/§0.2–0.3, PROVEN.
+  - **FIX — one shared helper, `src/lib/clubAnnouncements.ts` (new).**
+    `getClubAnnouncementsChannel(clubId)` asks for
+    `channel_type = 'club' AND is_default = true AND is_archived = false AND
+    club_id = <this club>` and selects `id, name, club_id, allow_member_text`.
+    It is the lookup the card compose will reuse.
+    - **`club_id` is REQUIRED, not tidiness.** Two clubs each hold their own
+      `club-announcements` row, so the old `.limit(1)` with no club filter and
+      no `ORDER BY` would hand a PAC admin whichever row Postgres returned
+      first — plausibly Belmont's. RLS masks it for a single-club admin and
+      does **not** for anyone holding `club_staff` rows at two clubs, which is
+      the case the `limit(1)` in `fetchClubWideTarget` exists for. Recon §FC-3②.
+    - **`{ data, error }` returned separately.** The old code read `data` and
+      threw `error` away, so offline, a 500 and an RLS refusal all printed the
+      same "contact admin" sentence as a genuinely missing channel. Three
+      outcomes now get three sentences: **not found** → "This club has no
+      announcements chat yet." (a real state — web's `ClubMessagesTab` creates
+      the channel lazily, so a club whose admin never opened web's
+      Club → Messages tab has none, recon §A2); **error** → "Couldn't reach the
+      server. Try again."; **no club id** → the file's existing "Club
+      information could not be loaded." sentence.
+    - Identified by the ROW, never by the name — the same pair
+      `isDefaultClubChannel` (`src/lib/channelLeave.ts:111-127`) and the S4
+      membership sync use. Default channels have been renamed before.
+  - **THE AUDIENCE PICKER IS GONE, and that is the second defect on the same
+    path.** All-teams / filter-by-age-and-gender / pick-teams fed a navigation
+    param that **nothing in the tree ever read** (recon §A1, PROVEN by grep:
+    one hit, the write itself), so every message went to the whole club
+    regardless — it promised a split that did not exist. The club step is now
+    one line ("Goes to everyone in &lt;club&gt; announcements") and one button.
+    **This step is temporary: the card compose replaces it later in 1.0.20**,
+    which is why it stays plain.
+  - **Members already cannot post there, on the server, and it needed no
+    work.** `club-announcements` is `allow_member_text = false` live (§FC-1), so
+    the `msg_insert` arm refuses an ordinary member's text and mobile shows
+    `LockedChannelNotice`. The card feed inherits it for free. **WHO set that
+    column, and when, is UNKNOWN** — no migration writes it and there is no
+    audit row.
+  - Files: `src/lib/clubAnnouncements.ts` (new),
+    `src/screens/ChatScreen.tsx`. Net −258 lines in ChatScreen (the picker, its
+    five state hooks, its derived lists and 22 orphaned styles).
+
+- **PUSH-COLD-START · a tap that LAUNCHES the app from killed now routes ·
+  `BUILT-UNCOMMITTED` · SIMULATOR TEST OWED · agent session 2026-11-03.**
+  Closes the FOUND recorded in the Nov 3 announce-push section above.
+  - **What was wrong:** nothing in `src/` ever called
+    `getLastNotificationResponse()` (that section's own grep → 0 hits), so a
+    tap on a killed app opened it on whatever screen it last had and the
+    payload was dropped. The `pendingNotificationRef` stash covered a different
+    race (listener fired, navigator not mounted).
+  - **Fix:** `src/navigation/AppNavigator.tsx` — the response listener and one
+    `Notifications.getLastNotificationResponse()` read now share **one**
+    handler inside **one** effect, so every type `routeNotification` knows
+    (chat, events, lineups, surveys, evaluations, staff requests and the four
+    playbook types) inherits the cold path with **no per-type wiring**. Called
+    exactly once, on mount.
+  - **ONE TAP CANNOT ROUTE TWICE:** `routedNotificationIdsRef`, a `Set` keyed
+    on the notification's own `request.identifier`, is written the moment a tap
+    is accepted — **including** when the navigator does not exist yet and the
+    payload is stashed, which is what stops the flush effect and the other path
+    both replaying it. Belt-and-braces: this repo's earlier reading of
+    `expo-notifications/build/NotificationsEmitter.js:79-84` is that the
+    listener does not replay a response that fired before it was registered,
+    but that ordering is **not ours to control**, so the guard does not depend
+    on it.
+  - `try/catch`, not a feature test: `getLastNotificationResponse` **throws**
+    `UnavailabilityError` when the native method is absent — Expo Go and web
+    (`NotificationsEmitter.js:105-108`). The catch is silent on purpose: it
+    means "this platform has no stored response", not "a tap was lost".
+  - **STILL OPEN, unchanged by this fix:** a tap by a **signed-out** user is
+    still `reset()` to `Welcome` by the auth guard, losing the destination
+    (`docs/recon/playbook-share-links.md` §1).
+
+- **FOUND (outside scope, read-only) — the Nov 3 audit's `PLAYBOOK_LIVE` claim
+  is STALE.** `docs/recon/club-announcements.md` §LB-2 says the gate is
+  `PLAYBOOK_LIVE || __DEV__` with `PLAYBOOK_LIVE = false`. Both halves are out
+  of date: `src/constants/playbookLaunch.ts:55` reads
+  **`export const PLAYBOOK_LIVE = true;`** and `:58` is
+  `playbookVisible = PLAYBOOK_LIVE` with **no `__DEV__` branch** — it was
+  removed at the Nov 1 flip (file header `:22-34`, and the Nov 1 "Playbook
+  launch flip" section above). **The ledger is right and the audit is wrong**,
+  so an announcement card's Playbook button does **not** need hiding in release
+  on this branch. §LB-2's release-order warning about adding `/playbook` to the
+  AASA is unaffected and still stands.
+
+- **GATES.** `npx tsc --noEmit` → **5 errors = baseline**, all pre-existing in
+  `src/components/games/*`, **0 in any touched file**. `eslint` on the three
+  touched source files → **0 errors, 0 new warnings** vs HEAD
+  (ChatScreen 91 → 79, AppNavigator 23 → 23, new helper 0).
+  **LOGIC SMOKE on the real helper** (this repo has no test runner, so it was
+  transpiled with `tsc` and run against a stub client — nothing left the
+  process): the query it builds is
+  `from comm_channels · select id, name, club_id, allow_member_text ·
+  eq club_id · eq channel_type 'club' · eq is_default true ·
+  eq is_archived false · limit 1`, with **no `broadcast` anywhere**; a found
+  row returns `{data: row, error: null}`, a missing row `{data: null, error:
+  null}`, and a `42501` RLS refusal `{data: null, error: <the error>}` — the
+  three outcomes are distinguishable, which is the whole point. **No simulator
+  run, no device run** — both rows above owe one, and the push row can only be
+  tested by a tap.
+- **Nothing SACRED, nothing forbidden touched.** No SQL, migration, edge
+  function, DB connection, dependency, `app.json`, EAS or commit; no edit in
+  `thrive-and-score`; `src/components/games/*` and `src/lib/permissions.ts`
+  untouched; nothing sent at runtime.

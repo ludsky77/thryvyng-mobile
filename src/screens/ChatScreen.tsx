@@ -32,6 +32,7 @@ import {
   showsClubCrest,
 } from '../lib/chatHelpers';
 import { CHAT_FALLBACK_NAME } from '../lib/memberNames';
+import { getGenderLabel, normalizeGender } from '../utils/teamGender';
 import {
   canHideChannelType,
   setChannelHidden,
@@ -1633,30 +1634,19 @@ export default function ChatScreen({ navigation, route }: any) {
         .includes(teamChannelSearch.toLowerCase())
   );
 
-  const normalizeGender = (gender: string | null): string | null => {
-    if (!gender) return null;
-    const lower = gender.toLowerCase().trim();
-    if (['male', 'boys', 'boy', 'm'].includes(lower)) return 'male';
-    if (['female', 'girls', 'girl', 'f'].includes(lower)) return 'female';
-    if (['coed', 'co-ed', 'mixed'].includes(lower)) return 'coed';
-    return null;
-  };
-
-  const getGenderLabel = (normalized: string): string => {
-    if (normalized === 'male') return 'Boys';
-    if (normalized === 'female') return 'Girls';
-    if (normalized === 'coed') return 'Coed';
-    return normalized;
-  };
-
+  // normalizeGender / getGenderLabel are the SHARED rule now
+  // (src/utils/teamGender.ts) — the copies that lived here are gone. The one
+  // difference this screen keeps is at its call sites, not in the rule: an
+  // unrecognised gender is 'unset' there, and here it must not become a filter
+  // chip and must print as nothing on a team row.
   const ageGroups = [...new Set(clubTeams.map((t: any) => t.age_group).filter(Boolean))].sort();
   const genders = [
     ...new Set(
       clubTeams
         .map((t: any) => normalizeGender(t.gender))
-        .filter((g): g is string => g != null)
+        .filter((g) => g !== 'unset')
     ),
-  ] as string[];
+  ];
 
   const matchingTeams =
     selectedAgeGroups.length > 0 || selectedGenders.length > 0
@@ -1664,7 +1654,7 @@ export default function ChatScreen({ navigation, route }: any) {
           (t: any) =>
             (selectedAgeGroups.length === 0 || selectedAgeGroups.includes(t.age_group)) &&
             (selectedGenders.length === 0 ||
-              selectedGenders.includes(normalizeGender(t.gender) ?? ''))
+              selectedGenders.includes(normalizeGender(t.gender)))
         )
       : clubTeams;
 
@@ -2596,7 +2586,9 @@ export default function ChatScreen({ navigation, route }: any) {
                   <Text style={styles.teamName}>{team.name}</Text>
                   <Text style={styles.teamMeta}>
                     {team.age_group} •{' '}
-                    {getGenderLabel(normalizeGender(team.gender) ?? '')}
+                    {normalizeGender(team.gender) === 'unset'
+                      ? ''
+                      : getGenderLabel(normalizeGender(team.gender), false)}
                   </Text>
                 </View>
               </TouchableOpacity>

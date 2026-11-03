@@ -21,9 +21,29 @@ export interface UserTeam {
   season_id?: string | null;
 }
 
-type TeamBucket = 'active' | 'past' | 'hidden';
+export type TeamBucket = 'active' | 'past' | 'hidden';
 
-function getTeamBucket(team: UserTeam): TeamBucket {
+/**
+ * The two facts the bucket rule reads, and nothing else — so a caller holding
+ * only a `teams` row can ask the same question this hook asks without being a
+ * full `UserTeam`. `UserTeam` satisfies it; so does the playbook's `TeamMeta`.
+ */
+export interface TeamBucketFacts {
+  team_status?: string | null;
+  is_test?: boolean | null;
+}
+
+/**
+ * THE SEASON RULE, and the only copy of it. A test team is hidden; a
+ * `team_status` that is not one of active / archived / inactive — including
+ * null — is hidden; archived and inactive are past; active is active.
+ *
+ * Exported because the playbook's staff drill-down splits its seasons by this
+ * same rule (`src/features/pac-playbook/staffTeams.ts`, `teamBucket`) and used
+ * to carry a copy of the body. One definition now; if the rule moves, every
+ * screen moves with it.
+ */
+export function getTeamBucket(team: TeamBucketFacts): TeamBucket {
   if (team.is_test === true) return 'hidden';
   const status = team.team_status;
   const known =

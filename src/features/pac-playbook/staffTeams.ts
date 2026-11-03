@@ -23,6 +23,7 @@
  */
 
 import { supabase } from '../../lib/supabase';
+import { getTeamBucket } from '../../hooks/useUserTeams';
 
 /** The same untyped door `coachRpc.ts` uses, plus the `in` filter. */
 type Result = { data: unknown; error: unknown };
@@ -62,66 +63,39 @@ export interface TeamMeta {
 /* ------------------------------------------------------- gender and season */
 
 /**
- * THE CHAT LIST'S OWN GENDER RULE, not a second one.
+ * THE GENDER RULE LIVES IN `src/utils/teamGender.ts` — one definition, shared
+ * with the chat list's club-wide picker. It used to be copied into this file;
+ * that copy is gone (2026-11-02).
  *
- * `ChatScreen.tsx:1636-1652` normalises the free-text `teams.gender` column to
- * 'male' | 'female' | 'coed' and labels those Boys / Girls / Coed. The column
- * is written by `RegisterTeamScreen`'s picker and has historically held several
- * spellings, which is why a normaliser exists at all. Copied here rather than
- * imported because that one is a local function inside a 2 600-line screen
- * component and this prompt may not edit it (see the ledger's RECOMMEND).
+ * `genderLabel` is the shared `getGenderLabel` under the name this feature's
+ * screens already import. Same function, no second body.
  */
-export type GenderKey = 'male' | 'female' | 'coed' | 'unset';
-
-export function normalizeGender(gender: string | null | undefined): GenderKey {
-  if (!gender) return 'unset';
-  const lower = gender.toLowerCase().trim();
-  if (['male', 'boys', 'boy', 'm'].includes(lower)) return 'male';
-  if (['female', 'girls', 'girl', 'f'].includes(lower)) return 'female';
-  if (['coed', 'co-ed', 'mixed'].includes(lower)) return 'coed';
-  return 'unset';
-}
-
-export function genderLabel(key: GenderKey, es: boolean): string {
-  if (key === 'male') return es ? 'Niños' : 'Boys';
-  if (key === 'female') return es ? 'Niñas' : 'Girls';
-  if (key === 'coed') return es ? 'Mixto' : 'Coed';
-  return es ? 'Sin categoría' : 'Not set';
-}
-
-/** Boys, Girls, Coed, then the bucket for teams with no gender on the row. */
-export const GENDER_ORDER: GenderKey[] = ['male', 'female', 'coed', 'unset'];
+export { GENDER_ORDER, normalizeGender, type GenderKey } from '../../utils/teamGender';
+export { getGenderLabel as genderLabel } from '../../utils/teamGender';
 
 /**
- * ACTIVE OR PAST — **the chat list's rule, copied, not invented.**
+ * ACTIVE OR PAST — **the chat list's rule itself, now imported, not copied.**
  *
- * `src/hooks/useUserTeams.ts:26-33` (`getTeamBucket`) is what the mobile chat
- * list and the calendar split "Past teams" by, through `useSharedUserTeams`
- * (`ChatScreen.tsx:722-724`). The rule, verbatim: a test team is HIDDEN; a
- * `team_status` that is not one of active / archived / inactive — including
- * null — is HIDDEN; archived and inactive are PAST; active is ACTIVE.
+ * `getTeamBucket` (`src/hooks/useUserTeams.ts`) is what the mobile chat list
+ * and the calendar split "Past teams" by, through `useSharedUserTeams`
+ * (`ChatScreen.tsx:722-724`). The rule: a test team is HIDDEN; a `team_status`
+ * that is not one of active / archived / inactive — including null — is
+ * HIDDEN; archived and inactive are PAST; active is ACTIVE. The body used to
+ * be copied here and is not any more: it is exported now and read from there,
+ * so if the rule moves, this screen moves with it.
  *
- * It is copied because `getTeamBucket` is not exported and this prompt's SCOPE
- * is `src/features/pac-playbook/**`. That is a real fork risk and it is on the
- * record: the ledger RECOMMENDs exporting the hook's function and deleting
- * this copy. **If one moves, both move.**
- *
- * A TEAM WE HAVE NO ROW FOR is 'unknown' — NOT hidden. The hook can afford to
- * hide a team it could not classify because it only ever sees teams it read
- * itself; here the roster has already told us the player exists, and dropping
- * them would be a silently short club. 'unknown' shows under the current
- * season, which is the conservative place for a player nobody can say is past.
+ * THE ONE THING THIS FILE STILL DECIDES FOR ITSELF, and it is additive: a team
+ * we have NO ROW FOR is 'unknown' — NOT hidden. The hook can afford to hide a
+ * team it could not classify because it only ever sees teams it read itself;
+ * here the roster has already told us the player exists, and dropping them
+ * would be a silently short club. 'unknown' shows under the current season,
+ * which is the conservative place for a player nobody can say is past.
  */
 export type TeamBucket = 'active' | 'past' | 'hidden' | 'unknown';
 
 export function teamBucket(meta: TeamMeta | undefined | null): TeamBucket {
   if (!meta) return 'unknown';
-  if (meta.is_test === true) return 'hidden';
-  const status = meta.team_status;
-  const known = status === 'active' || status === 'archived' || status === 'inactive';
-  if (!status || !known) return 'hidden';
-  if (status === 'archived' || status === 'inactive') return 'past';
-  return 'active';
+  return getTeamBucket(meta);
 }
 
 /* ------------------------------------------------------------- the reads */

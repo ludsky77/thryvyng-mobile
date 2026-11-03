@@ -631,6 +631,7 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
 ## Open forks (added Nov 1 2026 — after the device test)
 
 - CLOSED Nov 1 2026 ~17:25 — PLAYBOOK-CARD-INVITING · QUIZ-CARD-NOTICEABLE · QUIZ-RESULT-BUTTONS-ALIGN · QUESTION-PILLS-WRAP · QUIZ-REVIEW-NAV (ruling A): all five verified on device, see the two VERIFIED-DEVICE rows below.
+- **CLOSED Nov 2 2026 — PLAYBOOK-STAFF-RULE-FORK** (ROUTINE; opened as P-10 FOUND 2 with the staff drill-down). The gender normaliser and the season bucket each had two bodies — `staffTeams.ts` carried a copy of `ChatScreen.tsx`'s `normalizeGender`/`getGenderLabel` and of `useUserTeams.ts`'s `getTeamBucket`, because neither original was exported. Both originals are exported now and both copies are deleted: the gender rule lives in the new **`src/utils/teamGender.ts`** and the bucket in **`getTeamBucket`, `src/hooks/useUserTeams.ts`**. See the landed entry at the end of this file.
 - **PARKED — QUESTION-KIND** (SACRED, schema: `kind` on `playbook_questions` — Question /
   Comment / Suggestion pills; deferred since Oct 29). **RE-RULED 2026-11-01 ~17:42 by Lu,
   reversing the earlier "planned before M6 build":** it is no longer gated on M6 and is not
@@ -1764,3 +1765,87 @@ it. Nothing here has been seen by a human on a real phone.
   the F1 / F2 rulings; `useUserTeams.ts:26-33`; `ChatScreen.tsx:1614,1636`;
   `ClubTeamsListScreen.tsx:57-71`; `20261102033000_playbook_coach_track.sql`
   (the roster RPC's columns).
+
+## Landed — Nov 2 2026 (one gender rule, one season rule — P-10 FOUND 2 closed, AGENT-ONLY)
+
+- **THE FORK IS GONE: two rules, one body each.** `staffTeams.ts` had been
+  carrying copies of two non-Playbook functions because neither original was
+  exported (recorded at the time in its own comments, in
+  `src/features/pac-playbook/MIRROR.md` and in the staff drill-down entry's
+  RECOMMEND). Both originals are now exported and both copies are deleted.
+- **GENDER → `src/utils/teamGender.ts` (new, 38 lines).** Holds `GenderKey`,
+  `normalizeGender`, `getGenderLabel` and `GENDER_ORDER` — the spelling lists
+  (`male/boys/boy/m`, `female/girls/girl/f`, `coed/co-ed/mixed`) and the labels
+  now exist once. `teams.gender` is free text written by `RegisterTeamScreen`'s
+  picker, which is why a normaliser exists at all, so a new spelling is now a
+  one-line change in one file instead of two.
+- **SEASON → `getTeamBucket`, `src/hooks/useUserTeams.ts`**, exported, with its
+  parameter widened from `UserTeam` to a new `TeamBucketFacts`
+  (`{ team_status?, is_test? }`) so a caller holding only a bare `teams` row
+  can ask the same question. **The body did not change.** `UserTeam` and the
+  playbook's `TeamMeta` both satisfy it structurally; `bucketTeams` still calls
+  it with a `UserTeam`.
+- **`staffTeams.ts` keeps its public surface, so NO file outside SCOPE moved.**
+  It re-exports `normalizeGender` / `GENDER_ORDER` / `GenderKey`, re-exports
+  `getGenderLabel` **under its old name `genderLabel`**, and `teamBucket` is now
+  a three-line wrapper: `if (!meta) return 'unknown'; return getTeamBucket(meta)`.
+  `staffTree.ts` (5 call sites) and `screens/TeamProgressScreen.tsx` (5 call
+  sites) were **not opened** and are unchanged on disk.
+- **The one deliberate difference is PRESERVED and still documented at the
+  function:** a team the `teams` read did not return is `'unknown'`, not
+  hidden, and shows under the CURRENT season — the hook can afford to drop a
+  team it could not classify, the staff tree cannot, because the roster has
+  already said the player exists.
+- **ChatScreen's two local copies are deleted and its call-site contract is
+  unchanged.** The screen's rule differed from the shared one only at the
+  edges: an unrecognised gender was `null` there and `'unset'` in the shared
+  module. That difference now lives at the three call sites, not in a second
+  rule body — the filter-chip list drops `'unset'` (it used to drop `null`),
+  the `matchingTeams` filter compares the key directly (`selectedGenders` can
+  only ever hold `male`/`female`/`coed`, because the chip row is the hardcoded
+  `['male','female','coed']` at `ChatScreen.tsx:2518`), and the team-row meta
+  line prints `''` for `'unset'` so it still reads `"U12 • "` rather than
+  `"U12 • Not set"`. `getGenderLabel` is called with `es: false` there because
+  that line was, and remains, English-only.
+- **PROVEN EQUIVALENT, not asserted:** the old and new expressions for all four
+  ChatScreen sites were run side by side over 20 inputs (null, undefined, `''`,
+  `'  BOYS '`, `'CO-ED'`, `'U12'`, `'men'`, `'rubbish'`, …) — **0 mismatches**.
+- **Files changed (6).** New: `src/utils/teamGender.ts`. Edited:
+  `src/hooks/useUserTeams.ts` (export + widened param + provenance comment),
+  `src/screens/ChatScreen.tsx` (import, two copies deleted, three call sites),
+  `src/features/pac-playbook/staffTeams.ts` (both copies → re-exports +
+  delegation), `src/features/pac-playbook/MIRROR.md` (the fork note replaced
+  with the closure), `docs/ledger.md`.
+- **Nothing SACRED.** No schema, migration, RLS, policy, RPC, env, dependency,
+  deploy or delete; no DB call made; no read widened — the three `teams` reads
+  are byte-for-byte the ones that were already there.
+- **GATES.** `npx tsc --noEmit` **5 = baseline** (all 5 pre-existing, all in
+  `src/components/games/`, **0 in any touched file and 0 in the two untouched
+  consumers**) · `ESLINT_USE_FLAT_CONFIG=false npx eslint` on the four touched
+  files **0 errors / 99 warnings**, against a **99-warning** before-count on
+  the three pre-existing ones — net **0**, and `teamGender.ts` lints **clean**
+  (0 problems) · `npx expo export --platform ios` **exit 0**, iOS bundle
+  **9.45 MB** (`index-141d9e4712c6394433f8b6ab84edc274.hbc`) · one definition
+  of each function, by grep: `normalizeGender` and `getGenderLabel` only in
+  `src/utils/teamGender.ts`, `getTeamBucket` only in `src/hooks/useUserTeams.ts`,
+  and the duplicated bodies gone — `'boys', 'boy'` **1 hit** repo-wide and
+  `archived' || status === 'inactive'` only in `useUserTeams.ts`.
+- **Bundle unchanged in character:** the `__DEV__` fixture strings
+  (`PLAYBOOK-DEV-COACHFIX`, `playbook-dev`, `ZZ Lions`) are still **0 hits**
+  and the real screen strings still present, exactly as the drill-down entry
+  recorded — the new playbook → `hooks/` import edge folds nothing new into the
+  dev tree, and it cannot pull the playbook anywhere, since the edge runs that
+  one way (`useUserTeams.ts` imports nothing from `src/features/`).
+- **NOT VERIFIED HERE: no device or simulator run.** This is a pure refactor
+  with an equivalence proof and a green bundle, but the two screens it touches
+  — the chat list's club-wide team picker and the playbook staff drill-down —
+  have not been re-opened on a device since. Owed look: (1) the club-wide
+  picker's GENDER chips still filter, and a team with an odd/empty `gender`
+  still shows `"U12 • "` with nothing after the bullet; (2) the staff
+  drill-down's gender tiles and the This season / Past seasons split read the
+  same as the Nov 2 screenshots.
+- Source: this session, 2026-11-02; P-10 FOUND 2; `src/utils/teamGender.ts`;
+  `useUserTeams.ts:24-54` (`TeamBucketFacts` :31, `getTeamBucket` :46);
+  `staffTeams.ts:63-99` (re-exports :73-74, `teamBucket` :96);
+  `ChatScreen.tsx:35` (import), `:1637-1649` (copies deleted, chip list),
+  `:1657` (filter), `:2586-2591` (meta line).

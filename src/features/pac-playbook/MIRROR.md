@@ -114,12 +114,21 @@ REBUILT in place (it was already mobile-only and not in the manifest). The web
 has no staff track at all, so there is no original to re-mirror from; this is
 named here so a future re-mirror does not go looking for one.
 
-`staffTeams.ts` carries **two deliberate copies of non-Playbook code**, both
-labelled at their definition: `normalizeGender` from `ChatScreen.tsx:1636` and
-`teamBucket` from `useUserTeams.ts:26-33` (`getTeamBucket`). Neither original
-is exported and neither file was in this prompt's SCOPE. They are a fork risk
-of exactly the kind this manifest exists to prevent, and the ledger carries the
-RECOMMEND to export the originals and delete the copies.
+`staffTeams.ts` **no longer carries any copy of non-Playbook code — that fork
+is CLOSED (2026-11-02).** The two rules it had duplicated are now imported from
+their one home and re-exported under the names this feature's screens already
+import, so no screen outside this file changed:
+
+- the gender normaliser and its labels come from **`src/utils/teamGender.ts`**,
+  extracted from the copy inside `ChatScreen.tsx`, which now reads that same
+  module — `genderLabel` here is its `getGenderLabel` under the old name;
+- the season bucket comes from **`getTeamBucket`, `src/hooks/useUserTeams.ts`**,
+  which is exported now for exactly this reason. `teamBucket` here is a
+  three-line wrapper: it adds the `'unknown'` case for a team we hold no row
+  for and delegates every other answer.
+
+One definition of each rule, and if one moves every screen moves with it —
+which is what this manifest exists to get.
 
 **Nothing mirrored moved on 2026-11-02.** PLAYBOOK-DIAGRAM-TABS and
 PLAYBOOK-KEEPER-ANGLE were both built so the eight mirrored files and the data

@@ -639,20 +639,37 @@ Shipped rows, and `PLAYBOOK_LIVE` is still `false`, so none of it is reachable i
   mean something once a coach has a place to read and sort what players send, so the column
   and the pills land together with that inbox or not at all. Nothing to do until that step is
   planned. Source: Lu's ruling in the planning room, 2026-11-01 ~17:42.
-- **OPEN — PLAYBOOK-TENANT-SCOPE** (SACRED, visibility gate; opened 2026-11-01, **Lu ruled
-  YES this is a real fork**). **The PAC Playbook is visible and openable to EVERY tenant's
-  users.** `playbookVisible` is a plain module constant with no club in it
-  (`src/constants/playbookLaunch.ts:57-60`), the `Playbook` route is gated on that constant
-  and nothing else (`src/navigation/AppNavigator.tsx:349`), and the book is fetched **by
-  slug** — `fetchBook()` does `.eq('slug', 'pac-playbook')` (`rpc.ts:45,77-83`) — with
-  `owner_club_id` read off the row only to fetch the owner's crest
-  (`usePlaybookBook.ts:182`) and **never compared to the viewer's club**. Evidence recorded
-  in `docs/recon/playbook-polish.md` (sections "TENANT SCOPE — the answer, and it is no" and
-  the restyle pass's tenant note).
+- **PARKED — PLAYBOOK-TENANT-SCOPE** (SACRED, visibility gate; opened 2026-11-01, **Lu ruled
+  YES this is a real fork**). **PARKED 2026-11-03 14:20 by Lu — "no action on Gremio for now."
+  NOT a 1.0.20 blocker and not a launch blocker.**
+  - **WHY IT PARKS, and it is evidence, not a hunch.** Q-04 (web repo
+    `docs/recon/q04-tenant-users.md`, commit `a888ca3`) counted the only other tenant with
+    users: **Gremio holds 5 staff and 26 parent logins, and 0 messages in 90 days.** So the
+    second tenant is real on paper and dormant in practice — the exposure is not zero, but
+    nobody is walking into it.
+  - **INFERRED, and stated as inference: Gremio members may see the PAC Playbook.** It follows
+    from the gate below (no club is compared anywhere), not from an observation — **no Gremio
+    account has been signed into, and no query was run from this repo.** The one check that
+    would settle it is a sign-in as one of those 31 logins.
+  - **REOPEN BEFORE THE NEXT REAL CLUB ONBOARDS.** The trigger is onboarding, not a date: the
+    day a second club has users who actually open the app, this is a leak. Parking it records
+    that the fix is understood and deliberately not scheduled — it does not retract the fork.
+  - **THE DIAGNOSIS IS UNCHANGED AND STILL ACCURATE. The PAC Playbook is visible and openable
+    to EVERY tenant's users.** `playbookVisible` is a plain module constant with no club in it
+    (`src/constants/playbookLaunch.ts:57-60`), the `Playbook` route is gated on that constant
+    and nothing else (`src/navigation/AppNavigator.tsx:349`), and the book is fetched **by
+    slug** — `fetchBook()` does `.eq('slug', 'pac-playbook')` (`rpc.ts:45,77-83`) — with
+    `owner_club_id` read off the row only to fetch the owner's crest
+    (`usePlaybookBook.ts:182`) and **never compared to the viewer's club**. Evidence recorded
+    in `docs/recon/playbook-polish.md` (sections "TENANT SCOPE — the answer, and it is no" and
+    the restyle pass's tenant note).
   - **FIX:** gate book visibility on the viewer's club vs `owner_club_id`. SACRED — it is a
     visibility-gate change, so it does not move without Lu.
-  - **REQUIRED BEFORE ANY SECOND TENANT GOES LIVE.** Today only PAC is live, so nothing is
-    exposed in practice; the day a second club has users, this is a leak.
+  - **CORRECTED 2026-11-03 by Q-04 — the old wording here said "today only PAC is live, so
+    nothing is exposed in practice". That is no longer true and should not be relied on:**
+    Gremio has **31 logins** (5 staff + 26 parents). What is true is that they are **dormant**
+    — 0 messages in 90 days — which is why Lu parked it rather than closing it. The condition
+    is now "before the next real club onboards", above.
   - **Long term:** each club gets its own book(s), which makes the gate a join rather than a
     comparison — so the fix should not hard-code "one book, one owner".
 - JOIN-DOB-LOCKOUT-RESET (🔧 if no unlock exists) — what 0 attempts does and how staff unlocks a family; code read, never burn attempts.
@@ -1290,7 +1307,10 @@ Lu's rulings of the same day.
     **1 unit = 0.4067 m**, and `M(metres)` is the only conversion in the file.
     Rope apex **2.5 m**, keeper reach **1.6 m**, smother **0.25 m**, and the
     four presets written as (across, out) in metres: Byline (14, 1.2) · Box
-    corner (17, 15) · Wide angle (8, 9) · **PK spot (0, 11)**.
+    corner (17, 15) · Wide angle (8, 11) · **PK spot (0, 11)**.
+    **CORRECTED 2026-11-03:** this line read **Wide angle (8, 9)**, which never
+    matched the code — `KeeperAnglePanel.tsx:308` is `preset(8, 11)`. The code
+    is what ships; the ledger was wrong, not the board.
   - **What that fixed, and it was one thing.** The first cut used fractions of
     the half-goal and placed the presets by eye. The rope and the reach came
     out right by luck — within 1% of 2.5 m and 1.6 m — but the **PK spot sat 12
@@ -1839,11 +1859,21 @@ it. Nothing here has been seen by a human on a real phone.
 - **NOT VERIFIED HERE: no device or simulator run.** This is a pure refactor
   with an equivalence proof and a green bundle, but the two screens it touches
   — the chat list's club-wide team picker and the playbook staff drill-down —
-  have not been re-opened on a device since. Owed look: (1) the club-wide
-  picker's GENDER chips still filter, and a team with an odd/empty `gender`
-  still shows `"U12 • "` with nothing after the bullet; (2) the staff
-  drill-down's gender tiles and the This season / Past seasons split read the
-  same as the Nov 2 screenshots.
+  have not been re-opened on a device since. Owed look:
+  **(1) OBSOLETE — 2026-11-03. THERE IS NO SCREEN LEFT TO LOOK AT.** This asked
+  for the club-wide picker's GENDER chips to still filter, and for a team with
+  an odd/empty `gender` to still read `"U12 • "`. **That picker was removed in
+  `c3924b4` under the whole-club-audience ruling** — the Club-Wide Message tile
+  now opens compose directly, with no age/gender/team step. The code says so
+  itself at `src/screens/ChatScreen.tsx:877` (*"The age/gender/team audience
+  picker that used to live here is GONE"*), and `grep -n "gender"
+  src/screens/ChatScreen.tsx` returns **that comment and nothing else**. The
+  shared rule in `src/utils/teamGender.ts` is now imported by exactly one place,
+  `src/features/pac-playbook/staffTeams.ts:73-74`, so **item (2) below is the
+  only surviving test of it** — this item is closed, not deferred.
+  **(2) STILL OWED:** the staff drill-down's gender tiles and the This season /
+  Past seasons split read the same as the Nov 2 screenshots. Steps:
+  `docs/recon/test-plan-1.0.20-nov03.md` Group 7.
 - Source: this session, 2026-11-02; P-10 FOUND 2; `src/utils/teamGender.ts`;
   `useUserTeams.ts:24-54` (`TeamBucketFacts` :31, `getTeamBucket` :46);
   `staffTeams.ts:63-99` (re-exports :73-74, `teamBucket` :96);

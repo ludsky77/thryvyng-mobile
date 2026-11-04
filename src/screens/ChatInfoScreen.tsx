@@ -38,6 +38,10 @@ import {
 import { logError } from '../utils/logError';
 import { isChannelStaff } from '../lib/channelStaff';
 import {
+  announcementsChatName,
+  isAnnouncementsChannel,
+} from '../lib/clubAnnouncements';
+import {
   ANNOUNCEMENT_SET_FAILED_MESSAGE,
   ANNOUNCEMENT_TOGGLE_HINT,
   ANNOUNCEMENT_TOGGLE_LABEL,
@@ -70,6 +74,8 @@ interface ChannelRecord {
   id: string;
   name?: string | null;
   channel_type?: string | null;
+  /** R-01: the channel's own club, the only route to the announcements name. */
+  club_id?: string | null;
   is_default?: boolean | null;
   is_direct_message?: boolean | null;
   dm_participant_1?: string | null;
@@ -110,6 +116,13 @@ export default function ChatInfoScreen() {
 
   const [loading, setLoading] = useState(true);
   const [channel, setChannel] = useState<ChannelRecord | null>(null);
+  /**
+   * R-01: the club's name, read ONLY for the announcements chat and only
+   * because its name is built from the club rather than from its row. Null
+   * until the read lands or when it fails, which shows the bare word
+   * "Announcements" — never the slug.
+   */
+  const [announceClubName, setAnnounceClubName] = useState<string | null>(null);
   const [myMembershipRole, setMyMembershipRole] = useState<string | null>(null);
   const [isArchiving, setIsArchiving] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
@@ -226,7 +239,9 @@ export default function ChatInfoScreen() {
       const { data: channelData } = await supabase
         .from('comm_channels')
         .select(
-          'name, channel_type, allow_member_text, is_default, is_direct_message, dm_participant_1, dm_participant_2, created_by'
+          // `club_id` is R-01's: the announcements chat is shown as
+          // "<club short name> Announcements", never as its row's name.
+          'name, channel_type, club_id, allow_member_text, is_default, is_direct_message, dm_participant_1, dm_participant_2, created_by'
         )
         .eq('id', channelId)
         .single();
@@ -234,6 +249,19 @@ export default function ChatInfoScreen() {
       setStaffOnlyMessaging(channelData?.allow_member_text === false);
       if (channelData) {
         setChannel({ id: channelId, ...channelData });
+      }
+
+      // R-01: one extra read, for one chat. Guarded on the ROW, so no other
+      // chat pays for it.
+      if (isAnnouncementsChannel(channelData ?? {}) && channelData?.club_id) {
+        const { data: clubRow } = await supabase
+          .from('clubs')
+          .select('name')
+          .eq('id', channelData.club_id)
+          .maybeSingle();
+        setAnnounceClubName(
+          (clubRow as { name?: string | null } | null)?.name ?? null
+        );
       }
 
       const { data: memberData } = await supabase
@@ -531,8 +559,19 @@ export default function ChatInfoScreen() {
    */
   const canRenameChannel = isManageableGroupChat && myMembershipRole === 'admin';
 
+  /**
+   * R-01: the announcements chat is shown as "<club short name> Announcements".
+   * It reaches this screen only through the chat-room fallback (see
+   * `TeamChatRoomScreen`'s `isAnnouncements`), and the slug it showed there was
+   * the slug it showed here. Display only — `startRename` below still edits the
+   * row's real `name`, and a club chat cannot be renamed from here anyway.
+   */
+  const isAnnouncements = channel ? isAnnouncementsChannel(channel) : false;
+
   /** The row's name wins over the route param, so a rename shows immediately. */
-  const displayChannelName = channel?.name || channelName || 'Chat';
+  const displayChannelName = isAnnouncements
+    ? announcementsChatName(announceClubName)
+    : channel?.name || channelName || 'Chat';
 
   const startRename = () => {
     setNameDraft(channel?.name || channelName || '');

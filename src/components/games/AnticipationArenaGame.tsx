@@ -248,6 +248,26 @@ export default function AnticipationArenaGame({
     }, 1000);
   };
 
+  // Effective landing position: for knuckleball, apply same wobble offset as display at pathT=1 so scoring matches what the player sees
+  //
+  // DECLARED ABOVE handlePrediction, which calls it and lists it as a dep.
+  // It used to sit below, which `tsc` reports as TS2448/TS2454 -- a
+  // block-scoped const read before its declaration. It is only ever read
+  // inside callbacks that run after the first render, so the two errors never
+  // became a crash; moving the declaration is the whole fix, and the function
+  // body is byte-for-byte what it was (deps `[]`, nothing above it needed).
+  const getEffectiveLanding = useCallback((traj: BallTrajectory): { x: number; y: number } => {
+    if (traj.trajectoryType !== 'knuckleball') {
+      return { x: traj.endX, y: traj.endY };
+    }
+    const pathEndValue = 1;
+    const wobbleAtEnd = (1 - pathEndValue) * 8;
+    return {
+      x: traj.endX + wobbleAtEnd * Math.sin(pathEndValue * 20),
+      y: traj.endY + wobbleAtEnd * Math.cos(pathEndValue * 17),
+    };
+  }, []);
+
   // Handle user tap to predict (trajOverride used when called from timer timeout)
   const handlePrediction = useCallback((x: number, y: number, trajOverride?: BallTrajectory | null) => {
     const traj = trajOverride ?? trajectory;
@@ -311,19 +331,6 @@ export default function AnticipationArenaGame({
     return {
       x: getQuadraticBezier(pathT, traj.startX, traj.controlX, traj.endX),
       y: getQuadraticBezier(pathT, traj.startY, traj.controlY, traj.endY),
-    };
-  }, []);
-
-  // Effective landing position: for knuckleball, apply same wobble offset as display at pathT=1 so scoring matches what the player sees
-  const getEffectiveLanding = useCallback((traj: BallTrajectory): { x: number; y: number } => {
-    if (traj.trajectoryType !== 'knuckleball') {
-      return { x: traj.endX, y: traj.endY };
-    }
-    const pathEndValue = 1;
-    const wobbleAtEnd = (1 - pathEndValue) * 8;
-    return {
-      x: traj.endX + wobbleAtEnd * Math.sin(pathEndValue * 20),
-      y: traj.endY + wobbleAtEnd * Math.cos(pathEndValue * 17),
     };
   }, []);
 

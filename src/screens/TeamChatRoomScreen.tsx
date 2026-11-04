@@ -46,6 +46,11 @@ import { CHAT_FALLBACK_NAME, chatPersonName } from '../lib/memberNames';
 import { isChannelStaff } from '../lib/channelStaff';
 import { shareSurveyToChat } from '../lib/surveyShare';
 import { allowsMemberText, canSendText } from '../lib/announcementChannel';
+import {
+  announcementsChatName,
+  isAnnouncementsChannel,
+} from '../lib/clubAnnouncements';
+import { MegaphoneIcon } from '../components/chat/MegaphoneIcon';
 import { useTypingPresence } from '../hooks/useTypingPresence';
 import { TypingIndicator } from '../components/chat/TypingIndicator';
 import { setActiveChannelId } from '../services/notifications';
@@ -203,6 +208,18 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   const [clubLogoUrl, setClubLogoUrl] = useState<string | null>(null);
   /** The chat's own kind, for the header crest gate (Lu, Oct 20 follow-up). */
   const [rowChannelType, setRowChannelType] = useState<string | null>(null);
+  /**
+   * Is this room the club's ANNOUNCEMENTS chat? — R-01.
+   *
+   * This room is NOT normally where that chat opens: the list and an
+   * `announcement: true` push both send it to `AnnouncementsFeed`. It lands
+   * here in the two cases that bypass the flag — a tap in the moment before
+   * `ChatScreen`'s `is_default` read answers, and a club-chat push with no
+   * flag — and in both the header used to print the raw slug
+   * `club-announcements`. From the ROW (`channel_type = 'club'` AND
+   * `is_default`), never from the name; false until the read lands.
+   */
+  const [isAnnouncements, setIsAnnouncements] = useState(false);
   const [isStaffHere, setIsStaffHere] = useState<boolean | undefined>(undefined);
 
   // Called on mount, on focus, and on each incoming message (via useMessages'
@@ -285,15 +302,22 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
   const isGroupChat = rowChannelType
     ? rowChannelType === 'group_dm'
     : isGroupDm;
-  const headerTitleText = isGroupChat
-    ? channelName || 'Group Chat'
-    : teamName || channelName || 'Team Chat';
-  const headerSubtitleText = isGroupChat
-    ? // `teamName` here is the list's card line 2 = "N members".
-      [clubName, teamName].filter(Boolean).join(' · ')
-    : [clubName, teamName ? channelName || 'Team Chat' : null]
-        .filter(Boolean)
-        .join(' · ');
+  const headerTitleText = isAnnouncements
+    ? // R-01: never the row's name here — see `isAnnouncements`.
+      announcementsChatName(clubName)
+    : isGroupChat
+      ? channelName || 'Group Chat'
+      : teamName || channelName || 'Team Chat';
+  const headerSubtitleText = isAnnouncements
+    ? // The club's full name, exactly as the feed's header shows it: the title
+      // carries the short form, so line 2 is where "Provo Athletic Club" reads.
+      clubName || ''
+    : isGroupChat
+      ? // `teamName` here is the list's card line 2 = "N members".
+        [clubName, teamName].filter(Boolean).join(' · ')
+      : [clubName, teamName ? channelName || 'Team Chat' : null]
+          .filter(Boolean)
+          .join(' · ');
 
   /**
    * R-M: the room's team colour, or null when the room has no team. Gated on
@@ -320,7 +344,11 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
             // R-M adds `color` to the embed this screen already makes -- the
             // header's dot and accent line need the team's own colour, and a
             // second query for one column would be the wrong trade.
-            'team_id, channel_type, allow_member_text, teams(club_id, color, clubs(name, logo_url))'
+            // R-01 adds `is_default` and the channel's OWN `club_id`: the
+            // announcements chat has no team, so the nested `teams.clubs`
+            // embed below cannot name its club, and its header needs the
+            // club's name to say "PAC Announcements" instead of the slug.
+            'team_id, channel_type, is_default, club_id, allow_member_text, teams(club_id, color, clubs(name, logo_url))'
           )
           .eq('id', channelId)
           .single();
@@ -349,6 +377,30 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
           (channelData as { channel_type?: string | null } | null)
             ?.channel_type ?? null
         );
+        /*
+         * R-01: the announcements chat, by the ROW. It has no team, so the
+         * embed above left `clubName` null — and the header's name is built
+         * from the club, not from the row's `club-announcements`. One extra
+         * read, and only for this one chat. A failed read leaves the name as
+         * the bare word "Announcements", which is still not the slug.
+         */
+        const announcements = isAnnouncementsChannel(
+          (channelData as {
+            channel_type?: string | null;
+            is_default?: boolean | null;
+          } | null) ?? {}
+        );
+        setIsAnnouncements(announcements);
+        const ownClubId = (channelData as { club_id?: string | null } | null)
+          ?.club_id;
+        if (announcements && !clubRow?.name && ownClubId) {
+          const { data: ownClub } = await supabase
+            .from('clubs')
+            .select('name')
+            .eq('id', ownClubId)
+            .maybeSingle();
+          setClubName((ownClub as { name?: string | null } | null)?.name ?? null);
+        }
         if (!channelData?.team_id) {
           setChannelTeamId(null);
           setChannelTeamHex(null);
@@ -987,7 +1039,14 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
                 wear the club's crest, the same rule the chat list's cards now
                 follow. The club NAME on the subtitle line is untouched; the
                 ruling named the crest. */}
-            {clubLogoUrl && showsClubCrest(rowChannelType) ? (
+            {/* R-01: the announcements chat takes the megaphone in the badge
+                spot instead of the crest — the same choice the chat list's
+                card makes, so the row and the room wear one badge. */}
+            {isAnnouncements ? (
+              <View style={styles.headerAnnounceBadge}>
+                <MegaphoneIcon size={12} color="#fff" />
+              </View>
+            ) : clubLogoUrl && showsClubCrest(rowChannelType) ? (
               <Image
                 source={{ uri: clubLogoUrl }}
                 style={styles.headerCrest}
@@ -1272,6 +1331,19 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 9,
+  },
+  /**
+   * R-01: the megaphone's circle, the crest's own size and place, in the
+   * channel colour the chat list gives this row (`getChannelColor`, #C4976D).
+   */
+  headerAnnounceBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#C4976D',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   headerTitle: {
     color: '#fff',

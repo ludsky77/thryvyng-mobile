@@ -38,6 +38,8 @@ import {
   getClubAnnouncementsChannel,
 } from '../lib/clubAnnouncements';
 import { isDefaultClubChannel } from '../lib/channelLeave';
+import { announcementsChatName } from '../lib/clubAnnouncements';
+import { MegaphoneIcon } from '../components/chat/MegaphoneIcon';
 import {
   canHideChannelType,
   setChannelHidden,
@@ -113,6 +115,22 @@ interface EnrichedConversation {
   team_id?: string | null;
   team?: { id: string; name: string; color?: string } | null;
   name?: string;
+  /**
+   * This row is the club's ANNOUNCEMENTS chat — R-01.
+   *
+   * It is a flag and not a fourth `displayType` on purpose: a dozen tests in
+   * this file and in `TeamChatRoomScreen` read `displayType === 'team'`, and
+   * this row wants every one of them (its colour, its crest rule, its section)
+   * to keep behaving as it does. What the flag changes is two cosmetic things,
+   * the TITLE and the BADGE.
+   *
+   * It is false until `clubDefaultChannelIds` lands, because
+   * `get_my_conversations` does not return `is_default`. That window shows the
+   * row exactly as it looked before R-01 — the slug and the ball — which is
+   * also when a tap still opens the chat room rather than the feed, so the two
+   * stay consistent with each other.
+   */
+  isAnnouncements?: boolean;
 }
 
 /**
@@ -500,8 +518,15 @@ function ConversationItem({
    * prove which of the two values it carries -- and a 'default' chat is never a
    * DM or a group, so including it cannot put a crest where one is now barred.
    */
+  /*
+   * R-01: the announcements row is the one crested chat that does NOT take the
+   * crest. Lu's ruling puts the megaphone in this spot, and the crest fills the
+   * whole circle, so the two cannot share it. Every other `club` chat — the
+   * coaches' lounge, any club channel added later — keeps the crest.
+   */
   const crestedType =
     conversation.displayType === 'team' &&
+    !conversation.isAnnouncements &&
     showsClubCrest(conversation.channel_type);
   const crestUrl = crestedType ? conversation.clubLogoUrl || null : null;
   const crestFillsAvatar = !!crestUrl;
@@ -536,6 +561,17 @@ function ConversationItem({
       return (
         <View style={[styles.badgeCircle, { backgroundColor: '#9B7BB5' }]}>
           <Text style={styles.badgeEmoji}>👥</Text>
+        </View>
+      );
+    }
+
+    // R-01: the announcements chat gets the megaphone, not the ball. Drawn,
+    // not an emoji, so it takes the row's own channel colour — see
+    // `components/chat/MegaphoneIcon`.
+    if (conversation.isAnnouncements) {
+      return (
+        <View style={[styles.badgeCircle, { backgroundColor: borderColor }]}>
+          <MegaphoneIcon size={22} color="#fff" />
         </View>
       );
     }
@@ -981,15 +1017,31 @@ export default function ChatScreen({ navigation, route }: any) {
      */
     const isCustomChannel =
       row.is_default === false || customChannelIds.has(row.channel_id);
+    /*
+     * R-01 (Lu, 2026-11-04): the club's announcements chat is named
+     * `club-announcements` in the database and families were reading that slug
+     * off this card. The same set that decides a tap opens the FEED decides
+     * what the card says, so the title and the screen behind it can never
+     * disagree, and the name itself comes from one place
+     * (`announcementsChatName`) for all three surfaces. DISPLAY ONLY — `name`
+     * below still carries the row's own value, which is what the nav params
+     * and the info screen pass along.
+     */
+    const isAnnouncements = clubDefaultChannelIds.has(row.channel_id);
+    const announceTitle = isAnnouncements
+      ? announcementsChatName(clubName)
+      : null;
     const cardTitle =
-      teamLabel && isCustomChannel && channelLabel && channelLabel !== teamLabel
+      announceTitle ||
+      (teamLabel && isCustomChannel && channelLabel && channelLabel !== teamLabel
         ? `${teamLabel} · ${channelLabel}`
-        : teamLabel || channelLabel || 'Team Chat';
+        : teamLabel || channelLabel || 'Team Chat');
     return {
       id: row.channel_id,
       displayType: 'team',
-      displayName: row.name || 'Team Chat',
+      displayName: announceTitle || row.name || 'Team Chat',
       displaySubtitle: row.team_name || team?.name || '',
+      isAnnouncements,
       // Team card: the TEAM is the headline, plus the channel name when this
       // is not the team's default chat (A4).
       cardTitle,
@@ -1011,7 +1063,7 @@ export default function ChatScreen({ navigation, route }: any) {
         : null,
       name: row.name,
     };
-  }, [allTeams, customChannelIds]);
+  }, [allTeams, customChannelIds, clubDefaultChannelIds]);
 
   /**
    * The ids of every TEAM channel on screen, as a stable string key -- the

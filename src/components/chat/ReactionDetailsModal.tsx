@@ -4,6 +4,7 @@ import {
   View,
   Text,
   TouchableOpacity,
+  Pressable,
   FlatList,
   StyleSheet,
   Image,
@@ -60,12 +61,20 @@ export function ReactionDetailsModal({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <TouchableOpacity
-        style={styles.overlay}
-        activeOpacity={1}
-        onPress={onClose}
-      >
-        <View style={styles.container} onStartShouldSetResponder={() => true}>
+      {/* RELEASE-1.0.20-FIXES (2026-11-04): the dismiss backdrop is now a
+          SIBLING of the sheet, not its parent. It used to be a full-screen
+          TouchableOpacity wrapping the sheet, and the sheet blocked taps from
+          reaching it with `onStartShouldSetResponder={() => true}` -- which
+          also claimed the touch responder before the list's scroll view could,
+          so a drag inside the list went nowhere. Round 1 found it with 14
+          reactors and no way to reach past the first few. */}
+      <View style={styles.overlay}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          accessibilityLabel="Close reactions"
+        />
+        <View style={styles.container}>
           <View style={styles.header}>
             <Text style={styles.title}>Reactions</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -75,6 +84,12 @@ export function ReactionDetailsModal({
 
           <FlatList
             data={entries}
+            /* `flexShrink: 1` is the other half of the fix: inside a box that
+               is only `maxHeight`-bounded, a list with no flex lays itself out
+               at its full content height and the parent simply clips it, so it
+               never believes it has anything to scroll. */
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
             keyExtractor={([emoji]) => emoji}
             renderItem={({ item: [emoji, users] }) => (
               <View style={styles.emojiSection}>
@@ -113,7 +128,7 @@ export function ReactionDetailsModal({
             )}
           />
         </View>
-      </TouchableOpacity>
+      </View>
     </Modal>
   );
 }
@@ -121,8 +136,11 @@ export function ReactionDetailsModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   container: {
     backgroundColor: '#1F2937',
@@ -130,6 +148,12 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     maxHeight: '60%',
     padding: 20,
+  },
+  list: {
+    flexShrink: 1,
+  },
+  listContent: {
+    paddingBottom: 8,
   },
   header: {
     flexDirection: 'row',

@@ -424,7 +424,17 @@ export default function PatternPlayGame({
             <Text style={styles.configText}>⏱️ {showDuration}ms speed</Text>
             <Text style={styles.configText}>🔄 {totalRounds} rounds</Text>
           </View>
-          <TouchableOpacity style={styles.startButton} onPress={startRound}>
+          {/*
+            CALLED WITH NO ARGUMENT, in an arrow — RELEASE-1.0.20-FIXES item 7.
+            `onPress={startRound}` handed the GestureResponderEvent to
+            `startRound(effectiveRound?: number)` (TS2322, the fifth baseline
+            error), and it was a real defect, not only a type one: the event
+            object became `roundForThisGame`, so `roundForThisGame === 1` was
+            false on round 1 and `startTimeRef.current` was never stamped,
+            and `showPattern`'s `roundForRetention === 2` dim check could
+            never be true either. Round 1 now reads `round`, which is 1.
+          */}
+          <TouchableOpacity style={styles.startButton} onPress={() => startRound()}>
             <Text style={styles.startButtonText}>Start Game</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.quitButton} onPress={onQuit}>

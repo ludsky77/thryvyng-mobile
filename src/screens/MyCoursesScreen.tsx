@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -106,7 +107,14 @@ export default function MyCoursesScreen({ navigation }: any) {
   }
 
   return (
-    <View style={styles.container}>
+    /* SAFE AREA — RELEASE-1.0.20-FIXES (2026-11-04), the same root the ledger
+       recorded for `CoursesScreen` and that `892edbe` fixed there on Oct 30.
+       This screen is registered `headerShown: false`
+       (`AppNavigator.tsx:353`), so with a bare `View` root its header row was
+       drawn at y 0 and the back arrow and "My Courses" sat behind the notch.
+       `SafeAreaView edges={['top']}` is this repo's pattern — the bottom edge
+       belongs to the tab bar and is deliberately not claimed. */
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -209,7 +217,7 @@ export default function MyCoursesScreen({ navigation }: any) {
         )}
         <View style={{ height: 100 }} />
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 

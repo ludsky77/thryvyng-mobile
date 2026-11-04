@@ -1,12 +1,66 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { logError } from '../utils/logError';
 import type { GameLevel, GameSession, GameResult } from '../types/games';
 
 interface UseGameSessionProps {
   gameId: string;
   gameSlug: string;
 }
+
+/**
+ * WHICH of `recordSession`'s four writes went wrong — RELEASE-1.0.20-FIXES
+ * (Lu, 2026-11-04), the "games silent save" item.
+ *
+ * WHAT WAS SILENT, precisely. The screen did already show one Alert when
+ * `recordSession` returned false, so the WHOLE-save failure was visible. What
+ * was not:
+ *
+ *   * **step 3, `daily_game_time`** — both the update and the insert threw
+ *     their `{ error }` away without looking at it;
+ *   * **step 4, `award_xp_safe`** — the same, so the XP the results screen
+ *     has just told the player they earned could fail to be added and the
+ *     save still reported success;
+ *   * **every failure** went to `console.error`, which reaches no report. The
+ *     repo's own rule for an absorbed failure is `utils/logError` (Sentry +
+ *     a fixed console format), and this hook predates it.
+ *
+ * So a save could land half-written and be announced as a win. It now names
+ * the step, and the screen says which part did not stick.
+ *
+ * NOT FIXED HERE, and it is the bigger half: `docs/recon/arcade.md` §0.1 has
+ * step 1 failing outright because the live `game_sessions` is the soccer
+ * live-stats table and no longer has `player_id` / `game_id` / `score`. That
+ * is a SCHEMA question (SACRED) and is deliberately untouched — this item was
+ * "a failed save is not silent", and after this change that failure reports
+ * itself as `step: 'session'` instead of as a bare sentence.
+ */
+export type RecordSessionStep =
+  | 'signed-out'
+  | 'session'
+  | 'progress'
+  | 'daily'
+  | 'xp';
+
+export type RecordSessionOutcome =
+  | { ok: true }
+  | { ok: false; step: RecordSessionStep };
+
+/**
+ * What to tell the player, per step. Each one says what DID land, because
+ * "failed to save" over a half-written save is worse than saying which half.
+ */
+export const RECORD_SESSION_MESSAGES: Record<RecordSessionStep, string> = {
+  'signed-out':
+    "We couldn't tell who was playing, so nothing was saved. Sign in and try again.",
+  session: "Your score couldn't be saved. Your level and XP are unchanged.",
+  progress:
+    "Your score was saved but your level wasn't. Play the level again to record it.",
+  daily:
+    "Your score and level were saved. Today's play time wasn't recorded, and your XP may not have been added.",
+  xp: 'Your score and level were saved, but the XP was not added to your total.',
+};
 
 export function useGameSession({ gameId, gameSlug }: UseGameSessionProps) {
   const { currentRole } = useAuth();
@@ -51,8 +105,22 @@ export function useGameSession({ gameId, gameSlug }: UseGameSessionProps) {
   }, [levels]);
 
   // Record a completed session and award XP
-  const recordSession = useCallback(async (result: GameResult, durationSeconds: number): Promise<boolean> => {
-    if (!playerId || !currentLevel) return false;
+  const recordSession = useCallback(async (
+    result: GameResult,
+    durationSeconds: number
+  ): Promise<RecordSessionOutcome> => {
+    // Not "the save failed": we never had a player or a level to save for.
+    // Named so the screen stops offering "try again" for something trying
+    // again cannot fix.
+    if (!playerId || !currentLevel) {
+      logError('useGameSession.recordSession', 'no player or no level', {
+        gameId,
+        gameSlug,
+        hasPlayer: !!playerId,
+        hasLevel: !!currentLevel,
+      });
+      return { ok: false, step: 'signed-out' };
+    }
 
     setSaving(true);
     try {
@@ -72,7 +140,16 @@ export function useGameSession({ gameId, gameSlug }: UseGameSessionProps) {
         .from('game_sessions')
         .insert(session);
 
-      if (sessionError) throw sessionError;
+      if (sessionError) {
+        // docs/recon/arcade.md §0.1: this is the step expected to fail today,
+        // because the live `game_sessions` is the soccer live-stats table.
+        logError('useGameSession.insertSession', sessionError, {
+          gameId,
+          gameSlug,
+          levelNumber: currentLevel.level_number,
+        });
+        return { ok: false, step: 'session' };
+      }
 
       // 2. Update player_game_progress (upsert)
       const { data: existingProgress } = await supabase
@@ -112,13 +189,27 @@ export function useGameSession({ gameId, gameSlug }: UseGameSessionProps) {
           .update(progressData)
           .eq('id', existingProgress.id);
 
-        if (updateError) throw updateError;
+        if (updateError) {
+          logError('useGameSession.updateProgress', updateError, {
+            gameId,
+            gameSlug,
+            progressId: existingProgress.id,
+          });
+          return { ok: false, step: 'progress' };
+        }
       } else {
         const { error: insertError } = await supabase
           .from('player_game_progress')
           .insert({ ...progressData, created_at: new Date().toISOString() });
 
-        if (insertError) throw insertError;
+        if (insertError) {
+          logError('useGameSession.insertProgress', insertError, {
+            gameId,
+            gameSlug,
+            playerId,
+          });
+          return { ok: false, step: 'progress' };
+        }
       }
 
       // 3. Update daily game time
@@ -136,41 +227,66 @@ export function useGameSession({ gameId, gameSlug }: UseGameSessionProps) {
       const gamesPlayed = existingDaily?.games_played || {};
       gamesPlayed[gameSlug] = (gamesPlayed[gameSlug] || 0) + 1;
 
-      if (existingDaily) {
-        await supabase
-          .from('daily_game_time')
-          .update({
-            minutes_played: existingDaily.minutes_played + minutesPlayed,
-            sessions_count: existingDaily.sessions_count + 1,
-            games_played: gamesPlayed,
-          })
-          .eq('id', existingDaily.id);
-      } else {
-        await supabase
-          .from('daily_game_time')
-          .insert({
-            player_id: playerId,
-            date: today,
-            minutes_played: minutesPlayed,
-            sessions_count: 1,
-            games_played: gamesPlayed,
-          });
+      // BOTH results are read now. These two were the silent pair: the write
+      // was fired and the `{ error }` dropped, so a refused daily row looked
+      // exactly like a written one.
+      const { error: dailyError } = existingDaily
+        ? await supabase
+            .from('daily_game_time')
+            .update({
+              minutes_played: existingDaily.minutes_played + minutesPlayed,
+              sessions_count: existingDaily.sessions_count + 1,
+              games_played: gamesPlayed,
+            })
+            .eq('id', existingDaily.id)
+        : await supabase
+            .from('daily_game_time')
+            .insert({
+              player_id: playerId,
+              date: today,
+              minutes_played: minutesPlayed,
+              sessions_count: 1,
+              games_played: gamesPlayed,
+            });
+
+      if (dailyError) {
+        logError('useGameSession.dailyGameTime', dailyError, {
+          gameId,
+          gameSlug,
+          date: today,
+          existing: !!existingDaily,
+        });
+        return { ok: false, step: 'daily' };
       }
 
       // 4. Award XP to player's total via RPC (CORRECT PARAMETERS)
       if (result.xpEarned > 0) {
-        await supabase.rpc('award_xp_safe', {
+        const { error: xpError } = await supabase.rpc('award_xp_safe', {
           p_player_id: playerId,
           p_source_type: 'cognitive_game',
           p_source_id: gameId,
           p_amount: result.xpEarned,
         });
+        // A refusal here is NOT the same as `already_awarded`, which the
+        // function returns as a VALUE and not as an error — game XP is once
+        // per game forever (arcade.md §0.2), so a second play legitimately
+        // adds nothing and that path produces no error to report.
+        if (xpError) {
+          logError('useGameSession.awardXp', xpError, {
+            gameId,
+            gameSlug,
+            amount: result.xpEarned,
+          });
+          return { ok: false, step: 'xp' };
+        }
       }
 
-      return true;
+      return { ok: true };
     } catch (err) {
-      console.error('Error recording session:', err);
-      return false;
+      // Anything thrown rather than returned — a dropped connection mid-save.
+      // `console.error` reached no report on a release build; logError does.
+      logError('useGameSession.recordSession', err, { gameId, gameSlug });
+      return { ok: false, step: 'session' };
     } finally {
       setSaving(false);
     }

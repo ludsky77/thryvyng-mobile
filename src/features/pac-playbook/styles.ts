@@ -603,17 +603,38 @@ export const pbk = StyleSheet.create({
     fontFamily: ff.medium,
   },
 
-  /** `.auth` — the byline strip at the foot of a card. */
+  /**
+   * `.auth` — the byline strip at the foot of a card.
+   *
+   * D1 (2026-11-04, mirrors `playbook.css` `.auth`): TWO lines, because on a
+   * phone the credit and the counter shared one row and collided —
+   * `LUDWIG SZ. · PROVO ATHLETIC CLUBCARD 11 / 12`. Top row is the club and
+   * the card count in the prototype's caps style; the club may wrap over two
+   * lines but never clips, and the count never breaks. The author's name then
+   * gets its own line under it, in the book's one italic.
+   */
   auth: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: 'column',
+    gap: space.px3,
     paddingVertical: space.px8,
     paddingHorizontal: space.px12,
     borderWidth: lineWidth.hairline,
     borderColor: color.line,
     borderRadius: radius.control,
     backgroundColor: color.card,
+  },
+  authRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: space.px10,
+  },
+  /** Holds the dot and the club name; `flexShrink` is what lets it wrap. */
+  authClub: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 1,
+    minWidth: 0,
   },
   authText: {
     fontFamily: ff.bold,
@@ -622,12 +643,38 @@ export const pbk = StyleSheet.create({
     textTransform: 'uppercase',
     color: color.mute,
   },
+  /**
+   * The club name itself. RN gives a flex child `flexShrink: 0` where the web
+   * gives it 1, so BOTH the wrapper and this text need it or the row refuses
+   * to narrow and the count is pushed off the card instead.
+   */
+  authClubText: {
+    flexShrink: 1,
+  },
+  /** `Card n / N` — never wraps, never shrinks (`.auth-n`). */
+  authCount: {
+    flexShrink: 0,
+  },
+  /**
+   * `.auth-by` — the author, sentence case, italic, a step smaller and softer.
+   * The 18pt indent lines it up under the club text: the 10pt dot plus its
+   * 8pt margin.
+   */
+  authBy: {
+    paddingLeft: space.px18,
+    fontFamily: ff.mediumItalic,
+    fontSize: fs.hitEyebrow,
+    letterSpacing: track(fs.hitEyebrow, ls.button),
+    lineHeight: line(fs.hitEyebrow, lh.compact),
+    color: color.dim,
+  },
   authMag: {
     width: space.px10,
     height: space.px10,
     borderRadius: space.px5,
     backgroundColor: color.them,
     marginRight: space.px8,
+    flexShrink: 0,
   },
 
   /** `.pend` — the dashed "Diagram pending" panel. */

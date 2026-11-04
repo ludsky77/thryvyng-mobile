@@ -258,6 +258,14 @@ export const fontFamily = {
   semibold: 'Archivo_700Bold', //        600 → 700, see the note above
   bold: 'Archivo_700Bold', //            700 — labels, buttons, eyebrows
   extrabold: 'Archivo_800ExtraBold', //  800 — every heading and numeral
+  /**
+   * 500 italic — the card footer's author line, and nothing else (D1,
+   * 2026-11-04). It is a FACE and not `fontStyle: 'italic'` because Archivo
+   * ships as separate files here (the note above): asking RN to slant
+   * `Archivo_500Medium` gets a synthetic oblique on Android and, on iOS,
+   * nothing at all.
+   */
+  mediumItalic: 'Archivo_500Medium_Italic', // 500 italic — the author line
 } as const;
 
 /**

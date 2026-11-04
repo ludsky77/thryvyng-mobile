@@ -9,6 +9,7 @@
  * scores as wrong. Do not "improve" the formulas.
  */
 
+import { HEAD_HALF, headSize } from './strokes';
 import type { Diagram, DiagramElement, Point } from './types';
 
 export const easeIn = (p: number): number => (p < 0.4 ? (p * p) / 0.8 : 0.2 + (p - 0.4)) / 0.8;
@@ -60,19 +61,24 @@ export function waypointReached(pts: Point[], p: number, idx: number): boolean {
   return p * tot >= cum - 0.01;
 }
 
-/** The arrow head at the end of a pass or run. */
-export function head(p1: Point, p2: Point, color: string, w?: number): string {
+/**
+ * The arrow head at the end of a pass or run. `w` is the line's DRAWN width;
+ * the head's size comes from strokes.ts headSize() (D2, 2026-11-04: was
+ * 2.2 + w × 0.6 on the stored weight).
+ */
+export function head(p1: Point, p2: Point, color: string, w: number): string {
   const dx = p2[0] - p1[0];
   const dy = p2[1] - p1[1];
   const l = Math.hypot(dx, dy) || 1;
   const ux = dx / l;
   const uy = dy / l;
-  const s = 2.2 + (w || 0.8) * 0.6;
+  const s = headSize(w);
   const bx = p2[0] - ux * s;
   const by = p2[1] - uy * s;
   const px = -uy;
   const py = ux;
-  return `<polygon points="${p2[0]},${p2[1]} ${bx + px * s * 0.5},${by + py * s * 0.5} ${bx - px * s * 0.5},${by - py * s * 0.5}" fill="${color}"/>`;
+  const k = s * HEAD_HALF;
+  return `<polygon points="${p2[0]},${p2[1]} ${bx + px * k},${by + py * k} ${bx - px * k},${by - py * k}" fill="${color}"/>`;
 }
 
 /** viewBox of a diagram: full pitch and futsal are portrait 100x140, zoom boards 100x(h||64). */

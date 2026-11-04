@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   View,
   Text,
   StyleSheet,
@@ -82,6 +83,22 @@ interface ComposeParams {
 interface AnnouncementNavigation {
   navigate: (name: string, params?: object) => void;
   goBack: () => void;
+  /**
+   * React Navigation's own two, for the discard prompt
+   * (RELEASE-1.0.20-FIXES). `beforeRemove` is the only hook that catches the
+   * iOS swipe-back and the Android hardware back as well as the arrow, and
+   * `dispatch` is how the original action is replayed once the person says
+   * discard. Optional so the harness and the tests can still pass the two-key
+   * object this interface started as.
+   */
+  addListener?: (
+    event: 'beforeRemove',
+    callback: (e: {
+      preventDefault: () => void;
+      data: { action: unknown };
+    }) => void
+  ) => () => void;
+  dispatch?: (action: unknown) => void;
 }
 
 
@@ -173,6 +190,69 @@ export default function ComposeAnnouncementScreen({
   );
   const incompleteActions = actions.length - sendableCount;
 
+  /**
+   * THE DISCARD PROMPT — RELEASE-1.0.20-FIXES (Lu, 2026-11-04), Round 1's S1.
+   *
+   * Leaving a filled form threw the draft away with nothing said. The LEAVE
+   * itself is correct and was confirmed on screen (nothing is sent); what was
+   * missing is the warning. Same shape as the one on
+   * `SurveyResponseScreen.handleBack` — Alert, "Keep writing" cancel first,
+   * destructive "Discard" second — because a second spelling of one question is
+   * how two screens start asking it differently.
+   *
+   * DIRTY is anything typed or added. An untouched form, and a form whose
+   * message has already gone, leave without a word.
+   */
+  const isDirty =
+    trimmedTitle.length > 0 || trimmedBody.length > 0 || actions.length > 0;
+
+  /**
+   * Set the moment the person chooses Discard, so the `beforeRemove` listener
+   * lets the replayed navigation through instead of asking a second time.
+   */
+  const discardingRef = useRef(false);
+
+  const confirmDiscard = useCallback((leave: () => void) => {
+    Alert.alert(
+      'Discard this announcement?',
+      'What you have written will not be saved, and nothing is sent.',
+      [
+        { text: 'Keep writing', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => {
+            discardingRef.current = true;
+            leave();
+          },
+        },
+      ]
+    );
+  }, []);
+
+  const handleBack = () => {
+    if (!isDirty || sent) {
+      navigation.goBack();
+      return;
+    }
+    confirmDiscard(() => navigation.goBack());
+  };
+
+  /**
+   * The swipe and the hardware button. The arrow above is handled directly
+   * because it is this screen's own control; these two are the navigator's,
+   * and `beforeRemove` is where they can be stopped.
+   */
+  useEffect(() => {
+    const addListener = navigation.addListener;
+    if (!addListener) return;
+    return addListener('beforeRemove', (event) => {
+      if (!isDirty || sent || discardingRef.current) return;
+      event.preventDefault();
+      confirmDiscard(() => navigation.dispatch?.(event.data.action));
+    });
+  }, [navigation, isDirty, sent, confirmDiscard]);
+
   const canSend =
     !!channelId &&
     !titleMissing &&
@@ -244,7 +324,8 @@ export default function ComposeAnnouncementScreen({
     <View style={styles.header}>
       <TouchableOpacity
         style={styles.headerButton}
-        onPress={() => navigation.goBack()}
+        onPress={handleBack}
+        accessibilityLabel="Back"
       >
         <Feather name="arrow-left" size={24} color="#fff" />
       </TouchableOpacity>

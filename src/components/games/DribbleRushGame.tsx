@@ -92,6 +92,39 @@ const getLaneX = (lane: number, normalizedY: number): number => {
   }
 };
 
+/**
+ * The inner edge of a gutter at depth `normalizedY` — the line where the
+ * gutter stops and the three lanes begin.
+ *
+ * ADDED 2026-11-04 (RELEASE-1.0.20-FIXES item 7). It was MISSING: the only
+ * caller, `PerspectiveField.renderGutterZones` (:712-713), referenced it and
+ * nothing declared it, which is two of the five `tsc` errors the mobile
+ * baseline carried (TS2304 x2).
+ *
+ * IT NEVER CRASHED ANYBODY, and that answers the ledger's "UNKNOWN if
+ * reachable in prod": `PerspectiveField` is declared in this file and
+ * rendered NOWHERE — `grep -n PerspectiveField src/**` finds the declaration
+ * and no use. So the ReferenceError was unreachable, and this is a
+ * correctness fix for a component that is not mounted today rather than a
+ * crash fix.
+ *
+ * The arithmetic is `getLaneX`'s own, not new: same `getFieldWidthAtY`, same
+ * `GUTTER_WIDTH * normalizedY` taper, same centring. `getLaneX(-1)` returns
+ * the MIDDLE of the left gutter; this returns its inner EDGE, which is what a
+ * boundary line wants.
+ */
+const getGutterBoundaryX = (
+  side: 'left' | 'right',
+  normalizedY: number
+): number => {
+  const fieldWidth = getFieldWidthAtY(normalizedY);
+  const gutterWidth = GUTTER_WIDTH * normalizedY;
+  const fieldLeft = (FIELD_WIDTH - fieldWidth) / 2;
+  return side === 'left'
+    ? fieldLeft + gutterWidth
+    : fieldLeft + fieldWidth - gutterWidth;
+};
+
 const getScaleAtY = (normalizedY: number): number => {
   return 0.25 + normalizedY * 0.75;
 };

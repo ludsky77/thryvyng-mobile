@@ -73,6 +73,100 @@ export function clubAnnouncementsAudienceLine(
   return `Goes to everyone in ${name || 'your club'} announcements`;
 }
 
+/* ─────────────────────── R-01 · what families see it called ───────────────── */
+
+/**
+ * Words that carry no initial. Kept lower case; the test lower-cases the word.
+ */
+const BYLINE_STOPWORDS = new Set([
+  'of',
+  'the',
+  'and',
+  'de',
+  'del',
+  'la',
+  'las',
+  'los',
+  'el',
+  'y',
+]);
+
+/**
+ * The longest club name that is shown whole. Above it the club is initialled.
+ *
+ * It is a JUDGEMENT, not a measurement: 19 characters is "Provo Athletic Club",
+ * the one real club we have, and it has to fall ABOVE the line for R-01's own
+ * example ("PAC Announcements") to come out. 14 leaves "Thryvyng FC" (11)
+ * whole, because "TF Announcements" would be worse than the slug it replaces.
+ */
+const SHOW_WHOLE_UP_TO = 14;
+
+/**
+ * A club's SHORT name, for the one place a long one will not fit — R-01.
+ *
+ * "Provo Athletic Club" -> "PAC". "Thryvyng FC" -> "Thryvyng FC". There is no
+ * `short_name` column on `clubs` (checked 2026-11-04: mobile reads `id, name,
+ * logo_url, payment_terms_text` and nothing else), so this is DERIVED and
+ * nothing is written anywhere. Give the clubs table a real short name one day
+ * and this function is the single place that stops being needed.
+ *
+ * The rule, in order:
+ *   1. a name of SHOW_WHOLE_UP_TO characters or fewer is shown whole;
+ *   2. a longer name of two or more significant words becomes their initials;
+ *   3. anything else (one very long word) is shown whole — a 20-character
+ *      single word has no initials worth the name.
+ */
+export function clubShortName(clubName: string | null | undefined): string {
+  const name = (clubName ?? '').trim().replace(/\s+/g, ' ');
+  if (!name) return '';
+  if (name.length <= SHOW_WHOLE_UP_TO) return name;
+  const words = name
+    .split(' ')
+    .filter((w) => w.length > 0 && !BYLINE_STOPWORDS.has(w.toLowerCase()));
+  if (words.length < 2) return name;
+  return words.map((w) => w.charAt(0).toUpperCase()).join('');
+}
+
+/**
+ * What the announcements chat is CALLED on screen — R-01, Lu 2026-11-04.
+ *
+ * Families were reading the raw slug, `club-announcements`, in the chat list,
+ * in the room header and over the feed. This is the one function that decides
+ * what they read instead: "PAC Announcements".
+ *
+ * DISPLAY ONLY. Nothing here is written back: the row keeps its `name`, the
+ * channel is still chosen by `channel_type = 'club' AND is_default` (never by
+ * a name — see this module's header and `isDefaultClubChannel`), and the slug
+ * is still what a server-side push title would use. Every call site passes the
+ * club name it already holds.
+ *
+ * WITH NO CLUB NAME it falls back to the bare word "Announcements" rather than
+ * to the slug. A missing club name is a cosmetic gap, and "Announcements" is
+ * right even when it is less specific; the slug never is.
+ */
+export function announcementsChatName(
+  clubName: string | null | undefined
+): string {
+  const short = clubShortName(clubName);
+  return short ? `${short} Announcements` : 'Announcements';
+}
+
+/**
+ * Should this channel's name be replaced by `announcementsChatName`?
+ *
+ * The same ROW test as everywhere else — `channel_type = 'club'` and
+ * `is_default` — so the display name and the screen a tap opens can never
+ * disagree. A caller that cannot prove `is_default` (the chat list's
+ * `get_my_conversations` does not return it) passes what it does know and gets
+ * `false`, which leaves the name exactly as the server sent it.
+ */
+export function isAnnouncementsChannel(channel: {
+  channel_type?: string | null;
+  is_default?: boolean | null;
+}): boolean {
+  return channel.channel_type === 'club' && channel.is_default === true;
+}
+
 /**
  * The club's announcements channel, or null with no error if it has none.
  *

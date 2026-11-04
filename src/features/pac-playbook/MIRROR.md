@@ -1,10 +1,16 @@
 # Mirror manifest — PAC Playbook pure layer
 
-**Provenance: `thrive-and-score` @ `b31b922`** (M1 mirrored `83a3686`; M3
+**Provenance: `thrive-and-score` @ `e222074`** (M1 mirrored `83a3686`; M3
 re-mirrored to `c772111`, which changed `renderDiagram.ts` — DIAGRAM-LABEL-FIT
-— and reworded two comments in `doodleArt.ts`; **2026-11-03 re-mirrored to
-`b31b922`** — PLAYBOOK-FUTSAL-BACKDROP, which changed the three `diagram/`
-files marked below and nothing else in this manifest).
+— and reworded two comments in `doodleArt.ts`; 2026-11-03 re-mirrored to
+`b31b922` — PLAYBOOK-FUTSAL-BACKDROP, which changed three `diagram/` files;
+**2026-11-04 re-mirrored to `e222074`** — RELEASE-1.0.20-FIXES **D2**, which
+ADDS `diagram/strokes.ts` to this manifest and changed `renderDiagram.ts` and
+`geometry.ts`. The D2 rows are marked below. `playbook.css` and the web's own
+`CardScreen.tsx` also changed in `e222074` (**D1**) and are deliberately NOT in
+this manifest: the card footer is a stylesheet on web and a `StyleSheet.create`
+here, so it is mirrored by VALUE through `thrive-and-score/docs/recon/d2-strokes.md`
+§D1, not byte for byte).
 
 These files are **mirrored from the web repo** (`thrive-and-score`), not written
 here. The pattern is the one `src/lib/joinErrors.ts` already set in this
@@ -19,8 +25,9 @@ which means drift is a one-command check, not a reading job:
 
 ```
 W=/Users/ludsanz/Documents/thrive-and-score
-for f in diagram/renderDiagram.ts diagram/geometry.ts diagram/heat.ts \
-         diagram/tapTarget.ts diagram/types.ts search.ts types.ts; do
+for f in diagram/renderDiagram.ts diagram/geometry.ts diagram/strokes.ts \
+         diagram/heat.ts diagram/tapTarget.ts diagram/types.ts \
+         search.ts types.ts; do
   diff -q "$W/src/features/pac-playbook/$f" "src/features/pac-playbook/$f"
 done
 diff -q "$W/src/lib/playbookErrors.ts" src/lib/playbookErrors.ts
@@ -29,8 +36,9 @@ diff -q "$W/docs/playbook/pac-playbook-v2-FINAL-data.json" \
         src/features/pac-playbook/dev/pac-playbook-v2-FINAL-data.json
 ```
 
-Silence from the eight and from the data file, and exactly one hunk from
-`doodleArt.ts`, is the pass.
+Silence from the nine and from the data file, and exactly one hunk from
+`doodleArt.ts`, is the pass. (Eight before 2026-11-04; `strokes.ts` is the
+ninth.)
 
 **Editing rule:** a change to any file below is made in the **web repo first**,
 then re-mirrored here, and this table's commit column is updated. Never edit the
@@ -38,22 +46,35 @@ mobile copy alone — that is the fork this manifest exists to prevent.
 
 | Mobile path | Web path | Web commit | Mirrored | Status |
 | --- | --- | --- | --- | --- |
-| `src/features/pac-playbook/diagram/renderDiagram.ts` | `src/features/pac-playbook/diagram/renderDiagram.ts` | `b31b922` | 2026-11-03 | byte-identical |
-| `src/features/pac-playbook/diagram/geometry.ts` | `src/features/pac-playbook/diagram/geometry.ts` | `b31b922` | 2026-11-03 | byte-identical |
-| `src/features/pac-playbook/diagram/heat.ts` | `src/features/pac-playbook/diagram/heat.ts` | `b31b922` | 2026-10-30 | byte-identical |
-| `src/features/pac-playbook/diagram/tapTarget.ts` | `src/features/pac-playbook/diagram/tapTarget.ts` | `b31b922` | 2026-10-30 | byte-identical |
-| `src/features/pac-playbook/diagram/types.ts` | `src/features/pac-playbook/diagram/types.ts` | `b31b922` | 2026-11-03 | byte-identical |
-| `src/features/pac-playbook/search.ts` | `src/features/pac-playbook/search.ts` | `b31b922` | 2026-10-30 | byte-identical |
-| `src/features/pac-playbook/types.ts` | `src/features/pac-playbook/types.ts` | `b31b922` | 2026-10-30 | byte-identical |
-| `src/features/pac-playbook/doodleArt.ts` | `src/features/pac-playbook/doodleArt.ts` | `b31b922` | 2026-10-30 | **1 declared diff: DEV flag** |
-| `src/lib/playbookErrors.ts` | `src/lib/playbookErrors.ts` | `b31b922` | 2026-10-30 | byte-identical |
-| `src/features/pac-playbook/dev/pac-playbook-v2-FINAL-data.json` | `docs/playbook/pac-playbook-v2-FINAL-data.json` | `b31b922` | 2026-10-30 | byte-identical · **`__DEV__` only** |
+| `src/features/pac-playbook/diagram/renderDiagram.ts` | `src/features/pac-playbook/diagram/renderDiagram.ts` | `e222074` | **2026-11-04** | byte-identical |
+| `src/features/pac-playbook/diagram/geometry.ts` | `src/features/pac-playbook/diagram/geometry.ts` | `e222074` | **2026-11-04** | byte-identical |
+| `src/features/pac-playbook/diagram/strokes.ts` | `src/features/pac-playbook/diagram/strokes.ts` | `e222074` | **2026-11-04** | byte-identical · **NEW this round (D2)** |
+| `src/features/pac-playbook/diagram/heat.ts` | `src/features/pac-playbook/diagram/heat.ts` | `e222074` | 2026-10-30 | byte-identical |
+| `src/features/pac-playbook/diagram/tapTarget.ts` | `src/features/pac-playbook/diagram/tapTarget.ts` | `e222074` | 2026-10-30 | byte-identical |
+| `src/features/pac-playbook/diagram/types.ts` | `src/features/pac-playbook/diagram/types.ts` | `e222074` | 2026-11-03 | byte-identical |
+| `src/features/pac-playbook/search.ts` | `src/features/pac-playbook/search.ts` | `e222074` | 2026-10-30 | byte-identical |
+| `src/features/pac-playbook/types.ts` | `src/features/pac-playbook/types.ts` | `e222074` | 2026-10-30 | byte-identical |
+| `src/features/pac-playbook/doodleArt.ts` | `src/features/pac-playbook/doodleArt.ts` | `e222074` | 2026-10-30 | **1 declared diff: DEV flag** |
+| `src/lib/playbookErrors.ts` | `src/lib/playbookErrors.ts` | `e222074` | 2026-10-30 | byte-identical |
+| `src/features/pac-playbook/dev/pac-playbook-v2-FINAL-data.json` | `docs/playbook/pac-playbook-v2-FINAL-data.json` | `e222074` | 2026-10-30 | byte-identical · **`__DEV__` only** |
 
-**Reading the two right-hand columns after 2026-11-03.** `Web commit` is the
+**Reading the two right-hand columns after 2026-11-04.** `Web commit` is the
 commit each file was verified byte-identical against — the whole set was
-re-checked against `b31b922` on 2026-11-03, so every row names it. `Mirrored` is
-the day that file's CONTENT last moved; only the three rows dated 2026-11-03
-changed then, and the rest have not been re-copied since M3.
+re-checked against `e222074` on 2026-11-04, so every row names it. `Mirrored` is
+the day that file's CONTENT last moved: the three rows dated **2026-11-04** are
+D2's (`renderDiagram.ts`, `geometry.ts`, and `strokes.ts`, which did not exist
+here before), the rows dated 2026-11-03 are PLAYBOOK-FUTSAL-BACKDROP's, and the
+rest have not been re-copied since M3.
+
+**WHY `strokes.ts` EXISTS, and why it is the most important row here.** Before
+D2, every stroke width was a LITERAL inside `renderDiagram.ts` and
+`geometry.ts` — `0.5` for a field line, `0.7` for a player outline,
+`2.2 + w * 0.6` for an arrowhead, twice. Thinning the lines on web and
+mirroring that across would have meant matching three dozen numbers by eye in
+two files. `strokes.ts` is the one place those numbers now live, both renderers
+read from it and carry no width literals of their own, so a future weight
+change is a one-file mirror. Its own header says the same thing; old values and
+every use site are tabulated in `thrive-and-score/docs/recon/d2-strokes.md`.
 
 The last row is **data, not code, and it ships in no build.** It is the frozen
 content file the PROD SEED was generated from

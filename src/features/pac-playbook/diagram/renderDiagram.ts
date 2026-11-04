@@ -14,6 +14,17 @@
 
 import { dims, easeIn, head, partial, waypointReached } from './geometry';
 import { heatSVG } from './heat';
+import {
+  CRISP,
+  DASH,
+  FIELD,
+  HEAD_TUCK,
+  LINE_DEFAULT,
+  MARK,
+  ROUND,
+  headSize,
+  lineWidth,
+} from './strokes';
 import type { Diagram, DiagramElement, Point, RenderOptions } from './types';
 
 export const CLR = {
@@ -58,7 +69,7 @@ export type BoxRect = { x0: number; x1: number; y0: number; y1: number };
  * the pass endpoint that used to touch its edge, hiding the arrowhead. So a
  * pass or run whose END lies inside a box rect is shortened along its own
  * last segment: the tip stops at the box edge minus `headLen` (the arrowhead's
- * length, geometry.ts head()). One whose START lies inside a box begins at
+ * length, strokes.ts headSize()). One whose START lies inside a box begins at
  * the edge, so the shaft does not paint under the box. Seed data untouched;
  * a segment wholly inside a box, or too short to shorten, is left as it is.
  */
@@ -97,39 +108,44 @@ export function clearBoxes(pts: Point[], rects: BoxRect[], headLen: number): Poi
   return out;
 }
 
-const chalkLine = (d: string, w: number, op: number) =>
-  `<path d="${d}" stroke="${CLR.chalk}" stroke-width="${w}" fill="none" opacity="${op}"/>`;
+/** A chalk field line. `crisp` only for straight, axis-aligned runs (strokes.ts CRISP). */
+const chalkLine = (d: string, w: number, op: number, crisp = false) =>
+  `<path d="${d}" stroke="${CLR.chalk}" stroke-width="${w}" fill="none" opacity="${op}" ${crisp ? CRISP : ROUND}/>`;
+/** The goal mouth, ink over chalk, from (x1,y) to (x2,y). */
+const goalLine = (x1: number, x2: number, y: number) =>
+  `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${CLR.ink}" stroke-width="${FIELD.goal}" ${CRISP}/>`;
 
 /** Chalk-white reference lines only — no turf fill. Motion spec, "Coordinate spaces". */
 export function backdrop(b: string | undefined, w: number, h: number): string {
   if (b === 'zoom-touchline')
     return (
-      chalkLine(`M 4 ${h - 7} L ${w - 4} ${h - 7}`, 0.6, 0.5) +
-      chalkLine(`M ${w - 4} 9 L ${w - 24} 9 L ${w - 24} 28`, 0.5, 0.35)
+      chalkLine(`M 4 ${h - 7} L ${w - 4} ${h - 7}`, FIELD.touchline, 0.5, true) +
+      chalkLine(`M ${w - 4} 9 L ${w - 24} 9 L ${w - 24} 28`, FIELD.line, 0.35, true)
     );
   if (b === 'zoom-goal')
     return (
-      chalkLine(`M 18 ${h - 4} L 18 ${h - 24} L ${w - 18} ${h - 24} L ${w - 18} ${h - 4}`, 0.5, 0.4) +
-      `<line x1="${w / 2 - 9}" y1="${h - 3.5}" x2="${w / 2 + 9}" y2="${h - 3.5}" stroke="${CLR.ink}" stroke-width="1.4"/>` +
-      chalkLine(`M ${w / 2 - 10} ${h - 24} A 10 10 0 0 1 ${w / 2 + 10} ${h - 24}`, 0.5, 0.4)
+      chalkLine(`M 18 ${h - 4} L 18 ${h - 24} L ${w - 18} ${h - 24} L ${w - 18} ${h - 4}`, FIELD.line, 0.4, true) +
+      goalLine(w / 2 - 9, w / 2 + 9, h - 3.5) +
+      chalkLine(`M ${w / 2 - 10} ${h - 24} A 10 10 0 0 1 ${w / 2 + 10} ${h - 24}`, FIELD.line, 0.4)
     );
   if (b === 'zoom-goal-top')
     return (
-      chalkLine(`M 18 4 L 18 24 L ${w - 18} 24 L ${w - 18} 4`, 0.5, 0.4) +
-      `<line x1="${w / 2 - 9}" y1="3.5" x2="${w / 2 + 9}" y2="3.5" stroke="${CLR.ink}" stroke-width="1.4"/>` +
-      chalkLine(`M ${w / 2 - 10} 24 A 10 10 0 0 0 ${w / 2 + 10} 24`, 0.5, 0.4)
+      chalkLine(`M 18 4 L 18 24 L ${w - 18} 24 L ${w - 18} 4`, FIELD.line, 0.4, true) +
+      goalLine(w / 2 - 9, w / 2 + 9, 3.5) +
+      chalkLine(`M ${w / 2 - 10} 24 A 10 10 0 0 0 ${w / 2 + 10} 24`, FIELD.line, 0.4)
     );
   if (b === 'full-pitch') {
-    const st = `stroke="${CLR.chalk}" stroke-width="0.5" fill="none" opacity="0.45"`;
+    const st = `stroke="${CLR.chalk}" stroke-width="${FIELD.line}" fill="none" opacity="0.45"`;
+    const sq = `${st} ${CRISP}`; // straight lines snap; the circle keeps its anti-aliasing
     return (
-      `<rect x="3" y="3" width="${w - 6}" height="${h - 6}" rx="1.5" ${st}/>` +
-      `<line x1="3" y1="${h / 2}" x2="${w - 3}" y2="${h / 2}" ${st}/>` +
+      `<rect x="3" y="3" width="${w - 6}" height="${h - 6}" rx="1.5" ${sq}/>` +
+      `<line x1="3" y1="${h / 2}" x2="${w - 3}" y2="${h / 2}" ${sq}/>` +
       `<circle cx="${w / 2}" cy="${h / 2}" r="10" ${st}/>` +
-      `<rect x="${w / 2 - 22}" y="3" width="44" height="16" ${st}/>` +
-      `<rect x="${w / 2 - 22}" y="${h - 19}" width="44" height="16" ${st}/>` +
-      `<rect x="${w / 2 - 10}" y="3" width="20" height="7" ${st}/>` +
-      `<rect x="${w / 2 - 10}" y="${h - 10}" width="20" height="7" ${st}/>` +
-      `<line x1="${w / 2 - 9}" y1="3.4" x2="${w / 2 + 9}" y2="3.4" stroke="${CLR.ink}" stroke-width="1.4"/>`
+      `<rect x="${w / 2 - 22}" y="3" width="44" height="16" ${sq}/>` +
+      `<rect x="${w / 2 - 22}" y="${h - 19}" width="44" height="16" ${sq}/>` +
+      `<rect x="${w / 2 - 10}" y="3" width="20" height="7" ${sq}/>` +
+      `<rect x="${w / 2 - 10}" y="${h - 10}" width="20" height="7" ${sq}/>` +
+      goalLine(w / 2 - 9, w / 2 + 9, 3.4)
     );
   }
   if (b === 'futsal') {
@@ -142,7 +158,8 @@ export function backdrop(b: string | undefined, w: number, h: number): string {
     // above), the net drawn 1 m deep behind the line.
     const r2 = (v: number) => Math.round(v * 100) / 100;
     const u = (m: number) => r2(m * 3.3); // metres -> viewBox units
-    const st = `stroke="${CLR.chalk}" stroke-width="0.5" fill="none" opacity="0.45"`;
+    const st = `stroke="${CLR.chalk}" stroke-width="${FIELD.line}" fill="none" opacity="0.45"`;
+    const sq = `${st} ${CRISP}`;
     const dot = (y: number) => `<circle cx="${w / 2}" cy="${y}" r="0.5" fill="${CLR.chalk}" opacity="0.45"/>`;
     const x0 = r2(w / 2 - u(10));
     const y0 = r2(h / 2 - u(20));
@@ -155,13 +172,13 @@ export function backdrop(b: string | undefined, w: number, h: number): string {
         `<path d="M ${r2(w / 2 - u(1.58) - u(6))} ${g} A ${u(6)} ${u(6)} 0 0 ${sw} ${r2(w / 2 - u(1.58))} ${a} L ${r2(w / 2 + u(1.58))} ${a} A ${u(6)} ${u(6)} 0 0 ${sw} ${r2(w / 2 + u(1.58) + u(6))} ${g}" ${st}/>` +
         dot(a) +
         dot(r2(g + dir * u(10))) +
-        `<rect x="${r2(w / 2 - u(1.5))}" y="${net}" width="${u(3)}" height="${u(1)}" ${st}/>` +
-        `<line x1="${r2(w / 2 - u(1.5))}" y1="${g}" x2="${r2(w / 2 + u(1.5))}" y2="${g}" stroke="${CLR.ink}" stroke-width="1.4"/>`
+        `<rect x="${r2(w / 2 - u(1.5))}" y="${net}" width="${u(3)}" height="${u(1)}" ${sq}/>` +
+        goalLine(r2(w / 2 - u(1.5)), r2(w / 2 + u(1.5)), g)
       );
     };
     return (
-      `<rect x="${x0}" y="${y0}" width="${u(20)}" height="${u(40)}" rx="0.6" ${st}/>` +
-      `<line x1="${x0}" y1="${h / 2}" x2="${r2(w / 2 + u(10))}" y2="${h / 2}" ${st}/>` +
+      `<rect x="${x0}" y="${y0}" width="${u(20)}" height="${u(40)}" rx="0.6" ${sq}/>` +
+      `<line x1="${x0}" y1="${h / 2}" x2="${r2(w / 2 + u(10))}" y2="${h / 2}" ${sq}/>` +
       `<circle cx="${w / 2}" cy="${h / 2}" r="${u(3)}" ${st}/>` +
       dot(h / 2) +
       end(y0, 1) +
@@ -169,6 +186,18 @@ export function backdrop(b: string | undefined, w: number, h: number): string {
     );
   }
   return '';
+}
+
+/** `pts` with its last point pulled back `by` units along the last segment (never past its start). */
+function tuck(pts: Point[], by: number): Point[] {
+  const n = pts.length;
+  if (n < 2) return pts;
+  const [px, py] = pts[n - 2];
+  const [qx, qy] = pts[n - 1];
+  const len = Math.hypot(qx - px, qy - py);
+  if (len <= by) return pts;
+  const f = (len - by) / len;
+  return [...pts.slice(0, -1), [px + (qx - px) * f, py + (qy - py) * f]];
 }
 
 export function render(d: Diagram, tt: number | null, opts?: RenderOptions): string {
@@ -249,23 +278,26 @@ export function render(d: Diagram, tt: number | null, opts?: RenderOptions): str
     if (['pass', 'run', 'reference', 'option'].indexOf(el.type) < 0 || el.hidden) return;
     const p = el.type === 'reference' ? 1 : prog(el);
     if (p <= 0) return;
-    const wgt =
-      el.weight ||
-      (el.type === 'pass' ? 0.8 : el.type === 'run' ? 0.7 : el.type === 'option' ? 0.7 : 0.5);
+    // Stored or default weight, thinned by strokes.ts LINE_SCALE (D2).
+    const wgt = lineWidth(el.weight || LINE_DEFAULT[el.type as keyof typeof LINE_DEFAULT]);
     const raw: Point[] = el.points || [
       [10, 10],
       [30, 30],
     ];
     const pts =
-      el.type === 'pass' || el.type === 'run' ? clearBoxes(raw, boxRects, 2.2 + wgt * 0.6) : raw;
+      el.type === 'pass' || el.type === 'run' ? clearBoxes(raw, boxRects, headSize(wgt)) : raw;
     const { pts: pp, end } = partial(pts, p);
     const c = el.type === 'reference' ? CLR.them : col(el) || CLR.us;
-    const path = 'M ' + pp.map((q) => q.join(' ')).join(' L ');
+    const arrow = el.type !== 'reference' && !el.noarrow && p >= 1;
+    // With its head on, the shaft stops HEAD_TUCK into the head, so the round
+    // cap hides inside the triangle and the tip stays sharp.
+    const shaft = arrow ? tuck(pp, headSize(wgt) * HEAD_TUCK) : pp;
+    const path = 'M ' + shaft.map((q) => q.join(' ')).join(' L ');
     const dash =
       el.type === 'run'
-        ? 'stroke-dasharray="2.6 2"'
+        ? `stroke-dasharray="${DASH.run}"`
         : el.type === 'reference'
-          ? 'stroke-dasharray="1.4 2"'
+          ? `stroke-dasharray="${DASH.reference}"`
           : '';
     const op =
       el.type === 'reference'
@@ -277,25 +309,25 @@ export function render(d: Diagram, tt: number | null, opts?: RenderOptions): str
           : (el.opacity ?? 1);
     const sel = o0.sel === el.id;
     if (sel)
-      o += `<path d="M ${pts.map((q) => q.join(' ')).join(' L ')}" stroke="#ffd166" stroke-width="${wgt * 4}" fill="none" opacity=".3"/>`;
-    o += `<path data-el="${el.id}" d="${path}" stroke="${c}" stroke-width="${wgt}" fill="none" ${dash} stroke-linecap="round" stroke-linejoin="round" opacity="${op}"/>`;
+      o += `<path d="M ${pts.map((q) => q.join(' ')).join(' L ')}" stroke="#ffd166" stroke-width="${wgt * MARK.selectHalo}" fill="none" ${ROUND} opacity=".3"/>`;
+    o += `<path data-el="${el.id}" d="${path}" stroke="${c}" stroke-width="${wgt}" fill="none" ${dash} ${ROUND} opacity="${op}"/>`;
     if (el.dots && pts.length > 2)
       pts.slice(1, -1).forEach((q, i) => {
         const on = waypointReached(pts, p, i + 1);
-        o += `<circle cx="${q[0]}" cy="${q[1]}" r="1.4" fill="${on ? c : 'none'}" stroke="${c}" stroke-width="0.5"/>`;
+        o += `<circle cx="${q[0]}" cy="${q[1]}" r="1.4" fill="${on ? c : 'none'}" stroke="${c}" stroke-width="${MARK.waypoint}"/>`;
       });
-    if (el.type !== 'reference' && !el.noarrow && p >= 1)
+    if (arrow)
       o += `<g opacity="${op}">${head(pts[pts.length - 2], end, c, wgt)}</g>`;
     if (el.cue && p > 0 && p < 1) {
       const r = 3.2 + 1.6 * Math.abs(Math.sin(tnow / 110));
-      o += `<circle cx="${end[0]}" cy="${end[1]}" r="${r}" fill="none" stroke="${CLR.us}" stroke-width="0.6" opacity="${0.9 - 0.5 * ((r - 3.2) / 1.6)}"/>`;
+      o += `<circle cx="${end[0]}" cy="${end[1]}" r="${r}" fill="none" stroke="${CLR.us}" stroke-width="${MARK.cue}" opacity="${0.9 - 0.5 * ((r - 3.2) / 1.6)}"/>`;
     }
   });
 
   E.forEach((el) => {
     const sel = o0.sel === el.id;
     const hl = sel
-      ? `<circle cx="${pos(el)[0]}" cy="${pos(el)[1]}" r="${(el.size || 4) + 3}" fill="none" stroke="#ffd166" stroke-width=".8" stroke-dasharray="2 1.5"/>`
+      ? `<circle cx="${pos(el)[0]}" cy="${pos(el)[1]}" r="${(el.size || 4) + 3}" fill="none" stroke="#ffd166" stroke-width="${MARK.select}" stroke-dasharray="2 1.5"/>`
       : '';
     if (el.type === 'player' || el.type === 'opponent') {
       const [x, y] = pos(el);
@@ -306,36 +338,36 @@ export function render(d: Diagram, tt: number | null, opts?: RenderOptions): str
       o +=
         hl +
         (isPick
-          ? `<circle cx="${x}" cy="${y}" r="${sz + 2.2}" fill="none" stroke="${CLR.us}" stroke-width=".8"/>`
+          ? `<circle cx="${x}" cy="${y}" r="${sz + 2.2}" fill="none" stroke="${CLR.us}" stroke-width="${MARK.pick}"/>`
           : '') +
-        `<circle data-el="${el.id}" cx="${x}" cy="${y}" r="${sz}" fill="${c}" stroke="#0b1220" stroke-width="0.7" opacity="${dimmed ? 0.35 : (el.opacity ?? 1)}" ${o0.tap ? 'style="cursor:pointer"' : ''}/>`;
+        `<circle data-el="${el.id}" cx="${x}" cy="${y}" r="${sz}" fill="${c}" stroke="#0b1220" stroke-width="${MARK.player}" opacity="${dimmed ? 0.35 : (el.opacity ?? 1)}" ${o0.tap ? 'style="cursor:pointer"' : ''}/>`;
       if (el.tag)
         o += `<text x="${x}" y="${y + 1.2}" text-anchor="middle" font-size="${sz * 1.1}" font-weight="800" fill="#0b1220" pointer-events="none" opacity="${dimmed ? 0.5 : 1}">${esc(el.tag)}</text>`;
     } else if (el.type === 'ball') {
       const [x, y] = pos(el);
-      o += `${hl}<circle data-el="${el.id}" cx="${x}" cy="${y}" r="${el.size || 1.8}" fill="${CLR.ball}" stroke="#0b1220" stroke-width="0.5"/>`;
+      o += `${hl}<circle data-el="${el.id}" cx="${x}" cy="${y}" r="${el.size || 1.8}" fill="${CLR.ball}" stroke="#0b1220" stroke-width="${MARK.ball}"/>`;
     } else if (el.type === 'ring') {
       const p = el.at != null ? progLin(el) : 1;
       if (p <= 0) return;
-      o += `${hl}<circle data-el="${el.id}" cx="${el.x}" cy="${el.y}" r="${el.size || 12}" fill="none" stroke="${col(el) || CLR.us}" stroke-width="0.7" stroke-dasharray="2.6 2.2" opacity="${(el.opacity ?? 0.85) * p}"/>`;
+      o += `${hl}<circle data-el="${el.id}" cx="${el.x}" cy="${el.y}" r="${el.size || 12}" fill="none" stroke="${col(el) || CLR.us}" stroke-width="${MARK.ring}" stroke-dasharray="${DASH.ring}" opacity="${(el.opacity ?? 0.85) * p}"/>`;
     } else if (el.type === 'badge') {
-      o += `${hl}<circle data-el="${el.id}" cx="${el.x}" cy="${el.y}" r="3.2" fill="#0b1220" stroke="${CLR.us}" stroke-width="0.7"/><text x="${el.x}" y="${(el.y ?? 0) + 1.4}" text-anchor="middle" font-size="3.6" font-weight="800" fill="${CLR.ink}" pointer-events="none">${esc(el.text || '')}</text>`;
+      o += `${hl}<circle data-el="${el.id}" cx="${el.x}" cy="${el.y}" r="3.2" fill="#0b1220" stroke="${CLR.us}" stroke-width="${MARK.badge}"/><text x="${el.x}" y="${(el.y ?? 0) + 1.4}" text-anchor="middle" font-size="3.6" font-weight="800" fill="${CLR.ink}" pointer-events="none">${esc(el.text || '')}</text>`;
     } else if (el.type === 'box') {
       const txt = boxLabel(el);
       const bw = boxWidth(el.w, txt);
       const bh = el.h || 9;
-      o += `${hl}<rect data-el="${el.id}" x="${(el.x ?? 0) - bw / 2}" y="${(el.y ?? 0) - bh / 2}" width="${bw}" height="${bh}" rx="2.2" fill="#172031" stroke="${col(el) || '#3a4556'}" stroke-width="0.6"/><text x="${el.x}" y="${(el.y ?? 0) + 1.5}" text-anchor="middle" font-size="4.2" font-weight="800" letter-spacing=".3" fill="${col(el) || CLR.ink}" pointer-events="none">${esc(txt || '')}</text>`;
+      o += `${hl}<rect data-el="${el.id}" x="${(el.x ?? 0) - bw / 2}" y="${(el.y ?? 0) - bh / 2}" width="${bw}" height="${bh}" rx="2.2" fill="#172031" stroke="${col(el) || '#3a4556'}" stroke-width="${MARK.box}"/><text x="${el.x}" y="${(el.y ?? 0) + 1.5}" text-anchor="middle" font-size="4.2" font-weight="800" letter-spacing=".3" fill="${col(el) || CLR.ink}" pointer-events="none">${esc(txt || '')}</text>`;
     } else if (el.type === 'label') {
       o += `${hl}<text data-el="${el.id}" x="${el.x}" y="${el.y}" text-anchor="middle" font-size="${el.size || 4}" font-weight="700" fill="${col(el) || CLR.chalk}">${esc(es && el.text_es ? el.text_es : el.text || '')}</text>`;
     } else if (el.type === 'xmark') {
       const s = el.size || 2.4;
-      o += `${hl}<path data-el="${el.id}" d="M ${(el.x ?? 0) - s} ${(el.y ?? 0) - s} L ${(el.x ?? 0) + s} ${(el.y ?? 0) + s} M ${(el.x ?? 0) - s} ${(el.y ?? 0) + s} L ${(el.x ?? 0) + s} ${(el.y ?? 0) - s}" stroke="${col(el) || '#e0705f'}" stroke-width="0.9" stroke-linecap="round"/>`;
+      o += `${hl}<path data-el="${el.id}" d="M ${(el.x ?? 0) - s} ${(el.y ?? 0) - s} L ${(el.x ?? 0) + s} ${(el.y ?? 0) + s} M ${(el.x ?? 0) - s} ${(el.y ?? 0) + s} L ${(el.x ?? 0) + s} ${(el.y ?? 0) - s}" stroke="${col(el) || '#e0705f'}" stroke-width="${MARK.xmark}" stroke-linecap="round"/>`;
     }
   });
 
   if (o0.target) {
     const g = o0.target;
-    o += `<circle cx="${g.x}" cy="${g.y}" r="${g.r || 8}" fill="rgba(16,185,129,.14)" stroke="${CLR.us}" stroke-width=".6" stroke-dasharray="2 2"/>`;
+    o += `<circle cx="${g.x}" cy="${g.y}" r="${g.r || 8}" fill="rgba(16,185,129,.14)" stroke="${CLR.us}" stroke-width="${MARK.target}" stroke-dasharray="2 2"/>`;
   }
 
   // The heat field goes under the elements but over the backdrop, so the

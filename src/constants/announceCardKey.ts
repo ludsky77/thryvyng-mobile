@@ -27,10 +27,24 @@
  * separator, whitespace, a dot, a quote or a non-ASCII character is rejected
  * and the tap opens the cover.
  *
- * THE REAL KEYS ARE SHORTER THAN THIS. All 69 in the frozen book are
- * `[A-Z0-9]{2,6}` — F0..F5, P1..P19, MV0..MV2, GF1..GF7, PL1..PL4, M1..M4,
- * SET, HUNT, HOLD, STORM. The bound is 16 with `_` and `-` allowed purely as
- * headroom, so a future chapter cannot be locked out by this line.
+ * THE REAL KEYS ARE SHORTER THAN THIS. Every published key is
+ * `[A-Z0-9]{2,6}` — F0..F5 and F7..F11 (there is no F6), P1..P19, MV0..MV2,
+ * GF1..GF7, PL1..PL4, M1..M4, SET, HUNT, HOLD, STORM. The bound is 16 with
+ * `_` and `-` allowed purely as headroom, so a future chapter cannot be
+ * locked out by this line.
+ *
+ * CORRECTED 2026-11-04 (RELEASE-1.0.20-FIXES item 11). This line read "All 69
+ * in the frozen book" and listed Foundations as `F0..F5`, which stopped being
+ * true the day web content **batch 2** was applied to prod, 2026-11-03: it
+ * inserted FIVE more Foundations cards, `F7`–`F11` (sorts 8–12, published),
+ * which makes 74 and not 69. Source for the five and their keys is the apply
+ * SQL, `thrive-and-score/supabase/content/20261102224500_playbook_content_b_apply.sql:223-232`
+ * (gate P03 `:295-299`), recorded in `docs/recon/test-plan-1.0.20-nov03.md`
+ * §0.2 and SEEN on screen in Round 1 — the card badge read "F10 · Card 5 of
+ * 6" (`docs/recon/test-results-1.0.20-round1-nov04.md` §2d). The 74 is
+ * arithmetic over that SQL, not a DB count: no database was queried. The
+ * PATTERN never needed changing — `F7` always matched, and this is a comment
+ * that had gone stale, not a gate that was wrong.
  *
  * IMPORTED BY: `src/navigation/AppNavigator.tsx` (the push branch),
  * `src/lib/clubAnnouncementCards.ts` (the action allow-list, which the compose

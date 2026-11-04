@@ -9,7 +9,10 @@ import {
   Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useGameSession } from '../hooks/useGameSession';
+import {
+  RECORD_SESSION_MESSAGES,
+  useGameSession,
+} from '../hooks/useGameSession';
 import FieldVisionGame from '../components/games/FieldVisionGame';
 import PatternPlayGame from '../components/games/PatternPlayGame';
 import DecisionPointGame from '../components/games/DecisionPointGame';
@@ -55,9 +58,21 @@ export default function GamePlayScreen({ navigation, route }: GamePlayScreenProp
     setLastResult(result);
     setGameComplete(true);
 
-    const success = await recordSession(result, durationSeconds);
-    if (!success) {
-      Alert.alert('Error', 'Failed to save your progress. Please try again.');
+    /*
+     * RELEASE-1.0.20-FIXES (Lu, 2026-11-04): the alert now says WHICH part did
+     * not stick. `recordSession` used to answer true/false, and three of its
+     * four writes could fail without ever reaching the false branch — see the
+     * hook's own note. The sentence per step lives next to the steps, in
+     * `RECORD_SESSION_MESSAGES`, so the message and the code that produces it
+     * cannot drift. Every failure is also reported through `logError` inside
+     * the hook, which this alert does not duplicate.
+     */
+    const outcome = await recordSession(result, durationSeconds);
+    if (!outcome.ok) {
+      Alert.alert(
+        "Progress didn't save",
+        RECORD_SESSION_MESSAGES[outcome.step]
+      );
     }
   };
 

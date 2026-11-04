@@ -27,8 +27,10 @@ import { setActiveChannelId } from '../services/notifications';
 import {
   CLUB_ANNOUNCEMENTS_MISSING_MESSAGE,
   CLUB_ANNOUNCEMENTS_UNREACHABLE_MESSAGE,
+  announcementsChatName,
   getClubAnnouncementsChannel,
 } from '../lib/clubAnnouncements';
+import { MegaphoneIcon } from '../components/chat/MegaphoneIcon';
 import {
   ANNOUNCEMENTS_SETUP_PENDING_DETAIL,
   ANNOUNCEMENTS_SETUP_PENDING_MESSAGE,
@@ -392,10 +394,14 @@ export default function AnnouncementsFeedScreen({
 
   /* ── render ─────────────────────────────────────────────────────────── */
 
-  const headerTitle =
-    (channelState.status === 'ready' ? channelState.name : null) ||
-    params.channelName ||
-    'Announcements';
+  /**
+   * R-01 (Lu, 2026-11-04): the title is NOT the channel's `name`. Every
+   * channel this screen can open is the club's one default `club` channel —
+   * that is how it finds it — and that row is named `club-announcements`, a
+   * slug families were reading off the header. So the club's own name decides
+   * what it says: "PAC Announcements". Display only; the row is untouched.
+   */
+  const headerTitle = announcementsChatName(clubName);
 
   const header = (
     <View style={styles.header}>
@@ -406,9 +412,17 @@ export default function AnnouncementsFeedScreen({
         <Feather name="arrow-left" size={24} color="#fff" />
       </TouchableOpacity>
       <View style={styles.headerCenter}>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {headerTitle}
-        </Text>
+        {/* R-01: the megaphone takes the round badge spot a team chat gives
+            its club crest — `TeamChatRoomScreen`'s `headerCrest`, same 18pt
+            circle, same place in the title row. */}
+        <View style={styles.headerTitleRow}>
+          <View style={styles.headerBadge}>
+            <MegaphoneIcon size={12} color="#fff" />
+          </View>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {headerTitle}
+          </Text>
+        </View>
         {clubName ? (
           <Text style={styles.headerSubtitle} numberOfLines={1}>
             {clubName}
@@ -658,6 +672,26 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  /** The title and its badge on one line (`TeamChatRoomScreen.headerTitleRow`). */
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  /**
+   * The megaphone's round badge spot — R-01. An 18pt circle, which is the size
+   * a team chat's club crest takes in this same place, in the channel colour
+   * the chat list already gives this row (`getChannelColor`'s `club` arm).
+   */
+  headerBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#C4976D',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   headerCenter: {
     flex: 1,

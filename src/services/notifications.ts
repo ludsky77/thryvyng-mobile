@@ -35,12 +35,18 @@ Notifications.setNotificationHandler({
 
     // shouldShowBanner/shouldShowList are the SDK 54 split of the deprecated
     // shouldShowAlert, which covered banner + notification centre as one flag.
-    // Each branch mirrors its own shouldShowAlert, so behaviour is unchanged.
+    // RELEASE-1.0.20-FIXES (2026-11-04): shouldShowAlert is GONE from both
+    // branches. It was being sent alongside the two new keys, so every receipt
+    // logged `shouldShowAlert is deprecated. Specify shouldShowBanner and / or
+    // shouldShowList instead.` -- the WARN Round 1 saw on each of its three
+    // tries. The two keys that replace it were already here and already
+    // correct, so what this removes is the warning, not a behaviour: see
+    // docs/ledger.md RELEASE-1.0.20-FIXES for why the missing banner is now
+    // put down to permission or the banner window instead.
     // Device proof Oct 21 2026, 1.0.17, app open on Home: a chat push DID banner,
     // i.e. the `true` branch below is what the device already does.
     if (channelId && channelId === activeChannelId) {
       return {
-        shouldShowAlert: false,
         shouldShowBanner: false,
         shouldShowList: false,
         shouldPlaySound: false,
@@ -49,7 +55,6 @@ Notifications.setNotificationHandler({
     }
 
     return {
-      shouldShowAlert: true,
       shouldShowBanner: true,
       shouldShowList: true,
       shouldPlaySound: true,

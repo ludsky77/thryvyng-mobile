@@ -96,6 +96,18 @@ function readingNav(
   return { prev, next, nextKind, nextSectionName, indexInChapter: i, chapterCards, subList, subPos };
 }
 
+/**
+ * The book's credit, `meta.author`, is one string "Name · Club" (the
+ * prototype's "Ludwig Sz. · Provo Athletic Club"). D1 splits it at the first
+ * " · ": the club rides with the card count, the name gets its own line. A
+ * credit with no " · " is all name. Verbatim from the web's `CardScreen.tsx`.
+ */
+function splitByline(author: string): { name: string; club: string } {
+  const i = author.indexOf(' · ');
+  if (i < 0) return { name: author.trim(), club: '' };
+  return { name: author.slice(0, i).trim(), club: author.slice(i + 3).trim() };
+}
+
 interface CardScreenProps {
   card: Card;
   chapter: ChapterRow;
@@ -201,6 +213,7 @@ export function CardScreen(props: CardScreenProps) {
    */
   const subIndex = c.sub ? (chapter.content?.subs?.findIndex((s) => s.id === c.sub) ?? -1) : -1;
   const subTone = subIndex >= 0 ? toneFor(subIndex) : null;
+  const byline = splitByline(author || '');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => setBusy(false), [card.key]);
@@ -436,14 +449,20 @@ export function CardScreen(props: CardScreenProps) {
         <Text style={pbk.remindText}>{reminder}</Text>
       </View>
 
+      {/* D1 (2026-11-04): the author got clipped sharing one line with the
+          club and the card count, so the book's "Name · Club" credit is split:
+          club + count on the top line, the name on its own line under it. */}
       <View style={pbk.auth}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <View style={pbk.authMag} />
-          <Text style={pbk.authText}>{author}</Text>
+        <View style={pbk.authRow}>
+          <View style={pbk.authClub}>
+            <View style={pbk.authMag} />
+            <Text style={[pbk.authText, pbk.authClubText]}>{byline.club}</Text>
+          </View>
+          <Text style={[pbk.authText, pbk.authCount]}>
+            {t('card')} {nav.indexInChapter + 1} / {nav.chapterCards.length}
+          </Text>
         </View>
-        <Text style={pbk.authText}>
-          {t('card')} {nav.indexInChapter + 1} / {nav.chapterCards.length}
-        </Text>
+        {byline.name ? <Text style={pbk.authBy}>{byline.name}</Text> : null}
       </View>
 
       {gotError ? <Text style={pbk.qstatus}>{gotError}</Text> : null}

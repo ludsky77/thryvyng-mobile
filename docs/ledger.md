@@ -2545,13 +2545,29 @@ it. Nothing here has been seen by a human on a real phone.
     1. **🔧 BROKEN FLOW: the announcement Reactions sheet does not scroll.** 14
        reactors, list cut off, no way to reach the rest. On a feed that reaches
        ~231 families this is the normal case, not an edge case.
-    2. **🔧 BROKEN FLOW, INFERRED: no banner while the app is open.** Metro WARN
-       on each receipt: **``shouldShowAlert` is deprecated. Specify
-       `shouldShowBanner` and / or `shouldShowList` instead.``** The
-       notification arrives and is never presented. INFERRED because nothing was
-       changed to prove it — but the warning and the symptom match exactly.
-       **This is also what blocked the push tap test**, so fixing it unblocks
-       Round 3.
+    2. **🔧 no banner while the app is open — the WARN is real, the DIAGNOSIS
+       was wrong. CORRECTED 2026-11-04.** Metro WARN on each receipt:
+       **``shouldShowAlert` is deprecated. Specify `shouldShowBanner` and / or
+       `shouldShowList` instead.``** That warning was real and is now gone
+       (`shouldShowAlert` removed from both branches, 2026-11-04).
+       **THIS ENTRY USED TO SAY THE BANNER IS WHY THE PUSH TAP TEST FAILED.
+       That is wrong for the backgrounded attempt**, and the backgrounded
+       attempt is the one the test needed: **iOS presents a banner for a
+       BACKGROUNDED app itself.** `setNotificationHandler` is consulted only
+       while the app is in the **foreground**, so no handler key — deprecated or
+       current — can explain a missing banner with the app backgrounded. The two
+       keys that replace `shouldShowAlert` were already present and already
+       correct, so nothing about presentation changed when the deprecated one
+       was dropped.
+       **LIKELY CAUSE INSTEAD — INFERRED, nothing was checked during the run:**
+       **notification permission was never granted** on that simulator, or the
+       banner appeared and closed inside its **~5 second window** before Lu
+       looked. **Round 3, in this order:** (1) simulator → Settings →
+       Notifications → **the dev client actually running** (`com.thryvyng.app`,
+       not `com.weolkn.thryvyng` from `app.json`) → **Allow Notifications ON**;
+       (2) **watch the screen while the push is sent**, do not send and then
+       look. Only then run the tap test. Detail:
+       `docs/recon/release-1.0.20-fixes.md` §12.
     3. **D1 — the card footer runs together and clips.** On screen:
        `LUDWIG SZ. · PROVO ATHLETIC CLUBCARD 11 / 12`. **Lu's ruling: the author
        goes on its own line below, in a different font style, on every card.**
@@ -2569,26 +2585,190 @@ it. Nothing here has been seen by a human on a real phone.
       **content** (a `playbook_blocks` row), so it needs a content change **and
       a dry run**.
     * **D4 — the `FM5v5` diagram: "good enough for now."** Improve later.
-    * **Channel display name** — the feed shows the raw slug
-      `club-announcements`. **NEEDS A LU RULING** on what it should read.
+    * **Channel display name** — ~~the feed shows the raw slug
+      `club-announcements`, NEEDS A LU RULING~~ — **RULED AND BUILT. Ruling
+      R-01, Lu 2026-11-04: "`<club short name> Announcements`" (PAC → "PAC
+      Announcements"), plus a custom line-drawn megaphone in the round avatar
+      spot.** Moved OUT of "AFTER 1.0.20" and INTO 1.0.20; built the same day,
+      see the BUILT block below. **The push TITLE is NOT part of it** — that
+      string is built server-side by `chatContextName` in the edge function and
+      is in neither repo (`docs/recon/club-announcements-v1-mobile.md:457-460`),
+      so a push still arrives titled `club-announcements`.
     * **No-name accounts** render as **"Member"** / **"Grayson's parent"** (seen
       on a Team Manager).
   - **CARRIED FORWARD, still open, from the step-4 defect sweep** (none of these
     is new tonight; they are listed here so the 1.0.20 list is one list):
     **the 5 games `tsc` errors**, including the missing `getGutterBoundaryX`
-    (`DribbleRushGame.tsx:712-713` — UNKNOWN if reachable in prod); **the games'
-    silent save failure** (INFERRED, `docs/recon/arcade.md` §0.1); **the Courses
-    header behind the notch**; **the calendar list card's wrong "?" count**; and
+    (`DribbleRushGame.tsx:712-713` — ~~UNKNOWN if reachable in prod~~
+    **ANSWERED 2026-11-04: NOT reachable.** Its only caller, `PerspectiveField`,
+    is declared in that file and **rendered nowhere** — grep finds the
+    declaration and no use — so the `ReferenceError` could never fire); **the
+    games' silent save failure** (INFERRED, `docs/recon/arcade.md` §0.1); ~~**the
+    Courses header behind the notch**~~ — **THIS LINE WAS STALE. Its target,
+    `CoursesScreen.tsx`, was fixed 2026-10-30 in `892edbe` ("Courses
+    safe-area")** and has carried `SafeAreaView edges={['top']}` since;
+    `git log -S"edges={['top']}"` on that file names the commit. The same root
+    DID still exist one site over, in `MyCoursesScreen.tsx`, and that is what
+    was fixed 2026-11-04; **the calendar list card's wrong "?" count**; and
     **the stale docblock at `src/constants/announceCardKey.ts:30-33`**, which
     still says the keys are "F0..F5" after batch 2 added `F7`–`F11`.
+  - **BUILT 2026-11-04 — all twelve items, one pass, nothing committed. EVERY
+    ROW IS `built, unverified by Lu`.** The Round 2 test list — one row per
+    item, the exact screen and taps, and the test account each needs — is
+    **`docs/recon/release-1.0.20-fixes.md`**. Per item:
+    1. **R-01 · announcements chat name + megaphone — built, unverified by Lu.**
+       One rule, `announcementsChatName()` in `src/lib/clubAnnouncements.ts`,
+       on **four** surfaces: chat list card, feed header, the chat-room
+       fallback header (`TeamChatRoomScreen`) and Chat info. Short name is
+       DERIVED — **there is no `short_name` column on `clubs`** (mobile reads
+       `id, name, logo_url, payment_terms_text` and nothing else): a name of
+       **≤14 characters shows whole**, longer becomes **initials** of its
+       significant words, so "Provo Athletic Club" → **PAC**. The 14 is a
+       JUDGEMENT in one constant, `SHOW_WHOLE_UP_TO`, not a measurement.
+       Identified by the ROW (`channel_type = 'club' AND is_default`), never by
+       the name. **DISPLAY ONLY — no data write.** Icon:
+       `src/components/chat/MegaphoneIcon.tsx` (new), a 24×24 three-path inline
+       SVG, stroke-only, tinted by the caller; **`react-native-svg` 15.12.1 was
+       already a dependency** and already used by the lineup/training boards,
+       so **no new dependency**. **Push title untouched and server-side** — see
+       the corrected "Channel display name" line above.
+    2. **Reactions sheet scrolls — built, unverified by Lu.** TWO causes, and
+       the first is the real one: the dismiss backdrop was a full-screen
+       `TouchableOpacity` **wrapping** the sheet, which blocked taps with
+       `onStartShouldSetResponder={() => true}` — that claims the touch
+       responder on touch-down **before the list's scroll view can**, so a drag
+       went nowhere. The backdrop is now an absolutely-positioned `Pressable`
+       **sibling**. Second, the `FlatList` got `flexShrink: 1`: in a box bounded
+       only by `maxHeight` a list with no flex lays out at full content height
+       and the parent clips it, so it never believes it can scroll.
+    3. **Foreground banner — built, unverified by Lu, and it fixes the WARN,
+       not the banner.** `shouldShowAlert` removed from both branches;
+       `shouldShowBanner` + `shouldShowList` were already there and already
+       correct. See the corrected item 2 above for why this is unlikely to be
+       why no banner appeared.
+    4. **D1 · card footer — built, unverified by Lu.** Two lines: club + count
+       on line 1 (club wraps and never clips via `flexShrink: 1` on **both**
+       the wrapper and the text — RN gives a flex child `flexShrink: 0` where
+       the web gives it 1; the count `flexShrink: 0` so it never breaks), the
+       author's name on line 2, **italic 500 / 11.5 / sentence case /
+       `dim` #8690a0 / 18pt indent**. `splitByline()` is the web's function
+       verbatim, splitting `meta.author` at the first `" · "`; no `" · "` → all
+       name. **The italic is a FIFTH FONT FACE, not a slant** —
+       `Archivo_500Medium_Italic`, from the `@expo-google-fonts/archivo`
+       **already installed** (one more subpath import, ~0.1 MB, **no new
+       dependency**), because Archivo ships as separate files here and
+       `fontStyle: 'italic'` gets a synthetic oblique on Android and nothing on
+       iOS. It is the book's only italic.
+    5. **D2 · diagram strokes — built, unverified by Lu. MIRROR HELD.** Three
+       files copied from `thrive-and-score` @ **`e222074`** and
+       **byte-identical** (`diff -q` silent, md5 match): `diagram/strokes.ts`
+       (**NEW on mobile** — the one place every stroke width now lives),
+       `diagram/renderDiagram.ts`, `diagram/geometry.ts`. **Nothing was
+       designed here**; `MIRROR.md` updated — provenance `b31b922` → `e222074`,
+       `strokes.ts` added as the **ninth** mirrored file, and the manifest's own
+       drift command extended to include it. **That command was run and
+       passes.** Drawn line width is now `max(0.24, stored × 0.6)`, so the
+       CONTENT is not edited and emphasis keeps its proportion; the 0.24 floor
+       keeps F11's ghost lines visible. **`tapTarget()` untouched, so the quiz
+       still grades as the server does.** Full old→new table:
+       `thrive-and-score/docs/recon/d2-strokes.md`.
+    6. **Discard prompt — built, unverified by Lu.** Same `Alert` shape this
+       repo already uses on `SurveyResponseScreen.handleBack` ("Keep writing"
+       cancel, destructive "Discard"). Dirty = a title, a body **or** a drafted
+       button. Covers the **arrow** directly and the **swipe / hardware back**
+       through React Navigation's `beforeRemove`. A sent form leaves silently.
+    7. **The 5 games `tsc` errors → 0 (baseline 5) — built, unverified by Lu.
+       One of the three was a LIVE DEFECT, not type noise:**
+       `PatternPlayGame.tsx:427` passed `onPress={startRound}`, so the
+       `GestureResponderEvent` became `effectiveRound` → `roundForThisGame`;
+       `roundForThisGame === 1` was therefore false on round 1 and
+       **`startTimeRef.current` was never stamped**, and `showPattern`'s
+       `roundForRetention === 2` dim check could never fire. Now
+       `onPress={() => startRound()}`. The other two were inert:
+       `getEffectiveLanding` hoisted above its caller (body unchanged), and
+       `getGutterBoundaryX` **added** using `getLaneX`'s own arithmetic — and
+       its caller is unreachable, see the corrected carried-forward line below.
+    8. **Games save is no longer silent — built, unverified by Lu. NO SCHEMA,
+       RPC OR RLS CHANGE WAS NEEDED.** What was actually silent: **step 3
+       (`daily_game_time`) and step 4 (`award_xp_safe`) threw their `{ error }`
+       away**, so a half-written save reported SUCCESS, and every failure went
+       to `console.error`, which reaches no report on a release build.
+       `recordSession` now returns `{ ok, step }` over five named steps, checks
+       every error, reports through `utils/logError` (Sentry), and the screen
+       shows a sentence **per step** from `RECORD_SESSION_MESSAGES` that says
+       what DID land. **THE SAVE ITSELF IS STILL EXPECTED TO FAIL** for
+       `docs/recon/arcade.md` §0.1's reason — the live `game_sessions` is the
+       soccer live-stats table and has no `player_id`/`game_id`/`score`. That is
+       **SCHEMA, SACRED, and deliberately untouched**; the item asked for "not
+       silent", and that failure now reports itself as `step: 'session'` with
+       the real Postgres error. **⚠️ UNTESTABLE AS IS: no player-role test
+       account is recorded anywhere in `docs/`** (the three known accounts are
+       club admin, coach, parent), and the save keys off `currentRole.entity_id`
+       — **NEEDS LU: a player login, or confirmation the games are being retired
+       and the row can be dropped.**
+    9. **Courses notch — the ledger's own target was ALREADY FIXED; the same
+       root one site over was not. Built, unverified by Lu.** See the corrected
+       carried-forward line below. `CoursesScreen.tsx` has been safe since
+       `892edbe` (2026-10-30) and **was not touched**; `MyCoursesScreen.tsx`,
+       registered `headerShown: false` with a bare `View` root, was drawing its
+       header at y 0 and now uses the same `SafeAreaView edges={['top']}`.
+       **FOUND, reported not fixed:** `CourseDetailScreen.tsx` also has a bare
+       root, but it is registered `options={{ title: 'Course' }}` so the native
+       header sits above it and handles the inset — it is a **double header**,
+       a different cosmetic defect, not a notch bug.
+    10. **🛑 Calendar "?" count — BLOCKED. NOT BUILT, nothing changed, and this
+        is the SECOND stop on the same condition.** The rule exists
+        (`noReplyFromRoster`, `attendanceResolver.ts:214`) and the list has
+        `going`/`cantGo`; it lacks a **roster size**. **Lu's own standing
+        condition from Oct 26 is the blocker** — *"if widening `players` would
+        give a parent a different number than staff (RLS), stop and report"* —
+        and it cannot be answered here: `supabase/migrations/` holds one
+        migration and **no `players` policy SQL**, and this task forbids prod DB
+        access. Widening the read anyway would be improvising around a Lu rule.
+        **THE ONE CHECK THAT UNBLOCKS IT:** sign in as a **parent** and as
+        **staff** on the same team and compare **the Responses bar's roster
+        total on the same event**. Same number → build the widened read (~3
+        lines on the existing `players` read). Different → the RLS question is
+        real and needs its own ruling. Until then the `?` is **knowingly
+        wrong** — do not re-file it as a new bug.
+    11. **`announceCardKey.ts` docblock — corrected.** Now reads **F0..F5 and
+        F7..F11 (there is no F6)** and **74, not 69**. Sources named in the
+        comment: the batch 2 apply SQL (`…_playbook_content_b_apply.sql:223-232`,
+        gate P03 `:295-299`), `docs/recon/test-plan-1.0.20-nov03.md` §0.2, and
+        Round 1's own screen ("F10 · Card 5 of 6"). **The 74 is arithmetic over
+        that SQL, not a DB count — no database was queried.** The PATTERN never
+        needed changing: `^[A-Za-z0-9_-]{1,16}$` always matched `F7`. **FOUND,
+        not fixed:** the same stale list is written a second time at
+        `docs/ledger.md:1976` — out of this task's scope, sweep it with the next
+        ledger edit.
+    12. **This entry's banner line — corrected**, see item 2 above.
+  - **GATES, run after the last edit.** `npx tsc --noEmit` → **0 errors
+    (baseline was 5)**. `ESLINT_USE_FLAT_CONFIG=false npx eslint` on all **23
+    changed files** → **0 errors, 234 warnings** (pre-existing classes:
+    `no-console` in the games, inline styles, unused styles).
+    `npx expo export --platform ios` → **exit 0**, iOS bundle **9.51 MB**.
+    `diff` web↔mobile on `strokes.ts` / `geometry.ts` / `renderDiagram.ts` →
+    **no differences**, md5 match; `MIRROR.md`'s own drift command → silence
+    from the nine, exactly one declared `doodleArt.ts` hunk, data file
+    identical.
+  - **NOTHING SACRED TOUCHED.** No schema, no migration, no SQL, no Supabase
+    write, no RPC or RLS change, **no new dependency** (`react-native-svg` and
+    `@expo-google-fonts/archivo` were both already installed — only one more
+    subpath import from the latter), no `package.json`, no `app.json` or version
+    bump, no env, no delete, no auth, **no DB access**, no launch switch, no
+    Playbook content, no edit in the web repo (read-only), **no commit and no
+    push**. `docs/recon/arcade.md` was READ and not written; it was already
+    modified in the working tree before this task began.
   - **STATUS: `VERIFIED-SIMULATOR` for what §2 of the results file lists as
-    PASS; `AGENT-ONLY` for everything else in the 1.0.20 Playbook batch.**
-    `FM5v5` is **INFERRED OK** and owes a tab count (see the superseded
-    "Diagram pending" note above). **Nothing in this entry has been fixed** —
-    it is the ruling and the list.
-  - **Nothing SACRED touched to write this.** Docs only: no code, schema,
-    migration, dependency, env, delete, DB access or commit; no edit in
+    PASS; `AGENT-ONLY` for everything built above and for everything else in the
+    1.0.20 Playbook batch.** `FM5v5` is **INFERRED OK** and owes a tab count
+    (see the superseded "Diagram pending" note above). **The list in this entry
+    is now built, item 10 excepted — and not one row has been seen by a human.**
+  - **Nothing SACRED touched to WRITE THE LIST either** (the 2026-11-04 00:25
+    pass that created this entry, before the build above): docs only — no code,
+    schema, migration, dependency, env, delete, DB access or commit; no edit in
     `thrive-and-score`; `docs/recon/arcade.md` left as it was.
   - Source: Lu's run and ruling, 2026-11-03/04;
     **`docs/recon/test-results-1.0.20-round1-nov04.md`**;
-    `docs/recon/test-plan-1.0.20-nov03.md` (corrected in the same pass).
+    `docs/recon/test-plan-1.0.20-nov03.md` (corrected in the same pass);
+    the build: **`docs/recon/release-1.0.20-fixes.md`** (2026-11-04).

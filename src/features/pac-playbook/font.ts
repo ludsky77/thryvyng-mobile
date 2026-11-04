@@ -3,7 +3,7 @@
  *
  * The mobile counterpart of the web's `loadPlaybookFont.ts`
  * (`thrive-and-score` @ `83a3686`), which injects a Google Fonts <link> from
- * the route's own chunk. There is no <link> and no network here: the four
+ * the route's own chunk. There is no <link> and no network here: the five
  * `.ttf` files ship inside `@expo-google-fonts/archivo` and are registered
  * with the OS by `expo-font`.
  *
@@ -19,7 +19,7 @@
  * WHY IT IS SCOPED HERE AND NOT IN `App.tsx`. The standing performance ruling
  * is that the Playbook must not slow app open — the same reason the web keeps
  * the <link> out of `index.html`. This module is imported only by
- * `PlaybookScreen`, so the four faces are requested the first time the book is
+ * `PlaybookScreen`, so the five faces are requested the first time the book is
  * opened and never for the people who never open it. THE LAZY RULE (§ E3)
  * still holds: nothing here is imported from a layout, a tab or a provider.
  *
@@ -36,10 +36,11 @@ import { useFonts } from 'expo-font';
 // importing four names from it makes Metro bundle the other fourteen too —
 // measured: `npx expo export --platform ios` listed all 18 `.ttf`s, 2.2 MB of
 // font the design never asks for. Each weight also ships its own entry point
-// (`400Regular/index.js`), which pulls exactly one file. Four imports, four
-// faces, ~0.5 MB.
+// (`400Regular/index.js`), which pulls exactly one file. Five imports, five
+// faces, ~0.6 MB.
 import { Archivo_400Regular } from '@expo-google-fonts/archivo/400Regular';
 import { Archivo_500Medium } from '@expo-google-fonts/archivo/500Medium';
+import { Archivo_500Medium_Italic } from '@expo-google-fonts/archivo/500Medium_Italic';
 import { Archivo_700Bold } from '@expo-google-fonts/archivo/700Bold';
 import { Archivo_800ExtraBold } from '@expo-google-fonts/archivo/800ExtraBold';
 import { fontFamily } from './theme';
@@ -59,6 +60,9 @@ export const PLAYBOOK_FONTS = {
   [fontFamily.medium]: Archivo_500Medium,
   [fontFamily.bold]: Archivo_700Bold,
   [fontFamily.extrabold]: Archivo_800ExtraBold,
+  // D1 (2026-11-04): the card footer's author line is the book's only italic,
+  // and a separate file is the only way to get one — see `theme.ts`.
+  [fontFamily.mediumItalic]: Archivo_500Medium_Italic,
 } as const;
 
 /**

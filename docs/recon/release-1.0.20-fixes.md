@@ -1,7 +1,8 @@
 # RELEASE-1.0.20-FIXES — what was built, and how Lu sees each one
 
 **Built 2026-11-04.** Scope: the mobile ledger entry **`RELEASE-1.0.20-FIXES`** plus the new
-ruling **R-01** (announcements chat name + icon).
+rulings **R-01** (announcements chat name + icon) and **R-04** (§13 — the old brain games are
+hidden and an arcade "coming soon" tile stands in their place).
 **Status of every row below: `built, unverified by Lu`** — nothing here has been seen on a
 simulator or a phone by a human. **This file is the Round 2 test list.**
 
@@ -20,10 +21,10 @@ from an apply SQL, or from `docs/recon/test-results-1.0.20-round1-nov04.md`.
 
 | role needed | account | why |
 |---|---|---|
-| **club admin / director, PAC** | `ludriv@hotmail.com` | items 1, 2, 3, 6 — the only role with the ✎ compose door and an announcements feed with reactions |
-| **coach** | `ludwig.snchz+zztest6@gmail.com` | item 1's non-staff view of the announcements row (name + megaphone, no ✎) |
-| **parent** | `ludwig.snchz+zztest7@gmail.com` | items 4, 5 (the Playbook reader is reachable for every role) and item 1 as a family sees it |
-| **a player-role account** | *none known* | item 8 only. The brain games save against `currentRole.entity_id`; no test player account is recorded anywhere in `docs/`. **This is why item 8 is listed as UNTESTABLE-AS-IS below.** |
+| **club admin / director, PAC** | `ludriv@hotmail.com` | items 1, 2, 3, 6 — the only role with the ✎ compose door and an announcements feed with reactions; and **13d** (a dashboard that must show NO arcade tile) |
+| **coach** | `ludwig.snchz+zztest6@gmail.com` | item 1's non-staff view of the announcements row (name + megaphone, no ✎); and **13c / 13e** (the coach's arcade tile and the Team XP surfaces) |
+| **parent** | `ludwig.snchz+zztest7@gmail.com` | items 4, 5 (the Playbook reader is reachable for every role), item 1 as a family sees it, **13a / 13b / 13e**, and **§10's one INFERRED check** — the Responses bar's roster total as a parent |
+| **a player-role account** | *none known* | **No longer needed for Round 2.** It was item 8's only, and **R-04 (§13) hides the games**, so §8 is MOOT and dropped. Recorded here because it is still true: no test player account is written down anywhere in `docs/`, and the brain games save against `currentRole.entity_id`. |
 
 ---
 
@@ -233,7 +234,16 @@ type noise.
 
 ---
 
-## 8. Games silent save — now it names what failed
+## 8. Games silent save — ⚠️ MOOT after R-04 (§13). The fix is KEPT, not reverted
+
+
+> **DROP THIS FROM THE ROUND 2 LIST.** Ruling **R-04**, the same day, **hides the old brain
+> games** (§13), so **nothing can reach this code in 1.0.20** — there is no longer a way to
+> finish a level. The fix stays in place behind the same switch, because it is the better code
+> the day `LEGACY_GAMES_VISIBLE` goes back to `true`, and `logError` means whoever looks next
+> gets the real Postgres error instead of nothing. **Do not read "no alert appeared" as a
+> pass.** It was already untestable for want of a player-role account; now it is unreachable as
+> well. The rest of this section is the record, for whenever the games return.
 
 **What was actually silent.** The screen **did** already alert when `recordSession` returned
 false, so a whole-save failure was visible. What was not:
@@ -309,7 +319,29 @@ bar's.
 
 ---
 
-## 10. 🛑 Calendar "?" count — **BLOCKED**, and this is the second time on the same condition
+## 10. Calendar "?" count — **OUT OF 1.0.20 AND PARKED.** Nothing to test
+
+**Not built. Nothing was changed, in either pass.** **Moved out of 1.0.20 on 2026-11-04** into
+its own ledger entry, **`CAL-NOREPLY-COUNT`**.
+
+**Lu answered the blocking question that same day by reading the live `players` SELECT policies
+(prod `pg_policies`), and the answer CLOSES this approach rather than unblocking it:** the
+policies are **not symmetric** — staff and club admins see the whole team (`is_team_staff` /
+`is_club_admin`), but **a parent sees only their own child** (*"Parents and players can view own
+records"*). So a widened `players` read would hand a parent **1** where a coach gets **14**, and
+`noReplyFromRoster` would print a confidently wrong number on a parent's calendar — **worse than
+today's `? 0`, which is at least wrong the same way for everyone.** Three options (A staff-only
+count · B a count-only DB function, SACRED · C leave it) are written up in the ledger entry.
+**Round 2 action: none. It is a Lu decision, not a test.**
+
+> **ALSO FOUND, and INFERRED, not proven:** the same policies mean the **event-detail Responses
+> bar has probably been under-counting for parents all along** — `fetchRoster` runs unfiltered
+> for every role and feeds that bar, so a parent's call returns their own child only. **The one
+> check, worth doing in Round 2 because it is a bigger defect than the card:** open one event's
+> detail **as a parent** and read the Responses bar's roster total. If it says "1 on the
+> roster", it is confirmed.
+
+The original record of the defect follows, unchanged, because the defect itself has not moved.
 
 **Not built. Nothing was changed.** The card tallies RSVP **rows** with `status === 'pending'`
 (`CalendarScreen.tsx:256-262`), but a player who never answered **has no row at all**, so it
@@ -389,7 +421,99 @@ Then run the tap test from all three app states, naming the **running** bundle i
 
 ---
 
-## 13. One-line index — the Round 2 list
+## 13. R-04 · The old brain games are hidden; "PAC Arcade — coming soon" stands in
+
+**The ruling** (Lu, 2026-11-04): hide the old brain games in 1.0.20 and show a "coming soon"
+tile in their place. A new set of arcade games replaces them in a later build.
+
+### What changed
+
+**ONE CONSTANT, ONE FILE.** `src/constants/arcadeLaunch.ts` (**new**) holds
+`LEGACY_GAMES_VISIBLE = false`, the derived gate `legacyGamesVisible`, and the three strings the
+stand-in says. Same pattern as `playbookLaunch.ts`, and a **leaf**: it imports **only
+`react-native`** (for `Alert`) and nothing of `src/screens`, `src/hooks` or `supabase`, so both
+role dashboards and the navigator can read it without pulling a game screen into their bundle.
+**Flip it back to `true` and every entry point and both routes revert, with no other edit.**
+
+**NOTHING IS DELETED — that is what the switch is for.** All 13 game files stay on disk; **no
+row, table or policy was touched**, so every `player_game_progress`, `xp_awards` and
+`players.total_xp` value a family already earned is intact and still shown. Hiding the games
+stops that number *growing* from games; it changes nothing already there.
+
+**THE TILE.** Same slot in the same grid, **same size** (it is a flex child of the same row, so
+the row stretches all three tiles to one height), **calmer ink**: a neutral slate frame instead
+of the grid's purple, a muted icon box, and a small uppercase **"Coming soon"** chip above the
+icon. The chip is deliberately *not* in the top-right corner — that corner belongs to the
+numeric unread pill, and a word there would read as a count. Title **"PAC Arcade"**, from
+`clubShortName()` in `src/lib/clubAnnouncements.ts` — **the same one rule R-01 uses** (§1), so
+the arcade tile and the announcements chat can never abbreviate the club two ways. Subtitle
+**"New games coming soon"**. With no club name in hand it reads **"Thryvyng Arcade"** rather
+than a bare " Arcade".
+
+**THE ALERT**, for the tile tap and for any route or deep link that still aims at an old game:
+**"New games are on the way"** / *"We're building a brand-new set of soccer brain games. We'll
+let you know when they're ready."*, one **OK**. Its words live **once**, in `arcadeLaunch.ts`,
+so the tile and both route guards cannot word it three ways.
+
+**THE ROUTES STAY REGISTERED — a deliberate difference from how `playbookVisible` gates the
+`Playbook` route**, which removes the `Stack.Screen` outright. The Playbook route had never
+shipped, so nothing could point at it. `GamesHub` and `GamePlay` **have** shipped: a navigation
+state restored from disk, a saved link or any future push payload can still name them, and
+`navigate()` to an **unregistered** name does nothing at all — the person would tap and watch
+the app ignore them. Registered-and-guarded, they get the same sentence as the tile.
+`LegacyGameClosedScreen` renders an empty dark view, fires the Alert **once** (a `useRef` latch,
+so a remount cannot stack dialogs), and on OK goes back — or to `Dashboard` when there is no
+stack under it.
+
+### Every entry point, found by grep, and its new behaviour
+
+`grep -rn "'GamesHub'\|'GamePlay'" src` returns **exactly five sites**:
+
+| # | entry point | roles it serves | new behaviour |
+|---|---|---|---|
+| 1 | `PlayerDashboard.tsx:308` — the **"Games"** quick-action tile | **player AND parent** (`DashboardScreen.tsx:282-291` sends both to this dashboard) | → **"PAC Arcade"** tile, tap opens the Alert |
+| 2 | `CoachDashboard.tsx:500` — the **"Brain Games"** tile | **head_coach, assistant_coach, team_manager** | → **"PAC Arcade"** tile, tap opens the Alert |
+| 3 | the **`GamesHub` route**, `AppNavigator.tsx` | any caller, incl. a restored nav state | → `LegacyGameClosedScreen`: Alert, then back. The lazy `import()` is **never called**, so no game screen is constructed |
+| 4 | the **`GamePlay` route**, `AppNavigator.tsx` | the route a saved link is likeliest to name — it carries `gameId` / `gameSlug` / `gameName` | → same guard |
+| 5 | `GamesHubScreen.tsx:48` → `GamePlay` | inside the feature | **unreachable** once (3) never renders — **and its target is (4), so it is guarded twice over** |
+
+**Four more places checked and clean, so this is a sweep and not a guess:**
+
+| checked | result |
+|---|---|
+| `ClubAdminDashboard`, `NoRoleDashboard` | **no games tile** |
+| **Club Hub** (`ClubHubScreen.tsx`) | **no games entry** — one "game" string, an unrelated subtitle |
+| **bottom tabs** | **no games tab**; the five are Home, Teams (staff), Chat, Calendar, Profile |
+| **deep links** (`linking.ts`) | **no games route declared** |
+| **notification taps** (`routeNotification`) | **no games type** among its twelve branches |
+| **XP / progress widgets** | `PlayerDashboard`'s XP badge, level bar and team leaderboard, and `CoachDashboard`'s Team XP and Top XP Earners, all read `players.total_xp` and **navigate nowhere** (grep: no `onPress` to either route). **Left exactly as they are.** |
+
+**Files (5):** `src/constants/arcadeLaunch.ts` (new) · `src/components/QuickActionsCard.tsx`
+(two optional fields, `subtitle` and `comingSoon`/`comingSoonLabel`, so every existing action on
+every dashboard renders as before) · `src/components/dashboards/PlayerDashboard.tsx` ·
+`src/components/dashboards/CoachDashboard.tsx` · `src/navigation/AppNavigator.tsx`.
+**No game file was edited.**
+
+### How Lu sees it
+
+| # | screen and taps | test account | what should be on screen |
+|---|---|---|---|
+| 13a | **Dashboard** as a **parent** (`ludwig.snchz+zztest7@gmail.com`) → look at the quick-action grid | **parent** | Where **"Games"** used to be, second tile of row 1: a **calmer, grey-framed** tile reading **"PAC Arcade"** with **"New games coming soon"** under it and a small **COMING SOON** chip above the icon. **Same size as Courses and Store either side of it**, nothing clipped. |
+| 13b | tap that tile | parent | Alert **"New games are on the way"** / *"We're building a brand-new set of soccer brain games. We'll let you know when they're ready."* with **one OK**. OK closes it and **stays on the dashboard** — it must not navigate anywhere. |
+| 13c | **Dashboard** as a **coach** (`ludwig.snchz+zztest6@gmail.com`) → the quick-nav grid | **coach** (head_coach / assistant_coach / team_manager) | The **"Brain Games"** tile is now the same **"PAC Arcade"** tile, in the same slot, and taps to the same Alert. |
+| 13d | **Dashboard** as **club admin** (`ludriv@hotmail.com`) | **club admin** | **No games tile and no arcade tile** — that dashboard never had one. Nothing should have appeared. |
+| 13e | **the XP surfaces**: as a player/parent, the XP badge, the level bar and the team leaderboard; as a coach, **TEAM PERFORMANCE → Team XP** and **TOP XP EARNERS** | parent + coach | **All unchanged, and all still showing their numbers.** Hiding the games must not blank or zero any XP a family already earned. |
+| 13f | **the route guard.** Hardest to reach on purpose — there is no button left. Easiest path: with the dev client on Metro, flip `LEGACY_GAMES_VISIBLE` to `true`, open a game, flip it back to `false` and reload so the navigation state is restored pointing at `GamePlay` | any | The **same Alert**, and OK **leaves the screen** (back, or the dashboard if there is no stack). **It must not show a game, a blank page, or a crash.** |
+| 13g | **the revert check, worth one minute** — flip `LEGACY_GAMES_VISIBLE` to `true`, reload | any | The **old "Games" / "Brain Games" tiles are back** and open the real games hub, exactly as before R-04. That proves nothing was deleted. Flip it back to `false` before building. |
+
+> **Related: §8 is now MOOT.** The games save fix is **kept, not reverted** — it is behind the
+> same switch and will be the better code the day the games return — but with the games hidden
+> **nothing can reach it in 1.0.20**, so **drop §8 from the Round 2 list**. Do not read "no
+> alert appeared" as a pass there: there is no longer a way to reach a game.
+
+---
+
+## 14. One-line index — the Round 2 list
 
 | item | what | status | Lu checks |
 |---|---|---|---|
@@ -400,8 +524,18 @@ Then run the tap test from all three app states, naming the **running** bundle i
 | **5** | D2 strokes, 3 files mirrored byte-identical + `MIRROR.md` | built, unverified by Lu | §5, three rows |
 | **6** | Discard prompt (arrow, swipe, hardware back) | built, unverified by Lu | §6, 6a–6d (**not 6e**) |
 | **7** | 5 games `tsc` errors → 0; one was a live defect | built, unverified by Lu | §7, Pattern Play only |
-| **8** | Games save reports which step failed, via `logError` | built, unverified by Lu | §8 — **needs a player-role login** |
+| **8** | Games save reports which step failed, via `logError` | **MOOT** — kept, but R-04 hides the games | §8 — **drop from the Round 2 list** |
 | **9** | `MyCoursesScreen` safe area (the ledger's own target was already fixed Oct 30) | built, unverified by Lu | §9 |
-| **10** | Calendar `?` count | **BLOCKED** — Lu's RLS condition, needs DB access | §10 — **a Lu decision, not a test** |
+| **10** | Calendar `?` count | **PARKED out of 1.0.20** as `CAL-NOREPLY-COUNT`; the RLS question is answered and it closes the approach | §10 — **a Lu decision, not a test** |
 | **11** | `announceCardKey.ts` docblock | built, unverified by Lu | nothing on screen |
 | **12** | Ledger line corrected, cause re-marked INFERRED | written | §12, the two pre-push checks |
+| **13** | **R-04 · old games hidden, "PAC Arcade" coming-soon tile**, 5 entry points guarded | built, unverified by Lu | §13, 13a-13g |
+
+> **🛑 ONE SERVER STEP BEFORE THE LAUNCH ANNOUNCEMENT, AND IT IS SACRED.** The announcement
+> **push title** is built server-side by **`chatContextName` in the edge function** and still
+> reads **`club-announcements`**, so the first announcement to ~231 families would land on every
+> lock screen titled with the raw slug. R-01 fixed every in-app surface and could not touch this
+> one. **Order: fix + deploy `chatContextName` → send one test announcement to a staff-only
+> audience and read the banner → only then the launch announcement.** Deploying that function
+> affects **every other push type it titles**, not only announcements. Ledger:
+> `RELEASE-1.0.20-FIXES` → "BEFORE THE LAUNCH ANNOUNCEMENT GOES OUT".

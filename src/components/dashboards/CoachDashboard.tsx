@@ -17,6 +17,17 @@ import { formatDistanceToNow } from 'date-fns';
 import { LiveGamesWidget } from '../game-stats/LiveGamesWidget';
 import QuickActionsCard from '../QuickActionsCard';
 import PlaybookEntryCard from './PlaybookEntryCard';
+// R-04's switch and its strings. A leaf: two constants, three strings and one
+// Alert, importing nothing but `react-native` — see src/constants/arcadeLaunch.ts.
+import {
+  ARCADE_TILE_BADGE,
+  ARCADE_TILE_SUBTITLE,
+  legacyGamesVisible,
+  showArcadeComingSoon,
+} from '../../constants/arcadeLaunch';
+// The ONE club short-name rule (R-01). "Provo Athletic Club" -> "PAC", so the
+// arcade tile and the announcements chat can never abbreviate the club twice.
+import { clubShortName } from '../../lib/clubAnnouncements';
 import PendingSurveyBanner from '../surveys/PendingSurveyBanner';
 import { usePendingStaffRequests } from '../../hooks/usePendingStaffRequests';
 import { slugify } from '../../utils/slugify';
@@ -475,13 +486,29 @@ export default function CoachDashboard({ teamId }: CoachDashboardProps) {
               onPress: () =>
                 navigateToScreen('TeamResources', { teamId, team_id: teamId }),
             },
-            {
-              id: 'games',
-              icon: 'game-controller-outline',
-              label: 'Brain Games',
-              color: '#f59e0b',
-              onPress: () => navigateToScreen('GamesHub', { teamId }),
-            },
+            /* R-04 (Lu, 2026-11-04): the old brain games are HIDDEN in 1.0.20.
+               Same slot, same size, calmer ink, and the title comes from the
+               ONE club short-name rule (`clubShortName`, R-01). Flip
+               `LEGACY_GAMES_VISIBLE` back to `true` to restore the tile below
+               it with no other edit. */
+            legacyGamesVisible
+              ? {
+                  id: 'games',
+                  icon: 'game-controller-outline',
+                  label: 'Brain Games',
+                  color: '#f59e0b',
+                  onPress: () => navigateToScreen('GamesHub', { teamId }),
+                }
+              : {
+                  id: 'arcade',
+                  icon: 'game-controller-outline',
+                  label: `${clubShortName(clubName) || 'Thryvyng'} Arcade`,
+                  color: '#f59e0b',
+                  comingSoon: true,
+                  comingSoonLabel: ARCADE_TILE_BADGE,
+                  subtitle: ARCADE_TILE_SUBTITLE,
+                  onPress: () => showArcadeComingSoon(),
+                },
           ]}
         />
       </View>

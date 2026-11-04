@@ -21,6 +21,10 @@ import { playbookVisible } from '../constants/playbookLaunch';
 // carries the whole argument for why this layer tests the shape and leaves "does
 // this card exist, and may this viewer read it" to the reader.
 import { isAnnounceCardKey } from '../constants/announceCardKey';
+// R-04's switch, the same shape as the Playbook's: two constants, no feature
+// code. Gates both old-games ROUTES below, so hiding the games cannot be
+// undone by a stale navigation, a push payload or a deep link.
+import { legacyGamesVisible, showArcadeComingSoon } from '../constants/arcadeLaunch';
 import { addNotificationListeners } from '../services/notifications';
 // Only for the cold-start tap below. Every other notification path in this app
 // goes through `addNotificationListeners` (src/services/notifications.ts); the
@@ -194,6 +198,42 @@ function LazyScreen({ component: Component, ...rest }: { component: React.LazyEx
       <Component {...rest} />
     </Suspense>
   );
+}
+
+/**
+ * R-04: what the `GamesHub` and `GamePlay` routes render while the old games
+ * are hidden.
+ *
+ * THE ROUTE NAMES STAY REGISTERED on purpose, which is the one way this
+ * differs from how `playbookVisible` gates the `Playbook` route (that one
+ * removes the `Stack.Screen` outright). The Playbook route had never shipped,
+ * so nothing could be pointing at it; `GamesHub` and `GamePlay` HAVE shipped,
+ * which means a stale navigation state restored from disk, a saved deep link
+ * or any future push payload can still name them. Dropping the screens would
+ * make those a silent no-op — `navigate()` to an unregistered name does
+ * nothing at all — and the person would tap and see the app ignore them.
+ * Registered-and-guarded, they get the same sentence as the tile.
+ *
+ * It renders NOTHING and shows the Alert once on mount, then leaves on OK: the
+ * screen is a door that explains itself and closes, not a page. `goBack` when
+ * there is somewhere to go back to, otherwise `Dashboard` — the same fallback
+ * pair the Playbook route's `onExit` uses, for a route opened cold by a tap
+ * with no stack under it.
+ *
+ * `useRef` and not state: the Alert must fire ONCE. A remount from a re-render
+ * would otherwise stack dialogs on top of each other.
+ */
+function LegacyGameClosedScreen({ navigation }: any) {
+  const shown = React.useRef(false);
+  React.useEffect(() => {
+    if (shown.current) return;
+    shown.current = true;
+    showArcadeComingSoon(() => {
+      if (navigation?.canGoBack()) navigation.goBack();
+      else navigation?.navigate('Dashboard');
+    });
+  }, [navigation]);
+  return <View style={{ flex: 1, backgroundColor: '#0f172a' }} />;
 }
 
 function InvitationPlaceholderScreen() {
@@ -433,8 +473,17 @@ function HomeStack() {
       <Stack.Screen name="Evaluations" options={{ headerShown: false }}>
         {(props) => <LazyScreen component={EvaluationsScreen} {...props} />}
       </Stack.Screen>
+      {/* R-04: hidden means the route still exists and explains itself. With
+          the switch false the lazy `import()` below is never called, so no
+          game screen is even constructed. */}
       <Stack.Screen name="GamesHub" options={{ headerShown: false }}>
-        {(props) => <LazyScreen component={GamesHubScreen} {...props} />}
+        {(props) =>
+          legacyGamesVisible ? (
+            <LazyScreen component={GamesHubScreen} {...props} />
+          ) : (
+            <LegacyGameClosedScreen {...props} />
+          )
+        }
       </Stack.Screen>
       <Stack.Screen
         name="WorldCupPredictor"
@@ -493,8 +542,17 @@ function HomeStack() {
       <Stack.Screen name="LineupEditor" options={{ headerShown: false }}>
         {(props) => <LazyScreen component={LineupEditorScreen} {...props} />}
       </Stack.Screen>
+      {/* R-04, as GamesHub above. This is the route a saved deep link or a
+          stale navigation state is most likely to name, because it is the one
+          that carries params (`gameId`, `gameSlug`, `gameName`). */}
       <Stack.Screen name="GamePlay" options={{ headerShown: false }}>
-        {(props) => <LazyScreen component={GamePlayScreen} {...props} />}
+        {(props) =>
+          legacyGamesVisible ? (
+            <LazyScreen component={GamePlayScreen} {...props} />
+          ) : (
+            <LegacyGameClosedScreen {...props} />
+          )
+        }
       </Stack.Screen>
       <Stack.Screen name="ProductStore" options={{ headerShown: false }}>
         {(props) => <LazyScreen component={ProductStoreScreen} {...props} />}

@@ -20,6 +20,17 @@ import { PendingAttachmentsBanner } from './PendingAttachmentsBanner';
 import { slugify } from '../../utils/slugify';
 import * as Clipboard from 'expo-clipboard';
 import { resolveTeamColor } from '../../constants/teamColors';
+// R-04's switch and its strings. A leaf: two constants, three strings and one
+// Alert, importing nothing but `react-native` — see src/constants/arcadeLaunch.ts.
+import {
+  ARCADE_TILE_BADGE,
+  ARCADE_TILE_SUBTITLE,
+  legacyGamesVisible,
+  showArcadeComingSoon,
+} from '../../constants/arcadeLaunch';
+// The ONE club short-name rule (R-01). "Provo Athletic Club" -> "PAC", so the
+// arcade tile and the announcements chat can never abbreviate the club twice.
+import { clubShortName } from '../../lib/clubAnnouncements';
 import PlaybookEntryCard from './PlaybookEntryCard';
 
 interface PlayerDashboardProps {
@@ -281,13 +292,31 @@ export default function PlayerDashboard({ playerId, navigation, showLineupWidget
             color: '#3b82f6',
             onPress: () => navigation.navigate('Courses' as never),
           },
-          {
-            id: 'games',
-            icon: 'game-controller-outline',
-            label: 'Games',
-            color: '#8b5cf6',
-            onPress: () => navigation.navigate('GamesHub' as never),
-          },
+          /* R-04 (Lu, 2026-11-04): the old brain games are HIDDEN in 1.0.20 and
+             this tile's slot holds the arcade stand-in until the new games
+             ship. Same position in the grid, same size, calmer ink. The title
+             uses the ONE club short-name rule (`clubShortName`, R-01), so the
+             tile and the announcements chat abbreviate the club the same way.
+             Flip `LEGACY_GAMES_VISIBLE` back to `true` and this reverts to the
+             tile below it with no other edit. */
+          legacyGamesVisible
+            ? {
+                id: 'games',
+                icon: 'game-controller-outline',
+                label: 'Games',
+                color: '#8b5cf6',
+                onPress: () => navigation.navigate('GamesHub' as never),
+              }
+            : {
+                id: 'arcade',
+                icon: 'game-controller-outline',
+                label: `${clubShortName(clubName) || 'Thryvyng'} Arcade`,
+                color: '#8b5cf6',
+                comingSoon: true,
+                comingSoonLabel: ARCADE_TILE_BADGE,
+                subtitle: ARCADE_TILE_SUBTITLE,
+                onPress: () => showArcadeComingSoon(),
+              },
           {
             id: 'store',
             icon: 'cart-outline',

@@ -2507,7 +2507,10 @@ it. Nothing here has been seen by a human on a real phone.
 
 - **RELEASE-1.0.20-FIXES · the small defects found in Round 1, ruled into 1.0.20 ·
   Lu ruling 2026-11-04 00:25: "fix the small fixes we discovered before the launch
-  1.0.20" · NOTHING BUILT YET — this entry is the LIST, not a delivery.**
+  1.0.20" · ~~NOTHING BUILT YET — this entry is the LIST, not a delivery~~ —
+  **BUILT 2026-11-04, thirteen items, all `built, unverified by Lu` except the
+  one parked. This entry is now the list AND the delivery; see the BUILT block
+  below.**
   - **WHERE IT CAME FROM.** Lu's simulator run **2026-11-03 23:40 → 2026-11-04
     00:24**, dev client `com.thryvyng.app` on live Metro, signed in as
     `ludriv@hotmail.com` (club admin, PAC). Screenshots + Metro log, pasted into
@@ -2609,9 +2612,15 @@ it. Nothing here has been seen by a human on a real phone.
     safe-area")** and has carried `SafeAreaView edges={['top']}` since;
     `git log -S"edges={['top']}"` on that file names the commit. The same root
     DID still exist one site over, in `MyCoursesScreen.tsx`, and that is what
-    was fixed 2026-11-04; **the calendar list card's wrong "?" count**; and
-    **the stale docblock at `src/constants/announceCardKey.ts:30-33`**, which
-    still says the keys are "F0..F5" after batch 2 added `F7`–`F11`.
+    was fixed 2026-11-04; ~~**the calendar list card's wrong "?" count**~~ —
+    **REMOVED FROM 1.0.20 on 2026-11-04 and PARKED as its own entry,
+    `CAL-NOREPLY-COUNT` (below). Lu read the live `players` SELECT policies and
+    they settle the question this was stopped on — the answer is that an in-app
+    roster count CANNOT be right for a parent.** It is not a thing to build
+    before launch; it is a decision between three options. Nothing about the
+    card changed; and **the stale docblock at
+    `src/constants/announceCardKey.ts:30-33`**, which still says the keys are
+    "F0..F5" after batch 2 added `F7`–`F11`.
   - **BUILT 2026-11-04 — all twelve items, one pass, nothing committed. EVERY
     ROW IS `built, unverified by Lu`.** The Round 2 test list — one row per
     item, the exact screen and taps, and the test account each needs — is
@@ -2688,8 +2697,16 @@ it. Nothing here has been seen by a human on a real phone.
        `getEffectiveLanding` hoisted above its caller (body unchanged), and
        `getGutterBoundaryX` **added** using `getLaneX`'s own arithmetic — and
        its caller is unreachable, see the corrected carried-forward line below.
-    8. **Games save is no longer silent — built, unverified by Lu. NO SCHEMA,
-       RPC OR RLS CHANGE WAS NEEDED.** What was actually silent: **step 3
+    8. **Games save is no longer silent — ⚠️ MOOT as of ruling R-04 the same
+       day: THE GAMES ARE HIDDEN, so nothing reaches this code in 1.0.20. THE
+       FIX IS KEPT, NOT REVERTED** — item 13 hides the games behind a switch
+       rather than deleting them, so the day `LEGACY_GAMES_VISIBLE` goes back to
+       `true` this save path is the better one, and `logError` means the next
+       person to look gets the real Postgres error instead of nothing. **Drop
+       the Round 2 row for it** (it was already UNTESTABLE for want of a
+       player-role account — see below), and do not read "no alert appeared" as
+       a pass: there is no longer a way to reach a game. What was actually
+       silent, for whenever the games return: **step 3
        (`daily_game_time`) and step 4 (`award_xp_safe`) threw their `{ error }`
        away**, so a half-written save reported SUCCESS, and every failure went
        to `console.error`, which reaches no report on a release build.
@@ -2716,21 +2733,14 @@ it. Nothing here has been seen by a human on a real phone.
        root, but it is registered `options={{ title: 'Course' }}` so the native
        header sits above it and handles the inset — it is a **double header**,
        a different cosmetic defect, not a notch bug.
-    10. **🛑 Calendar "?" count — BLOCKED. NOT BUILT, nothing changed, and this
-        is the SECOND stop on the same condition.** The rule exists
-        (`noReplyFromRoster`, `attendanceResolver.ts:214`) and the list has
-        `going`/`cantGo`; it lacks a **roster size**. **Lu's own standing
-        condition from Oct 26 is the blocker** — *"if widening `players` would
-        give a parent a different number than staff (RLS), stop and report"* —
-        and it cannot be answered here: `supabase/migrations/` holds one
-        migration and **no `players` policy SQL**, and this task forbids prod DB
-        access. Widening the read anyway would be improvising around a Lu rule.
-        **THE ONE CHECK THAT UNBLOCKS IT:** sign in as a **parent** and as
-        **staff** on the same team and compare **the Responses bar's roster
-        total on the same event**. Same number → build the widened read (~3
-        lines on the existing `players` read). Different → the RLS question is
-        real and needs its own ruling. Until then the `?` is **knowingly
-        wrong** — do not re-file it as a new bug.
+    10. **Calendar "?" count — OUT OF 1.0.20, PARKED.** It was BLOCKED here on
+        Lu's Oct 26 condition (*"if widening `players` would give a parent a
+        different number than staff (RLS), stop and report"*), which could not
+        be answered without DB access. **Lu answered it on 2026-11-04 by
+        reading the live policies, and the answer closes the approach rather
+        than unblocking it.** Moved out of this entry and into its own:
+        **`CAL-NOREPLY-COUNT`** (below), with the policy finding and the three
+        options. **No code was ever changed for this item**, in either pass.
     11. **`announceCardKey.ts` docblock — corrected.** Now reads **F0..F5 and
         F7..F11 (there is no F6)** and **74, not 69**. Sources named in the
         comment: the batch 2 apply SQL (`…_playbook_content_b_apply.sql:223-232`,
@@ -2742,15 +2752,112 @@ it. Nothing here has been seen by a human on a real phone.
         `docs/ledger.md:1976` — out of this task's scope, sweep it with the next
         ledger edit.
     12. **This entry's banner line — corrected**, see item 2 above.
-  - **GATES, run after the last edit.** `npx tsc --noEmit` → **0 errors
-    (baseline was 5)**. `ESLINT_USE_FLAT_CONFIG=false npx eslint` on all **23
-    changed files** → **0 errors, 234 warnings** (pre-existing classes:
+    13. **🎮 R-04 · THE OLD BRAIN GAMES ARE HIDDEN, and an arcade "coming soon"
+        tile stands in their place — built, unverified by Lu.** Ruling R-04, Lu
+        2026-11-04: hide the old games in 1.0.20; a new set of arcade games
+        replaces them in a later build.
+        **ONE CONSTANT, ONE FILE: `src/constants/arcadeLaunch.ts` (new),
+        `LEGACY_GAMES_VISIBLE = false`** plus the derived gate
+        `legacyGamesVisible` and the three strings the stand-in says. Same
+        pattern and the same reasoning as `playbookLaunch.ts`, and a LEAF: it
+        imports **only `react-native`** (for `Alert`) and nothing of
+        `src/screens`, `src/hooks` or `supabase`, so both role dashboards and
+        the navigator can read it without pulling a game screen into their
+        bundle. **Flip it back to `true` and every entry point and both routes
+        revert, with no other edit.**
+        **NOTHING IS DELETED — that is the point of the switch.** All 13 game
+        files and 10,428 lines stay on disk; **no row, table or policy was
+        touched**, so every `player_game_progress`, `xp_awards` and
+        `players.total_xp` value a family already earned is untouched and still
+        shown by the XP surfaces. Lu's ruling says the games come BACK, rebuilt;
+        deleting them to re-add them later is the worse trade, and a delete is
+        SACRED besides.
+        **FIVE ENTRY POINTS, FOUND BY GREP, ALL FIVE GUARDED.** `grep -rn
+        "'GamesHub'\|'GamePlay'" src` returns exactly five sites and no more:
+        (1) `PlayerDashboard.tsx:308` — the "Games" quick-action tile, which
+        serves the **player AND parent** roles (`DashboardScreen.tsx:282-291`
+        routes both there) → the arcade tile; (2) `CoachDashboard.tsx:500` — the
+        "Brain Games" tile, which serves **head_coach, assistant_coach and
+        team_manager** → the arcade tile; (3) the **`GamesHub` route** and
+        (4) the **`GamePlay` route** in `AppNavigator.tsx` → a guard screen that
+        shows the Alert and leaves; (5) `GamesHubScreen.tsx:48` → `GamePlay`,
+        which is inside the feature and therefore unreachable once (3) never
+        renders — **and its target is (4), so it is guarded twice over.**
+        **FOUR MORE PLACES CHECKED AND CLEAN, so the list is a sweep and not a
+        guess:** `ClubAdminDashboard` and `NoRoleDashboard` have **no** games
+        tile; **Club Hub** has no games entry (one "game" string, an unrelated
+        subtitle); there is **no games TAB** (the five are Home, Teams, Chat,
+        Calendar, Profile); `linking.ts` declares **no games deep link**; and
+        `routeNotification`'s twelve branches include **no games type**.
+        **THE XP AND PROGRESS WIDGETS ARE LEFT EXACTLY AS THEY ARE, and they do
+        not link to games** — `PlayerDashboard`'s XP badge, level bar and team
+        leaderboard and `CoachDashboard`'s Team XP and Top XP Earners all read
+        `players.total_xp` and navigate NOWHERE (grep: no `onPress` to either
+        route). Hiding the games stops that number GROWING from games; it does
+        not change or hide any value already there.
+        **THE ROUTES STAY REGISTERED, and that is a deliberate difference from
+        how `playbookVisible` gates the `Playbook` route** (that one removes the
+        `Stack.Screen` outright). The Playbook route had never shipped, so
+        nothing could point at it. `GamesHub` and `GamePlay` **have** shipped: a
+        navigation state restored from disk, a saved link or any future push
+        payload can still name them, and `navigate()` to an UNREGISTERED name
+        does nothing at all — the person would tap and watch the app ignore
+        them. Registered-and-guarded, they get the same sentence as the tile.
+        `LegacyGameClosedScreen` renders an empty dark view, fires the Alert
+        **once** (a `useRef` latch, so a remount cannot stack dialogs), and on
+        OK goes back — or to `Dashboard` when there is no stack under it, the
+        same fallback pair the Playbook route's `onExit` uses.
+        **THE TILE.** Same slot in the same grid, **same size** — it is a flex
+        child of the same row, so the row stretches all three tiles to one
+        height — and **calmer ink**: neutral slate frame instead of the grid's
+        purple, a muted icon box, a small uppercase **"Coming soon"** chip above
+        the icon (NOT in the top-right corner, which belongs to the numeric
+        unread pill and would read as a count). Title
+        **"`<club short name>` Arcade"** → **"PAC Arcade"**, from
+        `clubShortName()` in `src/lib/clubAnnouncements.ts` — **the same one
+        rule R-01 uses**, so the arcade tile and the announcements chat can
+        never abbreviate the club two ways. Subtitle **"New games coming soon"**.
+        With no club name in hand it reads **"Thryvyng Arcade"** rather than a
+        bare " Arcade". Tap → the Alert: **"New games are on the way"** /
+        *"We're building a brand-new set of soccer brain games. We'll let you
+        know when they're ready."*, one **OK**. **The Alert's words live once**,
+        in `arcadeLaunch.ts`, so the tile and both route guards cannot word it
+        three ways.
+        **`QuickActionsCard` gained two optional fields**, `subtitle` and
+        `comingSoon`/`comingSoonLabel`. Optional on purpose: every existing
+        action on every dashboard renders exactly as before.
+        **Files (5):** `src/constants/arcadeLaunch.ts` (new) ·
+        `src/components/QuickActionsCard.tsx` ·
+        `src/components/dashboards/PlayerDashboard.tsx` ·
+        `src/components/dashboards/CoachDashboard.tsx` ·
+        `src/navigation/AppNavigator.tsx`. **No game file was edited.**
+        **R-02 IS SUPERSEDED BY R-04** (Lu, 2026-11-04). ⚠️ **R-02's own text is
+        NOT recorded anywhere in this repo** — `grep -rn "R-02" docs/ src/`
+        returns nothing but this line, so what it said is **UNKNOWN here** and
+        is not restated rather than guessed at. **The check:** R-02 lives in the
+        planning room's transcript; paste it here if the supersession needs to
+        name what it replaced.
+        Lu's screens and taps: **`docs/recon/release-1.0.20-fixes.md` §13.**
+  - **GATES, run after the last edit (items 1-12).** `npx tsc --noEmit` → **0
+    errors (baseline was 5)**. `ESLINT_USE_FLAT_CONFIG=false npx eslint` on all
+    **23 changed files** → **0 errors, 234 warnings** (pre-existing classes:
     `no-console` in the games, inline styles, unused styles).
     `npx expo export --platform ios` → **exit 0**, iOS bundle **9.51 MB**.
     `diff` web↔mobile on `strokes.ts` / `geometry.ts` / `renderDiagram.ts` →
     **no differences**, md5 match; `MIRROR.md`'s own drift command → silence
     from the nine, exactly one declared `doodleArt.ts` hunk, data file
     identical.
+  - **GATES, item 13 (R-04), run after its last edit.** `npx tsc --noEmit` →
+    **0 errors**. `ESLINT_USE_FLAT_CONFIG=false npx eslint` on the **5 changed
+    files** → **0 errors, 92 warnings** (pre-existing classes).
+    `npx expo export --platform ios` → **exit 0**, iOS bundle **9.51 MB** — the
+    games are hidden, not removed, so the bundle does not shrink; Metro does not
+    fold an imported constant across module boundaries, so the game screens are
+    still WEIGHT while being UNREACHABLE. `grep -rn "'GamesHub'\|'GamePlay'"
+    src` → **5 sites, every one guarded** (the two tiles behind
+    `legacyGamesVisible`, the two routes behind it, and the fifth inside a
+    feature the switch never renders, whose target is itself one of the guarded
+    routes).
   - **NOTHING SACRED TOUCHED.** No schema, no migration, no SQL, no Supabase
     write, no RPC or RLS change, **no new dependency** (`react-native-svg` and
     `@expo-google-fonts/archivo` were both already installed — only one more
@@ -2759,11 +2866,33 @@ it. Nothing here has been seen by a human on a real phone.
     Playbook content, no edit in the web repo (read-only), **no commit and no
     push**. `docs/recon/arcade.md` was READ and not written; it was already
     modified in the working tree before this task began.
+  - **🛑 BEFORE THE LAUNCH ANNOUNCEMENT GOES OUT — ONE SERVER STEP, AND IT IS
+    SACRED.** The announcement **push TITLE** is built **server-side** by
+    **`chatContextName` in the Supabase edge function** and still reads the raw
+    slug **`club-announcements`** — lower case and hyphenated. R-01 fixed every
+    IN-APP surface; it could not touch this one, because the function is in
+    neither repo and in no app bundle
+    (`docs/recon/club-announcements-v1-mobile.md:457-460`: *"a one-arm change in
+    `chatContextName` in the edge function, no store build… Not in this
+    repo."*).
+    **So the first real announcement to ~231 PAC families would arrive titled
+    `club-announcements` on every lock screen**, however well the app reads once
+    opened. **Fix it BEFORE the launch announcement, not after.**
+    **IT IS SACRED: it is an edge-function change and a DEPLOY.** It needs Lu's
+    go-ahead and it is not mobile work — no store build, no app version bump,
+    and it changes nothing in this repo. **Side effect to state out loud:**
+    deploying that function also affects **every other push type it titles**,
+    not only announcements, so the one-arm change wants reading before it ships.
+    **Order:** fix + deploy `chatContextName` → send one test announcement to a
+    staff-only audience and read the banner → only then the launch
+    announcement.
   - **STATUS: `VERIFIED-SIMULATOR` for what §2 of the results file lists as
     PASS; `AGENT-ONLY` for everything built above and for everything else in the
     1.0.20 Playbook batch.** `FM5v5` is **INFERRED OK** and owes a tab count
     (see the superseded "Diagram pending" note above). **The list in this entry
-    is now built, item 10 excepted — and not one row has been seen by a human.**
+    is now built — twelve items plus R-04's item 13, with item 10 parked out to
+    `CAL-NOREPLY-COUNT` and item 8 moot — and not one row has been seen by a
+    human.**
   - **Nothing SACRED touched to WRITE THE LIST either** (the 2026-11-04 00:25
     pass that created this entry, before the build above): docs only — no code,
     schema, migration, dependency, env, delete, DB access or commit; no edit in
@@ -2771,4 +2900,82 @@ it. Nothing here has been seen by a human on a real phone.
   - Source: Lu's run and ruling, 2026-11-03/04;
     **`docs/recon/test-results-1.0.20-round1-nov04.md`**;
     `docs/recon/test-plan-1.0.20-nov03.md` (corrected in the same pass);
-    the build: **`docs/recon/release-1.0.20-fixes.md`** (2026-11-04).
+    the build: **`docs/recon/release-1.0.20-fixes.md`** (2026-11-04, §§1-13).
+
+- **CAL-NOREPLY-COUNT · the calendar list card's "?" count · PARKED 2026-11-04,
+  moved OUT of 1.0.20 · the blocking question is ANSWERED and the answer rules
+  out the approach, so what is left is a choice, not a build.**
+  - **THE DEFECT, unchanged and still on screen.** The calendar list card
+    tallies RSVP **rows** with `status === 'pending'`
+    (`src/screens/CalendarScreen.tsx:256-262`). A player who has **never
+    answered has no row at all**, so the card shows **`? 0`** for an event where
+    the event-detail Responses bar correctly shows **11**. The two disagree in
+    front of the user.
+  - **THE RULE ALREADY EXISTS and is not the problem.**
+    `noReplyFromRoster(rosterSize, going, cantGo)`
+    (`src/utils/attendanceResolver.ts:214`) is the one rule, and the list card
+    already holds `going` and `cantGo`. **It lacks a roster SIZE** — there is no
+    roster hook; the source the detail screen and the Attendance tab share is
+    the inline `fetchRoster` in `EventDetailScreen.tsx:280-294`, which is **per
+    event**. The sanctioned fallback was one batched
+    `players.select('id, team_id').in('team_id', teamIds)` per fetch.
+  - **WHY IT WAS BLOCKED TWICE** (Oct 26, and again 2026-11-04): Lu's standing
+    condition was *"if widening `players` would give a parent a different number
+    than staff (RLS), stop and report"*, and it could not be answered from this
+    repo — `supabase/migrations/` holds one migration and **no `players` policy
+    SQL**, and agent tasks forbid prod DB access.
+  - **🔑 THE FINDING THAT ANSWERS IT — Lu read the live `players` SELECT
+    policies himself (prod `pg_policies`, 2026-11-04).** They are **not
+    symmetric**:
+    * **staff and club admins see the WHOLE TEAM** — the policies gate on
+      `is_team_staff` / `is_club_admin`;
+    * **a parent sees ONLY THEIR OWN CHILD** — the policy *"Parents and players
+      can view own records"*.
+    **SO AN IN-APP ROSTER COUNT CANNOT BE RIGHT FOR A PARENT.** Widening the
+    `players` read would return 1 row for a parent and 14 for a coach, and
+    `noReplyFromRoster` would then print a confidently wrong number on a
+    parent's calendar — **worse than today's `? 0`, which is at least wrong the
+    same way for everybody.** The approved fix is therefore **closed, not
+    pending**: it was never a 3-line change, it was a 3-line change plus an
+    assumption that has now been disproved.
+    **Source: Lu's own read of prod `pg_policies`, 2026-11-04.** PROVEN, by Lu,
+    not by this repo — no agent has queried that database.
+  - **IT ALSO EXPLAINS A SECOND THING, and this one is INFERRED:** the
+    event-detail **Responses bar has been under-counting for parents all
+    along**, because `fetchRoster` runs unfiltered for every role and feeds that
+    bar. Under these policies a parent's `fetchRoster` returns **their own child
+    only**. The Oct 26 note called this out as the alternative to "parents can
+    read a whole roster" and could not tell the two apart; the policies pick
+    this one. **INFERRED — nobody has looked at that bar as a parent.** **The
+    check:** open one event's detail as a parent and read the Responses bar's
+    roster total. If it says "1 on the roster", this is confirmed and it is a
+    **bigger, separate defect than the calendar card**.
+  - **OPTIONS FOR LATER — Lu's call, none of them started.**
+    * **A · STAFF-ONLY COUNT.** Show `? n` only where the policies let the count
+      be right: staff and club admins get the real number from the widened
+      `players` read; a parent's card shows the counts it can stand behind
+      (`✓`/`✕`) and **no `?` at all** rather than a wrong one. **ROUTINE** —
+      client-only, no schema, no policy, and the gate already exists in this
+      codebase (`isStaff` in `EventDetailScreen.tsx:244` = team staff OR
+      `club_admin` OR `platform_admin`). **This is the option this entry
+      recommends**, because it is the only one that needs nothing SACRED.
+    * **B · A COUNT-ONLY DB FUNCTION.** A `SECURITY DEFINER` function returning
+      a roster COUNT per team — a number, never names — so a parent can be told
+      "11 of 14 have not answered" without being able to read the 14 rows.
+      **SACRED: a new DB function, a migration and a grant.** Needs its own
+      ruling, and the function's own gate needs writing carefully (who may ask
+      for which team's count).
+    * **C · LEAVE IT.** The card keeps `? 0`. Cheapest, and the cost is that one
+      number contradicts another number two taps away.
+  - **NOT A LAUNCH BLOCKER, which is why it left 1.0.20.** It is a wrong number
+    on a card, not a broken flow: no write is affected, the RSVP path is
+    untouched, and the event-detail bar is the number anyone acting on it reads.
+  - **DO NOT RE-FILE IT AS A NEW BUG.** It is known, it is parked here, and the
+    `?` on the calendar list card is **knowingly wrong** until one of A/B/C is
+    ruled.
+  - **Nothing was changed for this entry, in any pass.** No code, no schema, no
+    migration, no policy, no DB access by any agent; docs only.
+  - Source: the Oct 26 BLOCKED note (Open gaps → Client-side open items, and
+    `ledger.md` line ~463), carried into `RELEASE-1.0.20-FIXES` item 10 and
+    moved here 2026-11-04; **the policy finding is Lu's own read of prod
+    `pg_policies`, 2026-11-04**; `docs/recon/release-1.0.20-fixes.md` §10.

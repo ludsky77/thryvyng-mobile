@@ -13,6 +13,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNotifications } from '../contexts/NotificationContext';
+import { AnnouncementsMark } from '../components/chat/AnnouncementsMark';
+import { ANN_SKY, ANN_SKY_TINT } from '../lib/announcementsTheme';
 
 const DELETE_THRESHOLD = 80;
 
@@ -89,14 +91,39 @@ function NotificationRow({
   formatTime: (d: string) => string;
 }) {
   const icon = getIcon(item.type);
+  /*
+   * R-05 (Lu, 2026-11-04): an announcement notification wears THE mark, the
+   * same one the chat list row, the feed, one opened announcement, compose and
+   * Chat info draw — not a one-off megaphone glyph. 32pt inside the row's
+   * existing 44pt bed, so the badge's overhang stays inside the circle and
+   * every other row's layout is untouched.
+   *
+   * IT HAS NO CREST, and that is a known limit rather than a choice: a
+   * `notifications` row carries `type`, `title`, `body` and an untyped `data`
+   * bag, and whether `data` holds a `club_id` is UNKNOWN — it is written by
+   * the Supabase edge function, which is in neither repo. So the mark falls
+   * back to its documented initials. **The check:** log one real announcement
+   * notification's `data` keys; if a club id is in there, pass it and the
+   * crest appears with no other change.
+   */
+  const isAnnouncement = item.type === 'announcement';
   return (
     <TouchableOpacity
       style={[styles.notificationItem, !item.is_read && styles.unreadItem]}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <View style={[styles.iconContainer, { backgroundColor: icon.color + '20' }]}>
-        <Ionicons name={icon.name as any} size={22} color={icon.color} />
+      <View
+        style={[
+          styles.iconContainer,
+          { backgroundColor: isAnnouncement ? ANN_SKY_TINT : icon.color + '20' },
+        ]}
+      >
+        {isAnnouncement ? (
+          <AnnouncementsMark size={32} ringColor="#20303f" />
+        ) : (
+          <Ionicons name={icon.name as any} size={22} color={icon.color} />
+        )}
       </View>
       <View style={styles.contentContainer}>
         <Text style={[styles.title, !item.is_read && styles.unreadTitle]}>
@@ -285,7 +312,15 @@ export default function NotificationsScreen({ navigation }: any) {
       case 'staff_request':
         return { name: 'person-add-outline', color: '#22c55e' };
       case 'announcement':
-        return { name: 'megaphone-outline', color: '#ec4899' };
+        /*
+         * R-05 / R-06: the colour is still returned because the row's round
+         * icon bed is built from it, but the GLYPH is no longer drawn from
+         * this table — `NotificationRow` draws `AnnouncementsMark` for this
+         * one type. The pink `#ec4899` megaphone-outline it used to show was
+         * the last megaphone in the app that disagreed with the announcements
+         * surface it belongs to.
+         */
+        return { name: 'megaphone-outline', color: ANN_SKY };
       default:
         return { name: 'notifications-outline', color: '#64748b' };
     }

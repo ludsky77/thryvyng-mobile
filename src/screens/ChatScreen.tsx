@@ -39,7 +39,14 @@ import {
 } from '../lib/clubAnnouncements';
 import { isDefaultClubChannel } from '../lib/channelLeave';
 import { announcementsChatName } from '../lib/clubAnnouncements';
-import { MegaphoneIcon } from '../components/chat/MegaphoneIcon';
+import { AnnouncementsMark } from '../components/chat/AnnouncementsMark';
+import {
+  ANN_NAVY,
+  ANN_SKY,
+  ANN_SKY_TINT,
+  ANN_SUBTEXT,
+  ANN_TEXT,
+} from '../lib/announcementsTheme';
 import {
   canHideChannelType,
   setChannelHidden,
@@ -153,6 +160,19 @@ function getChannelColor(conversation: EnrichedConversation): string {
   if (conversation.channel_type === 'group_dm') {
     return '#9B7BB5';
   }
+  /*
+   * R-06 (Lu, 2026-11-04): THE ANNOUNCEMENTS CHAT, AND ONLY IT, IS SKY.
+   *
+   * This has to come before the `club` arm below and it has to be gated on
+   * `isAnnouncements` — the ROW test (`channel_type = 'club' AND is_default`,
+   * resolved in `toConversation`), never a name. The arm below matches every
+   * `club` channel AND anything whose name merely contains "club", so
+   * recolouring it would have taken the coaches' lounge and any club channel
+   * added later with it. R-06 is announcements only.
+   */
+  if (conversation.isAnnouncements) {
+    return ANN_SKY;
+  }
   const name = (conversation.name || conversation.displayName || '').toLowerCase();
   // No `broadcast` arm: the live CHECK constraint does not allow that value, so
   // the test could never fire (docs/recon/club-announcements.md §FC-2).
@@ -161,6 +181,8 @@ function getChannelColor(conversation: EnrichedConversation): string {
     name.includes('club') ||
     conversation.channel_type === 'club'
   ) {
+    // The tan is now THIS arm's alone — the club's other channels. The
+    // announcements chat left it above (R-06).
     return '#C4976D';
   }
   if (name.includes('coach') || name.includes('lounge')) {
@@ -519,10 +541,12 @@ function ConversationItem({
    * DM or a group, so including it cannot put a crest where one is now barred.
    */
   /*
-   * R-01: the announcements row is the one crested chat that does NOT take the
-   * crest. Lu's ruling puts the megaphone in this spot, and the crest fills the
-   * whole circle, so the two cannot share it. Every other `club` chat — the
-   * coaches' lounge, any club channel added later — keeps the crest.
+   * R-01 / R-05: the announcements row is the one crested chat that does NOT
+   * take the PLAIN crest. It takes `AnnouncementsMark` instead, which carries
+   * the same crest inside a tan ring with the megaphone badged on its corner —
+   * so this row still shows the club, and `crestFillsAvatar` must stay false
+   * for it or the mark would never be reached. Every other `club` chat — the
+   * coaches' lounge, any club channel added later — keeps the bare crest.
    */
   const crestedType =
     conversation.displayType === 'team' &&
@@ -565,14 +589,27 @@ function ConversationItem({
       );
     }
 
-    // R-01: the announcements chat gets the megaphone, not the ball. Drawn,
-    // not an emoji, so it takes the row's own channel colour — see
-    // `components/chat/MegaphoneIcon`.
+    /*
+     * R-05 = A (Lu, 2026-11-04): the announcements row wears the ONE mark —
+     * the club's crest, the tan ring, the megaphone on the corner. It is the
+     * same component the feed header, one opened announcement and compose
+     * draw, only at the avatar size this list already uses, so the chat a
+     * family taps and the screen it lands on carry one badge.
+     *
+     * `ringColor` is the CARD's background, not the screen's, because that is
+     * what the badge's ring has to cut out of here.
+     */
     if (conversation.isAnnouncements) {
       return (
-        <View style={[styles.badgeCircle, { backgroundColor: borderColor }]}>
-          <MegaphoneIcon size={22} color="#fff" />
-        </View>
+        <AnnouncementsMark
+          size={40}
+          logoUrl={conversation.clubLogoUrl}
+          clubName={conversation.clubName}
+          /* The tint is 22% sky over the card's own `#1e293b`; this is that
+             blend, so the badge's ring reads as a cut-out of the bed it sits
+             on rather than as a second ring. */
+          ringColor="#28384a"
+        />
       );
     }
 
@@ -589,6 +626,10 @@ function ConversationItem({
       style={[
         styles.conversationCard,
         { borderLeftColor: borderColor },
+        /* R-06: the announcements card is the ONE card in this list with its
+           own bed — a sky tint and a 1px sky border, on top of the left strip
+           every card has. No other row's styling changes. */
+        conversation.isAnnouncements && styles.conversationCardAnnounce,
         // P4: one dim, two render sites, no data path to it.
         (pastTeam || dimmed) && styles.conversationCardDimmed,
       ]}
@@ -631,6 +672,9 @@ function ConversationItem({
               styles.conversationName,
               pastTeam && styles.conversationNamePast,
               conversation.unreadCount > 0 && styles.conversationNameUnread,
+              /* R-06: white, read or unread. On the tinted bed the normal
+                 `#cbd5e1` reads as greyed-out rather than as "already read". */
+              conversation.isAnnouncements && styles.conversationNameAnnounce,
             ]}
             numberOfLines={1}
           >
@@ -661,6 +705,8 @@ function ConversationItem({
             style={[
               styles.lastMessage,
               conversation.unreadCount > 0 && styles.lastMessageUnread,
+              /* R-06: the preview line, in the tint's own secondary. */
+              conversation.isAnnouncements && styles.lastMessageAnnounce,
             ]}
             numberOfLines={1}
           >
@@ -670,7 +716,13 @@ function ConversationItem({
               : conversation.lastMessage}
           </Text>
         ) : (
-          <Text style={styles.lastMessage} numberOfLines={1}>
+          <Text
+            style={[
+              styles.lastMessage,
+              conversation.isAnnouncements && styles.lastMessageAnnounce,
+            ]}
+            numberOfLines={1}
+          >
             No messages yet
           </Text>
         )}
@@ -708,7 +760,15 @@ function ConversationItem({
                 <View
                   style={[styles.unreadBadge, { backgroundColor: borderColor }]}
                 >
-                  <Text style={styles.unreadText}>
+                  {/* R-06: the count is drawn ON the channel colour, and the
+                      announcements colour is a PASTEL — white on #A9CCEB is
+                      about 1.4:1. So this one badge's digits go navy. */}
+                  <Text
+                    style={[
+                      styles.unreadText,
+                      conversation.isAnnouncements && styles.unreadTextAnnounce,
+                    ]}
+                  >
                     {conversation.unreadCount > 99
                       ? '99+'
                       : conversation.unreadCount}
@@ -719,12 +779,23 @@ function ConversationItem({
                 <Feather name="bell-off" size={13} color="#6B7280" />
               )}
               {members ? (
-                <Text style={styles.memberCount}>
+                <Text
+                  style={[
+                    styles.memberCount,
+                    conversation.isAnnouncements && styles.cardMetaAnnounce,
+                  ]}
+                >
                   {members === 1 ? '1 member' : `${members} members`}
                 </Text>
               ) : null}
               {clubLabel ? (
-                <Text style={styles.cardClubName} numberOfLines={1}>
+                <Text
+                  style={[
+                    styles.cardClubName,
+                    conversation.isAnnouncements && styles.cardMetaAnnounce,
+                  ]}
+                  numberOfLines={1}
+                >
                   {clubLabel}
                 </Text>
               ) : null}
@@ -3048,6 +3119,18 @@ const styles = StyleSheet.create({
      rendered inside the "Hidden (n)" section (`dimmed`) -- never from a row's
      own data. Was `conversationCardPast`; renamed because it is no longer only
      the Past tab's. */
+  /**
+   * R-06: the announcements row's own bed. The 4px left strip the card already
+   * has stays (it is sky now, through `getChannelColor`), and the 1px border
+   * closes the other three sides so the tint reads as a panel.
+   */
+  conversationCardAnnounce: {
+    backgroundColor: ANN_SKY_TINT,
+    borderWidth: 1,
+    borderColor: ANN_SKY,
+    borderLeftWidth: 4,
+    borderLeftColor: ANN_SKY,
+  },
   conversationCardDimmed: {
     opacity: 0.6,
   },
@@ -3222,6 +3305,19 @@ const styles = StyleSheet.create({
   },
   conversationNameUnread: {
     color: '#fff',
+  },
+  /* R-06: the three text tokens of the tinted card. */
+  conversationNameAnnounce: {
+    color: ANN_TEXT,
+  },
+  lastMessageAnnounce: {
+    color: ANN_SUBTEXT,
+  },
+  cardMetaAnnounce: {
+    color: ANN_SUBTEXT,
+  },
+  unreadTextAnnounce: {
+    color: ANN_NAVY,
   },
   conversationTime: {
     color: '#6B7280',

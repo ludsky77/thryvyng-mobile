@@ -41,6 +41,7 @@ import {
   announcementsChatName,
   isAnnouncementsChannel,
 } from '../lib/clubAnnouncements';
+import { AnnouncementsMark } from '../components/chat/AnnouncementsMark';
 import {
   ANNOUNCEMENT_SET_FAILED_MESSAGE,
   ANNOUNCEMENT_TOGGLE_HINT,
@@ -123,6 +124,8 @@ export default function ChatInfoScreen() {
    * "Announcements" — never the slug.
    */
   const [announceClubName, setAnnounceClubName] = useState<string | null>(null);
+  /** R-05: the crest the mark draws. Read beside the name, on the same row. */
+  const [announceClubLogo, setAnnounceClubLogo] = useState<string | null>(null);
   const [myMembershipRole, setMyMembershipRole] = useState<string | null>(null);
   const [isArchiving, setIsArchiving] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
@@ -256,12 +259,15 @@ export default function ChatInfoScreen() {
       if (isAnnouncementsChannel(channelData ?? {}) && channelData?.club_id) {
         const { data: clubRow } = await supabase
           .from('clubs')
-          .select('name')
+          .select('name, logo_url')
           .eq('id', channelData.club_id)
           .maybeSingle();
-        setAnnounceClubName(
-          (clubRow as { name?: string | null } | null)?.name ?? null
-        );
+        const club = clubRow as {
+          name?: string | null;
+          logo_url?: string | null;
+        } | null;
+        setAnnounceClubName(club?.name ?? null);
+        setAnnounceClubLogo(club?.logo_url ?? null);
       }
 
       const { data: memberData } = await supabase
@@ -861,9 +867,23 @@ export default function ChatInfoScreen() {
         ListHeaderComponent={
           <>
             <View style={styles.channelInfo}>
-              <View style={styles.channelAvatar}>
-                <Feather name="hash" size={28} color="#8b5cf6" />
-              </View>
+              {/* R-05 = A: the announcements chat shows THE mark here too —
+                  the deepest screen that names this chat, at the 64pt the hash
+                  circle already occupied. Every other chat keeps the hash. */}
+              {isAnnouncements ? (
+                <View style={styles.channelMarkWrap}>
+                  <AnnouncementsMark
+                    size={64}
+                    logoUrl={announceClubLogo}
+                    clubName={announceClubName}
+                    ringColor="#0f172a"
+                  />
+                </View>
+              ) : (
+                <View style={styles.channelAvatar}>
+                  <Feather name="hash" size={28} color="#8b5cf6" />
+                </View>
+              )}
               {canRenameChannel && editingName ? (
                 <View style={styles.renameBlock}>
                   <TextInput
@@ -1150,6 +1170,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#1e293b',
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 12,
+  },
+  /* R-05: the mark sizes itself, so this only reproduces the hash circle's
+     bottom gap. It must not set `overflow`, or the badge would be clipped. */
+  channelMarkWrap: {
     marginBottom: 12,
   },
   channelName: {

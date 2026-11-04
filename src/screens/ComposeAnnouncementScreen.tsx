@@ -13,12 +13,30 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import { useAuth } from '../contexts/AuthContext';
 import { isChannelStaff } from '../lib/channelStaff';
 import { logError } from '../utils/logError';
 import { CreatePollModal } from '../components/chat/CreatePollModal';
 import { playbookVisible } from '../constants/playbookLaunch';
 import { isAnnounceCardKey } from '../constants/announceCardKey';
-import { clubAnnouncementsAudienceLine } from '../lib/clubAnnouncements';
+import {
+  announcementsChatName,
+  clubAnnouncementsAudienceLine,
+} from '../lib/clubAnnouncements';
+import { AnnouncementsMark } from '../components/chat/AnnouncementsMark';
+import {
+  ANN_SKY,
+  ANN_SKY_TINT,
+  ANN_SUBTEXT,
+  ANN_TEXT,
+} from '../lib/announcementsTheme';
+import { useAnnouncementsMarkClub } from '../lib/announcementsMarkClub';
+import {
+  announcementDraftAge,
+  clearAnnouncementDraft,
+  loadAnnouncementDraft,
+  saveAnnouncementDraft,
+} from '../lib/announcementDraft';
 import {
   ANNOUNCEMENTS_SETUP_PENDING_DETAIL,
   ANNOUNCEMENTS_SETUP_PENDING_MESSAGE,
@@ -136,7 +154,23 @@ export default function ComposeAnnouncementScreen({
   route: { params?: ComposeParams };
   navigation: AnnouncementNavigation;
 }) {
-  const { channelId, channelName, clubName }: ComposeParams = route?.params ?? {};
+  const {
+    channelId,
+    channelName,
+    clubName: clubNameParam,
+  }: ComposeParams = route?.params ?? {};
+  const { user } = useAuth();
+
+  /**
+   * R-05 = A: the club behind this channel — its crest for the mark, its name
+   * for the kicker and the audience line, and its ID for F-2's draft key.
+   * The route param paints the first frame; the cached read fills the crest.
+   */
+  const {
+    clubId,
+    clubName,
+    logoUrl: clubLogoUrl,
+  } = useAnnouncementsMarkClub(channelId, { clubName: clubNameParam ?? null });
 
   const [staffAnswer, setStaffAnswer] = useState<boolean | undefined>(undefined);
   const [title, setTitle] = useState('');
@@ -148,6 +182,16 @@ export default function ComposeAnnouncementScreen({
   const [setupPending, setSetupPending] = useState(false);
   const [pollVisible, setPollVisible] = useState(false);
   const [pollPosted, setPollPosted] = useState(false);
+  /**
+   * F-2: shown once, after a saved draft has been put back in the form.
+   *
+   * F-3 made it carry the draft's AGE as well — "Draft restored · saved 5 min
+   * ago" — so the note answers the question it used to raise. The string is
+   * built from `savedAt` at the moment of the restore, not re-derived on every
+   * render: it describes when the draft was saved, not how long this form has
+   * been open.
+   */
+  const [draftRestored, setDraftRestored] = useState<string | null>(null);
 
   // The one gate. `undefined` while in flight, and the form is not drawn until
   // the server answers — a form that appears and then disappears is worse than
@@ -191,14 +235,12 @@ export default function ComposeAnnouncementScreen({
   const incompleteActions = actions.length - sendableCount;
 
   /**
-   * THE DISCARD PROMPT — RELEASE-1.0.20-FIXES (Lu, 2026-11-04), Round 1's S1.
+   * IS THERE ANYTHING TO LOSE? — RELEASE-1.0.20-FIXES (Lu, 2026-11-04), Round
+   * 1's S1, and the gate on F-2's leave prompt below.
    *
    * Leaving a filled form threw the draft away with nothing said. The LEAVE
    * itself is correct and was confirmed on screen (nothing is sent); what was
-   * missing is the warning. Same shape as the one on
-   * `SurveyResponseScreen.handleBack` — Alert, "Keep writing" cancel first,
-   * destructive "Discard" second — because a second spelling of one question is
-   * how two screens start asking it differently.
+   * missing is the warning — and, since F-2, the offer to keep it.
    *
    * DIRTY is anything typed or added. An untouched form, and a form whose
    * message has already gone, leave without a word.
@@ -207,28 +249,112 @@ export default function ComposeAnnouncementScreen({
     trimmedTitle.length > 0 || trimmedBody.length > 0 || actions.length > 0;
 
   /**
-   * Set the moment the person chooses Discard, so the `beforeRemove` listener
-   * lets the replayed navigation through instead of asking a second time.
+   * Set the moment the person chooses Save draft or Discard, so the
+   * `beforeRemove` listener lets the replayed navigation through instead of
+   * asking a second time.
    */
   const discardingRef = useRef(false);
 
-  const confirmDiscard = useCallback((leave: () => void) => {
-    Alert.alert(
-      'Discard this announcement?',
-      'What you have written will not be saved, and nothing is sent.',
-      [
-        { text: 'Keep writing', style: 'cancel' },
-        {
-          text: 'Discard',
-          style: 'destructive',
-          onPress: () => {
-            discardingRef.current = true;
-            leave();
+  /**
+   * F-2: PUT A SAVED DRAFT BACK, ONCE.
+   *
+   * Once, and only into an untouched form: the key's club half arrives with
+   * the cached read, which can land a frame or two after the first keystroke,
+   * and a restore that overwrote what someone had already started typing
+   * would be worse than no restore at all. `restoreTriedRef` is what makes it
+   * once — re-running on a later render would undo a Discard.
+   */
+  const restoreTriedRef = useRef(false);
+
+  useEffect(() => {
+    if (restoreTriedRef.current) return;
+    if (!user?.id || !clubId) return;
+    restoreTriedRef.current = true;
+    let alive = true;
+    (async () => {
+      const draft = await loadAnnouncementDraft(user.id, clubId);
+      if (!alive || !draft) return;
+      // The guard, read at the moment the draft actually arrives.
+      if (title.length > 0 || body.length > 0 || actions.length > 0) return;
+      setTitle(draft.title);
+      setBody(draft.body);
+      setActions(
+        draft.actions.map((action) => ({
+          ...newDraft(action.kind),
+          label: action.label,
+          target: action.target,
+        }))
+      );
+      const age = announcementDraftAge(draft.savedAt);
+      setDraftRestored(age ? `Draft restored · saved ${age}` : 'Draft restored');
+    })();
+    return () => {
+      alive = false;
+    };
+    // `title`/`body`/`actions` are READ inside, not depended on: this effect
+    // must fire on the key becoming known and never on a keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, clubId]);
+
+  /**
+   * THE LEAVE PROMPT — F-2 (Lu, 2026-11-04) grows Round 1's S1 to three
+   * answers: keep writing, save it, throw it away.
+   *
+   * ORDER IS THE SAFETY. Cancel first, the destructive answer last, and the
+   * new middle answer is the one a tired thumb lands on — the same shape as
+   * the two-answer prompt it replaces (`SurveyResponseScreen.handleBack`).
+   *
+   * SAVE DRAFT LEAVES EITHER WAY, and says which happened: a phone that
+   * refuses the write gets told its draft was not kept, in the same breath as
+   * being told nothing was sent. Staying on the screen after a failed save
+   * would trap someone who has already decided to leave.
+   */
+  const confirmDiscard = useCallback(
+    (leave: () => void) => {
+      Alert.alert(
+        'Leave this announcement?',
+        'Nothing has been sent. You can keep it as a draft on this device.',
+        [
+          { text: 'Keep writing', style: 'cancel' },
+          {
+            text: 'Save draft',
+            onPress: async () => {
+              const saved = await saveAnnouncementDraft(user?.id, clubId, {
+                title,
+                body,
+                actions: actions.map((action) => ({
+                  kind: action.kind,
+                  label: action.label,
+                  target: action.target,
+                })),
+              });
+              discardingRef.current = true;
+              if (!saved) {
+                Alert.alert(
+                  'Draft not saved',
+                  'This device would not store the draft. Nothing was sent.'
+                );
+              }
+              leave();
+            },
           },
-        },
-      ]
-    );
-  }, []);
+          {
+            text: 'Discard',
+            style: 'destructive',
+            onPress: () => {
+              // Discard means discard: a draft saved on an earlier leave goes
+              // with it, or the next open would restore what was just thrown
+              // away.
+              void clearAnnouncementDraft(user?.id, clubId);
+              discardingRef.current = true;
+              leave();
+            },
+          },
+        ]
+      );
+    },
+    [user?.id, clubId, title, body, actions]
+  );
 
   const handleBack = () => {
     if (!isDirty || sent) {
@@ -290,6 +416,10 @@ export default function ComposeAnnouncementScreen({
     setSending(false);
 
     if (result.status === 'ok') {
+      // F-2: the message exists on the server now, so the copy of it on this
+      // phone is stale by definition. Cleared here and not on the way out,
+      // because the "Announcement sent" screen can be left by any door.
+      void clearAnnouncementDraft(user?.id, clubId);
       setSent(true);
       return;
     }
@@ -320,17 +450,40 @@ export default function ComposeAnnouncementScreen({
     });
   };
 
+  /**
+   * R-05 = A: the same header one opened announcement wears — the 32pt mark,
+   * the chat's name as a small-caps tan kicker, and the tan rule. Only the
+   * subtitle differs: "New announcement" where a sent one shows its date. So
+   * the person composing sees the surface they are writing INTO, not a plain
+   * form that could belong to any screen in the app.
+   */
   const header = (
-    <View style={styles.header}>
-      <TouchableOpacity
-        style={styles.headerButton}
-        onPress={handleBack}
-        accessibilityLabel="Back"
-      >
-        <Feather name="arrow-left" size={24} color="#fff" />
-      </TouchableOpacity>
-      <Text style={styles.headerTitle}>New announcement</Text>
-      <View style={styles.headerButton} />
+    <View style={styles.headerWrap}>
+      {/* R-06: the same banner the feed and one opened announcement wear. */}
+      <View style={styles.headerBanner}>
+        <TouchableOpacity
+          style={styles.headerButton}
+          onPress={handleBack}
+          accessibilityLabel="Back"
+        >
+          <Feather name="arrow-left" size={24} color={ANN_TEXT} />
+        </TouchableOpacity>
+        <AnnouncementsMark
+          size={30}
+          logoUrl={clubLogoUrl}
+          clubName={clubName}
+          ringColor="#20303f"
+        />
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerKicker} numberOfLines={1}>
+            {announcementsChatName(clubName)}
+          </Text>
+          <Text style={styles.headerSubtitle} numberOfLines={1}>
+            New announcement
+          </Text>
+        </View>
+        <View style={styles.headerButton} />
+      </View>
     </View>
   );
 
@@ -404,6 +557,16 @@ export default function ComposeAnnouncementScreen({
           {/* ONE audience, said once — the same sentence the old step showed. */}
           <Text style={styles.audience}>{clubAnnouncementsAudienceLine(clubName)}</Text>
 
+          {/* F-2: said once, and only while it is still true. The note retires
+              on the first edit (`onChangeText` below) — a banner that never
+              leaves stops being a note and becomes furniture. */}
+          {draftRestored ? (
+            <View style={styles.draftNote}>
+              <Feather name="rotate-ccw" size={13} color={ANN_SKY} />
+              <Text style={styles.draftNoteText}>{draftRestored}</Text>
+            </View>
+          ) : null}
+
           {/* REQUIRED, and labelled as required. The RPC has no untitled
               branch (P0073 `title_invalid`), and the title is the whole card
               in the feed — a family scrolling the list sees this line and
@@ -412,7 +575,10 @@ export default function ComposeAnnouncementScreen({
           <TextInput
             style={[styles.input, titleOverLong && styles.inputError]}
             value={title}
-            onChangeText={setTitle}
+            onChangeText={(value) => {
+              setDraftRestored(null);
+              setTitle(value);
+            }}
             placeholder="Practice moved to 6pm Saturday"
             placeholderTextColor="#64748b"
             maxLength={ANNOUNCEMENT_TITLE_MAX}
@@ -434,7 +600,10 @@ export default function ComposeAnnouncementScreen({
           <TextInput
             style={[styles.input, styles.inputMultiline, bodyOverLong && styles.inputError]}
             value={body}
-            onChangeText={setBody}
+            onChangeText={(value) => {
+              setDraftRestored(null);
+              setBody(value);
+            }}
             placeholder="What everyone needs to know"
             placeholderTextColor="#64748b"
             multiline
@@ -616,14 +785,22 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
-  header: {
+  /* R-06: the gutter the banner floats in, same as the other two. */
+  headerWrap: {
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 10,
+  },
+  headerBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 10,
     paddingHorizontal: 8,
     paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e293b',
+    borderRadius: 12,
+    backgroundColor: ANN_SKY_TINT,
+    borderWidth: 1,
+    borderColor: ANN_SKY,
   },
   headerButton: {
     width: 40,
@@ -631,10 +808,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#fff',
+  headerCenter: {
+    flex: 1,
+  },
+  /** R-05: the chat's name, small caps in the announcements sky (R-06). */
+  headerKicker: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: ANN_SKY,
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    color: ANN_SUBTEXT,
+    marginTop: 2,
+  },
+  /* F-2: the restored-draft note. Sky, like everything else that belongs to
+     this chat, and quiet — it reports, it does not warn. */
+  draftNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: -12,
+    marginBottom: 18,
+  },
+  draftNoteText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: ANN_SKY,
   },
   form: {
     padding: 20,
@@ -756,7 +958,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 14,
     borderLeftWidth: 3,
-    borderLeftColor: '#C4976D',
+    /* R-06: the preview mirrors a real feed card — dark bed, sky edge. */
+    borderLeftColor: ANN_SKY,
   },
   previewDate: {
     fontSize: 12,

@@ -2979,3 +2979,230 @@ it. Nothing here has been seen by a human on a real phone.
     `ledger.md` line ~463), carried into `RELEASE-1.0.20-FIXES` item 10 and
     moved here 2026-11-04; **the policy finding is Lu's own read of prod
     `pg_policies`, 2026-11-04**; `docs/recon/release-1.0.20-fixes.md` §10.
+
+## Landed — Nov 4 2026 (Round 2 results, R-05, and the two post-Round-2 builds)
+
+- **RELEASE-1.0.20-FIXES · ROUND 2 RESULTS — Lu, iOS simulator, 2026-11-04. The
+  first human verification any of the thirteen items has had.**
+  - **✅ VERIFIED BY LU — item 1 (1a, 1b), item 2, item 4, item 5 (lines,
+    triangles, footer, quiz grading), item 6 (6a, 6b, 6c, 6d), item 9 (9a, 9b),
+    item 13 (the coach tile, the parent tile, and the note).** These rows move
+    from `built, unverified by Lu` to **`VERIFIED-SIMULATOR`** and must not be
+    re-planned as new work. **6e was NOT run and must not be** — it sends a real
+    push to ~231 PAC families.
+  - **❎ STILL UNVERIFIED, and why each one:**
+    * **1c and 1d** — the chat-room fallback and its Chat info. Reachable only
+      by the timing trick in `docs/recon/release-1.0.20-fixes.md` §1 row 1c;
+      not reached in Round 2. **Carried to Round 3.**
+    * **survey share** — **moved to Round 3, and CHECK WHAT IT TOUCHES FIRST.**
+      Do not test it blind: establish which channels and which rows a share
+      writes before tapping it.
+    * **FM5v5 tab count** — **moved to Round 3.** Still the `INFERRED OK` it has
+      been since Round 1; it owes a counted number of tabs, not an opinion.
+    * **item 3, the push-warning check** — **🅿️ PARKED after two inconclusive
+      rounds.** The `shouldShowAlert` removal is **AGENT PROOF ONLY** (the WARN
+      is gone from source); no human has read a banner. Two rounds failed to
+      produce one, so it stops costing test passes. **Round 3 is a REAL PHONE,
+      and the banner question is answered there or not at all.**
+    * **the parent roster number** (§10's one INFERRED check — the Responses bar
+      total as a parent) — **NOT CAPTURED.** Still the open check that would
+      confirm or kill the under-count inference under `CAL-NOREPLY-COUNT`.
+  - Source: Lu's simulator run and report, 2026-11-04; the item list is
+    `docs/recon/release-1.0.20-fixes.md` §§1-13 and its §14 index.
+
+- **R-02 · SUPERSEDED BEFORE IT WAS ANSWERED.** Planning room, 2026-11-04
+  ~02:05: should a failed save in the OLD brain games show the player an alert
+  (**A**) or log quietly (**B**, recommended)? **No answer was ever given —
+  R-04 superseded it** by hiding the old games behind the launch switch, which
+  makes the question moot (item 8 of `RELEASE-1.0.20-FIXES` is marked MOOT for
+  the same reason: the fix is kept, not reverted, and nothing reaches it).
+  Recorded so it is not re-asked as if it were open.
+
+- **🎮 GAME-PLAY FINDING · the old brain games were barely played, and one
+  counter is in the wrong unit. PROVEN by Lu's own read of prod (read-only SQL,
+  2026-11-04) — no agent has queried that database.**
+  - `player_game_progress`: **1-2 players across 6 games**, all of it between
+    **Jan 15 and Feb 19 2026**, and **nothing after**.
+  - `daily_game_time.minutes_played` = **147,516,255** for one player. That is
+    **280 years of minutes** — the column is being fed something that is not
+    minutes (milliseconds, most likely). **THE WRONG UNIT IS THE LESSON: the
+    new arcade must not repeat it.** Whatever the new arcade writes, the unit
+    belongs in the column name and in one writer.
+  - **8 `cognitive_game` XP awards / 67 XP total; 0 achievements.**
+  - **Why it matters beyond trivia:** R-04 hid six games that ~2 people had
+    touched in ten months. The hiding cost nothing real, and the arcade is being
+    built against a clean slate rather than against live usage.
+  - Source: Lu's prod read, 2026-11-04. **Not re-derivable from this repo.**
+
+- **R-05 = A · ONE announcements mark, consistent across every layer · Lu
+  2026-11-04 · BUILT the same day, `built, unverified by Lu`.**
+  - **THE RULING.** The crest + megaphone mark is used on the chat list row, the
+    feed header, one opened announcement and the compose form — **A**, not a
+    per-screen choice.
+  - **WHAT WAS WRONG.** R-01 had put a megaphone in three places with three
+    sizes and three circles, **none of them carrying the club**, and the opened
+    announcement's header said only the word **"Announcement"** — a reader who
+    arrived from a push tap could not tell whose it was.
+  - **F-1, BUILT.** `src/components/chat/AnnouncementsMark.tsx` (new) is the one
+    renderer: the club's `logo_url` in a circle, a **2px #C4976D ring** (the tan
+    the chat list already gives this row), and the existing `MegaphoneIcon`
+    **navy on a tan circle** badged on the bottom-right, ringed in the screen's
+    background. No crest → the club's **initials** (`clubShortName`, R-01's
+    rule) on navy; no club name at all → **"A"**, matching
+    `announcementsChatName`'s own fallback. **Six screens**, smaller as it goes
+    deeper: chat list 40pt · feed 44pt · chat-room fallback 26pt · opened
+    announcement 32pt · compose 32pt · Chat info 64pt. The feed and the two
+    32pt headers also gained the **full-width 2px tan rule**, which REPLACED
+    their hairline border rather than joining it. The opened announcement's
+    header is now a **small-caps tan kicker** with the chat name plus the
+    announcement's **date**.
+    **The megaphone is now drawn in exactly ONE place** (`grep -rn
+    MegaphoneIcon src`); the three one-off badge styles are deleted.
+    `src/lib/announcementsMarkClub.ts` (new) is the one cached club read
+    (`comm_channels.club_id` → `clubs(name, logo_url)`, per channel, per
+    process) and it **replaced** the feed's own `clubs.name` effect.
+  - **F-2, BUILT.** The §6 discard prompt gains a third answer. **"Leave this
+    announcement?"** → **Keep writing** (cancel) · **Save draft** · **Discard**
+    (destructive). `src/lib/announcementDraft.ts` (new) stores title, body and
+    drafted buttons in **`AsyncStorage` ON THE DEVICE ONLY**, keyed
+    `announce.draft.v1.<user id>.<club id>`. **NO DB WRITE — there is no drafts
+    table and none was added.** Opening ✎ restores it once, into an untouched
+    form only, with a quiet **"Draft restored"** note that retires on the first
+    edit; **Discard and a successful send both clear it.** A poll is not part of
+    a draft — it is already a posted message. **The cost, stated: the draft is
+    PER DEVICE.**
+  - **NO NEW DEPENDENCY.** `react-native-svg` 15.12.1 (the megaphone) and
+    `@react-native-async-storage/async-storage` 2.2.0 (the draft — the supabase
+    session already lives in it) were both already in `package.json`, which was
+    **not** edited.
+  - **STATUS: `built, unverified by Lu` for both.** Gates: `npx tsc --noEmit` →
+    **0 errors**; `eslint` on all 9 changed files → **0 errors, 128 warnings**
+    (the same 128 those six screens already carried — the three new files are
+    clean); `npx expo export --platform ios` → **succeeded**; `npm run smoke` →
+    **257 assertions, 0 failures**. Test rows, screen by screen and tap by tap:
+    **`docs/recon/release-1.0.20-fixes.md` §15 (F1a-F1h), §16 (F2a-F2j), §17.**
+  - **⚠️ F2j AND §6e STILL SEND.** The only two rows in either file that post a
+    real announcement to ~231 PAC families. **Not to be run until Lu wants to
+    send.** And the 🛑 server step above this entry still stands: the push
+    **title** is `chatContextName` in the edge function and still reads
+    `club-announcements`.
+  - **NOTHING SACRED TOUCHED.** No schema, migration, SQL, Supabase write, RPC
+    or RLS; no dependency or `package.json`; no `app.json` or version bump; no
+    env, no delete, no auth; **no DB access of any kind**;
+    `docs/recon/arcade.md` not written (it was already modified in the working
+    tree before this task); no edit in the web repo; **no commit and no push.**
+  - Source: Lu's ruling R-05, 2026-11-04; this session's build, same day;
+    `docs/recon/release-1.0.20-fixes.md` §§15-17.
+
+## Landed — Nov 4 2026 (Round 2b verification, R-06, F-3)
+
+- **RELEASE-1.0.20-FIXES · F-1 AND F-2 ARE VERIFIED — Lu, iOS simulator, Round
+  2b, 2026-11-04.**
+  - **✅ F-1 (R-05 = A, the one announcements mark):** the brand flow reads
+    **consistently across layers 1-3** — the chat list row, the feed header and
+    one opened announcement. Seen by a human; the row moves from
+    `built, unverified by Lu` to **`VERIFIED-SIMULATOR`**.
+  - **✅ F-2 (save draft):** **save, restore and discard all pass (a-e).** Same
+    promotion. **F2j was NOT run and must not be** — it sends a real push to
+    ~231 PAC families.
+  - **Still owed from the earlier rounds, unchanged:** 1c / 1d (the chat-room
+    fallback and its Chat info), the survey share (check what it touches
+    first), the FM5v5 tab count, item 3's push-warning check (PARKED, agent
+    proof only — Round 3 is a real phone), and the parent roster number.
+  - Source: Lu's Round 2b run, 2026-11-04;
+    `docs/recon/release-1.0.20-fixes.md` §§15-16.
+
+- **R-06 = OPTION 2 · the announcements colour is a PASTEL SKY with a soft tint
+  · Lu 2026-11-04 · BUILT the same day, `built, unverified by Lu`.**
+  - **THE RULING.** `#A9CCEB` with a 22% tint fill **replaces the tan
+    `#C4976D`** on announcements surfaces — **and only there.**
+  - **WHY THE TAN WAS NEVER A DECISION.** It is what
+    `ChatScreen.getChannelColor` has always returned for a `club` channel;
+    R-01's mark, R-05's rules, the kicker and the card edges each inherited it
+    one at a time. Nobody chose it for the chat every family in the club reads.
+  - **ONE TOKEN MODULE.** `src/lib/announcementsTheme.ts` (new) holds the whole
+    system: `ANN_SKY` **#A9CCEB** · `ANN_SKY_TINT`
+    **rgba(169,204,235,0.22)** · `ANN_TEXT` **#FFFFFF** · `ANN_SUBTEXT`
+    **#C7DDF2** · `ANN_NAVY` **#0F1D2F**. Eight files draw this surface and
+    five used to write the accent out by hand. It is **pure** — no supabase, no
+    react — so `NotificationsScreen` can take a token without pulling the
+    announcements data layer behind it.
+  - **`ANN_NAVY` IS A LEGIBILITY FIX, NOT DECORATION.** White on `#A9CCEB` is
+    about **1.4:1**, so the megaphone drawn ON the sky circle is navy and so
+    are the digits on a sky unread badge. A pastel accent forces that; a tan
+    one never did.
+  - **🔑 THE STRUCTURAL PART — ANNOUNCEMENTS ONLY, BY THE ROW.**
+    `getChannelColor` gained **a new arm ABOVE the `club` arm**, gated on
+    `isAnnouncements` (`channel_type = 'club' AND is_default`, never a name).
+    The old arm matches **every `club` channel AND anything whose name merely
+    contains "club"**, so recolouring it in place would have taken the
+    **coaches' lounge** and any club channel added later with it. **NO TEAM
+    COLOUR WAS TOUCHED** — `resolveTeamColor` is untouched and the DM / group /
+    lounge arms still return what they always did.
+  - **WHAT CHANGED ON SCREEN.** The chat list's announcements card is now the
+    one card in that list with its **own bed** (tint + 1px sky border, white
+    name, `ANN_SUBTEXT` preview and club line, navy unread digits) and **no
+    other card's styling changed**. The feed, one opened announcement and
+    compose each wear a **rounded (12) banner** of tint + 1px sky border, which
+    **REPLACED R-05's full-width 2px rule** — there is no rule left on those
+    screens. Feed cards and compose's preview keep their **dark bed** with a
+    **3px sky left edge**: tinting the cards too would leave the feed with no
+    contrast between the chrome and the content. The chat-room fallback and
+    Chat info recoloured with the mark, which was their only tan.
+  - **THE ONE REMAINING `#C4976D` IN `src` IS DELIBERATE:**
+    `ChatScreen.tsx:186`, the club's **other** channels. The announcements chat
+    returns from the sky arm 23 lines above it and can no longer reach it.
+
+- **F-3 · THE DRAFT IS VISIBLE IN THE FEED · built 2026-11-04,
+  `built, unverified by Lu`.**
+  - **WHY.** F-2 made Save draft possible but **invisible** — the only way to
+    discover a saved draft was to open ✎ and watch it appear. A draft you
+    cannot see is a draft you forget you wrote.
+  - **WHAT IT IS.** At the **top of the feed, above the date headings**, drawn
+    **only** when `announcementDraft` storage holds one for **this user id +
+    this club id**: a **transparent card with a 1.5px DASHED sky border** —
+    deliberately the opposite of a real announcement's solid dark bed and solid
+    edge, so it cannot be mistaken for something that was sent. Three lines:
+    small-caps sky **"DRAFT · SAVED <age>"** with a **trash** icon, the draft's
+    **title** (or **"Untitled draft"**), and muted **"Tap to keep writing"**.
+  - **Tap** opens compose and restores through **F-2's existing path** — no
+    second restore route. **Trash** asks **"Delete draft?" / "This draft will
+    be removed from this phone."** (Cancel · destructive Delete) and the card
+    goes. **Refreshed on FOCUS, not on mount**, because the round trip it
+    exists for is feed → ✎ → Save draft → back to this feed.
+  - **ONE WORDING FOR THE AGE.** `announcementDraftAge()` in
+    `src/lib/announcementDraft.ts` serves both the card and compose's note
+    (**"Draft restored · saved 5 min ago"**). A clock that moved backwards
+    prints "just now", never a negative; **no stamp → no age is invented**, the
+    kicker is just "DRAFT".
+  - **STILL NO DB WRITE.** Device-local `AsyncStorage`, as F-2 established.
+
+- **R-05 · the notifications list wears the mark · built 2026-11-04,
+  `built, unverified by Lu`.** The `announcement` row drew a **pink `#ec4899`
+  megaphone-outline Ionicon** — the last megaphone in the app that disagreed
+  with its own surface, and a FOUND item when F-1 landed. It is now
+  `AnnouncementsMark` at 32pt in the row's existing 44pt circle, on an
+  `ANN_SKY_TINT` bed; **every other notification type is untouched.**
+  **⚠️ IT HAS NO CREST, and the reason is UNKNOWN, not decided:** a
+  `notifications` row carries `type`, `title`, `body` and an untyped `data`
+  bag, and whether `data` holds a `club_id` cannot be answered from either repo
+  — those rows are written by the **Supabase edge function**. So the mark falls
+  back to its documented initials. **The check:** log one real announcement
+  notification's `data` keys; if a club id is in there, pass it and the crest
+  appears with no other change.
+
+- **Gates for all three** (R-06, F-3, the notifications icon): `npx tsc
+  --noEmit` → **0 errors**; `eslint` on all **11** changed files → **0 errors,
+  131 warnings** (pre-existing classes); `npx expo export --platform ios` →
+  **succeeded**; `npm run smoke` → **257 assertions, 0 failures**; `grep -rn
+  "C4976D" src` → **one live hit, by design** (above) plus two docblock
+  mentions. Test rows, tap by tap: **`docs/recon/release-1.0.20-fixes.md` §18
+  (R6a-R6i), §19 (F3a-F3k), §20 (R5a-R5b), §21.**
+- **NOTHING SACRED TOUCHED.** No schema, migration, SQL, Supabase write, RPC or
+  RLS; no dependency or `package.json`; no `app.json` or version bump; no env,
+  no delete, no auth; **no DB access of any kind**; **no team colour**;
+  `docs/recon/arcade.md` not written and **no `git stash` was used this time**;
+  no edit in the web repo; **no commit and no push.** `Send announcement` was
+  never triggered.
+- Source: Lu's rulings R-06 (option 2) and the F-3 / notifications scope,
+  2026-11-04; this session's build, same day.

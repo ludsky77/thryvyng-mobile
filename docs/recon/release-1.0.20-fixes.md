@@ -539,3 +539,257 @@ every dashboard renders as before) · `src/components/dashboards/PlayerDashboard
 > audience and read the banner → only then the launch announcement.** Deploying that function
 > affects **every other push type it titles**, not only announcements. Ledger:
 > `RELEASE-1.0.20-FIXES` → "BEFORE THE LAUNCH ANNOUNCEMENT GOES OUT".
+
+---
+
+## 15. F-1 · R-05 = A · ONE brand mark, on every announcements layer
+
+**Built 2026-11-04, after Round 2.** Status: **`built, unverified by Lu`.**
+
+**Why it was not already right.** R-01 (§1) put a megaphone in three different places, each
+with its own size, its own circle and its own copy of the idea: a 40pt tan circle in the chat
+list, an 18pt one in the feed header, another 18pt one in the chat-room header. **None of them
+carried the club.** A family moving list → feed → announcement saw three badges for one chat
+and no crest anywhere, and the opened announcement said only the word **"Announcement"** —
+a reader arriving from a push tap could not tell whose announcement it was.
+
+**R-05 = A (Lu, 2026-11-04): one mark, consistent, getting smaller as you go deeper.**
+
+| | |
+|---|---|
+| **the component** | `src/components/chat/AnnouncementsMark.tsx` (**new**) — the single renderer. Props: `size` (the crest's diameter), `logoUrl`, `clubName`, `ringColor`. |
+| **the three parts** | **1.** the **crest** — the club's `clubs.logo_url`, filling the circle. **2.** a **2px ring in #C4976D**, the tan the chat list already gives every club/announcement row (`ChatScreen.getChannelColor`) and the colour of the feed cards' left strip. **3.** the **megaphone badge** — the existing `MegaphoneIcon`, **navy on a tan circle**, overlapping the bottom-right corner, ringed in the screen's own background colour so it sits proud of the crest. |
+| **no crest?** | Falls back to the club's **initials on navy** — `clubShortName()`, R-01's own rule, initialled further if it returns a multi-word name. **No club name at all → "A"**, matching `announcementsChatName()`'s own fallback to the bare word "Announcements". Never a blank circle, never an emoji. |
+| **sizes** | badge = **44%** of the crest with a **14pt floor** (below that the megaphone's three strokes stop reading as a megaphone); it overhangs by a fifth of its own width on the two edges it touches. |
+| **the club read** | `src/lib/announcementsMarkClub.ts` (**new**) — ONE cached two-step read (`comm_channels.club_id` → `clubs(name, logo_url)`), keyed per channel for the life of the process. The feed used to read `clubs.name` in its own effect and read no crest; that effect is **gone**, replaced by this hook. The chat list and the chat room already held both and do **not** call it. |
+| **no new dependency** | `react-native-svg` (the megaphone) and `AsyncStorage` (§16) were both already in `package.json`. |
+| **DISPLAY ONLY** | No write of any kind. The channel is still chosen by `channel_type = 'club' AND is_default`, never by a name and never by this mark. A failed club read leaves the mark on its initials and costs nothing else. |
+
+**The megaphone is now drawn in exactly one place.** `grep -rn MegaphoneIcon src` →
+`AnnouncementsMark.tsx` and the icon's own file, nothing else. The three one-off badge styles
+(`AnnouncementsFeedScreen.headerBadge`, `TeamChatRoomScreen.headerAnnounceBadge`, and the chat
+list's inline megaphone circle) are deleted.
+
+**Every screen that shows this chat — found by grep, six of them:**
+
+| layer | screen | the mark | the rest of the header |
+|---|---|---|---|
+| **1** | `src/screens/ChatScreen.tsx` — the chat list row | **40pt**, the existing avatar size; `ringColor` is the **card's** `#1e293b`, not the screen's | the tan left strip is untouched; line 1 still "PAC Announcements", line 3 still "Provo Athletic Club" |
+| **2** | `src/screens/AnnouncementsFeedScreen.tsx` — the feed | **44pt**, the largest: this is the chat's front door | "PAC Announcements" + "Provo Athletic Club" **beside** the mark (left-aligned, not centred — a 44pt mark plus two centred lines leaves the title nowhere to go between two 40pt buttons) + a **full-width 2px tan rule**, which REPLACES the old hairline border |
+| **2-alt** | `src/screens/TeamChatRoomScreen.tsx` — the chat-room **fallback** (bubbles) | **26pt** — this header is one title line and its crest spot is 18pt; 18 leaves the badge unreadable, 32 would grow the header | title and subtitle unchanged (R-01's) |
+| **3** | `src/screens/AnnouncementDetailScreen.tsx` — one announcement opened | **32pt** | **the word "Announcement" is gone**: a **small-caps tan kicker** with the chat name (`announcementsChatName`) + **this announcement's date** as the subtitle + the same tan rule |
+| **3b** | `src/screens/ComposeAnnouncementScreen.tsx` — compose | **32pt** | same as layer 3, subtitle **"New announcement"** |
+| **4** | `src/screens/ChatInfoScreen.tsx` — Chat info | **64pt**, in the spot the `#` circle held | the big name is R-01's "PAC Announcements"; **every other chat keeps the `#`** |
+
+### How Lu sees it — as club admin, PAC
+
+| # | screen and taps | what should be on screen |
+|---|---|---|
+| F1a | **Chat tab** → the announcements row | The badge is the **PAC crest in a circle with a 2px tan ring**, and a **small tan megaphone circle on its bottom-right corner**. **Not** a plain megaphone on a solid tan circle (that was R-01), **not** a ⚽, **not** a bare crest. The tan left strip on the card is still there. |
+| F1b | tap that row → the **feed** header | The same mark, **bigger**, to the left of **"PAC Announcements"** / "Provo Athletic Club". Under the whole header, a **full-width tan line** — and only ONE line, not a tan line plus a grey hairline. |
+| F1c | tap any card → the **opened announcement** | Header: the **same mark, smaller**, then **"PAC ANNOUNCEMENTS"** in small tan capitals with **the announcement's date** underneath, then the tan rule. **The header must not say the single word "Announcement" any more.** |
+| F1d | from the feed, **✎** | The **same** header as F1c, with **"New announcement"** where the date was. |
+| F1e | **Chat info** for this chat (reach it through the chat-room fallback, §1's row 1c) | A **64pt** mark where the `#` circle was. Open Chat info on a **team** chat too: it must still show the `#`. |
+| F1f | the **chat-room fallback** itself (§1 row 1c's trick) | A **26pt** mark where a team chat shows its crest. |
+| F1g | **as coach and as parent** | F1a–F1c read the same, and there is still **no ✎** in the feed header. |
+| F1h | **the crest-less case** — only reachable on a club with no `logo_url` (PAC has one) | The circle shows **PAC** in white on navy, inside the same tan ring, with the same corner badge. **Not testable on PAC; recorded so it is not mistaken for a bug elsewhere.** |
+
+---
+
+## 16. F-2 · Save draft on the compose form
+
+**Built 2026-11-04, after Round 2.** Status: **`built, unverified by Lu`.**
+
+**What changed.** §6's prompt had two answers — keep writing, or throw it away. A staff member
+half way through a long message who got a phone call had those two and nothing else. The prompt
+now has **three**, and the wording changed with it:
+
+> **"Leave this announcement?"** / "Nothing has been sent. You can keep it as a draft on this
+> device."
+> **Keep writing** (cancel) · **Save draft** · **Discard** (destructive)
+
+Cancel first, destructive last, the new answer in the middle — the same ordering safety §6 had.
+
+| | |
+|---|---|
+| **where the draft lives** | `src/lib/announcementDraft.ts` (**new**) — **`AsyncStorage`, on the device only.** `@react-native-async-storage/async-storage` **2.2.0 was already in `package.json`** (the supabase session lives in it, `src/lib/supabase.ts`): **no new dependency.** |
+| **NO DB WRITE** | An unsent announcement is not a row anywhere. There is no drafts table and none was added — that is a schema change and SACRED. Same trade `useMyMessages` makes for its last-seen stamp and `SurveyPopupModal` for its dismissal. |
+| **the key** | `announce.draft.v1.<user id>.<club id>`. The **user** half keeps two accounts on one phone from reading each other's writing; the **club** half keeps a multi-club admin from carrying one club's draft into another's. There is exactly one announcements channel per club, so a per-channel key would be the same key with a worse name. The club id comes from §15's cached read. |
+| **what is stored** | the **title**, the **body**, and the **drafted buttons** (kind, label, card key) — plus a `savedAt` stamp, written but not yet shown. The buttons' local render ids are **not** stored; a restored row gets a fresh one. |
+| **what is NOT stored** | A **poll** added through "Add a poll". A poll is its own posted message the moment it is created (§1's recon, P-5) — it is already in the feed and was never part of the draft. |
+| **restore** | Opening **✎** with a saved draft puts it back and shows a quiet tan **"Draft restored"** note under the audience line. It restores **once**, and **only into an untouched form** — the key's club half can land a frame after the first keystroke, and overwriting what someone had started typing would be worse than no restore. The note **retires on the first edit**. |
+| **what clears it** | **Discard** (so the next open cannot restore what was just thrown away) and a **successful send**. Nothing else. |
+| **every storage call is wrapped** | A phone that refuses the read answers "no draft" and the form opens empty — exactly what it did before F-2. A failed **write** is reported: **"Draft not saved · This device would not store the draft. Nothing was sent."** and it still leaves, because staying would trap someone who has already decided to go. |
+| **the cost, stated** | The draft is **per device**. Start a message on the phone and the tablet does not have it. |
+
+**Files:** `src/lib/announcementDraft.ts` (new) · `src/screens/ComposeAnnouncementScreen.tsx`
+
+### How Lu sees it — as club admin, PAC. **Nothing here sends.**
+
+| # | screen and taps | what should happen |
+|---|---|---|
+| F2a | **✎** → type **nothing** → back arrow | Leaves **immediately, no prompt.** (§6a, unchanged.) |
+| F2b | ✎ → type a title → back arrow | **"Leave this announcement?"** with **three** buttons: Keep writing · Save draft · Discard. **Keep writing** returns to the form with the text still there. |
+| F2c | from F2b → **Save draft** → leaves → **✎ again** | The title is **back in the field**, and a small tan **"Draft restored"** sits under "Goes to everyone in Provo Athletic Club announcements". |
+| F2d | from F2c → type one more character | The **"Draft restored"** note **disappears**. The text stays. |
+| F2e | ✎ → title **and** body **and** one ＋ Playbook card button with key `F3` → back → **Save draft** → **✎** | **All three come back**: title, body, and the button row with its kind, its label and `F3`. |
+| F2f | from F2e → back arrow → **Discard** → **✎** | The form is **empty**. The discarded draft is gone, not restored. |
+| F2g | ✎ → type a title → **swipe from the left edge** | The **same three-answer prompt** (React Navigation's `beforeRemove`). Save draft works from here too. |
+| F2h | **force-quit the app** after F2c, reopen → ✎ | The draft is **still there** — it is on disk, not in memory. |
+| F2i | sign out, sign in as **coach** (`ludwig.snchz+zztest6@gmail.com`) | That account has **no ✎** at all, so there is nothing to restore. The admin's draft is keyed to the admin's user id and must never appear for anyone else. |
+| F2j | ✎ → fill it → **Send announcement** → it posts → **✎ again** | The form is **empty**: a sent message's draft is cleared. **⚠️ This sends a real push to ~231 PAC families — do not run F2j until Lu wants to send.** |
+
+---
+
+## 17. One-line index — the Round 3 additions
+
+| item | what | status | Lu checks |
+|---|---|---|---|
+| **F-1** | R-05 = A · one crest + tan ring + megaphone mark, **six** screens, megaphone drawn in one place | built, unverified by Lu | §15, F1a–F1g (**F1h not testable on PAC**) |
+| **F-2** | Save draft on the compose form — AsyncStorage, per user + club, device only | built, unverified by Lu | §16, F2a–F2i (**not F2j**) |
+
+**Gates, run after the last edit:** `npx tsc --noEmit` → **0 errors** ·
+`ESLINT_USE_FLAT_CONFIG=false npx eslint` on all 9 changed files → **0 errors, 128 warnings**
+(the same 128 the six screens already carried before this task; the three new files are clean) ·
+`npx expo export --platform ios` → **succeeded**, iOS bundle 9.53 MB ·
+`npm run smoke` → **257 assertions, 0 failures**.
+
+**Nothing SACRED touched:** no schema, migration, SQL, Supabase write, RPC or RLS; **no
+dependency and no `package.json`**; no `app.json` or version bump; no env, no delete, no auth;
+**no DB access of any kind**; `docs/recon/arcade.md` not written; no edit in the web repo; **no
+commit and no push.** `Send announcement` was never triggered.
+
+---
+
+## 18. R-06 · The announcements colour is a pastel sky, softly tinted
+
+**Built 2026-11-04, after Round 2b.** Status: **`built, unverified by Lu`.**
+**Lu ruled option 2.**
+
+**Why the old colour was never a decision.** R-01 and R-05 built every announcements surface
+in the tan **`#C4976D`**, and nobody chose it: it is what `ChatScreen.getChannelColor` has
+always returned for a `club` channel, and the mark's ring, the kicker, the rules and the card
+edges each inherited it. The chat every family in the club reads was wearing a colour borrowed
+from a lookup table.
+
+| | |
+|---|---|
+| **the tokens, defined ONCE** | `src/lib/announcementsTheme.ts` (**new**). `ANN_SKY` **#A9CCEB** (rings, badge, edges, kicker, banner borders, F-3's dashed border) · `ANN_SKY_TINT` **rgba(169,204,235,0.22)** (the list card's and the banners' fill) · `ANN_TEXT` **#FFFFFF** · `ANN_SUBTEXT` **#C7DDF2** · `ANN_NAVY` **#0F1D2F**. |
+| **why its own module** | Eight files draw part of this surface and five of them used to write the accent out by hand. A colour defined in five places drifts on the sixth change. The module is **pure** — no supabase, no react — which is what lets `NotificationsScreen` take a token without pulling the announcements data layer in behind it. |
+| **ANN_NAVY exists for legibility, not decoration** | White on `#A9CCEB` is about **1.4:1**. So the megaphone drawn ON the sky circle is navy, and so are the digits on a sky unread badge. A tan accent never had to think about this; a pastel does. |
+| **ANNOUNCEMENTS ONLY — and this is the structural part** | `getChannelColor` gained **a new arm ABOVE the `club` one**, gated on `isAnnouncements` (the ROW test `channel_type = 'club' AND is_default`, never a name). The old arm matches every `club` channel **and anything whose name merely contains "club"**, so recolouring it in place would have taken the **coaches' lounge** and any club channel added later with it. **No team colour is touched** — `resolveTeamColor` is untouched, and the DM / group / lounge arms still return what they always did. |
+| **the one remaining `#C4976D` in `src`** | **`ChatScreen.tsx:186`** — the club's OTHER channels, by design. The announcements chat returns from the sky arm **23 lines above it** and can no longer reach it. (Two more hits are prose in docblocks explaining the change.) |
+
+**Surface by surface:**
+
+| surface | before (R-05, tan) | after (R-06, sky) |
+|---|---|---|
+| `AnnouncementsMark` | 2px tan ring, navy megaphone on a tan circle | **2px `ANN_SKY` ring, `ANN_NAVY` megaphone on a sky circle.** Shape unchanged; only the two colours. |
+| chat list row | tan 4px left strip on the standard dark card | **the whole card is `ANN_SKY_TINT` with a 1px `ANN_SKY` border**, the left strip now sky, the name **white read or unread**, the preview and the member/club line **`ANN_SUBTEXT`**, and the unread badge's digits **navy**. **No other chat card changes.** |
+| feed header | a bar ending in a full-width 2px tan rule | **a rounded (12) banner** — tint fill, 1px sky border — holding the back arrow, the 44pt mark, "PAC Announcements" + the club name, and the ✎. **The rule is gone, not doubled.** |
+| opened announcement | 32pt mark, tan kicker, tan rule | **the same banner**, 30pt mark, **`ANN_SKY` small-caps kicker** + the date |
+| compose | 32pt mark, tan kicker, tan rule | **the same banner**, 30pt mark, kicker + "New announcement"; the restored-draft note is sky |
+| feed cards + compose's preview card | 3px tan left edge | **3px `ANN_SKY` left edge, dark bed kept.** The cards stay dark deliberately: tinting them too would leave the feed with no contrast between the chrome and the content. |
+| chat-room fallback · Chat info | the mark's tan | **the mark's sky** — their only tan was inside the mark, so both recoloured with it |
+
+### How Lu sees it — as club admin, PAC
+
+| # | screen and taps | what should be on screen |
+|---|---|---|
+| R6a | **Chat tab** → the announcements row | The **whole card** has a pale blue wash and a thin blue outline; the name is **white**; the preview and "Provo Athletic Club" are **pale blue**. **Every other card in the list looks exactly as it did** — same dark bed, same colours. |
+| R6b | the same list, find the **coaches' lounge** or any other club chat | **Still its old colour.** If a second chat went blue, the row gate is wrong — say so. |
+| R6c | any **team** chat row | **Unchanged.** No team colour was touched. |
+| R6d | tap the announcements row → the **feed** | The header is now a **rounded blue-tinted panel with a thin blue border**, holding the arrow, the mark, the name, the club and the ✎. **There is no 2px line under it** — if you see both a panel and a line, say so. |
+| R6e | the cards in that feed | **Dark cards with a blue left edge** (they were brown). |
+| R6f | open one card | The banner again, smaller, with **"PAC ANNOUNCEMENTS"** in blue small caps and the date. |
+| R6g | the mark, anywhere | The crest's ring is **blue**, and the corner megaphone is **dark navy on a blue circle** — never white on blue. |
+| R6h | a row with an **unread count** | The count's digits are **dark**, not white. White on this pastel is unreadable, and that is the one place the colour forced a change beyond the accent. |
+| R6i | **Notifications tab**, an announcement notification | See §20. |
+
+---
+
+## 19. F-3 · The draft is visible in the feed
+
+**Built 2026-11-04.** Status: **`built, unverified by Lu`.**
+
+**Why.** F-2 (§16) made Save draft possible but **invisible**: the only way to discover a saved
+draft was to open ✎ and see it appear. A draft you cannot see is a draft you forget you wrote.
+
+| | |
+|---|---|
+| **when it is drawn** | **Only** when `announcementDraft` storage holds a draft for **THIS user id + THIS club id** (F-2's key). A reader who has never composed — every family in the club — never sees it, and it cannot surface for the wrong account or the wrong club. |
+| **where** | At the **top of the feed, above the first date heading**, as the list's header row, so it **scrolls with the feed** rather than pinning. It is shown under **both** filters: a draft is this person's own unfinished work, and "All / New" is about what has been read. |
+| **what it looks like** | **Transparent, 1.5px DASHED `ANN_SKY`**, radius 14 — the same corner a real announcement card has, and deliberately the opposite treatment: a real card is a **solid dark bed with a solid 3px edge**. Nothing on it has been sent, and the border alone says so. |
+| **three lines** | **1.** a small-caps sky kicker, **"DRAFT · SAVED 5 MIN AGO"**, with a **trash icon** hard right. **2.** the draft's **title**, or **"Untitled draft"**. **3.** muted **"Tap to keep writing"**. |
+| **the age** | `announcementDraftAge()` in `src/lib/announcementDraft.ts` — one wording, used by **both** this card and compose's restored note: *just now · 5 min ago · 1 hour ago · 3 hours ago · yesterday · 3 days ago*, then a date. A clock that moved **backwards** prints "just now", never a negative. **No stamp → the kicker is just "DRAFT"**, with no age invented. |
+| **refreshed on FOCUS, not on mount** | The round trip this card exists for is feed → ✎ → Save draft → **back to this feed**. A mount-only read would show the draft as it was before compose opened, or miss it. |
+| **tap** | Opens compose, which restores the draft through **F-2's existing path** — no second restore route was written. |
+| **trash** | **"Delete draft?"** / *"This draft will be removed from this phone."* → **Cancel** · **Delete** (destructive). The copy names the blast radius — **one phone** — because that is the whole truth about where a draft lives. The card disappears. |
+| **compose's note grew too** | **"Draft restored · saved 5 min ago"**, built from `savedAt` at the moment of the restore (it describes when the draft was saved, not how long the form has been open). It still retires on the first edit. |
+
+**Files:** `src/lib/announcementDraft.ts` (the age helper) · `src/screens/AnnouncementsFeedScreen.tsx`
+
+### How Lu sees it — as club admin, PAC. **Nothing here sends.**
+
+| # | screen and taps | what should happen |
+|---|---|---|
+| F3a | **Chat → PAC Announcements** with **no** draft saved | **No draft card.** The feed starts at "This week" / "Earlier" as before. |
+| F3b | **✎** → type a title and a body → back → **Save draft** → you land on the feed | A **dashed blue card at the very top**: **"DRAFT · SAVED JUST NOW"**, the title, and "Tap to keep writing". |
+| F3c | from F3b, **tap the draft card** | Compose opens with the title and body **back in the fields** and **"Draft restored · saved just now"** under the audience line. |
+| F3d | leave compose with **Keep writing**… then with the **arrow → Save draft** again | Back on the feed, **one** draft card — never two. |
+| F3e | ✎ → type **a body only**, no title → Save draft → feed | The card's line 2 reads **"Untitled draft"**. |
+| F3f | **wait a few minutes**, then pull-to-refresh / leave and come back to the feed | The kicker's age **has moved on** ("SAVED 5 MIN AGO"). It refreshes on focus. |
+| F3g | tap the **trash** on the card | **"Delete draft?"** / "This draft will be removed from this phone." **Cancel** leaves the card. **Delete** removes it **immediately**, and ✎ then opens an **empty** form. |
+| F3h | tap the trash, **Delete**, then pull-to-refresh | The card **stays gone**. |
+| F3i | with a draft saved, **sign out → in as coach** (`ludwig.snchz+zztest6@gmail.com`) → the announcements feed | **No draft card.** The draft is keyed to the admin's user id. |
+| F3j | save a draft, **force-quit**, reopen → the feed | The card is **still there** — it is on disk. |
+| F3k | with a draft saved, ✎ → **Send announcement** → back to the feed | The card is **gone**: a sent message's draft is cleared. **⚠️ This sends a real push to ~231 PAC families — do not run F3k until Lu wants to send.** |
+
+---
+
+## 20. R-05 · The notifications list wears the mark
+
+**Built 2026-11-04.** Status: **`built, unverified by Lu`.**
+
+The `announcement` notification type drew a **pink `#ec4899` megaphone-outline Ionicon** — the
+last megaphone in the app that disagreed with the surface it belongs to (it was reported as a
+FOUND item when F-1 landed). It is now **`AnnouncementsMark` at 32pt** inside the row's existing
+44pt circle, whose wash is `ANN_SKY_TINT`. **Every other notification type is untouched**: same
+glyph, same colour, same bed.
+
+**⚠️ IT HAS NO CREST, and that is a limit, not a choice.** A `notifications` row carries `type`,
+`title`, `body` and an untyped `data` bag. **Whether `data` holds a `club_id` is UNKNOWN** — the
+rows are written by the Supabase edge function, which is in neither repo — so the mark falls back
+to its documented **initials** ("A" with no club name in hand). **The check that would settle
+it:** log one real announcement notification's `data` keys; if a club id is there, pass it and
+the crest appears with no other change.
+
+**File:** `src/screens/NotificationsScreen.tsx`
+
+| # | screen and taps | what should be on screen |
+|---|---|---|
+| R5a | **Notifications**, find an **announcement** row | A **blue-ringed circle with a dark megaphone badge** on a pale blue bed — **not** a pink megaphone. Expect **"A"** inside the ring, not the PAC crest (see the limit above). |
+| R5b | the rows **around** it — an event, a chat message, a survey | **Unchanged**: green calendar, blue chat bubble, amber clipboard, each on its own tinted circle. |
+
+---
+
+## 21. One-line index — the Round 3 additions
+
+| item | what | status | Lu checks |
+|---|---|---|---|
+| **R-06** | pastel sky `#A9CCEB` + soft tint replaces the tan on announcements surfaces **only**; one token module; `getChannelColor` gained a row-gated arm | built, unverified by Lu | §18, R6a–R6i (**R6b/R6c are the "nothing else moved" checks**) |
+| **F-3** | the draft is visible at the top of the feed — dashed card, age, tap to resume, trash to delete | built, unverified by Lu | §19, F3a–F3j (**not F3k**) |
+| **R-05 icon** | the notifications list's announcement row wears the mark | built, unverified by Lu | §20, R5a–R5b |
+
+**Gates, run after the last edit:** `npx tsc --noEmit` → **0 errors** ·
+`ESLINT_USE_FLAT_CONFIG=false npx eslint` on all 11 changed files → **0 errors, 131 warnings**
+(all pre-existing classes; the two new/changed lib files and the mark are clean) ·
+`npx expo export --platform ios` → **succeeded** · `npm run smoke` → **257 assertions, 0
+failures** · `grep -rn "C4976D" src` → **one live hit, `ChatScreen.tsx:186`, the club's other
+channels by design**, plus two docblock mentions.
+
+**Nothing SACRED touched:** no schema, migration, SQL, Supabase write, RPC or RLS; **no
+dependency and no `package.json`**; no `app.json` or version bump; no env, no delete, no auth;
+**no DB access of any kind**; **no team colour**; `docs/recon/arcade.md` not written and **no
+`git stash`**; no edit in the web repo; **no commit and no push.** `Send announcement` was never
+triggered.

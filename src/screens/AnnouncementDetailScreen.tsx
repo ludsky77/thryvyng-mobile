@@ -23,6 +23,15 @@ import {
 import { PollCard } from '../components/chat/PollCard';
 import SurveyChatCard from '../components/chat/SurveyChatCard';
 import { playbookVisible } from '../constants/playbookLaunch';
+import { AnnouncementsMark } from '../components/chat/AnnouncementsMark';
+import {
+  ANN_SKY,
+  ANN_SKY_TINT,
+  ANN_SUBTEXT,
+  ANN_TEXT,
+} from '../lib/announcementsTheme';
+import { announcementsChatName } from '../lib/clubAnnouncements';
+import { useAnnouncementsMarkClub } from '../lib/announcementsMarkClub';
 import {
   fetchAnnouncementActions,
   splitAnnouncement,
@@ -93,6 +102,13 @@ export default function AnnouncementDetailScreen({
 
   const { messages, loading, toggleReaction } = useMessages(channelId ?? null);
   const { memberNames, labelKind } = useChatSenderLabels(channelId ?? null, null);
+
+  /**
+   * The club behind this announcement — R-05 = A. This screen is reached from
+   * the feed card and from a push tap, and neither hands it a club, so it
+   * asks the one cached shared read rather than growing its own.
+   */
+  const { clubName, logoUrl: clubLogoUrl } = useAnnouncementsMarkClub(channelId);
 
   const [actions, setActions] = useState<AnnouncementAction[]>([]);
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -178,16 +194,52 @@ export default function AnnouncementDetailScreen({
     (action) => action.kind === 'courses' || playbookVisible
   );
 
+  /**
+   * THE HEADER NO LONGER SAYS "Announcement" — R-05 = A (Lu, 2026-11-04).
+   *
+   * One word, no mark, no club: a reader who arrived from a push tap could not
+   * tell WHOSE announcement they were reading. Now it is the mark at the
+   * deepest size (32pt), the chat's own name as a small-caps tan kicker —
+   * `announcementsChatName`, the same string the feed header and the chat list
+   * row print — and this announcement's DATE underneath.
+   *
+   * The date is null until the message arrives, which is the loading and the
+   * removed-message states; the kicker and the mark are drawn in all three, so
+   * the header does not change shape under the reader.
+   */
+  const headerDate = message ? formatDayDivider(message.created_at) : null;
+
   const header = (
-    <View style={styles.header}>
-      <TouchableOpacity
-        style={styles.headerButton}
-        onPress={() => navigation.goBack()}
-      >
-        <Feather name="arrow-left" size={24} color="#fff" />
-      </TouchableOpacity>
-      <Text style={styles.headerTitle}>Announcement</Text>
-      <View style={styles.headerButton} />
+    <View style={styles.headerWrap}>
+      {/* R-06: the feed's banner, one layer deeper — same tint, same 1px sky
+          border, same radius, a smaller mark. The 2px tan rule this header
+          used to end with is gone. */}
+      <View style={styles.headerBanner}>
+        <TouchableOpacity
+          style={styles.headerButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Feather name="arrow-left" size={24} color={ANN_TEXT} />
+        </TouchableOpacity>
+        <AnnouncementsMark
+          size={30}
+          logoUrl={clubLogoUrl}
+          clubName={clubName}
+          /* The banner's bed: 22% sky over `#0f172a`. */
+          ringColor="#20303f"
+        />
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerKicker} numberOfLines={1}>
+            {announcementsChatName(clubName)}
+          </Text>
+          {headerDate ? (
+            <Text style={styles.headerSubtitle} numberOfLines={1}>
+              {headerDate}
+            </Text>
+          ) : null}
+        </View>
+        <View style={styles.headerButton} />
+      </View>
     </View>
   );
 
@@ -347,14 +399,22 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0f172a',
   },
-  header: {
+  /* R-06: the gutter the banner floats in, same as the feed's. */
+  headerWrap: {
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 10,
+  },
+  headerBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 10,
     paddingHorizontal: 8,
     paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e293b',
+    borderRadius: 12,
+    backgroundColor: ANN_SKY_TINT,
+    borderWidth: 1,
+    borderColor: ANN_SKY,
   },
   headerButton: {
     width: 40,
@@ -362,10 +422,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#fff',
+  headerCenter: {
+    flex: 1,
+  },
+  /*
+   * R-05: the chat's name as a KICKER, not as a title. Small caps in the
+   * announcements sky (R-06) — this screen's title is the announcement's own
+   * headline, printed in the body below, and two 17pt bold lines competing
+   * was the reason the old header said nothing but "Announcement".
+   */
+  headerKicker: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: ANN_SKY,
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    color: ANN_SUBTEXT,
+    marginTop: 2,
   },
   body: {
     padding: 20,

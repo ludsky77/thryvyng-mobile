@@ -50,7 +50,7 @@ import {
   announcementsChatName,
   isAnnouncementsChannel,
 } from '../lib/clubAnnouncements';
-import { MegaphoneIcon } from '../components/chat/MegaphoneIcon';
+import { AnnouncementsMark } from '../components/chat/AnnouncementsMark';
 import { useTypingPresence } from '../hooks/useTypingPresence';
 import { TypingIndicator } from '../components/chat/TypingIndicator';
 import { setActiveChannelId } from '../services/notifications';
@@ -1039,13 +1039,20 @@ export default function TeamChatRoomScreen({ route, navigation }: any) {
                 wear the club's crest, the same rule the chat list's cards now
                 follow. The club NAME on the subtitle line is untouched; the
                 ruling named the crest. */}
-            {/* R-01: the announcements chat takes the megaphone in the badge
-                spot instead of the crest — the same choice the chat list's
-                card makes, so the row and the room wear one badge. */}
+            {/* R-05 = A: the announcements chat takes THE mark in the badge
+                spot — the crest it would have shown anyway, ringed in tan with
+                the megaphone badged on its corner. 26pt rather than the
+                crest's 18: the mark has a badge hanging off it and 18 leaves
+                the megaphone unreadable. This room is the FALLBACK door (the
+                feed is the front one), and it wears the same mark so the two
+                cannot drift apart. */}
             {isAnnouncements ? (
-              <View style={styles.headerAnnounceBadge}>
-                <MegaphoneIcon size={12} color="#fff" />
-              </View>
+              <AnnouncementsMark
+                size={26}
+                logoUrl={clubLogoUrl}
+                clubName={clubName}
+                ringColor="#0f172a"
+              />
             ) : clubLogoUrl && showsClubCrest(rowChannelType) ? (
               <Image
                 source={{ uri: clubLogoUrl }}
@@ -1331,19 +1338,6 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 9,
-  },
-  /**
-   * R-01: the megaphone's circle, the crest's own size and place, in the
-   * channel colour the chat list gives this row (`getChannelColor`, #C4976D).
-   */
-  headerAnnounceBadge: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#C4976D',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
   },
   headerTitle: {
     color: '#fff',

@@ -997,19 +997,78 @@ function RootStackNavigator() {
   );
 }
 
+/**
+ * F-4: the notification ids that have ALREADY been routed, for this process.
+ *
+ * MODULE SCOPE, not a ref, and that is the point. It used to be
+ * `routedNotificationIdsRef`, which dies with the component — so a Fast
+ * Refresh, a sign-out/in, or any other remount of `AppNavigator` started with
+ * an empty set, re-read the same stored cold-start response, and routed the
+ * same tap a second time. A module-level set outlives every remount, and the
+ * native value is cleared as well (`forgetColdStartResponse` below), so one
+ * tap routes exactly once per app launch.
+ */
+const routedNotificationIds = new Set<string>();
+
+/**
+ * Hand the stored cold-start response back to the native module once JS has
+ * taken custody of it.
+ *
+ * `clearLastNotificationResponse` is in `expo-notifications` for exactly this
+ * ("may be used when an app selects a route based on the notification
+ * response, and it is undesirable to continue selecting the route after the
+ * response has already been handled"). Without it the value survives in the
+ * native module for the life of the process and any later mount can read it
+ * again.
+ *
+ * try/catch, not a feature test: like its getter it throws
+ * `UnavailabilityError` where the native method is absent (Expo Go, web).
+ * Nothing to report — it means there was no stored response to clear.
+ */
+function forgetColdStartResponse() {
+  try {
+    Notifications.clearLastNotificationResponse();
+  } catch {
+    // No native store on this platform. Nothing to clear.
+  }
+}
+
 export default function AppNavigator() {
   const { user, loading } = useAuth();
   const { pendingProgramId, setPendingProgramId, registrationData } = useRegistration();
   const navigationRef = React.useRef<any>(null);
-  const pendingNotificationRef = React.useRef<Record<string, any> | null>(null);
   /**
-   * The notification ids this mount has already routed, so ONE tap can never
-   * route twice -- the guard for the two delivery paths in the effect below.
+   * F-4: the tap that is waiting for the app to be able to act on it.
    *
-   * A Set, not one id: a tap while the app is already open must still route
-   * even if a cold-start tap was handled minutes earlier.
+   * STATE, NOT A REF, and that is the fix. It was `pendingNotificationRef`,
+   * and a ref write triggers no re-render — so nothing ever re-evaluated the
+   * flush condition, and a payload that arrived AFTER `loading` had already
+   * settled was stranded with no second `loading` transition to release it
+   * (docs/recon/f4-coldstart-push.md §2 HOLE 1). As state it re-renders, and
+   * the flush effect below is woken by the payload itself.
    */
-  const routedNotificationIdsRef = React.useRef<Set<string>>(new Set());
+  const [pendingNotification, setPendingNotification] = React.useState<
+    Record<string, any> | null
+  >(null);
+  /**
+   * The held payload's own notification id, kept beside it so the id can be
+   * recorded as routed when the route is DISPATCHED rather than when the
+   * response is first seen (§2 HOLE 3), and so a duplicate delivery of the
+   * same response while it is still held is recognised instead of re-stashed.
+   */
+  const pendingNotificationIdRef = React.useRef<string | null>(null);
+  /**
+   * F-4: is the navigation container READY — its own signal, from `onReady`.
+   *
+   * Both: a ref, because the notification listener fires outside React and
+   * needs the CURRENT answer rather than whatever a `[]` effect closed over;
+   * and state, because the flush effect has to be woken when it flips. The
+   * old code tested `navigationRef.current` for non-null, which is true from
+   * the moment the container MOUNTS — strictly earlier than when it can
+   * handle an action (§2 HOLE 2).
+   */
+  const navReadyRef = React.useRef(false);
+  const [navReady, setNavReady] = React.useState(false);
   const hasMountedNavRef = React.useRef(false);
 
   // Navigate when auth state changes
@@ -1074,7 +1133,18 @@ export default function AppNavigator() {
     }
   }, [user, loading, pendingProgramId, setPendingProgramId]);
 
-  const routeNotification = (data: Record<string, any>) => {
+  /**
+   * THE ONE ROUTER — unchanged by F-4, deliberately. Not a branch in it is
+   * touched, so every type inherits the repaired cold-start path with no
+   * per-type wiring.
+   *
+   * `useCallback` with NO dependencies is honest here, not a shortcut: the
+   * body reads `navigationRef` (a ref), the module constant `playbookVisible`
+   * and the imported `isAnnounceCardKey`, and nothing else from this
+   * component's scope. A stable identity is what lets it be named in both
+   * effects' dependency arrays below instead of being quietly omitted.
+   */
+  const routeNotification = React.useCallback((data: Record<string, any>) => {
     const nav = navigationRef.current;
     if (!nav) return;
     const type = data.type ?? data.reference_type;
@@ -1127,8 +1197,9 @@ export default function AppNavigator() {
         // Readiness needs nothing extra -- this sits inside
         // routeNotification, which already returned early if
         // navigationRef.current was null, and a tap that arrives before the
-        // navigator exists is stashed in pendingNotificationRef and replayed
-        // after loading finishes.
+        // navigator can act is HELD in `pendingNotification` and replayed
+        // once the container reports ready and the session has restored
+        // (F-4; docs/recon/f4-coldstart-push.md).
         nav.navigate('Main', { screen: 'CalendarTab', params: { screen: 'Calendar' } });
       }
     } else if (type === 'lineup_published') {
@@ -1240,35 +1311,41 @@ export default function AppNavigator() {
     } else {
       nav.navigate('Notifications');
     }
-  };
+  }, []);
 
   /**
-   * Push taps (e.g. lineup_published, event_reminder) — BOTH paths.
+   * Push taps — BOTH delivery paths, through ONE door.
    *
-   * `handleResponse` is ONE door for a tapped notification, whichever path
-   * delivered it, and it lives inside the effect so the effect's dependencies
-   * are exactly what they were before the cold path was added.
+   *   LISTENER      a tap while the app is running or backgrounded. Lu proved
+   *                 both on an iPhone (Round 3, 2026-11-04), and neither
+   *                 changes here: when the navigator is ready this still
+   *                 calls `routeNotification` immediately and synchronously.
+   *   COLD START    a tap that LAUNCHED the app from killed. The native module
+   *                 stores it and ALSO replays it as an event once its
+   *                 delegate registers, so it reaches JS twice and may reach
+   *                 it late — see docs/recon/f4-coldstart-push.md §1, which
+   *                 reads the two Swift files that do it.
    *
-   *   LISTENER      a tap while the app is running or backgrounded.
-   *   COLD START    a tap that LAUNCHED the app from killed. Nothing was
-   *                 listening when it arrived: the native module stored the
-   *                 response, and until now nothing in this app ever asked for
-   *                 it -- so the tap opened the app on whatever screen it last
-   *                 had and the payload was dropped on the floor. Asked for
-   *                 exactly ONCE, here, and routed through the same door, so
-   *                 every type `routeNotification` knows (chat, events,
-   *                 lineups, the playbook types) inherits the cold path with
-   *                 no per-type wiring.
+   * F-4 (Lu's phone, 2026-11-04): a killed-app tap opened the app and routed
+   * NOWHERE. The cold read existed; the HOLD did not work. `handleResponse`
+   * stashed the payload in a ref and a flush effect keyed on `loading`
+   * changing was supposed to replay it — so a payload arriving after
+   * `loading` had settled was never flushed, a mounted-but-not-ready
+   * container swallowed the navigate, and the id was marked routed before
+   * either had a chance, which blocked the retry. The four holes and their
+   * proof are in the recon file's §2.
    *
-   * ONE TAP NEVER ROUTES TWICE. Whether the listener ALSO receives the
-   * cold-start response depends on whether it subscribed before the native
-   * module handed the stored response over -- timing we do not control, so
-   * UNKNOWN by design. It does not matter: `routedNotificationIdsRef` is
-   * keyed on the notification's own `request.identifier`, so whichever path
-   * gets there first wins and the other returns. A tap is counted as routed
-   * the moment it is accepted, INCLUDING the case where the navigator does not
-   * exist yet and the payload is stashed -- the flush effect below replays
-   * that one, so counting it here is what stops the other path replaying it.
+   * WHAT THIS EFFECT NOW DOES: route when the app can act, HOLD when it
+   * cannot, and record the id only when the route is actually dispatched. It
+   * decides nothing about readiness itself — `canRouteNow` is the single test
+   * and the flush effect below uses the same one.
+   *
+   * ONE TAP NEVER ROUTES TWICE. `routedNotificationIds` is module-scoped, so
+   * it survives a remount, and the stored native response is cleared the
+   * moment JS takes custody of it. Whether the listener also receives the
+   * cold-start response is timing we do not control (UNKNOWN by design); it
+   * no longer matters, because whichever arrival is acted on first wins and
+   * the id is already held or recorded.
    *
    * A response with no identifier (not a shape the SDK is documented to
    * produce) is routed without the guard rather than dropped: a tap that goes
@@ -1281,43 +1358,118 @@ export default function AppNavigator() {
    * response", not that a tap was lost.
    */
   React.useEffect(() => {
+    /**
+     * Can a tap be acted on RIGHT NOW? The container's own `onReady` signal,
+     * plus its own `isReady()` as the belt to that braces. Read from refs
+     * because this runs outside React's render, from a native event.
+     *
+     * `!== false` rather than `=== true`: a ref without an `isReady` method
+     * answers `undefined`, which must not block — `navReadyRef` is the
+     * primary gate and `isReady()` only ever overrules it with a hard no.
+     */
+    const canRouteNow = () =>
+      navReadyRef.current && navigationRef.current?.isReady?.() !== false;
+
     const handleResponse = (response: Notifications.NotificationResponse) => {
       const id = response?.notification?.request?.identifier ?? null;
-      if (id) {
-        if (routedNotificationIdsRef.current.has(id)) return;
-        routedNotificationIdsRef.current.add(id);
-      }
+      // Already routed, in this launch, by whichever path got there first.
+      if (id && routedNotificationIds.has(id)) return;
+      // The same response arriving twice while it is still being held.
+      if (id && pendingNotificationIdRef.current === id) return;
+
       const data = response?.notification?.request?.content?.data as
         | Record<string, any>
         | undefined;
       if (!data) return;
-      if (!navigationRef.current) {
-        pendingNotificationRef.current = data;
+
+      if (canRouteNow()) {
+        // The live path, unchanged: record it, then go.
+        if (id) routedNotificationIds.add(id);
+        routeNotification(data);
         return;
       }
-      routeNotification(data);
+
+      /*
+       * Hold it. The id is NOT recorded yet — it is recorded when the flush
+       * dispatches, so that a tap which is held and then dropped can still be
+       * delivered again rather than being refused as a duplicate of a route
+       * that never happened.
+       */
+      pendingNotificationIdRef.current = id;
+      setPendingNotification(data);
     };
 
     const unsubscribe = addNotificationListeners(undefined, handleResponse);
 
     try {
       const coldStart = Notifications.getLastNotificationResponse();
-      if (coldStart) handleResponse(coldStart);
+      if (coldStart) {
+        handleResponse(coldStart);
+        // JS owns this tap now: held in state or already routed. Clearing the
+        // native copy is what stops a later mount reading it again.
+        forgetColdStartResponse();
+      }
     } catch {
       // Platform has no stored response to hand over. Nothing to do.
     }
 
     return unsubscribe;
-  }, []);
+  }, [routeNotification]);
 
-  // Flush any notification that arrived before the navigator was ready
+  /**
+   * F-4: release a held tap the moment the app can act on it.
+   *
+   * THE DEPENDENCIES ARE THE FIX. This effect waits on the four things that
+   * actually have to be true, and it is woken when any of them changes:
+   *
+   *   pendingNotification   there is a tap to replay (STATE, so it wakes this)
+   *   navReady              the container reported itself ready
+   *   loading               the stored session has finished restoring
+   *   user                  and there IS a signed-in user to restore it for
+   *
+   * The old version waited on `loading` alone and read the payload out of a
+   * ref, which is why a cold-start tap could sit in that ref forever.
+   *
+   * SIGNED OUT => THE TAP IS DROPPED, not queued. `loading` false with no
+   * `user` is a signed-out app; every target lives inside `Main`, which a
+   * signed-out user is not in. So it is thrown away and the app lands on
+   * sign-in — no crash, and nothing fires later when they do sign in, which
+   * would be a tap acting minutes after it was made.
+   *
+   * THE 500 ms IS THE ONE IT ALWAYS HAD. The auth effect above may `reset()`
+   * the stack to `Main` in the same commit this flush runs in, and a navigate
+   * dispatched into that is swallowed. The delay predates F-4 and is kept
+   * exactly as it was rather than retuned on a device nobody here can see.
+   *
+   * AND IT RETURNS NO CLEANUP, deliberately. Clearing the held payload is a
+   * `setState`, so this effect re-runs immediately — and React runs the
+   * previous invocation's cleanup BEFORE the next one. A `clearTimeout`
+   * cleanup here would therefore cancel its own pending route every single
+   * time. The timer is left to fire; `routeNotification` reads
+   * `navigationRef.current` and returns if the navigator has gone, which is
+   * the only thing that cleanup would have protected against.
+   */
   React.useEffect(() => {
-    if (!loading && navigationRef.current && pendingNotificationRef.current) {
-      const data = pendingNotificationRef.current;
-      pendingNotificationRef.current = null;
-      setTimeout(() => routeNotification(data), 500);
+    if (!pendingNotification) return;
+    if (!navReady || navigationRef.current?.isReady?.() === false) return;
+    // The session is still being restored: wait for the next change.
+    if (loading) return;
+
+    if (!user) {
+      setPendingNotification(null);
+      pendingNotificationIdRef.current = null;
+      forgetColdStartResponse();
+      return;
     }
-  }, [loading]);
+
+    const data = pendingNotification;
+    const id = pendingNotificationIdRef.current;
+    setPendingNotification(null);
+    pendingNotificationIdRef.current = null;
+    if (id) routedNotificationIds.add(id);
+
+    setTimeout(() => routeNotification(data), 500);
+  }, [pendingNotification, navReady, loading, user, routeNotification]);
 
   // Only show the full-screen loader on the very first load, before the
   // navigator has ever mounted. After that, keep the NavigationContainer
@@ -1339,6 +1491,15 @@ export default function AppNavigator() {
       fallback={<LoadingScreen />}
       onReady={() => {
         hasMountedNavRef.current = true;
+        /*
+         * F-4: the container's own readiness signal, which is what a push tap
+         * has to wait for. It was already captured here and used only by the
+         * spinner's early return above; now it also releases a held tap.
+         * The ref is for the listener (it fires outside React), the state is
+         * what wakes the flush effect.
+         */
+        navReadyRef.current = true;
+        setNavReady(true);
       }}
     >
       <TeamsProvider>

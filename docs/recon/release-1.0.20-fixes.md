@@ -793,3 +793,97 @@ dependency and no `package.json`**; no `app.json` or version bump; no env, no de
 **no DB access of any kind**; **no team colour**; `docs/recon/arcade.md` not written and **no
 `git stash`**; no edit in the web repo; **no commit and no push.** `Send announcement` was never
 triggered.
+
+---
+
+## 22. F-4 · A push tap on a FULLY CLOSED app now routes
+
+**🔧 BROKEN FLOW, found by Lu on an iPhone — Round 3, 2026-11-04.** Built the same day.
+Status: **`built, unverified by Lu`.**
+**Full diagnosis, with the Swift and the line numbers: `docs/recon/f4-coldstart-push.md`.**
+
+**What Lu saw.** Backgrounded tap → chat room ✅. Foreground tap → the in-app banner shows (item 3
+**VERIFIED on device**) and the tap lands ✅. **Fully closed → the app opens and routing never
+happens ❌.**
+
+**It was not a missing feature.** The cold-start read has existed since `c3924b4`, and Lu's JS came
+from Metro, so it was in the test. **The cold path existed and did not work.**
+
+**The cause — PROVEN from source.** The hold-and-flush waited on the wrong signals: *a `loading`
+transition* and *a non-null ref*, instead of *a payload existing* AND *the navigator being ready*
+AND *the session being restored*. Four holes, all in `src/navigation/AppNavigator.tsx`:
+
+| # | the hole | why it loses the tap |
+|---|---|---|
+| **1** | the flush effect's only dependency was `loading`, and the payload was stashed in a **ref** | a ref write triggers no re-render, so nothing re-evaluated the flush. A payload arriving **after** `loading` settled was **stranded forever** — no later transition to release it. |
+| **2** | both gates tested `navigationRef.current` for **non-null** | a container ref is non-null from **mount**, which is earlier than **ready**. An action dispatched before readiness is dropped. The container's own `onReady` was already captured — and used only by the spinner. |
+| **3** | the id was added to the routed set at the **top** of the handler | so when 1 or 2 ate the tap, **the retry was refused as a duplicate of a route that never happened** — and iOS does deliver twice on cold start (stored value *and* replayed event). |
+| **4** | the flush tested `!loading` only | `loading` false with `user` null is a **signed-out** app, and every target lives inside `Main`. |
+
+**The native side was the first suspect and is cleared — PROVEN.** `getLastNotificationResponse()`
+is the current non-deprecated API (the `Async` form is now a deprecated wrapper, and Expo's own
+`useLastNotificationResponse` hook calls the same function), and a tap that lands before any
+delegate exists is **queued and replayed** by `NotificationCenterManager.addDelegate`. The payload
+reaches JS. **Which of the four holes bit first on #53 is UNKNOWN** and was not guessed; the fix
+closes all four.
+
+**The fix.** The pending tap is **state**, not a ref, so the payload wakes its own flush ·
+`onReady` now sets a real **readiness** gate (state for the effect, a ref for the listener, plus
+the container's `isReady()`) · the id is recorded **when the route is dispatched** · the flush
+waits for `!loading` **and** a `user`, and a **signed-out user's tap is dropped** (no crash, lands
+on sign-in, nothing fires later) · the routed-id set moved to **module scope** and the native
+stored response is **cleared** once JS takes custody, so a Fast Refresh or remount cannot re-route
+the same tap.
+
+**Not changed, because Lu proved it works:** when the navigator is ready, `handleResponse` still
+routes **immediately and synchronously** — background and foreground are untouched. **No branch of
+`routeNotification` was touched**, so every type inherits the repaired path with no per-type
+wiring: chat, the announcement variant (`announcement: true` → the feed), events, `lineup_published`,
+`playbook_question`, `playbook_answer`, `playbook_open`, `courses_open`, survey, evaluation,
+`staff_request`, and the `Notifications` fallback.
+
+**File:** `src/navigation/AppNavigator.tsx` (the only code file)
+
+### How Lu retests it — **the phone, not the simulator**
+
+The simulator has no real APNs delivery; Rounds 1 and 2 both failed to raise a banner there.
+Full table, with the signed-out and the no-double-route cases:
+**`docs/recon/f4-coldstart-push.md` §4 (F4a–F4h).** The four that matter most:
+
+| # | steps | expected |
+|---|---|---|
+| F4a | **Kill the app** (swipe it out of the switcher), send a **chat** push, tap it | Launches **and lands in the chat room**. The splash may show first; the chat room is where it settles. |
+| F4c | Kill the app, send a **club announcement** push (`announcement: true`), tap it | Lands on the announcements **FEED**, not the bubble room. |
+| F4d / F4e | from there, **background** → push → tap; then **foreground** → push → tap | Both still route ✅ — the two paths Lu already proved must not have regressed. |
+| F4h | Kill the app, tap a push, let it route, then **kill and reopen normally** | Opens where it normally opens. The same tap must **not** route a second time. |
+
+**⚠️ None of these is "Send announcement" from the compose form** — F4c needs a test push, not a
+real club-wide send to ~231 families.
+
+---
+
+## 23. One-line index — Round 3's own list
+
+| item | what | status | Lu checks |
+|---|---|---|---|
+| **F-4** | cold-start push routing, every notification type | built, unverified by Lu | §22 + `f4-coldstart-push.md` §4, **F4a–F4h, on a phone** |
+| **item 3** | foreground banner | **✅ VERIFIED ON DEVICE** (Round 3) | done — stop testing it |
+| **push tap, background** | → chat room | **✅ VERIFIED ON DEVICE** | done |
+| **push tap, foreground** | → chat room | **✅ VERIFIED ON DEVICE**, with one watch item | see below |
+| **ANN-CARD-LOOK** | the sky list card reads as "selected" more than as its own banner | **🅿️ PARKED** (Lu) | revisit after 1.0.20 |
+| **notifications-row mark** | shows the **"A"** fallback, no crest | known limit, **UNKNOWN** whether `data` carries a club id | §20 |
+
+**Watch item, not a fix:** on the **first** foreground tap Lu landed in the chat room but **missed
+the newest message**; it did not reproduce on retry. That is a message-list freshness question, not
+a routing one, and F-4 does not touch it. **If it returns, it needs its own entry.**
+
+**Gates:** `npx tsc --noEmit` → **0 errors** · `ESLINT_USE_FLAT_CONFIG=false npx eslint
+src/navigation/AppNavigator.tsx` → **0 errors, 25 warnings** (the same 25 the file carried before
+this task) · `npx expo export --platform ios` → **succeeded** · `npm run smoke` → **257
+assertions, 0 failures**.
+
+**Nothing SACRED touched:** no schema, migration, SQL, Supabase write, RPC, RLS or **edge
+function**; no dependency or `package.json`; no `app.json` or version bump; no env, no delete,
+**no auth logic** (the fix *reads* `user` and `loading`, it changes neither); no DB access;
+`docs/recon/arcade.md` not written and **no `git stash`**; no edit in the web repo; **no commit and
+no push.** `Send announcement` was never triggered.

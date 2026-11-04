@@ -1,5 +1,15 @@
 # Human test plan — 1.0.20, Nov 3 2026
 
+> ## ✅ ROUND 1 IS DONE — and the server is LIVE
+> **Lu ran this plan on the simulator 2026-11-03 23:40 → 2026-11-04 00:24.** Results, findings and
+> what is still owed: **`docs/recon/test-results-1.0.20-round1-nov04.md`**.
+> **Passed:** 1A (every compose guard), Group 3 (merged into 1A), Group 5a (`F7`–`F11` on screen).
+> **Not run:** Group 4 — push delivery is proven, but no banner ever appeared to tap.
+> **🛑 THE SERVER SIDE WAS APPLIED 2026-11-03 13:33. "Send announcement" now really sends, to
+> ~231 families. NEVER tap Send in testing** — see the box on Group 1. Steps written on the
+> assumption that Send was harmless have been corrected; **where this plan and the results file
+> disagree, the results file is what happened.**
+
 **What this is.** One list of what a human has to look at before the 1.0.20 store build, built
 from the recon files and **checked against the code as it stands today**. Every on-screen label
 below was read out of `src/`, not out of the older recon prose — where the two disagree, the
@@ -26,7 +36,20 @@ to settle a question, the question is handed to a tap instead of guessed (see Gr
 
 ---
 
-## 0. READ THIS FIRST — three things that change the plan
+## 0. READ THIS FIRST — four things that change the plan
+
+### 0.0 The server is live, so Send is no longer a safe tap. ✅
+
+**Applied 2026-11-03 13:33.** Everything in this plan that was written to prove the app
+*degrades gracefully while the server is behind* has flipped meaning:
+
+| was | is now |
+|---|---|
+| 1A A2 expected **"Announcements are being set up"** | expects **the cards feed**. The old answer is now a FAILURE |
+| 1A A13 tapped **Send** safely, expecting "being set up" | **NEVER tap Send.** It inserts a real row and pushes ~231 families |
+| Group 2 step 3 expected the **error alert** as its pass condition | expects **"Shared!" and a card**. The alert now means PART 6 is not live |
+
+**Round 1 confirmed the live feed on screen** (results §2c). Nothing was sent.
 
 ### 0.1 Group 8 (chat gender chips) has no screen left. It cannot be tested.
 
@@ -115,13 +138,26 @@ most interesting of its three states rather than a known miss.
 
 **No passwords are recorded here or anywhere in this repo.** Lu holds them.
 
+**CORRECTED 2026-11-04 from Lu's run and an SQL check of `user_roles`.** Three of the five rows
+below were wrong or unknown in the first draft; all five are now settled.
+
 | name used below | login | role | team / club |
 |---|---|---|---|
-| **Lu** | `ludwig.snchz@gmail.com` | club staff / admin (staff on every team) | PAC |
+| **Lu / director** | **`ludriv@hotmail.com`** | **club admin**, PAC — and the account that ran Round 1 | PAC, all club teams |
+| **coach + manager** | **`ludwig.snchz+zztest6@gmail.com`** (**Cole Coachman**) | head coach **and `team_manager`** — the `user_roles` row was **confirmed by SQL, Nov 3** | ZZ Test Team 0826 |
 | **parent** | `ludwig.snchz+zztest7@gmail.com` | parent, secondary parent of player Zack Testeron | ZZ Test Team 0826 |
-| **director** | `ludriv` — **email UNCONFIRMED**, the docs name only the handle (`ledger.md:1534`) | director | PAC, all club teams |
-| **coach** | `Cole Coachman` — **email UNCONFIRMED** (`ledger.md:1532`) | head coach | ZZ Test Team 0826 |
-| **manager** | **UNCONFIRMED whether any manager account is loginable** (`ledger.md:1535` says so itself) | team_manager | — |
+
+**Three corrections worth stating outright, because the first draft sent testers to a dead end:**
+
+* **`ludwig.snchz@gmail.com` HAS NO ACCOUNT.** It is Lu's own address and it is used for git
+  authorship, but it is not a login. Every "sign in as Lu" step means **`ludriv@hotmail.com`**.
+* **`ludriv` is `ludriv@hotmail.com`**, and **Cole Coachman is `ludwig.snchz+zztest6@gmail.com`**
+  — both were `UNCONFIRMED` in the first draft.
+* **The manager question is ANSWERED: `+zztest6` carries `team_manager`.** So **ruling R2 is
+  testable** (Group 7 step 12, Group 9 item 2) — it was the plan's single biggest unknown. The
+  one caveat: that login is **both** head coach and team_manager, so it cannot show what a
+  manager-only account sees. If R2 depends on the Questions row being absent for a *pure*
+  manager, say so and leave it UNVERIFIED.
 
 **Sandbox team for anything that writes:** **ZZ Test Team 0826**, 5 active Testeron players
 (`ledger.md:628`).
@@ -137,36 +173,55 @@ nothing. **PROVEN.**
 
 Cheapest-and-safest first, the one irreversible step last.
 
-| # | group | why here |
-|---|---|---|
-| 1 | **5, 6, 9** — the looks | write nothing and are the bulk of what is owed. **5 needs the working tree, not a store build** (the futsal mirror is uncommitted) |
-| 2 | **7** | one login change, reads only |
-| 3 | **1A** | writes only a mark-read; proves the feed before anything is sent |
-| 4 | **4** | needs the simulator and a backgrounded app |
-| 5 | **2** | two real writes to the sandbox team |
-| 6 | **3** | opens compose; stops short of sending |
-| 7 | **1B** | reactions — real writes, but only to the club channel's reaction table |
-| 8 | **1D** | **~231 families get a push. Lu approves the wording first. LAST.** |
+**✅ ROUND 1 (2026-11-04) cleared rows 3 and 6, and part of row 1.** What is left is below in
+the same order. Record: `docs/recon/test-results-1.0.20-round1-nov04.md`.
+
+| # | group | state | why here |
+|---|---|---|---|
+| 1 | **5, 6, 9** — the looks | **5a PASSED** · 5b INFERRED · 6, 9 owed | write nothing and are the bulk of what is owed. **5 needs the working tree, not a store build** (the futsal mirror is uncommitted) |
+| 2 | **7** | owed | one login change, reads only |
+| 3 | **1A** | **✅ PASSED Nov 4** | writes only a mark-read; proved the feed before anything was sent |
+| 4 | **4** | **NOT RUN** — no banner to tap | **fix results §4b FIRST**, then run it on a **real phone**, not the simulator |
+| 5 | **2** | owed | two real writes to the sandbox team |
+| 6 | **3** | **✅ PASSED Nov 4** | merged into 1A — same door. Do not run separately |
+| 7 | **1B** | owed | reactions — real writes, but only to the club channel's reaction table. **Run after the sheet-scroll fix** (results §4a) or the who-reacted list is unreadable |
+| 8 | **1D** | owed, **gated on Lu** | **🛑 ~231 families get a push. Lu approves the wording first. The ONLY place a Send is allowed. LAST.** |
 
 ---
 
 ## GROUP 1 — Club announcements, A then B (then D)
 
+> # 🛑 THE SERVER IS LIVE. SEND REALLY SENDS.
+> **The server side was applied 2026-11-03 13:33.** This group was written while it was
+> unapplied, when tapping **Send announcement** was harmless and answered *"Announcements are
+> being set up"*. **That is no longer true.** A tap on Send now **inserts a real row, which
+> fires the `comm_messages` trigger and pushes ~231 PAC families.** Push is unconditional on
+> insert — there is no per-message switch and no column to write one into.
+>
+> ## NEVER tap Send in testing.
+> The only place a Send is allowed is **§1D**, and only after Lu has written and approved the
+> exact wording. Everywhere else in this plan, stop at the Send button and look at it.
+
 **Proves:** the announcements chat renders as a feed of cards with a tap-through detail and
 reactions-only (no replies), compose refuses what the server would refuse, and — in D — a real
 announcement posts and routes.
-**Source:** `club-announcements-v1-mobile.md` §5.
+**Source:** `club-announcements-v1-mobile.md` §5, corrected by the Nov 4 run.
 **Device:** simulator for A and B. **D needs a second real phone** on a member account to see
 the push land.
-**Account:** Lu (staff — A5 only shows the form for someone `is_channel_staff` says yes to).
-**Setup:** start Metro, sign in as Lu. Nothing to reset.
+**Account:** director (`ludriv@hotmail.com`) — A5 only shows the form for someone
+`is_channel_staff` says yes to.
+**Setup:** start Metro, sign in. Nothing to reset.
 
-### 1A — before the server is applied. Sends nothing. ~8 min. **Writes DB: yes, one mark-read only.**
+**✅ ROUND 1 RESULT, 2026-11-04: 1A PASSED** — A1–A12 all passed on the simulator, and **Group 3
+passed with them** (it is the same door, so it is merged in here and does not need its own run).
+Nothing was sent. Full record: `docs/recon/test-results-1.0.20-round1-nov04.md` §2a–2c.
+
+### 1A — the feed and every compose guard. **Sends nothing.** ~8 min. **Writes DB: yes, one mark-read only.**
 
 | # | tap | expect |
 |---|---|---|
 | A1 | **Chat** tab | the list as today — the announcements row present, same tan dot and unread count |
-| A2 | the **club announcements** row | not chat bubbles: a header with the channel name and the club name under it, and — server not applied — **"Announcements are being set up"** with **"This club's announcement cards go live with the next update. Messages in this chat are not affected."** |
+| A2 | the **club announcements** row | not chat bubbles: **a feed of cards**, headed with the channel name over the club name — on Nov 4 this read **"club-announcements / Provo Athletic Club"**. **CORRECTED: the server went live Nov 3 13:33**, so the old expected answer *"Announcements are being set up"* is now a FAILURE, not a pass. If you see it, the client cannot reach the contract — stop and report |
 | A3 | **back** | the chat list. The row's unread count is **0** — opening the feed marks read exactly as opening the chat did. **← this is the one write in 1A** |
 | A4 | **+ / New chat → Club-Wide Message** | the tile reads *Opening…* briefly, then the **New announcement** screen. If instead *This club has no announcements chat yet* or *Couldn't reach the server* — **stop, report which** |
 | A5 | on **New announcement** | a spinner, then the form. If it says *Only a coach, manager or club admin of this chat can post an announcement*, stop — on Lu's account it must be the form |
@@ -177,7 +232,7 @@ the push land.
 | A10 | type `F3` into the key | red clears, the hint becomes **"Opens the book on this card"**, Send available |
 | A11 | type `F3/../F4` instead | red again, Send greyed again. **The step that matters most on this screen** |
 | A12 | add a 3rd and a 4th button | after the **third**, the **＋ Playbook / ＋ Playbook card / ＋ Courses** chips disappear — three is the ceiling |
-| A13 | tap **Send announcement** | **"Announcements are being set up"** and **nothing is sent**. ← the whole point of A |
+| A13 | **DO NOT TAP SEND.** Look at the button and leave with the **back arrow** | the screen closes and **nothing is sent** (confirmed Nov 4). **🛑 NEVER tap Send in testing — the server is live and a tap pushes ~231 families.** The old A13 expected *"Announcements are being set up"*; that was only safe while the server was unapplied |
 
 **Label corrections against §5, all PROVEN from code:** the add chips are a `+` **icon**
 (`Feather name="plus"`) plus the bare words **Playbook** / **Playbook card** / **Courses**
@@ -231,15 +286,20 @@ two-club staff cases of the Club-Wide Message tile.
 **Proves:** a staff share writes the columns the live `sv_chat_shares` actually has, the card
 renders on both apps, and a refusal is reported instead of swallowed.
 **Source:** `survey-share-fix-mobile.md` §4. **Device:** simulator. **~10 min.**
-**Account:** Lu (must be `is_channel_staff` of the chat — the gate is now the server's answer).
+**Account:** director `ludriv@hotmail.com` (must be `is_channel_staff` of the chat — the gate is
+now the server's answer).
 **Setup:** ZZ Test Team 0826 needs **one open survey of its club**. Creating one is a DB/admin
 write — **if there is none, stop: this group cannot run.** The picker's own empty state is
 **"No open surveys."** + **"Create one in Club Admin."**
 
-> **🛑 EXPECT STEP 3 TO FAIL TODAY, and that is the pass condition.** The live CHECK on
-> `comm_messages.message_type` does not list `'survey'` yet (server migration PART 6), so the
-> first insert is refused `23514`. **The point of this build is that it now SAYS SO.** A silent
-> nothing is the failure; the alert is the success.
+> **✅ CORRECTED 2026-11-04 — THE EXPECTATION IS NOW INVERTED. The server side was applied
+> Nov 3 13:33**, PART 6 with it, so the CHECK on `comm_messages.message_type` should now list
+> `'survey'`.
+> **Expect step 3 to SUCCEED:** the button reads **Shared!** and a card appears. **INFERRED** —
+> Round 1 did not run this group, so no human has seen it work.
+> **The error alert now means the opposite of what it used to.** It was the pass condition while
+> PART 6 was unapplied; now *"Couldn't share the survey. Try again."* means **PART 6 is not
+> live** after all — stop and report it, with the Metro log line if there is one.
 
 | # | tap | expect | writes DB |
 |---|---|---|---|
@@ -259,20 +319,20 @@ string in code is `Club Survey`.
 
 ---
 
-## GROUP 3 — Club-wide message fix
+## GROUP 3 — Club-wide message fix — ✅ PASSED Nov 4, MERGED INTO 1A
 
-**Proves:** the **Club-Wide Message** tile reaches the club's real announcements chat instead of
-printing *"Club broadcast channel not found. Contact admin."* — it asked for
-`channel_type = 'broadcast'`, which the live CHECK does not allow, so it **always** failed.
-**Source:** `ledger.md:2009-2067`. **Device:** simulator. **~4 min.**
-**Account:** Lu. **Setup:** none. **Writes DB: no** — this group stops before Send.
+**Do not run this as a separate group.** It is the same door as **1A steps A4–A5**, and it passed
+with them on the simulator, **2026-11-04**.
 
-| # | tap | expect |
-|---|---|---|
-| 1 | **Chat** tab → **+ / New chat** | the new-chat sheet |
-| 2 | **Club-Wide Message** | the row reads *Opening…*, then **New announcement**. **The words "broadcast" and "Contact admin" must not appear anywhere** |
-| 3 | do **not** send. Go back | the chat list |
-| 4 | confirm the audience picker is gone | **no age / gender / team chips on the way to compose** — one tap from the tile to the form (see §0.1) |
+**What passed:** the **Club-Wide Message** tile opened **New announcement**, and **the words
+"broadcast" and "Contact admin" appeared nowhere** — `CLUB-WIDE-FIX` seen by a human for the
+first time. It had been failing 100% of the time, because it asked for
+`channel_type = 'broadcast'`, which the live CHECK does not allow. The audience line read
+**"Goes to everyone in Provo Athletic Club announcements"** in full, and the deleted age/gender/
+team picker (§0.1) was confirmed gone — one tap from tile to form.
+
+**Source:** `ledger.md:2009-2067`; result `docs/recon/test-results-1.0.20-round1-nov04.md` §2a.
+**Minutes reclaimed: 4.**
 
 **Note:** this is the same door as 1A4-A5. Running Group 3 separately is worth ~4 minutes only
 because it is the step that used to be broken; if 1A passed, 3 passed.
@@ -283,18 +343,44 @@ because it is the step that used to be broken; if 1A passed, 3 passed.
 
 **Proves:** a push tap routes to the right screen from **all three app states** — including from
 **force-quit**, which was silently dropped until `PUSH-COLD-START`.
-**Source:** `announce-push-test.md` + `docs/recon/test-payloads/`. **Device: iOS simulator only**
-(`simctl` is iOS-only). **~12 min.** **Writes DB: no** — routing only.
-**Account:** any user who can see the Playbook (Lu).
-**Setup:** boot a simulator, install and launch **a dev client or standalone build — NOT Expo
-Go**, sign in, then **background the app**. `simctl push` only delivers; the routing runs on the
-**tap**.
+**Source:** `announce-push-test.md` + `docs/recon/test-payloads/`, corrected by the Nov 4 run.
+**Device: a REAL PHONE, with a real chat push** — see the box below. **~12 min.**
+**Writes DB: no** — routing only.
+**Account:** any user who can see the Playbook (director).
+
+> ## ⚠ ROUND 1 COULD NOT RUN THIS, and the reason changes the setup
+> **2026-11-04: delivery is PROVEN, tap routing is NOT RUN.** The Metro log shows
+> `[Notifications] Received … New in the Playbook` **twice**, app in the foreground — so the
+> payload arrives and the shape is right. But **no banner appeared in 3 tries**, so there was
+> nothing to tap, and the run stopped under the two-strike rule.
+> **INFERRED cause: the deprecated `shouldShowAlert` key** (results §4b) — the notification is
+> received and never presented. **Fix that first; it is a blocker for this test, not just a
+> defect.** It is ruled IN 1.0.20.
+> **Then run this on a real phone with a real chat push**, not on the simulator.
+> Record: `docs/recon/test-results-1.0.20-round1-nov04.md` §3b.
+
+### Setup, with the two traps Round 1 hit
+
+**Trap 1 — THE SIMULATOR HAS TWO DEV CLIENTS INSTALLED, and a push to the wrong one is silent:**
+
+| bundle id | what it is |
+|---|---|
+| **`com.thryvyng.app`** | **Lu's usual — an older install, and what Round 1 actually ran** |
+| `com.weolkn.thryvyng` | what `app.json` declares (`expo.ios.bundleIdentifier`) |
+
+**A push must name the bundle id of the app that is actually running.** Name the other one and it
+is delivered to an app nobody is looking at — no error, no banner, nothing. **Check which app is
+open before pushing**, and substitute that id below.
+
+**Trap 2 — backgrounding:** use the simulator menu **Device → Home**. `Cmd-Shift-H` only works
+while the simulator window has focus, which it often does not.
 
 ```sh
 xcrun simctl list devices booted
-xcrun simctl push booted com.weolkn.thryvyng docs/recon/test-payloads/playbook-open-F7.apns
-xcrun simctl push booted com.weolkn.thryvyng docs/recon/test-payloads/courses-open.apns
-xcrun simctl push booted com.weolkn.thryvyng docs/recon/test-payloads/playbook-open-malformed.apns
+# substitute the bundle id of the app actually in use — see Trap 1
+xcrun simctl push booted com.thryvyng.app docs/recon/test-payloads/playbook-open-F7.apns
+xcrun simctl push booted com.thryvyng.app docs/recon/test-payloads/courses-open.apns
+xcrun simctl push booted com.thryvyng.app docs/recon/test-payloads/playbook-open-malformed.apns
 ```
 
 | # | payload | must land on | note |
@@ -454,8 +540,8 @@ test of the shared gender rule.**
 **Device:** **real phone** — the readiness doc is explicit that *"nothing here has been seen by a
 human on a real phone"* and that a **live login, not a fixture**, is the point.
 **~12 min. Writes DB: no** — the roster RPC is a read.
-**Account:** **director (`ludriv`)** for the full tree; then **coach (Cole Coachman)** for the
-skip case.
+**Account:** **director `ludriv@hotmail.com`** for the full tree; then
+**`ludwig.snchz+zztest6@gmail.com`** (Cole Coachman) for the skip case and for ruling R2.
 
 | # | tap | expect |
 |---|---|---|
@@ -470,7 +556,7 @@ skip case.
 | 9 | the season control | **"This season"** / **"Past seasons"** — and it appears **only** when the other season actually holds a team. It must **not** read "Season 2026": no read in this app can name a season |
 | 10 | **Needs a nudge · whole club** | least-read first, each row labelled with its team, tapping through to the player detail |
 | 11 | sign in as **coach (Cole Coachman)**, tap **Team progress** | **one team, so the roster opens directly** — no gender level, no age level, no team picker |
-| 12 | as **manager**, if one is loginable | **Team progress** opens; the **Questions row must be ABSENT, not empty** (ruling R2 — *the one that matters most*). **UNCONFIRMED: `ledger.md:1535` says it is not known whether any manager account can log in. If none can, say so and this stays unverified** |
+| 12 | as **`ludwig.snchz+zztest6@gmail.com`** (Cole Coachman — **`team_manager` confirmed by SQL Nov 3**) | **Team progress** opens; the **Questions row must be ABSENT, not empty** (ruling R2 — *the one that matters most*). **The login question is ANSWERED (§1), so R2 is finally testable.** One caveat: this account is **both** head coach and team_manager, so if R2 turns on what a *manager-only* account sees, say so and leave it UNVERIFIED |
 | 13 | as **parent (`+zztest7`)** | **neither row anywhere** — not on the cover, not on contents |
 
 ---
@@ -534,17 +620,18 @@ three reader panels, **Positions / Formation / Movement**. The Movement panel's 
 
 | group | device | writes DB | min | UNCONFIRMED |
 |---|---|---|---|---|
-| 1 Announcements A/B | simulator | yes (mark-read, reactions) | 15 | 1 (D7 `announcement: true`) |
+| 1A Announcements | simulator | yes (mark-read) | **✅ PASSED Nov 4** | 0 |
+| 1B reactions | simulator | yes (reactions) | 7 | 0 — run after the §4a sheet-scroll fix |
 | 1D the real send | simulator + 2nd phone | **yes, + ~231 pushes** | 10 | — |
-| 2 Survey share | simulator | yes (2 rows) | 10 | 2 (a non-staff channel; a club survey must exist) |
-| 3 Club-wide fix | simulator | no | 4 | 0 |
-| 4 Cold-start push | simulator only | no | 12 | **0** — payload 1 is correct as-is (§0.3) |
-| 5 Batch 2 content | simulator | no | 8 | **0** — but see the `FM5v5` fork in 5b; 5c untestable |
+| 2 Survey share | simulator | yes (2 rows) | 10 | 1 (a non-staff channel) — PART 6 is live, expect success |
+| 3 Club-wide fix | — | — | **✅ PASSED Nov 4, merged into 1A** | 0 |
+| 4 Cold-start push | **REAL PHONE** | no | 12 | **0** — **NOT RUN Nov 4**; fix §4b first |
+| 5 Batch 2 content | simulator | no | 4 | **0** — **5a PASSED Nov 4**; 5b INFERRED, count the tabs; 5c untestable |
 | 6 Keeper + tabs | 6a sim · **6b phone, dev client** | no | 12 | **0** — 6b is harness-only, settled |
-| 7 Drill-down | **phone** | no | 12 | 2 (`ludriv` email; is a manager loginable) |
+| 7 Drill-down | **phone** | no | 12 | **0** — both logins settled (§1) |
 | 8 Gender chips | — | — | **0** | **the whole group — the screen is deleted** |
-| 9 The 12 looks | **phone** | yes (#4, #5, #13) | 35 | 1 (same manager question) |
-| **total** | | | **~118 min** | **6 + all of Group 8** |
+| 9 The 12 looks | **phone** | yes (#4, #5, #13) | 35 | **0** — the manager question is answered (§1) |
+| **total remaining** | | | **~92 min** | **1 + all of Group 8** |
 
 **Cannot be proved by any tap in this plan, and should not be claimed:**
 

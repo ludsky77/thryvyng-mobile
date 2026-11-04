@@ -1254,10 +1254,21 @@ Lu's rulings of the same day.
     `tapTarget()` is the rule the SERVER regrades a tap with, so the quiz board
     (which never passes `frame`) is unchanged.
   - **Also landed here:** the `card.key !== 'FM5v5'` exemption on
-    `CardScreen.tsx` was deleted, as the recon asked. **Consequence to know:
-    `FM5v5` now shows the dashed "Diagram pending" panel**, because it still has
-    no diagram and no formation block. That is honest and is what the other 68
-    cards do, and it goes away the day FM5v5 gets its five-frame diagram row.
+    `CardScreen.tsx` was deleted, as the recon asked. **SUPERSEDED 2026-11-03 —
+    this line used to read "`FM5v5` now shows the dashed 'Diagram pending'
+    panel, because it still has no diagram and no formation block". That was
+    true for one day.** Web content **batch 2, applied to prod 2026-11-03
+    00:48**, gave `FM5v5` a **5-frame diagram on the `futsal` backdrop**,
+    captioned EN + ES (`thrive-and-score/supabase/content/20261102224500_playbook_content_b_apply.sql:121`,
+    gate P08 `:351-362`). So the card has a diagram and should render through
+    `CardBoard` with a five-tab row. **Device look 2026-11-04: INFERRED OK** —
+    Lu's simulator run reports "looks ok", which rules out the dashed panel but
+    **did not capture whether it is the tabbed board or a formation panel**;
+    batch 2 deliberately left the `FM5v5` CARD row alone (`:27`, `:352`), so
+    that distinction still matters. **Owed: count the tabs on a phone in
+    Round 3** — five tabs = done. See
+    `docs/recon/test-results-1.0.20-round1-nov04.md` §3a and
+    `docs/recon/test-plan-1.0.20-nov03.md` Group 5b.
   - **One pre-existing clip fixed, because the tabs made it unavoidable**
     (`styles.ts` `boardCap`): the caption was absolute at `bottom: 8` inside
     `frame`, whose last child is the 13pt `tray` — so the ledge painted over the
@@ -2491,3 +2502,93 @@ it. Nothing here has been seen by a human on a real phone.
     **`docs/recon/survey-share-fix-mobile.md`** (the full write-up: the before/after
     table, the gate change, the harness, the owed list, and the FOUND items);
     `thrive-and-score/docs/recon/club-announcements-v1-server.md` § 7.
+
+## Landed — Nov 4 2026 (Round 1 simulator results, and the pre-launch fix list)
+
+- **RELEASE-1.0.20-FIXES · the small defects found in Round 1, ruled into 1.0.20 ·
+  Lu ruling 2026-11-04 00:25: "fix the small fixes we discovered before the launch
+  1.0.20" · NOTHING BUILT YET — this entry is the LIST, not a delivery.**
+  - **WHERE IT CAME FROM.** Lu's simulator run **2026-11-03 23:40 → 2026-11-04
+    00:24**, dev client `com.thryvyng.app` on live Metro, signed in as
+    `ludriv@hotmail.com` (club admin, PAC). Screenshots + Metro log, pasted into
+    the planning room. Full record, pass by pass:
+    **`docs/recon/test-results-1.0.20-round1-nov04.md`**.
+    **NOTHING WAS SENT — `Send announcement` was never tapped**, so no push
+    reached the ~231 PAC families.
+  - **WHAT PASSED, and it is most of the feature.** Club-Wide Message opens
+    **New announcement** with no "broadcast" / "Contact admin" anywhere
+    (`CLUB-WIDE-FIX` seen by a human for the first time — it had been failing
+    100% of the time); the audience line **"Goes to everyone in Provo Athletic
+    Club announcements"** shows in full; title stops at **80/80**; an empty
+    title gives red **"Add a title: it's what families see on the card."** with
+    Send greyed; **`F3/../F4`** gives red **"Letters, numbers, _ and - only, up
+    to 16 characters"** plus **"One button still needs its text or its card
+    key."** with Send greyed; **`F3`** is accepted and Send activates; the
+    **3-button cap** hides the chips; the back arrow leaves with nothing sent;
+    the feed is **cards** headed **"club-announcements / Provo Athletic Club"**
+    with All/New chips and an **EARLIER** heading, the detail has **no reply
+    box**, and long-press opens the who-reacted list. **Foundations shows
+    section LINES OF THE PASS with 6 cards** (cards 2–6 = **`F7`–`F11`**, badge
+    **"F10 · Card 5 of 6"** on *4v2 The diamond*), **all 6 draw a diagram and
+    none says "Diagram pending"** — batch 2's content confirmed on screen.
+  - **PUSH: delivery PROVEN, tap routing NOT RUN.** Metro log twice:
+    `[Notifications] Received … New in the Playbook`, app in the foreground. But
+    **no banner appeared in 3 tries**, so there was nothing to tap and the run
+    stopped on the two-strike rule. **Moved to Round 3: real phone, real chat
+    push.** Two obstacles found and recorded in the plan: the simulator has
+    **TWO dev clients** (`com.thryvyng.app`, Lu's older install and the one in
+    use, vs `com.weolkn.thryvyng` from `app.json`) and a push must name the
+    bundle id of the app **actually running**; and backgrounding needs the
+    simulator menu **Device → Home**, because `Cmd-Shift-H` only works while
+    that window has focus.
+  - **IN 1.0.20 — ROUTINE, five items.**
+    1. **🔧 BROKEN FLOW: the announcement Reactions sheet does not scroll.** 14
+       reactors, list cut off, no way to reach the rest. On a feed that reaches
+       ~231 families this is the normal case, not an edge case.
+    2. **🔧 BROKEN FLOW, INFERRED: no banner while the app is open.** Metro WARN
+       on each receipt: **``shouldShowAlert` is deprecated. Specify
+       `shouldShowBanner` and / or `shouldShowList` instead.``** The
+       notification arrives and is never presented. INFERRED because nothing was
+       changed to prove it — but the warning and the symptom match exactly.
+       **This is also what blocked the push tap test**, so fixing it unblocks
+       Round 3.
+    3. **D1 — the card footer runs together and clips.** On screen:
+       `LUDWIG SZ. · PROVO ATHLETIC CLUBCARD 11 / 12`. **Lu's ruling: the author
+       goes on its own line below, in a different font style, on every card.**
+    4. **D2 — diagram lines are too thick.** Lu wants thinner, cleaner,
+       professional. **WEB FIRST:** the renderer is a mirror
+       (`src/features/pac-playbook/MIRROR.md`), so the change is made on web and
+       mirrored across, never edited here, or the mirror breaks. **Lu sees
+       before/after.**
+    5. **Discard prompt on the compose form.** Leaving a filled announcement
+       throws the draft away silently. (The leave itself is correct and was
+       confirmed; the missing warning is the gap.)
+  - **AFTER 1.0.20 — four items.**
+    * **D3 — "The whole team · natural triangles" is too busy.** KEEP the
+      light-to-dark green shape movement; ADD width in possession. This is
+      **content** (a `playbook_blocks` row), so it needs a content change **and
+      a dry run**.
+    * **D4 — the `FM5v5` diagram: "good enough for now."** Improve later.
+    * **Channel display name** — the feed shows the raw slug
+      `club-announcements`. **NEEDS A LU RULING** on what it should read.
+    * **No-name accounts** render as **"Member"** / **"Grayson's parent"** (seen
+      on a Team Manager).
+  - **CARRIED FORWARD, still open, from the step-4 defect sweep** (none of these
+    is new tonight; they are listed here so the 1.0.20 list is one list):
+    **the 5 games `tsc` errors**, including the missing `getGutterBoundaryX`
+    (`DribbleRushGame.tsx:712-713` — UNKNOWN if reachable in prod); **the games'
+    silent save failure** (INFERRED, `docs/recon/arcade.md` §0.1); **the Courses
+    header behind the notch**; **the calendar list card's wrong "?" count**; and
+    **the stale docblock at `src/constants/announceCardKey.ts:30-33`**, which
+    still says the keys are "F0..F5" after batch 2 added `F7`–`F11`.
+  - **STATUS: `VERIFIED-SIMULATOR` for what §2 of the results file lists as
+    PASS; `AGENT-ONLY` for everything else in the 1.0.20 Playbook batch.**
+    `FM5v5` is **INFERRED OK** and owes a tab count (see the superseded
+    "Diagram pending" note above). **Nothing in this entry has been fixed** —
+    it is the ruling and the list.
+  - **Nothing SACRED touched to write this.** Docs only: no code, schema,
+    migration, dependency, env, delete, DB access or commit; no edit in
+    `thrive-and-score`; `docs/recon/arcade.md` left as it was.
+  - Source: Lu's run and ruling, 2026-11-03/04;
+    **`docs/recon/test-results-1.0.20-round1-nov04.md`**;
+    `docs/recon/test-plan-1.0.20-nov03.md` (corrected in the same pass).

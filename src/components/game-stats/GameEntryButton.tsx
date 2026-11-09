@@ -4,10 +4,10 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
+import { withTimeout } from '../../hooks/useEventAttendance';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useAnimatedStyle,
@@ -31,6 +31,12 @@ interface GameEntryButtonProps {
   eventId: string;
   teamId: string;
   eventType?: string;
+  /**
+   * Team staff. Gates ONLY the controls that start or run a match (Start
+   * Match Center, Stats Console). Watch and View Match Summary are read-only
+   * and stay visible to the whole team, as they were before Nov 9.
+   */
+  canManage?: boolean;
 }
 
 interface GameSession {
@@ -44,30 +50,40 @@ export function GameEntryButton({
   eventId,
   teamId,
   eventType,
+  canManage = false,
 }: GameEntryButtonProps) {
   const navigation = useNavigation<any>();
   const pulseOpacity = useSharedValue(1);
   const [existingSession, setExistingSession] = useState<GameSession | null>(
     null
   );
-  const [isLoading, setIsLoading] = useState(true);
+  /**
+   * 'idle' until the first read settles -- it draws NOTHING, not a spinner,
+   * so the button can never sit there spinning (the Nov 9 report). The read
+   * gives up after 12 s; a failure is 'error', which shows a Retry instead of
+   * guessing "no session" and offering "Start Match Center" on a game that
+   * may already be live.
+   */
+  const [loadState, setLoadState] = useState<'idle' | 'ready' | 'error'>('idle');
 
   const fetchSession = useCallback(async () => {
     if (eventType !== 'game') return;
-    setIsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('game_sessions')
-        .select('id, status, home_score, away_score')
-        .eq('event_id', eventId)
-        .maybeSingle();
+      const { data, error } = await withTimeout((signal) =>
+        supabase
+          .from('game_sessions')
+          .select('id, status, home_score, away_score')
+          .eq('event_id', eventId)
+          .abortSignal(signal)
+          .maybeSingle()
+      );
       if (error) throw error;
       setExistingSession(data as GameSession | null);
+      setLoadState('ready');
     } catch (err) {
-      console.error('[GameEntryButton] Error:', err);
+      console.warn('[GameEntryButton] session read failed:', err);
       setExistingSession(null);
-    } finally {
-      setIsLoading(false);
+      setLoadState('error');
     }
   }, [eventId, eventType]);
 
@@ -91,10 +107,23 @@ export function GameEntryButton({
     return null;
   }
 
-  if (isLoading) {
+  if (loadState === 'idle') {
+    return null;
+  }
+
+  if (loadState === 'error') {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="small" color={colors.primary} />
+        <Text style={styles.errorText}>Couldn't load match status.</Text>
+        <TouchableOpacity
+          onPress={() => {
+            setLoadState('idle');
+            fetchSession();
+          }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.retryText}>Retry</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -150,23 +179,29 @@ export function GameEntryButton({
             <Ionicons name="eye" size={18} color={colors.text} />
             <Text style={styles.watchButtonText}>Watch</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.recordButton}
-            onPress={() =>
-              navigation.navigate('StatsConsole', {
-                sessionId: existingSession.id,
-              })
-            }
-          >
-            <Ionicons name="radio-button-on" size={18} color="white" />
-            <Text style={styles.recordButtonText}>Stats Console</Text>
-          </TouchableOpacity>
+          {canManage && (
+            <TouchableOpacity
+              style={styles.recordButton}
+              onPress={() =>
+                navigation.navigate('StatsConsole', {
+                  sessionId: existingSession.id,
+                })
+              }
+            >
+              <Ionicons name="radio-button-on" size={18} color="white" />
+              <Text style={styles.recordButtonText}>Stats Console</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     );
   }
 
-  // No session - show start button
+  // No session - show start button (staff only; nothing to watch yet)
+  if (!canManage) {
+    return null;
+  }
+
   return (
     <TouchableOpacity
       style={styles.startButton}
@@ -187,6 +222,16 @@ const styles = StyleSheet.create({
   loadingContainer: {
     padding: 20,
     alignItems: 'center',
+    gap: 8,
+  },
+  errorText: {
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  retryText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '700',
   },
   summaryButton: {
     flexDirection: 'row',

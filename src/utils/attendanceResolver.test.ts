@@ -1,9 +1,16 @@
 /**
- * Tests for the one-truth attendance resolver.
+ * Tests for the pure half of the one-source attendance read
+ * (src/utils/attendanceResolver.ts, wired up by src/hooks/useEventAttendance.ts).
+ *
+ * The latest-mark-wins / coach-tie / NULL-row rules that used to be tested here
+ * moved into the prod SQL functions on 2026-11-09 and are proven there (web
+ * repo docs/recon/attendance-fn-nov09.md, T1-T9). What is left on the client,
+ * and tested here, is: counts can never exceed the roster, a failed or slow
+ * read settles to an empty/error state (never "loading"), and a multi-kid
+ * parent gets one control per child.
  *
  * Uses node:test + node:assert/strict, which ship with Node -- this repo has
- * no test runner and adding one would be a dependency change. Same pattern as
- * src/lib/eventChangeSummary.test.ts.
+ * no test runner and adding one would be a dependency change.
  *
  * Run (no repo changes, compiles to a temp dir with the repo's own tsc):
  *   npx tsc src/utils/attendanceResolver.ts src/utils/attendanceResolver.test.ts \
@@ -11,303 +18,329 @@
  *     --strict --esModuleInterop
  *   node --test /tmp/att/attendanceResolver.test.js
  *
- * Point node at the FILE, not the directory -- `node --test <dir>` tries to
- * run the directory path itself as a test and reports an opaque failure.
- *
- * The cases that matter are the two override directions (the bug the old
- * positional "coach wins" rule had) and the tie.
+ * Point node at the FILE, not the directory.
  */
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  resolveEffectiveStatus,
-  summarizeEffective,
-  type ResolverRsvpRow,
-  type ResolverAttendanceRow,
+  AttendanceTimeoutError,
+  attributionLabel,
+  mergeOwnReasons,
+  headcountFromRows,
+  loadAttendanceCounts,
+  loadEventAttendance,
+  myAnswerRows,
+  normalizeAttendanceRows,
+  normalizeCounts,
+  pillStatusFor,
+  withTimeout,
+  type EventAttendanceRow,
 } from './attendanceResolver';
 
-const T1 = '2026-10-09T10:00:00.000Z';
-const T2 = '2026-10-09T11:00:00.000Z';
-const T3 = '2026-10-09T12:00:00.000Z';
-
-const coachMark = (
+const row = (
+  player_id: string,
   status: string,
-  updated_at: string | null = T1
-): ResolverAttendanceRow => ({ status, updated_at, created_at: updated_at });
-
-const rsvp = (
-  status: string,
-  updated_at: string | null = T1,
-  extra: Partial<ResolverRsvpRow> = {}
-): ResolverRsvpRow => ({ status, updated_at, ...extra });
-
-// --- no data ---------------------------------------------------------------
-
-test('no candidates at all resolves to no_reply with no source', () => {
-  assert.deepEqual(resolveEffectiveStatus([], null), {
-    status: 'no_reply',
-    source: null,
-    at: null,
-    reason: null,
-  });
+  source: string | null = null,
+  extra: Record<string, unknown> = {}
+) => ({
+  player_id,
+  first_name: `F${player_id}`,
+  last_name: `L${player_id}`,
+  status,
+  source,
+  marked_at: source ? '2026-11-07T22:00:00Z' : null,
+  marked_by_name: null,
+  decline_reason: null,
+  ...extra,
 });
 
-test('null and undefined inputs are tolerated, not thrown on', () => {
-  assert.deepEqual(resolveEffectiveStatus(null, null), {
-    status: 'no_reply',
-    source: null,
-    at: null,
-    reason: null,
-  });
-  assert.deepEqual(resolveEffectiveStatus(undefined, undefined), {
-    status: 'no_reply',
-    source: null,
-    at: null,
-    reason: null,
-  });
+/** The Shooters game as the function returned it in T1/T2: 10 / 2 / 3 of 15. */
+const SHOOTERS = [
+  ...Array.from({ length: 10 }, (_, i) => row(`g${i}`, 'going', i < 4 ? 'player' : 'parent')),
+  row('c0', 'cant_go', 'player'),
+  row('c1', 'cant_go', 'parent'),
+  row('n0', 'no_reply'),
+  row('n1', 'no_reply'),
+  row('n2', 'no_reply'),
+];
+
+const never = () => new Promise<never>(() => {});
+
+// --- count <= roster -------------------------------------------------------
+
+test('headcount: Shooters reads 10 / 2 / 3 on a roster of 15', () => {
+  const h = headcountFromRows(normalizeAttendanceRows(SHOOTERS));
+  assert.deepEqual(h, { roster: 15, going: 10, cantGo: 2, noReply: 3, markedByCoach: 0 });
 });
 
-// --- one side only ---------------------------------------------------------
-
-test('coach-only: present resolves to going, attributed to the coach', () => {
-  assert.deepEqual(resolveEffectiveStatus([], coachMark('present')), {
-    status: 'going',
-    source: 'coach',
-    at: T1,
-    reason: null,
-  });
+test('headcount: going + cant + no reply always equals the roster, never more', () => {
+  const statuses = ['going', 'cant_go', 'no_reply', 'maybe', null, 'yes'];
+  for (let n = 0; n < 40; n += 1) {
+    const rows = Array.from({ length: n }, (_, i) =>
+      row(`p${i}`, statuses[i % statuses.length] as string)
+    );
+    const h = headcountFromRows(normalizeAttendanceRows(rows));
+    assert.equal(h.roster, n);
+    assert.equal(h.going + h.cantGo + h.noReply, h.roster);
+    assert.ok(h.going <= h.roster && h.cantGo <= h.roster && h.noReply >= 0);
+  }
 });
 
-test('coach-only: absent resolves to cant_go', () => {
-  const r = resolveEffectiveStatus([], coachMark('absent'));
-  assert.equal(r.status, 'cant_go');
-  assert.equal(r.source, 'coach');
+test('headcount: a duplicated player_id is ONE player, not a second vote', () => {
+  const rows = normalizeAttendanceRows([row('a', 'going'), row('a', 'going'), row('b', 'cant_go')]);
+  const h = headcountFromRows(rows);
+  assert.equal(h.roster, 2);
+  assert.equal(h.going, 1);
 });
 
-test('coach-only: legacy late counts as going and excused as cant_go', () => {
-  assert.equal(resolveEffectiveStatus([], coachMark('late')).status, 'going');
-  assert.equal(resolveEffectiveStatus([], coachMark('excused')).status, 'cant_go');
-});
-
-test('parent-only: yes resolves to going, attributed to the parent', () => {
-  assert.deepEqual(resolveEffectiveStatus([rsvp('yes')], null), {
-    status: 'going',
-    source: 'parent',
-    at: T1,
-    reason: null,
-  });
-});
-
-test('parent-only: no carries its decline reason through', () => {
-  assert.deepEqual(
-    resolveEffectiveStatus(
-      [rsvp('no', T1, { decline_reason: 'Family trip' })],
-      null
-    ),
-    { status: 'cant_go', source: 'parent', at: T1, reason: 'Family trip' }
+test('headcount: coach marks are counted as provenance, inside going / cant go', () => {
+  const h = headcountFromRows(
+    normalizeAttendanceRows([row('a', 'going', 'coach'), row('b', 'cant_go', 'coach'), row('c', 'going', 'parent')])
   );
+  assert.equal(h.markedByCoach, 2);
+  assert.equal(h.going + h.cantGo + h.noReply, 3);
 });
 
-test('a reason on a yes is dropped -- only a cant_go carries one', () => {
-  const r = resolveEffectiveStatus(
-    [rsvp('yes', T1, { decline_reason: 'stale' })],
-    null
-  );
-  assert.equal(r.status, 'going');
-  assert.equal(r.reason, null);
-});
-
-test("the player's own account is attributed to 'player', not 'parent'", () => {
-  const r = resolveEffectiveStatus([rsvp('yes', T1, { source: 'player' })], null);
-  assert.equal(r.source, 'player');
-});
-
-test('pending is silence, but the retraction is still attributed', () => {
-  const r = resolveEffectiveStatus([rsvp('pending')], null);
-  assert.equal(r.status, 'no_reply');
-  assert.equal(r.source, 'parent');
-});
-
-test('an unrecognised legacy status is treated as silence, never guessed', () => {
-  assert.equal(resolveEffectiveStatus([rsvp('maybe')], null).status, 'no_reply');
-  assert.equal(resolveEffectiveStatus([rsvp(null as any)], null).status, 'no_reply');
-  assert.equal(resolveEffectiveStatus([], coachMark('tardy')).status, 'no_reply');
-});
-
-// --- the two override directions (the old positional rule got these wrong) --
-
-test('parent after coach: the later family answer overrides the coach mark', () => {
-  const r = resolveEffectiveStatus(
-    [rsvp('yes', T2)],
-    coachMark('absent', T1)
-  );
-  assert.equal(r.status, 'going');
-  assert.equal(r.source, 'parent');
-  assert.equal(r.at, T2);
-});
-
-test('coach after parent: the later coach mark overrides the family answer', () => {
-  const r = resolveEffectiveStatus(
-    [rsvp('yes', T1)],
-    coachMark('absent', T2)
-  );
-  assert.equal(r.status, 'cant_go');
-  assert.equal(r.source, 'coach');
-  assert.equal(r.at, T2);
-});
-
-test('a coach mark no longer wins just for being a coach mark', () => {
-  // The exact case the old precedence got wrong: a stale mark against a fresh
-  // answer. Positional precedence returned cant_go here.
-  const r = resolveEffectiveStatus(
-    [rsvp('no', T3, { decline_reason: 'Sick' })],
-    coachMark('present', T1)
-  );
-  assert.equal(r.status, 'cant_go');
-  assert.equal(r.source, 'parent');
-  assert.equal(r.reason, 'Sick');
-});
-
-// --- ties ------------------------------------------------------------------
-
-test('tie on the exact same timestamp: the coach wins', () => {
-  const r = resolveEffectiveStatus([rsvp('yes', T1)], coachMark('absent', T1));
-  assert.equal(r.status, 'cant_go');
-  assert.equal(r.source, 'coach');
-});
-
-test('tie with no usable timestamps on either side: the coach still wins', () => {
-  const r = resolveEffectiveStatus(
-    [rsvp('yes', null)],
-    coachMark('absent', null)
-  );
-  assert.equal(r.status, 'cant_go');
-  assert.equal(r.source, 'coach');
-  assert.equal(r.at, null);
-});
-
-test('a dated row beats an undated one in both directions', () => {
-  const coachDated = resolveEffectiveStatus(
-    [rsvp('yes', null)],
-    coachMark('absent', T1)
-  );
-  assert.equal(coachDated.source, 'coach');
-
-  const rsvpDated = resolveEffectiveStatus(
-    [rsvp('yes', T1)],
-    coachMark('absent', null)
-  );
-  assert.equal(rsvpDated.source, 'parent');
-  assert.equal(rsvpDated.status, 'going');
-});
-
-test('an unparseable timestamp is treated as missing, not as NaN ordering', () => {
-  const r = resolveEffectiveStatus(
-    [rsvp('yes', 'not-a-date')],
-    coachMark('absent', T1)
-  );
-  assert.equal(r.source, 'coach');
-});
-
-test('responded_at stands in when updated_at is missing on an old row', () => {
-  const r = resolveEffectiveStatus(
-    [{ status: 'yes', updated_at: null, responded_at: T3 }],
-    coachMark('absent', T1)
-  );
-  assert.equal(r.status, 'going');
-  assert.equal(r.at, T3);
-});
-
-// --- several rows for one player -------------------------------------------
-
-test('two parents disagree: the latest answer wins', () => {
-  const r = resolveEffectiveStatus(
-    [
-      rsvp('yes', T1),
-      rsvp('no', T3, { decline_reason: 'Dentist' }),
-      rsvp('yes', T2),
-    ],
-    null
-  );
-  assert.equal(r.status, 'cant_go');
-  assert.equal(r.at, T3);
-  assert.equal(r.reason, 'Dentist');
-});
-
-test('two rows tied with each other: the first given wins, stably', () => {
-  const rows = [rsvp('yes', T1), rsvp('no', T1)];
-  assert.equal(resolveEffectiveStatus(rows, null).status, 'going');
-  // Same input, same answer -- no dependence on result-set order beyond the
-  // caller's own ordering.
-  assert.equal(resolveEffectiveStatus(rows, null).status, 'going');
-});
-
-test('null-player row and player_id row for one player: latest wins', () => {
-  // The schema's UNIQUE (event_id, user_id, player_id) with NULLS NOT DISTINCT
-  // lets one family hold BOTH a legacy null-player_id row and a player_id row.
-  // The caller maps both onto the same player (user -> child mapping), so the
-  // resolver must treat them as two answers from the same side.
-  const legacyNullPlayer = rsvp('yes', T1);
-  const withPlayerId = rsvp('no', T2, { decline_reason: 'Injured' });
-
-  const r = resolveEffectiveStatus([legacyNullPlayer, withPlayerId], null);
-  assert.equal(r.status, 'cant_go');
-  assert.equal(r.reason, 'Injured');
-  assert.equal(r.at, T2);
-
-  // And the other way round: the legacy row is the fresher one.
-  const r2 = resolveEffectiveStatus(
-    [rsvp('yes', T3), rsvp('no', T1)],
-    null
-  );
-  assert.equal(r2.status, 'going');
-  assert.equal(r2.at, T3);
-});
-
-test('a coach mark competes against the newest of several rsvp rows, not the first', () => {
-  const r = resolveEffectiveStatus(
-    [rsvp('yes', T1), rsvp('yes', T3)],
-    coachMark('absent', T2)
-  );
-  assert.equal(r.status, 'going');
-  assert.equal(r.source, 'parent');
-  assert.equal(r.at, T3);
-});
-
-// --- the strip -------------------------------------------------------------
-
-test('summarizeEffective buckets every verdict once and counts coach marks', () => {
-  const s = summarizeEffective([
-    { status: 'going', source: 'coach', at: T1, reason: null },
-    { status: 'going', source: 'parent', at: T1, reason: null },
-    { status: 'cant_go', source: 'coach', at: T1, reason: null },
-    { status: 'no_reply', source: null, at: null, reason: null },
-    { status: 'no_reply', source: 'parent', at: T1, reason: null },
+test('normalize: unknown status is silence (there is no Maybe); bad rows are dropped', () => {
+  const rows = normalizeAttendanceRows([
+    row('a', 'maybe'),
+    { first_name: 'no id', status: 'going' },
+    null,
+    'junk',
+    row('b', 'going', 'grandma'),
   ]);
-  assert.deepEqual(s, { going: 2, cantGo: 1, noReply: 2, markedByCoach: 2 });
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].status, 'no_reply');
+  assert.equal(rows[1].source, null);
+  assert.deepEqual(normalizeAttendanceRows(null), []);
+  assert.deepEqual(normalizeAttendanceRows({ not: 'an array' }), []);
 });
 
-test('summarizeEffective on an empty roster is all zeroes', () => {
-  assert.deepEqual(summarizeEffective([]), {
-    going: 0,
-    cantGo: 0,
-    noReply: 0,
-    markedByCoach: 0,
-  });
+test('normalize: private fields pass through only when the function sent them', () => {
+  const [staffView] = normalizeAttendanceRows([
+    row('a', 'cant_go', 'parent', { marked_by_name: 'Paula Q', decline_reason: 'Sick' }),
+  ]);
+  const [parentView] = normalizeAttendanceRows([row('a', 'cant_go', 'parent')]);
+  assert.equal(staffView.marked_by_name, 'Paula Q');
+  assert.equal(staffView.decline_reason, 'Sick');
+  assert.equal(parentView.marked_by_name, null);
+  assert.equal(parentView.decline_reason, null);
 });
 
-// --- the Oct 10 device case -------------------------------------------------
+test('counts: a drifted counts row is capped so nothing exceeds the roster', () => {
+  const m = normalizeCounts([
+    { event_id: 'e1', roster: 15, going: 10, cant_go: 2, no_reply: 3 },
+    // what the old raw tally produced on Shooters: 14 + 2 > 15
+    { event_id: 'e2', roster: 15, going: 14, cant_go: 2, no_reply: 0 },
+    { event_id: 'e3', roster: 0, going: 4, cant_go: 1, no_reply: 0 },
+    { event_id: 'e4', roster: '30', going: '12', cant_go: '9', no_reply: '9' },
+    { roster: 5 },
+  ]);
+  assert.deepEqual(m.get('e1'), { event_id: 'e1', roster: 15, going: 10, cant_go: 2, no_reply: 3 });
+  assert.deepEqual(m.get('e2'), { event_id: 'e2', roster: 15, going: 14, cant_go: 1, no_reply: 0 });
+  assert.deepEqual(m.get('e3'), { event_id: 'e3', roster: 0, going: 0, cant_go: 0, no_reply: 0 });
+  assert.deepEqual(m.get('e4'), { event_id: 'e4', roster: 30, going: 12, cant_go: 9, no_reply: 9 });
+  assert.equal(m.size, 4);
+  for (const c of m.values()) {
+    assert.equal(c.going + c.cant_go + c.no_reply, c.roster);
+  }
+});
 
-test('device case: single coach mark, no rsvp rows, both timestamps set -> going', () => {
-  // Exactly the row the DB returned for player 179a0b68: 'present', with
-  // created_at and updated_at both populated, and NO cal_event_rsvps row.
-  const r = resolveEffectiveStatus([], {
-    status: 'present',
-    created_at: '2026-10-10 07:03:42.445382+00',
-    updated_at: '2026-10-10 07:03:42.445382+00',
+// --- error -> empty state, never loading -----------------------------------
+
+test('load: rows -> ready', async () => {
+  const r = await loadEventAttendance(async () => ({ data: SHOOTERS, error: null }));
+  assert.equal(r.state, 'ready');
+  assert.equal(r.rows.length, 15);
+});
+
+test('load: zero rows (not on the team) -> empty, not error', async () => {
+  const r = await loadEventAttendance(async () => ({ data: [], error: null }));
+  assert.equal(r.state, 'empty');
+  assert.deepEqual(r.rows, []);
+});
+
+test('load: an RPC error -> error state with no rows', async () => {
+  const r = await loadEventAttendance(async () => ({ data: null, error: { message: 'boom' } }));
+  assert.equal(r.state, 'error');
+  assert.deepEqual(r.rows, []);
+});
+
+test('load: a thrown request -> error state, never throws', async () => {
+  const r = await loadEventAttendance(async () => {
+    throw new Error('network down');
   });
-  assert.equal(r.status, 'going');
-  assert.equal(r.source, 'coach');
-  assert.equal(r.at, '2026-10-10 07:03:42.445382+00');
+  assert.equal(r.state, 'error');
+  assert.deepEqual(r.rows, []);
+});
+
+test('load: a request that never settles times out -> error, and the signal aborts', async () => {
+  let seen: AbortSignal | null = null;
+  const r = await loadEventAttendance((signal) => {
+    seen = signal;
+    return never();
+  }, 30);
+  assert.equal(r.state, 'error');
+  assert.ok(r.error instanceof AttendanceTimeoutError);
+  assert.equal((seen as AbortSignal | null)?.aborted, true);
+});
+
+test('counts load: failure -> ok:false and NO counts (not zeros)', async () => {
+  const failed = await loadAttendanceCounts(async () => ({ data: null, error: { message: 'x' } }));
+  assert.equal(failed.ok, false);
+  assert.equal(failed.counts.size, 0);
+  const slow = await loadAttendanceCounts(() => never(), 30);
+  assert.equal(slow.ok, false);
+  assert.equal(slow.counts.size, 0);
+});
+
+test('withTimeout: a fast request resolves and leaves the signal alone', async () => {
+  let seen: AbortSignal | null = null;
+  const v = await withTimeout(async (signal) => {
+    seen = signal;
+    return 7;
+  }, 1000);
+  assert.equal(v, 7);
+  assert.equal((seen as AbortSignal | null)?.aborted, false);
+});
+
+// --- multi-kid -> per-child controls ---------------------------------------
+
+test('my rows: a multi-kid parent gets one control per child, each with its player_id', () => {
+  const rows: EventAttendanceRow[] = normalizeAttendanceRows(SHOOTERS);
+  const mine = myAnswerRows(rows, ['g1', 'c0']);
+  assert.deepEqual(
+    mine.map((r) => r.player_id),
+    ['g1', 'c0']
+  );
+  assert.ok(mine.every((r) => typeof r.player_id === 'string' && r.player_id.length > 0));
+});
+
+test('my rows: staff / no linked player -> no control; off-roster link -> no control', () => {
+  const rows = normalizeAttendanceRows(SHOOTERS);
+  assert.deepEqual(myAnswerRows(rows, []), []);
+  assert.deepEqual(myAnswerRows(rows, ['not-on-this-roster']), []);
+  assert.deepEqual(myAnswerRows([], ['g1']), []);
+});
+
+test('pill status: the one effective status in the family vocabulary', () => {
+  assert.equal(pillStatusFor('going'), 'yes');
+  assert.equal(pillStatusFor('cant_go'), 'no');
+  assert.equal(pillStatusFor('no_reply'), null);
+});
+
+// --- labels (3b-2) ---------------------------------------------------------
+
+test('label: no_reply shows NO "by ..." label, whatever the source', () => {
+  for (const source of ['parent', 'player', 'coach', null]) {
+    const [r] = normalizeAttendanceRows([
+      row('a', 'no_reply', source, { marked_by_name: 'Paula Quintero' }),
+    ]);
+    assert.equal(attributionLabel(r), null, `source ${source}`);
+  }
+});
+
+test('label: marked rows carry the source, plus the name only when returned', () => {
+  const [parent, coach, player, staffView, coachNamed] = normalizeAttendanceRows([
+    row('a', 'going', 'parent'),
+    row('b', 'cant_go', 'coach'),
+    row('c', 'going', 'player'),
+    row('d', 'cant_go', 'parent', { marked_by_name: 'Paula Quintero' }),
+    row('e', 'going', 'coach', { marked_by_name: 'Lu Sanchez' }),
+  ]);
+  assert.equal(attributionLabel(parent), 'by parent');
+  assert.equal(attributionLabel(coach), 'by coach');
+  assert.equal(attributionLabel(player), 'by player');
+  assert.equal(attributionLabel(staffView), 'by parent · Paula Q.');
+  assert.equal(attributionLabel(coachNamed), 'by coach · Lu');
+});
+
+// --- own decline reason (3b-2) ---------------------------------------------
+
+const AT = '2026-11-07T22:30:00.000Z';
+const EARLIER = '2026-11-07T20:00:00.000Z';
+
+test('own reason: my own cant_go row gets the reason from MY cal_event_rsvps row', () => {
+  const rows = normalizeAttendanceRows([
+    row('kid', 'cant_go', 'parent', { marked_at: AT }),
+    row('mate', 'cant_go', 'parent', { marked_at: AT }),
+  ]);
+  const merged = mergeOwnReasons(
+    rows,
+    [{ player_id: 'kid', status: 'no', decline_reason: 'Tournament', updated_at: AT, responded_at: EARLIER }],
+    ['kid']
+  );
+  assert.equal(merged[0].decline_reason, 'Tournament');
+});
+
+test("own reason: a teammate's row keeps NO reason (function returned NULL to non-staff)", () => {
+  const rows = normalizeAttendanceRows([
+    row('kid', 'cant_go', 'parent', { marked_at: AT }),
+    row('mate', 'cant_go', 'parent', { marked_at: AT }),
+  ]);
+  const merged = mergeOwnReasons(
+    rows,
+    // even a row of mine that names the teammate cannot leak onto them
+    [
+      { player_id: 'kid', status: 'no', decline_reason: 'Tournament', updated_at: AT },
+      { player_id: 'mate', status: 'no', decline_reason: 'not mine to show', updated_at: AT },
+    ],
+    ['kid']
+  );
+  assert.equal(merged[1].decline_reason, null);
+  assert.equal(merged[1], rows[1], 'teammate row returned untouched');
+});
+
+test('own reason: multi-kid parent -- each child gets only its own reason; NULL rows ignored', () => {
+  const rows = normalizeAttendanceRows([
+    row('k1', 'cant_go', 'parent', { marked_at: AT }),
+    row('k2', 'cant_go', 'parent', { marked_at: AT }),
+  ]);
+  const merged = mergeOwnReasons(
+    rows,
+    [
+      { player_id: 'k1', status: 'no', decline_reason: 'Sick', updated_at: AT },
+      { player_id: null, status: 'no', decline_reason: 'ambiguous legacy row', updated_at: AT },
+    ],
+    ['k1', 'k2']
+  );
+  assert.equal(merged[0].decline_reason, 'Sick');
+  assert.equal(merged[1].decline_reason, null);
+});
+
+test('own reason: a legacy NULL row counts for my only child (same as the SQL)', () => {
+  const rows = normalizeAttendanceRows([row('kid', 'cant_go', 'parent', { marked_at: AT })]);
+  const merged = mergeOwnReasons(
+    rows,
+    [{ player_id: null, status: 'no', decline_reason: 'Trip', responded_at: AT }],
+    ['kid']
+  );
+  assert.equal(merged[0].decline_reason, 'Trip');
+});
+
+test('own reason: not merged when a coach mark or another answer won, or I later said yes', () => {
+  const mineNo = { player_id: 'kid', status: 'no', decline_reason: 'Sick', updated_at: EARLIER };
+  const [coachWon] = normalizeAttendanceRows([row('kid', 'cant_go', 'coach', { marked_at: AT })]);
+  assert.equal(mergeOwnReasons([coachWon], [mineNo], ['kid'])[0].decline_reason, null);
+
+  // the other parent's later "no" is the winner -- my older reason is not theirs
+  const [otherWon] = normalizeAttendanceRows([row('kid', 'cant_go', 'parent', { marked_at: AT })]);
+  assert.equal(mergeOwnReasons([otherWon], [mineNo], ['kid'])[0].decline_reason, null);
+
+  const [going] = normalizeAttendanceRows([row('kid', 'going', 'parent', { marked_at: AT })]);
+  const mineYes = { player_id: 'kid', status: 'yes', decline_reason: null, updated_at: AT };
+  assert.equal(mergeOwnReasons([going], [mineYes, mineNo], ['kid'])[0].decline_reason, null);
+});
+
+test('own reason: a reason the function already returned (staff) is never overwritten', () => {
+  const [r] = normalizeAttendanceRows([
+    row('kid', 'cant_go', 'parent', { marked_at: AT, decline_reason: 'From the function' }),
+  ]);
+  const merged = mergeOwnReasons(
+    [r],
+    [{ player_id: 'kid', status: 'no', decline_reason: 'Mine', updated_at: AT }],
+    ['kid']
+  );
+  assert.equal(merged[0].decline_reason, 'From the function');
 });

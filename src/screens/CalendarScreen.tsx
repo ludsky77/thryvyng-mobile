@@ -25,6 +25,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { useUserTeams, UserTeam } from '../hooks/useUserTeams';
 import { useCalendarEvents } from '../hooks/useCalendarEvents';
 import { upsertRsvp } from '../utils/rsvp';
+import {
+  fetchEventsAttendanceCounts,
+  withTimeout,
+  type EventAttendanceCounts,
+} from '../hooks/useEventAttendance';
 import { MonthView } from '../components/calendar/MonthView';
 import { WeekView } from '../components/calendar/WeekView';
 import { DayView } from '../components/calendar/DayView';
@@ -60,6 +65,31 @@ const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
 
 const ALL_TEAMS_ID = 'ALL_TEAMS';
 
+/**
+ * A list card's event. `attendance_counts` comes from the ONE
+ * get_events_attendance_counts call; null means "no counts to show" (the read
+ * failed, or this viewer is not on the team) and the card then draws none.
+ */
+type ListEvent = CalendarEvent & {
+  team?: UserTeam;
+  attendance_counts?: EventAttendanceCounts | null;
+  user_rsvp?: any;
+};
+
+/**
+ * My own answer for one player: the newest of my rows that speak for them --
+ * the player_id row, or a legacy NULL row (which the prod function attributes
+ * to my only child). Display only; nothing counts these rows.
+ */
+function myRowForPlayer(rows: any[], playerId: string): any | null {
+  const time = (r: any) => new Date(r.updated_at ?? r.responded_at ?? 0).getTime() || 0;
+  return (
+    rows
+      .filter((r) => r.player_id === playerId || r.player_id == null)
+      .sort((a, b) => time(b) - time(a))[0] ?? null
+  );
+}
+
 
 function formatEventTimeRange(event: { start_time?: string | null; end_time?: string | null; is_all_day?: boolean }): string {
   if (event.is_all_day) return 'All Day';
@@ -93,11 +123,10 @@ export default function CalendarScreen({ route, navigation }: any) {
   const [cantGoEventId, setCantGoEventId] = useState<string | null>(null);
   const [showPreviousEvents, setShowPreviousEvents] = useState(false);
   const [rsvpSubmitting, setRsvpSubmitting] = useState(false);
-  // team_id -> the single player this user speaks for on that team.
-  const [myPlayerByTeam, setMyPlayerByTeam] = useState<Map<string, string>>(new Map());
-  const [events, setEvents] = useState<
-    (CalendarEvent & { team?: UserTeam; rsvp_counts?: any; user_rsvp?: any })[]
-  >([]);
+  // team_id -> every active player this user answers for on that team (their
+  // own player row, or each of their children).
+  const [myPlayersByTeam, setMyPlayersByTeam] = useState<Map<string, string[]>>(new Map());
+  const [events, setEvents] = useState<ListEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -191,72 +220,78 @@ export default function CalendarScreen({ route, navigation }: any) {
       if (error) throw error;
 
       const eventIds = (eventsData || []).map((e: CalendarEvent) => e.id);
-      const rsvpsByEvent: Record<string, any[]> = {};
+      const email = user?.email || '';
 
-      // ONE aggregate read for every visible card -- counts AND my own row come
-      // out of the same result set, reduced client-side. Never per-card.
-      if (eventIds.length > 0) {
-        const { data: rsvpsData, error: rsvpsError } = await supabase
-          .from('cal_event_rsvps')
-          .select('event_id, status, user_id, decline_reason')
-          .in('event_id', eventIds);
+      // Three reads, in parallel, each capped at 12 s so none can hold the
+      // list's spinner open:
+      //   1. ONE get_events_attendance_counts call for every visible card --
+      //      the counts every card shows. Never per card, never a row tally.
+      //   2. My OWN cal_event_rsvps rows (user_id = me) -- only to light up my
+      //      pill. Not counted anywhere.
+      //   3. Which active players on these teams I answer for. Same link the
+      //      prod functions use: parent / secondary parent / the player's own
+      //      email.
+      const [countsRes, mineRes, kidsRes] = await Promise.all([
+        fetchEventsAttendanceCounts(eventIds),
+        eventIds.length > 0 && user?.id
+          ? withTimeout((signal) =>
+              supabase
+                .from('cal_event_rsvps')
+                .select('event_id, player_id, status, decline_reason, updated_at, responded_at')
+                .in('event_id', eventIds)
+                .eq('user_id', user.id)
+                .abortSignal(signal)
+            ).catch((e) => ({ data: null, error: e }))
+          : Promise.resolve({ data: [], error: null }),
+        email
+          ? withTimeout((signal) =>
+              supabase
+                .from('players')
+                .select('id, team_id')
+                .in('team_id', teamIds)
+                .eq('status', 'active')
+                .or(
+                  `parent_email.eq.${email},secondary_parent_email.eq.${email},email.eq.${email}`
+                )
+                .abortSignal(signal)
+            ).catch((e) => ({ data: null, error: e }))
+          : Promise.resolve({ data: [], error: null }),
+      ]);
 
-        if (rsvpsError) {
-          if (__DEV__) console.warn('[Calendar] rsvp counts read failed:', rsvpsError);
-          Alert.alert('Error', 'Could not load RSVP counts');
-        }
-
-        (rsvpsData || []).forEach((r: any) => {
-          if (!rsvpsByEvent[r.event_id]) rsvpsByEvent[r.event_id] = [];
-          rsvpsByEvent[r.event_id].push(r);
-        });
+      if (!countsRes.ok) {
+        // No counts drawn at all -- not zeros, not a spinner.
+        console.warn('[Calendar] attendance counts read failed:', countsRes.error);
+      }
+      if (mineRes.error && __DEV__) {
+        console.warn('[Calendar] my rsvp rows read failed:', mineRes.error);
+      }
+      if (kidsRes.error && __DEV__) {
+        console.warn('[Calendar] my-players read failed:', kidsRes.error);
       }
 
-      // ONE read for the whole visible range: which players on these teams this
-      // user speaks for. Exactly one on a team => that team's events carry
-      // player_id on my RSVP; zero or several => null, same as staff.
       const kidsByTeam = new Map<string, string[]>();
-      const email = (user?.email || '').toLowerCase();
-      if (email) {
-        const { data: kids, error: kidsError } = await supabase
-          .from('players')
-          .select('id, team_id')
-          .in('team_id', teamIds)
-          .or(`parent_email.eq.${email},secondary_parent_email.eq.${email}`);
-        if (kidsError && __DEV__) {
-          console.warn('[Calendar] my-players read failed:', kidsError);
-        }
-        (kids || []).forEach((k: any) => {
-          if (!k.team_id) return;
-          kidsByTeam.set(k.team_id, [...(kidsByTeam.get(k.team_id) || []), k.id]);
-        });
-      }
-      setMyPlayerByTeam(
-        new Map(
-          [...kidsByTeam.entries()]
-            .filter(([, ids]) => ids.length === 1)
-            .map(([teamId, ids]) => [teamId, ids[0]])
-        )
-      );
+      ((kidsRes.data as any[]) || []).forEach((k: any) => {
+        if (!k.team_id) return;
+        kidsByTeam.set(k.team_id, [...(kidsByTeam.get(k.team_id) || []), k.id]);
+      });
+      setMyPlayersByTeam(kidsByTeam);
 
-      const enrichedEvents = (eventsData || []).map((event: any) => {
+      const myRowsByEvent = new Map<string, any[]>();
+      ((mineRes.data as any[]) || []).forEach((r: any) => {
+        myRowsByEvent.set(r.event_id, [...(myRowsByEvent.get(r.event_id) || []), r]);
+      });
+
+      const enrichedEvents: ListEvent[] = (eventsData || []).map((event: any) => {
         const team = allTeams.find((t) => t.id === event.team_id);
-        const rsvps = rsvpsByEvent[event.id] || [];
-        // Card counts stay a straight row tally of the family's answers --
-        // the cards carry no coach marks to merge. The event-detail strip is
-        // the resolved view; this is the at-a-glance one.
-        const rsvp_counts = {
-          yes: rsvps.filter((r) => r.status === 'yes').length,
-          no: rsvps.filter((r) => r.status === 'no').length,
-          pending: rsvps.filter((r) => r.status === 'pending').length,
-        };
-        const user_rsvp = rsvps.find((r) => r.user_id === user?.id) || null;
-
+        const kids = kidsByTeam.get(event.team_id) || [];
         return {
           ...event,
           team,
-          rsvp_counts,
-          user_rsvp,
+          attendance_counts: countsRes.ok ? countsRes.counts.get(event.id) ?? null : null,
+          user_rsvp:
+            kids.length === 1
+              ? myRowForPlayer(myRowsByEvent.get(event.id) || [], kids[0])
+              : null,
         };
       });
 
@@ -297,9 +332,12 @@ export default function CalendarScreen({ route, navigation }: any) {
     setRsvpSubmitting(true);
     try {
       const target = events.find((e) => e.id === eventId);
-      const myPlayerId = target?.team_id
-        ? myPlayerByTeam.get(target.team_id) ?? null
-        : null;
+      const kids = target?.team_id ? myPlayersByTeam.get(target.team_id) ?? [] : [];
+      // Ruling: every answer carries player_id. The card only offers the pill
+      // when there is exactly one player to answer for; a multi-kid parent
+      // answers per child on the event screen.
+      if (kids.length !== 1) return;
+      const myPlayerId = kids[0];
 
       // Same single writer EventDetailScreen uses (src/utils/rsvp.ts): one
       // upsert against UNIQUE (event_id, user_id, player_id), replacing the
@@ -319,28 +357,37 @@ export default function CalendarScreen({ route, navigation }: any) {
         return;
       }
 
-      // Apply locally so the strip flips instantly and the list never blanks.
+      // My pill flips at once. The counts are NOT patched by hand -- a coach
+      // mark may outrank this answer -- they are re-read from the function
+      // for this one event and merged in.
       setEvents((prev) =>
-        prev.map((e) => {
-          if (e.id !== eventId) return e;
-          const wasYes = e.user_rsvp?.status === 'yes';
-          const wasNo = e.user_rsvp?.status === 'no';
-          const counts = { ...(e.rsvp_counts || { yes: 0, no: 0, pending: 0 }) };
-          if (wasYes) counts.yes = Math.max(0, (counts.yes || 0) - 1);
-          if (wasNo) counts.no = Math.max(0, (counts.no || 0) - 1);
-          if (status === 'yes') counts.yes = (counts.yes || 0) + 1;
-          if (status === 'no') counts.no = (counts.no || 0) + 1;
-          return {
-            ...e,
-            rsvp_counts: counts,
-            user_rsvp: {
-              ...(e.user_rsvp || {}),
-              user_id: user.id,
-              status,
-              decline_reason: status === 'no' ? declineReason ?? null : null,
-            },
-          };
-        })
+        prev.map((e) =>
+          e.id !== eventId
+            ? e
+            : {
+                ...e,
+                user_rsvp: {
+                  ...(e.user_rsvp || {}),
+                  user_id: user.id,
+                  player_id: myPlayerId,
+                  status,
+                  decline_reason: status === 'no' ? declineReason ?? null : null,
+                },
+              }
+        )
+      );
+      const fresh = await fetchEventsAttendanceCounts([eventId]);
+      setEvents((prev) =>
+        prev.map((e) =>
+          e.id !== eventId
+            ? e
+            : {
+                ...e,
+                // A failed re-read drops the counts rather than leaving
+                // numbers we know are stale.
+                attendance_counts: fresh.ok ? fresh.counts.get(eventId) ?? null : null,
+              }
+        )
       );
     } finally {
       setRsvpSubmitting(false);
@@ -499,10 +546,14 @@ export default function CalendarScreen({ route, navigation }: any) {
    * Also used BY THE DAY VIEW (R-D), passed in as renderEventCard.
    */
   const renderEventListCard = (
-    event: CalendarEvent & { team?: UserTeam; rsvp_counts?: any; user_rsvp?: any }
+    event: ListEvent
   ) => {
     const eventDate = parseISO(event.event_date + 'T12:00:00');
     const eventPast = isEventPast(event);
+    // How many active players I answer for on this event's team. One -> the
+    // card pill; several -> answer per child on the event screen; none (staff,
+    // club admin) -> no self-RSVP control at all.
+    const myKidCount = event.team_id ? myPlayersByTeam.get(event.team_id)?.length ?? 0 : 0;
     const teamColor = resolveTeamColor(event.team);
     const frameColor = eventPast ? EVENT_ACCENT_PAST : teamColor;
     // R-H/R-K: what the line under the headline carries -- "vs Rapids", a
@@ -622,23 +673,30 @@ export default function CalendarScreen({ route, navigation }: any) {
         <View style={styles.cardFooterDivider} />
 
         <View style={styles.cardFooterRow}>
-          {/* Counts come from the single aggregate read above. */}
+          {/* Counts come from the ONE get_events_attendance_counts call:
+              one status per active roster player, so ✓ + ✕ + ? = roster and
+              no number can exceed it. No counts row (read failed, or not my
+              team) -> nothing drawn, never zeros. */}
           <View style={styles.footerCounts}>
-            <Text style={styles.footerCount}>
-              ✓ <Text style={styles.footerCountNum}>{event.rsvp_counts?.yes ?? 0}</Text>
-            </Text>
-            <Text style={styles.footerCount}>
-              ✕ <Text style={styles.footerCountNum}>{event.rsvp_counts?.no ?? 0}</Text>
-            </Text>
-            <Text style={styles.footerCount}>
-              ? <Text style={styles.footerCountNum}>{event.rsvp_counts?.pending ?? 0}</Text>
-            </Text>
+            {event.attendance_counts ? (
+              <>
+                <Text style={styles.footerCount}>
+                  ✓ <Text style={styles.footerCountNum}>{event.attendance_counts.going}</Text>
+                </Text>
+                <Text style={styles.footerCount}>
+                  ✕ <Text style={styles.footerCountNum}>{event.attendance_counts.cant_go}</Text>
+                </Text>
+                <Text style={styles.footerCount}>
+                  ? <Text style={styles.footerCountNum}>{event.attendance_counts.no_reply}</Text>
+                </Text>
+              </>
+            ) : null}
           </View>
 
           {/* Same writer the removed "Will you be there?" strip used:
               handleRsvp(event.id, ...) -> upsertRsvp, and can't-go still
               opens the shared reason sheet via setCantGoEventId. */}
-          {!eventPast && (
+          {!eventPast && myKidCount === 1 && (
             <RsvpPill
               compact
               style={styles.footerPill}
@@ -651,6 +709,17 @@ export default function CalendarScreen({ route, navigation }: any) {
               }
               onCantGo={() => setCantGoEventId(event.id)}
             />
+          )}
+          {!eventPast && myKidCount > 1 && (
+            <TouchableOpacity
+              style={styles.footerPill}
+              onPress={() =>
+                navigation.navigate('EventDetail', { event, onRefetch: fetchEvents })
+              }
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.footerPerChild}>Answer per child ›</Text>
+            </TouchableOpacity>
           )}
         </View>
       </View>
@@ -1323,6 +1392,11 @@ const styles = StyleSheet.create({
   },
   footerCountNum: {
     color: '#e2e8f0',
+    fontWeight: '700',
+  },
+  footerPerChild: {
+    color: '#a78bfa',
+    fontSize: 13,
     fontWeight: '700',
   },
 

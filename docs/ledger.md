@@ -3311,3 +3311,57 @@ it. Nothing here has been seen by a human on a real phone.
   - Source: Lu's Round 3 phone run and this session's fix, 2026-11-04;
     `docs/recon/f4-coldstart-push.md`;
     `docs/recon/release-1.0.20-fixes.md` §§22-23.
+
+## Landed — Nov 9 2026 (attendance one-source, chunk 1 prompt 3b)
+
+- **attendance one-source build · BUILT · sim test pending** (2026-11-09,
+  uncommitted at write time). Every attendance surface now reads the prod
+  functions `get_event_attendance` / `get_events_attendance_counts` (web
+  migration `20261109013010_event_attendance_read_fns.sql`, proven T1–T9 in
+  web `docs/recon/attendance-fn-nov09.md`); the client resolver, the raw
+  RSVP row tally and the unfiltered `players` roster read are gone.
+  - Files: NEW `src/hooks/useEventAttendance.ts` (the one read, 12 s timeout,
+    loading/ready/empty/error); `src/utils/attendanceResolver.ts` (now the pure
+    half: timeout, normalise, roster cap, per-child rows; old resolver fns
+    removed, their rules live in the SQL); `src/utils/attendanceResolver.test.ts`
+    (17 node:test cases); `src/screens/CalendarScreen.tsx` (ONE counts call for
+    the visible events, no counts on failure, card pill only with exactly 1
+    linked player, "Answer per child ›" for 2+); `src/screens/EventDetailScreen.tsx`
+    (strip + Attendance tab on the hook, Attendance tab visible to the whole team
+    read-only, ✓/✗ only with a `team_staff` row, per-child RSVP pills always
+    with `player_id`, source label on every marked row, Retry empty states);
+    `src/components/calendar/ResponsesBar.tsx` (denominator = roster);
+    `src/components/game-stats/GameEntryButton.tsx` (no initial spinner, 12 s
+    timeout, error → Retry).
+  - **3b-2 amendments (planning-room rulings, Nov 9):** (1) KEPT: the
+    event-screen control shows the combined status; "Going" after a coach mark
+    saves yes. (2) A parent/player sees the decline reason on their OWN row(s),
+    merged client-side from their own `cal_event_rsvps` rows only
+    (`mergeOwnReasons`, attendanceResolver.ts; read in useEventAttendance.ts).
+    Teammates' rows still show no reason. (3) `no_reply` rows show no "by …"
+    label (`attributionLabel`). (4) GameEntryButton is back for the whole team:
+    Watch and View Match Summary are visible to everyone, as at HEAD; only
+    Start Match Center and Stats Console are staff-only (`canManage` prop).
+  - Gates: `npx tsc --noEmit` 0 → 0 errors; node:test 25/25 (after 3b-2);
+    eslint 0 errors.
+  - **Sim test owed** (parent 1 kid, parent 2+ kids, player self-login, team
+    staff, club admin with no team_staff row, offline → Retry).
+  - **live smoke A1–A8 BLOCKED 2026-11-09 13:25 MST:** script wired
+    (`scripts/smoke/attendance-live.mjs`, uses app URL + anon, parses
+    `src/lib/supabase.ts`, dynamically imports `mergeOwnReasons` /
+    `loadEventAttendance` via `node --experimental-strip-types`, writes only
+    to ZZ Test Team 0826, cleans up on exit) but every `signInWithPassword`
+    returns `captcha protection: request disallowed (no captcha_token
+    found)` -- Cloudflare Turnstile is enforced server-side (`src/lib/captcha.ts`,
+    `LoginScreen.tsx:98`). A Node script cannot mint a Turnstile token
+    without a browser widget, so A1–A8 cannot run from this surface without
+    (a) a captcha bypass secret in the auth dashboard or (b) a pre-captured
+    session token handed in via env. Sim status: iPhone 17 Pro 26.2 booted,
+    `com.weolkn.thryvyng` launched into the expo-dev-client picker (screenshot
+    `/tmp/sim-b2.png`), log stream clean (no red-box / JS error for
+    useEventAttendance / CalendarScreen / EventDetailScreen / GameEntryButton
+    -- but the RN bundle never loaded because advancing past the picker
+    requires a tap and TAP DRIVING: UNAVAILABLE on this host, no install
+    allowed).
+
+- attendance one-source build · VERIFIED-DEVICE Nov 9 2026 14:45 (iOS sim, ludriv + zztest7 parent): sandbox G2-G4 6/6 · real teams G1 UPSL 12/9/9 r30, Shooters 10/2/3 r15, practices OK · card==detail · latest mark wins both ways · parent sees full team, private fields hidden · live smoke script BLOCKED by captcha (parked: captcha exemption for test accounts) · open: card highlights own answer only (coach-only mark not shown on card)

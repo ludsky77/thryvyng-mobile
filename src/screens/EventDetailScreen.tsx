@@ -13,7 +13,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { fetchTeamMemberNames } from '../lib/memberNames';
 import { openInMaps } from '../lib/maps';
 // expo-clipboard is already a project dependency and is how the rest of the app
 // copies text (WelcomeScreen, JoinTeamScreen, InviteCoParentModal). No new dep.
@@ -34,14 +33,14 @@ import PlayerAvatar from '../components/PlayerAvatar';
 import { GameEntryButton } from '../components/game-stats/GameEntryButton';
 import { isEventPast } from '../utils/calendar';
 import {
-  eventHeadcount,
-  resolveEffectiveStatus,
+  attributionLabel,
+  myAnswerRows,
+  pillStatusFor,
   type CoachStatus,
   type EffectiveStatus,
-  type EffectiveStatusResult,
-  type ResolverRsvpRow,
-  type StatusSource,
+  type EventAttendanceRow,
 } from '../utils/attendanceResolver';
+import { useEventAttendance, withTimeout } from '../hooks/useEventAttendance';
 import { upsertRsvp } from '../utils/rsvp';
 import { resolveTeamColor } from '../constants/teamColors';
 
@@ -57,9 +56,9 @@ function formatTime(time: string | null): string {
 }
 
 /**
- * Status vocabulary now lives in the resolver, which is the single rule both
- * the roster list and the Responses strip read. This screen only renders what
- * it is told.
+ * Status vocabulary comes from get_event_attendance (via useEventAttendance),
+ * the single source both the roster list and the Responses strip read. This
+ * screen only renders what it is told.
  */
 type DisplayStatus = EffectiveStatus;
 
@@ -68,22 +67,6 @@ const STATUS_CHIP: Record<DisplayStatus, { label: string; color: string }> = {
   cant_go: { label: "Can't go", color: '#ef4444' },
   no_reply: { label: 'No reply', color: '#64748b' },
 };
-
-/** Fallbacks for when the responder's profile is not readable under RLS. */
-const SOURCE_LABEL: Record<Exclude<StatusSource, null>, string> = {
-  coach: 'marked by coach',
-  parent: 'marked by parent',
-  player: 'marked by player',
-};
-
-/** "Paula Quintero" -> "Paula Q."  Single-word names pass through. */
-function shortName(full: string | null | undefined): string | null {
-  if (!full) return null;
-  const parts = full.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return null;
-  if (parts.length === 1) return parts[0];
-  return `${parts[0]} ${parts[parts.length - 1].charAt(0).toUpperCase()}.`;
-}
 
 /**
  * How a row's status is drawn on the Attendance tab.
@@ -101,91 +84,26 @@ function statusBadge(status: DisplayStatus): { kind: BadgeKind; label: string } 
   return { kind: 'muted', label: STATUS_CHIP[status]?.label ?? 'No reply' };
 }
 
-function firstName(full: string | null | undefined): string | null {
-  if (!full) return null;
-  const first = full.trim().split(/\s+/)[0];
-  return first || null;
-}
-
-interface RosterPlayer {
-  id: string;
-  first_name: string;
-  last_name: string;
-  photo_url?: string | null;
-  jersey_number?: number | null;
-  parent_email?: string | null;
-  secondary_parent_email?: string | null;
-}
-
-interface AttendanceRow {
-  id: string;
-  player_id: string;
-  status: CoachStatus;
-  marked_by: string | null;
-  /** Trigger-maintained. The resolver orders by it, so the read must select it. */
-  updated_at: string | null;
-  created_at: string | null;
-}
-
-/** One cal_event_rsvps row as this screen reads it. */
-interface EventRsvpRow {
-  player_id: string | null;
-  user_id: string;
-  status: string;
-  decline_reason: string | null;
-  /** Trigger-maintained, and what "latest action wins" is decided on. */
-  updated_at: string | null;
-  responded_at: string | null;
-}
-
-interface RosterEntry {
-  player: RosterPlayer;
-  status: DisplayStatus;
-  source: StatusSource;
-  /** Short name of whoever supplied the status, when their profile is readable. */
-  sourceName: string | null;
-  reason: string | null;
-  /** When the winning action happened. Drives nothing visually; kept for the strip. */
-  at: string | null;
-  /** Whether a coach mark EXISTS for this player -- not whether it won. */
-  hasCoachMark: boolean;
-  /** Raw coach mark, so the ✓/✗ pair can show which one is active. */
-  coachStatus: CoachStatus | null;
-}
-
-/** An RSVP we could not pin to exactly one player on this team. */
-interface UnmappedRsvp {
-  key: string;
-  label: string;
-  status: DisplayStatus;
-  reason: string | null;
-  ambiguous: boolean;
-  /** The same resolver verdict the roster rows carry, so the strip counts it identically. */
-  resolved: EffectiveStatusResult;
-}
-
 export default function EventDetailScreen({ route, navigation }: any) {
   const { event: eventParam, eventId, onRefetch } = route.params || {};
   const { user, currentRole } = useAuth();
   const [event, setEvent] = useState<CalendarEvent | null>(eventParam || null);
   const [loading, setLoading] = useState(!eventParam && !!eventId);
   const [rsvpLoading, setRsvpLoading] = useState(false);
-  const [cantGoModalVisible, setCantGoModalVisible] = useState(false);
+  /** The player whose "Can't go" reason sheet is open, or null when closed. */
+  const [cantGoPlayerId, setCantGoPlayerId] = useState<string | null>(null);
   /** Brief "Address copied" confirmation under the location block. */
   const [addressCopied, setAddressCopied] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
-  const [eventRsvps, setEventRsvps] = useState<EventRsvpRow[]>([]);
   const [nonResponders, setNonResponders] = useState<string[]>([]);
   const [reminderSending, setReminderSending] = useState(false);
   const [reminderSent, setReminderSent] = useState(false);
   const [isStaffInTeam, setIsStaffInTeam] = useState(false);
   const [remindingTeam, setRemindingTeam] = useState(false);
-  const [players, setPlayers] = useState<RosterPlayer[]>([]);
-  const [attendanceRows, setAttendanceRows] = useState<AttendanceRow[]>([]);
-  const [playerRoleMap, setPlayerRoleMap] = useState<Map<string, string>>(new Map());
-  const [responderEmails, setResponderEmails] = useState<
-    Map<string, { email: string; name: string | null }>
-  >(new Map());
+  /** Raw coach marks, staff only -- which ✓/✗ is lit, not who is coming. */
+  const [coachMarks, setCoachMarks] = useState<Map<string, CoachStatus>>(new Map());
+  /** Active players on this team the viewer answers for (self, or each child). */
+  const [myPlayerIds, setMyPlayerIds] = useState<string[]>([]);
   const [markingPlayerId, setMarkingPlayerId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'attendance'>('details');
   const [lineup, setLineup] = useState<any | null>(null);
@@ -220,6 +138,21 @@ export default function EventDetailScreen({ route, navigation }: any) {
 
   const isManager = isStaffInTeam;
   const isStaff = isManager || (currentRole && ['club_admin', 'platform_admin'].includes(currentRole.role));
+  /**
+   * Who gets the coach ✓/✗ controls: a team_staff row on the event's team --
+   * the same rule the prod event_attendance INSERT/UPDATE/DELETE policies use
+   * (pg_policies read 2026-11-09, docs/recon/attendance-nov09.md Q6/S10). A
+   * club or platform admin without that row is read-only here, so no button
+   * is shown that the database would refuse.
+   */
+  const canMark = isStaffInTeam;
+
+  // THE attendance read: one get_event_attendance call feeds the strip, the
+  // list and the per-child controls.
+  const attendance = useEventAttendance(event?.id, {
+    userId: user?.id,
+    myPlayerIds,
+  });
 
   // silent = background refresh: keep whatever is on screen, never flip loading.
   const fetchEvent = useCallback(async (silent = false) => {
@@ -253,17 +186,8 @@ export default function EventDetailScreen({ route, navigation }: any) {
       if (error) throw error;
 
       if (data) {
-        // updated_at is named explicitly because the resolver orders by it:
-        // a select that silently stopped returning it would quietly turn
-        // "latest action wins" back into "whatever came first".
-        const { data: rsvpsData } = await supabase
-          .from('cal_event_rsvps')
-          .select('player_id, user_id, status, decline_reason, updated_at, responded_at')
-          .eq('event_id', data.id);
-
-        setEventRsvps((rsvpsData || []) as EventRsvpRow[]);
-        // No rsvp_counts here any more: it counted raw rows, nothing on this
-        // screen read it, and the Responses strip now comes from the resolver.
+        // No RSVP rows are read here any more: who is coming comes from
+        // get_event_attendance (useEventAttendance), and nothing else.
         setEvent(data as CalendarEvent);
       }
 
@@ -279,128 +203,84 @@ export default function EventDetailScreen({ route, navigation }: any) {
     }
   }, [eventId, eventParam]);
 
-  // Lifted from the Attendance tab: the Details roster needs the same three
-  // reads, so this now runs for both tabs off event id/team id.
-  const fetchRoster = useCallback(async () => {
-    if (!event?.id || !event?.team_id) return;
-
-    try {
-      const { data: playersData, error: playersError } = await supabase
-        .from('players')
-        .select(
-          'id, first_name, last_name, photo_url, jersey_number, parent_email, secondary_parent_email'
-        )
-        .eq('team_id', event.team_id)
-        .order('last_name');
-
-      if (playersError) throw playersError;
-      const list = (playersData || []) as RosterPlayer[];
-      setPlayers(list);
-
-      // updated_at/created_at ride along for the same reason the RSVP read
-      // names updated_at: they are what the resolver orders coach marks by.
-      const { data: attData, error: attError } = await supabase
-        .from('event_attendance')
-        .select('id, player_id, status, marked_by, updated_at, created_at')
-        .eq('event_id', event.id);
-
-      // A FAILED READ IS NOT "NO MARKS".
-      //
-      // `attData || []` used to publish an empty array on any error, and
-      // `players` is already set ten lines above and survives -- so a failed
-      // attendance read left a full roster with zero coach marks, and every
-      // player resolved to silence. That is precisely how a coach's "present"
-      // vanished from the Details strip (0 Going / 1 Can't go / 7 No reply)
-      // while the Attendance tab, painted from an earlier successful fetch,
-      // still showed the mark. Keep whatever marks we already hold instead of
-      // blanking them, so a bad read degrades to stale rather than to wrong.
-      //
-      // The warn is NOT __DEV__-gated: gating it is why this cost a device
-      // round trip to find. A release build said nothing at all.
-      if (attError) {
-        console.warn(
-          '[EventDetail] attendance read failed; keeping previously loaded marks:',
-          attError
-        );
-      } else {
-        setAttendanceRows((attData || []) as AttendanceRow[]);
-      }
-
-      // Player-role users are their own player: an exact user -> player identity
-      // that beats any email guess.
-      const playerIds = list.map((p) => p.id);
-      const roleMap = new Map<string, string>();
-      if (playerIds.length > 0) {
-        const { data: roles, error: rolesError } = await supabase
-          .from('user_roles')
-          .select('user_id, entity_id')
-          .eq('role', 'player')
-          .in('entity_id', playerIds);
-        if (rolesError && __DEV__) {
-          console.warn('[EventDetail] player-role read failed:', rolesError);
-        }
-        (roles || []).forEach((r: any) => {
-          if (r.user_id && r.entity_id) roleMap.set(r.user_id, r.entity_id);
-        });
-      }
-      setPlayerRoleMap(roleMap);
-    } catch (err) {
-      console.error('[EventDetail] Error fetching roster:', err);
-      setPlayers([]);
-      setAttendanceRows([]);
-    }
-  }, [event?.id, event?.team_id]);
-
-  // RSVP rows carry user_id but often no player_id. Two different things are
-  // needed per responder and they now come from two different places:
-  //   * the display NAME, from the team-gated RPC. A direct `profiles` read
-  //     returned only the viewer's own row under RLS, which is why every other
-  //     responder rendered as 'Team member'.
-  //   * the EMAIL, which is not shown anywhere -- it is only the matching key
-  //     against players.parent_email. The RPC deliberately exposes no email, so
-  //     the narrowed `profiles` read below stays purely as that bridge, and a
-  //     failure there no longer costs us the names.
-  const fetchResponderEmails = useCallback(async () => {
-    const ids = [
-      ...new Set(
-        [
-          ...eventRsvps.map((r) => r.user_id),
-          ...attendanceRows.map((a) => a.marked_by),
-        ].filter(Boolean) as string[]
-      ),
-    ];
-    if (ids.length === 0) {
-      setResponderEmails(new Map());
+  /**
+   * Raw coach marks, for staff who can mark. They only decide which of the
+   * ✓/✗ pair is lit -- a coach must still see their own mark after a parent
+   * has overridden it -- and are never counted: status and counts come from
+   * the function. A failed read keeps the marks already on screen.
+   */
+  const fetchCoachMarks = useCallback(async () => {
+    if (!event?.id || !canMark) {
+      setCoachMarks(new Map());
       return;
     }
-    const memberNames = await fetchTeamMemberNames(event?.team_id);
-
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, email')
-      .in('id', ids);
-    if (error) {
-      // RLS may hide other members' profiles from a parent, so the email
-      // bridge can come back empty; those RSVPs then render as un-mapped rows
-      // rather than being silently attached to a kid. Names are unaffected.
-      if (__DEV__) {
-        console.warn('[EventDetail] responder email bridge read failed:', error);
-      }
-    }
-    const emailById = new Map<string, string>();
-    (data || []).forEach((row: any) => {
-      emailById.set(row.id, (row.email || '').toLowerCase());
-    });
-
-    const map = new Map<string, { email: string; name: string | null }>();
-    ids.forEach((id) => {
-      map.set(id, {
-        email: emailById.get(id) ?? '',
-        name: memberNames.get(id)?.name ?? null,
+    try {
+      const { data, error } = await withTimeout((signal) =>
+        supabase
+          .from('event_attendance')
+          .select('player_id, status')
+          .eq('event_id', event.id)
+          .abortSignal(signal)
+      );
+      if (error) throw error;
+      const map = new Map<string, CoachStatus>();
+      (data || []).forEach((r: any) => {
+        if (r.player_id && r.status) map.set(r.player_id, r.status as CoachStatus);
       });
-    });
-    setResponderEmails(map);
-  }, [eventRsvps, attendanceRows, event?.team_id]);
+      setCoachMarks(map);
+    } catch (err) {
+      console.warn('[EventDetail] coach marks read failed; keeping previous:', err);
+    }
+  }, [event?.id, canMark]);
+
+  /**
+   * Which active players on this team the viewer answers for. Same link the
+   * prod functions use (parent / secondary parent / the player's own email),
+   * plus a player-role account's own player. Each one gets its own RSVP
+   * control, and every write carries that player_id. Only players the
+   * function returns are ever offered a control (myAnswerRows).
+   */
+  const fetchMyPlayers = useCallback(async () => {
+    const email = user?.email || '';
+    if (!event?.team_id || !user?.id) {
+      setMyPlayerIds([]);
+      return;
+    }
+    try {
+      const [linked, roles] = await Promise.all([
+        email
+          ? withTimeout((signal) =>
+              supabase
+                .from('players')
+                .select('id')
+                .eq('team_id', event.team_id)
+                .eq('status', 'active')
+                .or(
+                  `parent_email.eq.${email},secondary_parent_email.eq.${email},email.eq.${email}`
+                )
+                .abortSignal(signal)
+            )
+          : Promise.resolve({ data: [], error: null }),
+        withTimeout((signal) =>
+          supabase
+            .from('user_roles')
+            .select('entity_id')
+            .eq('user_id', user.id)
+            .eq('role', 'player')
+            .abortSignal(signal)
+        ),
+      ]);
+      if (linked.error && __DEV__) console.warn('[EventDetail] my-players read failed:', linked.error);
+      if (roles.error && __DEV__) console.warn('[EventDetail] player-role read failed:', roles.error);
+      const ids = new Set<string>();
+      ((linked.data as any[]) || []).forEach((p: any) => p?.id && ids.add(p.id));
+      ((roles.data as any[]) || []).forEach((r: any) => r?.entity_id && ids.add(String(r.entity_id)));
+      setMyPlayerIds([...ids]);
+    } catch (err) {
+      console.warn('[EventDetail] my-players read failed:', err);
+      setMyPlayerIds([]);
+    }
+  }, [event?.team_id, user?.id, user?.email]);
 
   const fetchNonResponders = useCallback(async () => {
     if (!event?.team_id || !event?.id) return;
@@ -412,10 +292,12 @@ export default function EventDetailScreen({ route, navigation }: any) {
         .select('user_id')
         .eq('team_id', event.team_id);
 
+      // Active roster only, like every other roster read on this screen.
       const { data: playersData } = await supabase
         .from('players')
         .select('id, parent_email, secondary_parent_email')
-        .eq('team_id', event.team_id);
+        .eq('team_id', event.team_id)
+        .eq('status', 'active');
 
       const emails = new Set<string>();
       (playersData || []).forEach((p: any) => {
@@ -464,11 +346,9 @@ export default function EventDetailScreen({ route, navigation }: any) {
 
   useEffect(() => {
     // A navigated-in event object is a paint hint, NOT a substitute for the
-    // fetch: it carries no RSVP rows. The old code took this branch and never
-    // called fetchEvent(), so eventRsvps stayed [] for the life of the screen
-    // and every roster player resolved to "no reply" -- even rows whose
-    // player_id pointed straight at them. Seed for an instant first paint,
-    // then always fetch (silently, so nothing blanks).
+    // fetch (it can be stale). Seed for an instant first paint, then always
+    // fetch (silently, so nothing blanks). Attendance is read separately by
+    // useEventAttendance.
     if (eventParam) {
       setEvent(eventParam);
       fetchEvent(true);
@@ -478,12 +358,12 @@ export default function EventDetailScreen({ route, navigation }: any) {
   }, [eventParam, fetchEvent]);
 
   useEffect(() => {
-    fetchRoster();
-  }, [fetchRoster]);
+    fetchCoachMarks();
+  }, [fetchCoachMarks]);
 
   useEffect(() => {
-    fetchResponderEmails();
-  }, [fetchResponderEmails]);
+    fetchMyPlayers();
+  }, [fetchMyPlayers]);
 
   useEffect(() => {
     if (event?.id && event?.team_id && isStaff) {
@@ -492,232 +372,35 @@ export default function EventDetailScreen({ route, navigation }: any) {
   }, [event?.id, event?.team_id, isStaff, fetchNonResponders]);
 
 
-  /**
-   * Attribute every RSVP to at most one player on this team.
-   *
-   * Priority is unchanged: explicit rsvp.player_id -> the responder IS the
-   * player (user_roles) -> exactly one parent-email match. Two or more matches
-   * is ambiguous and is deliberately NOT guessed; it surfaces as one un-mapped
-   * row instead. This is the ONLY place identity is decided -- the resolver
-   * consumes the decision and never re-derives it.
-   *
-   * What changed: a player now collects an ARRAY of rows, not one. The map
-   * used to `set` per player, so the last row in an unordered result set
-   * silently won and the roster could flicker between refetches. Several rows
-   * for one player is normal -- two parents each own a row, and the schema's
-   * UNIQUE (event_id, user_id, player_id) with NULLS NOT DISTINCT lets one
-   * family hold both a legacy null-player_id row and a player_id row. They are
-   * all candidates; the resolver picks by recency.
-   */
-  const resolvedRsvps = useMemo(() => {
-    const byPlayer = new Map<string, Array<ResolverRsvpRow & { user_id: string }>>();
-    const unmapped: UnmappedRsvp[] = [];
-
-    const add = (
-      playerId: string,
-      r: EventRsvpRow,
-      source: 'parent' | 'player'
-    ) => {
-      const candidate = {
-        user_id: r.user_id,
-        status: r.status,
-        updated_at: r.updated_at,
-        responded_at: r.responded_at,
-        decline_reason: r.decline_reason,
-        source,
-      };
-      const list = byPlayer.get(playerId);
-      if (list) list.push(candidate);
-      else byPlayer.set(playerId, [candidate]);
-    };
-
-    for (const r of eventRsvps) {
-      const selfPlayerId = playerRoleMap.get(r.user_id);
-
-      if (r.player_id) {
-        add(r.player_id, r, selfPlayerId === r.player_id ? 'player' : 'parent');
-        continue;
-      }
-      // A null player_id still resolves: the responder may BE the player, or
-      // be the one parent whose email matches exactly one kid. This is the
-      // mapping that keeps older rows counting.
-      if (selfPlayerId) {
-        add(selfPlayerId, r, 'player');
-        continue;
-      }
-
-      const profile = responderEmails.get(r.user_id);
-      const email = profile?.email ?? '';
-      const matches = email
-        ? players.filter(
-            (p) =>
-              (p.parent_email || '').toLowerCase() === email ||
-              (p.secondary_parent_email || '').toLowerCase() === email
-          )
-        : [];
-
-      if (matches.length === 1) {
-        add(matches[0].id, r, 'parent');
-      } else {
-        // Nobody we can pin to a player, but still a person who answered -- so
-        // it runs through the same resolver and counts in the same strip.
-        const resolved = resolveEffectiveStatus(
-          [{ status: r.status, updated_at: r.updated_at, responded_at: r.responded_at, decline_reason: r.decline_reason }],
-          null
-        );
-        unmapped.push({
-          key: `${r.user_id}`,
-          label: profile?.name || 'Team member',
-          status: resolved.status,
-          reason: resolved.reason,
-          ambiguous: matches.length > 1,
-          resolved,
-        });
-      }
-    }
-    return { byPlayer, unmapped };
-  }, [eventRsvps, players, playerRoleMap, responderEmails]);
+  /** One row per player this viewer answers for -- one RSVP control each. */
+  const myRows = useMemo(
+    () => myAnswerRows(attendance.rows, myPlayerIds),
+    [attendance.rows, myPlayerIds]
+  );
+  const headcount = attendance.headcount;
 
   /**
-   * One verdict per roster player: LATEST ACTION WINS.
-   *
-   * The old rule here was positional -- a coach mark was found first and
-   * returned early, so it beat every family answer no matter how stale, and a
-   * family answer could never override a mark. Both directions now work, and
-   * the Responses strip below reads these same verdicts, so the two cannot
-   * disagree. The tie rule (coach wins) lives in the resolver.
+   * Answer for ONE player this viewer speaks for. Always carries that
+   * player_id (ruling: no more NULL rows from this screen), always through the
+   * single writer, and always followed by a re-read of the function -- the
+   * row on screen is the database's verdict, not a local guess.
    */
-  const roster = useMemo<RosterEntry[]>(() => {
-    return players.map((player) => {
-      const mark = attendanceRows.find((a) => a.player_id === player.id) ?? null;
-      const candidates = resolvedRsvps.byPlayer.get(player.id) ?? [];
-      const verdict = resolveEffectiveStatus(candidates, mark);
-
-      // Who to name. The coach side has exactly one row, so marked_by is it.
-      // On the family side the winner is the candidate carrying the winning
-      // timestamp; on an exact tie the resolver keeps the first, so `find`
-      // lands on the same row the resolver chose.
-      let sourceName: string | null = null;
-      if (verdict.source === 'coach') {
-        sourceName = mark?.marked_by
-          ? firstName(responderEmails.get(mark.marked_by)?.name)
-          : null;
-      } else if (verdict.source) {
-        const winner = candidates.find(
-          (c) => (c.updated_at ?? c.responded_at ?? null) === verdict.at
-        );
-        sourceName = winner
-          ? shortName(responderEmails.get(winner.user_id)?.name)
-          : null;
-      }
-
-      return {
-        player,
-        status: verdict.status,
-        source: verdict.source,
-        sourceName,
-        reason: verdict.reason,
-        at: verdict.at,
-        // Whether a mark EXISTS, which is what the ✓/✗ pair reflects -- not
-        // whether it won. A coach must still see their own mark highlighted
-        // after a parent has overridden it, or the button lies about state.
-        hasCoachMark: !!mark,
-        coachStatus: mark?.status ?? null,
-      };
-    });
-  }, [players, attendanceRows, resolvedRsvps, responderEmails]);
-
-  /**
-   * The Responses strip, counted off the SAME verdicts the roster rows show.
-   *
-   * It used to count raw cal_event_rsvps rows, which meant a coach mark could
-   * never move it (mark fifteen players present, strip still read "No reply
-   * 15") and a duplicate row double-counted one player as "Going 2". Now one
-   * population, one rule: every roster player contributes exactly one verdict,
-   * plus every responder nobody could pin to a player -- they answered, so
-   * they count.
-   */
-  /**
-   * Round 3: the ONE headcount on this screen. Both the Responses bar and the
-   * reminder button's number read it, so they cannot disagree the way they did
-   * on Lu's phone (bar said 11, button said 19) -- the button counted USER
-   * ACCOUNTS from `nonResponders` (team staff plus BOTH parent emails per
-   * player plus player-role users), a different population from the roster.
-   */
-  const headcounts = useMemo(() => {
-    const rosterVerdicts: EffectiveStatusResult[] = roster.map((e) => ({
-      status: e.status,
-      source: e.source,
-      at: e.at,
-      reason: e.reason,
-    }));
-    const h = eventHeadcount(
-      rosterVerdicts,
-      resolvedRsvps.unmapped.map((u) => u.resolved)
-    );
-    return {
-      going: h.going,
-      cant: h.cantGo,
-      noReply: h.noReply,
-      markedByCoach: h.markedByCoach,
-      rosterSize: h.rosterSize,
-    };
-  }, [roster, resolvedRsvps]);
-
-  /** The one player this user speaks for, or null when staff / ambiguous. */
-  const myPlayerId = useMemo(() => {
-    if (!user?.id) return null;
-    const self = playerRoleMap.get(user.id);
-    if (self) return self;
-    const email = (user.email || '').toLowerCase();
-    if (!email) return null;
-    const matches = players.filter(
-      (p) =>
-        (p.parent_email || '').toLowerCase() === email ||
-        (p.secondary_parent_email || '').toLowerCase() === email
-    );
-    return matches.length === 1 ? matches[0].id : null;
-  }, [user?.id, user?.email, players, playerRoleMap]);
-
-  /**
-   * My own row, for the "Will you be there?" toggle.
-   *
-   * Prefers the row on the exact conflict key (user_id + player_id) because
-   * that is the one upsertRsvp writes -- a plain find by user_id could land on
-   * a legacy null-player_id row while the write went to the player_id row, and
-   * the control would then show an answer that is not the one being changed.
-   * Falls back to this user's most recent row when there is no exact match.
-   */
-  const myRsvp = useMemo(() => {
-    if (!user?.id) return null;
-    const mine = eventRsvps.filter((r) => r.user_id === user.id);
-    if (mine.length === 0) return null;
-    const exact = mine.find((r) => (r.player_id ?? null) === (myPlayerId ?? null));
-    if (exact) return exact;
-    return mine.reduce((newest, r) => {
-      const a = new Date(r.updated_at ?? r.responded_at ?? 0).getTime();
-      const b = new Date(newest.updated_at ?? newest.responded_at ?? 0).getTime();
-      return a > b ? r : newest;
-    }, mine[0]);
-  }, [eventRsvps, user?.id, myPlayerId]);
-
   const handleRsvp = async (
+    playerId: string,
     status: 'yes' | 'no' | 'pending',
     declineReason?: string | null
   ) => {
-    if (!user || !event) return;
+    if (!user || !event || !myPlayerIds.includes(playerId)) return;
     setRsvpLoading(true);
 
     try {
       // One writer for the whole app (src/utils/rsvp.ts). It upserts against
-      // UNIQUE (event_id, user_id, player_id), so the old
-      // select-then-update-or-insert dance -- and the duplicate rows it
-      // tolerated -- are gone. ok:false covers a silent RLS refusal too.
+      // UNIQUE (event_id, user_id, player_id). ok:false covers a silent RLS
+      // refusal too.
       const { ok, error } = await upsertRsvp({
         eventId: event.id,
         userId: user.id,
-        // Only when this user speaks for exactly one player on this team.
-        playerId: myPlayerId,
+        playerId,
         status,
         declineReason,
       });
@@ -728,39 +411,9 @@ export default function EventDetailScreen({ route, navigation }: any) {
         return;
       }
 
-      setCantGoModalVisible(false);
-
-      // Apply my row locally so the memos recompute instantly. The refetch
-      // below is a background reconcile -- it must not blank the roster.
-      //
-      // updated_at is stamped locally ON PURPOSE: the resolver orders by it,
-      // and an optimistic row with no timestamp would lose to an existing
-      // coach mark, so the row would visibly snap back to the coach's answer
-      // until the refetch landed. The server's own trigger value replaces this
-      // moments later.
-      const now = new Date().toISOString();
-      setEventRsvps((prev) => {
-        const mine: EventRsvpRow = {
-          player_id: myPlayerId ?? null,
-          user_id: user.id,
-          status,
-          decline_reason: status === 'no' ? declineReason ?? null : null,
-          updated_at: now,
-          responded_at: now,
-        };
-        // Matched on the full conflict key, not user_id alone: one user can
-        // hold both a null-player_id row and a player_id row.
-        const idx = prev.findIndex(
-          (r) => r.user_id === user.id && (r.player_id ?? null) === (myPlayerId ?? null)
-        );
-        if (idx === -1) return [...prev, mine];
-        const next = [...prev];
-        next[idx] = { ...next[idx], ...mine };
-        return next;
-      });
-
-      fetchEvent(true);
-      fetchNonResponders();
+      setCantGoPlayerId(null);
+      await attendance.refetch({ silent: true });
+      if (isStaff) fetchNonResponders();
       onRefetch?.();
     } catch (err) {
       console.error('[EventDetail] RSVP error:', err);
@@ -770,8 +423,23 @@ export default function EventDetailScreen({ route, navigation }: any) {
     }
   };
 
-  const handleCantGoSkip = () => handleRsvp('no', null);
-  const handleCantGoSubmit = (reason: string) => handleRsvp('no', reason.trim() || null);
+  /**
+   * "Going" on a row that is already going undoes the family's own answer
+   * back to pending. When the going came from a COACH mark, the tap is a
+   * confirmation instead -- it writes yes, never a pending that would wipe
+   * the coach's present.
+   */
+  const handleGoingTap = (row: EventAttendanceRow) =>
+    row.status === 'going' && row.source !== 'coach'
+      ? handleRsvp(row.player_id, 'pending')
+      : handleRsvp(row.player_id, 'yes');
+
+  const handleCantGoSkip = () => {
+    if (cantGoPlayerId) handleRsvp(cantGoPlayerId, 'no', null);
+  };
+  const handleCantGoSubmit = (reason: string) => {
+    if (cantGoPlayerId) handleRsvp(cantGoPlayerId, 'no', reason.trim() || null);
+  };
 
   const handleSendReminder = async () => {
     if (nonResponders.length === 0 || reminderSending || !event) return;
@@ -1107,7 +775,7 @@ export default function EventDetailScreen({ route, navigation }: any) {
    * locked out.
    */
   const markAttendance = async (playerId: string, status: CoachStatus) => {
-    if (!event || !user?.id || !isStaff) return;
+    if (!event || !user?.id || !canMark) return;
 
     setMarkingPlayerId(playerId);
     try {
@@ -1130,14 +798,14 @@ export default function EventDetailScreen({ route, navigation }: any) {
         Alert.alert('Error', 'Could not save attendance');
         return;
       }
-      fetchRoster();
+      await Promise.all([fetchCoachMarks(), attendance.refetch({ silent: true })]);
     } finally {
       setMarkingPlayerId(null);
     }
   };
 
   const unmarkAttendance = async (playerId: string) => {
-    if (!event || !isStaff) return;
+    if (!event || !canMark) return;
 
     setMarkingPlayerId(playerId);
     try {
@@ -1153,7 +821,7 @@ export default function EventDetailScreen({ route, navigation }: any) {
         Alert.alert('Error', 'Could not remove the mark');
         return;
       }
-      fetchRoster();
+      await Promise.all([fetchCoachMarks(), attendance.refetch({ silent: true })]);
     } finally {
       setMarkingPlayerId(null);
     }
@@ -1426,44 +1094,78 @@ export default function EventDetailScreen({ route, navigation }: any) {
    * event card; F1 moves them inside it. Same state, same single writer, same
    * visibility rules -- only the container changed.
    */
+  /**
+   * What to draw instead of the list / strip when there are no rows to show.
+   * Null when the rows are ready. Loading is a line of text with a hard 12 s
+   * ceiling (the hook's timeout), never a spinner; a failed read and an empty
+   * result both offer Retry.
+   */
+  const renderAttendanceState = (): React.ReactNode | null => {
+    if (attendance.state === 'ready') return null;
+    if (attendance.state === 'loading') {
+      return <Text style={styles.attStateText}>Loading responses…</Text>;
+    }
+    return (
+      <View style={styles.attStateBox}>
+        <Text style={styles.attStateText}>
+          {attendance.state === 'error'
+            ? "Couldn't load responses."
+            : 'No roster to show for this event.'}
+        </Text>
+        <TouchableOpacity
+          style={styles.attRetryBtn}
+          onPress={() => attendance.refetch({ silent: false })}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.attRetryText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   const detailsCardFooter = (
     <View style={styles.cardFooter}>
-      {/* Will you be there? -- same control and state as the season
-          list; the segmented pill replaces the round ✓/✗ buttons and
-          calls the SAME handleRsvp -> upsertRsvp path. */}
-      {!isEventPast(event) && (
+      {/* Will you be there? -- one control per player this viewer answers
+          for: their own row, or one per child for a multi-kid parent. Each
+          calls handleRsvp(player_id, ...) -> upsertRsvp, always with that
+          player_id. Staff / admins with no linked player get no control. */}
+      {!isEventPast(event) && myRows.length > 0 && (
         <View style={styles.rsvpSection}>
-          {/* Caption OVER the control, not beside it: the question at 16pt
-              bold on one line squeezed the pill into three wrapped lines. */}
-          <Text style={styles.rsvpLabel} numberOfLines={1}>
-            Will you be there?
-          </Text>
-          <RsvpPill
-            stretch
-            status={myRsvp?.status}
-            disabled={rsvpLoading}
-            // Tapping an active "going" undoes it back to pending.
-            onGoing={() =>
-              myRsvp?.status === 'yes' ? handleRsvp('pending') : handleRsvp('yes')
-            }
-            onCantGo={() => setCantGoModalVisible(true)}
-          />
-          {myRsvp?.status === 'no' && myRsvp.decline_reason ? (
-            <Text style={styles.myReasonText}>“{myRsvp.decline_reason}”</Text>
-          ) : null}
+          {myRows.map((row) => (
+            <View key={row.player_id} style={styles.rsvpChild}>
+              {/* Caption OVER the control, not beside it: the question at 16pt
+                  bold on one line squeezed the pill into three wrapped lines. */}
+              <Text style={styles.rsvpLabel} numberOfLines={1}>
+                {myRows.length === 1
+                  ? 'Will you be there?'
+                  : `Is ${row.first_name || 'your player'} going?`}
+              </Text>
+              <RsvpPill
+                stretch
+                status={pillStatusFor(row.status)}
+                disabled={rsvpLoading}
+                onGoing={() => handleGoingTap(row)}
+                onCantGo={() => setCantGoPlayerId(row.player_id)}
+              />
+              {row.status === 'cant_go' && row.decline_reason ? (
+                <Text style={styles.myReasonText}>“{row.decline_reason}”</Text>
+              ) : null}
+            </View>
+          ))}
         </View>
       )}
 
-      {/* Headcount. Counts only -- the per-player list and all coach
-          marking live on the Attendance tab. Both read the SAME
-          resolver verdicts, so the bar and the rows cannot disagree. */}
-      <ResponsesBar
-        rosterCount={roster.length}
-        going={headcounts.going}
-        cant={headcounts.cant}
-        noReply={headcounts.noReply}
-        markedByCoach={headcounts.markedByCoach}
-      />
+      {/* Headcount, from the same get_event_attendance rows the Attendance
+          tab lists -- roster = rows returned, so no count can exceed it. */}
+      {renderAttendanceState() ?? (
+        <ResponsesBar
+          rosterCount={headcount.roster}
+          going={headcount.going}
+          cant={headcount.cantGo}
+          noReply={headcount.noReply}
+          markedByCoach={headcount.markedByCoach}
+        />
+      )}
 
       {/* Staff reminders. Gate is unchanged: staff only, future
           events only -- the same `isStaff` + `!isEventPast` pair that
@@ -1485,9 +1187,11 @@ export default function EventDetailScreen({ route, navigation }: any) {
               <Text style={styles.remindPrimaryText} numberOfLines={1}>
                 {reminderSent
                   ? '🔔 Reminder sent'
-                  : headcounts.noReply === 0
+                  : attendance.state === 'ready' && headcount.noReply === 0
                     ? '🔔 All responded'
-                    : `🔔 Remind ${headcounts.noReply}`}
+                    : attendance.state === 'ready'
+                      ? `🔔 Remind ${headcount.noReply}`
+                      : '🔔 Remind'}
               </Text>
             )}
           </TouchableOpacity>
@@ -1525,8 +1229,9 @@ export default function EventDetailScreen({ route, navigation }: any) {
         <View style={styles.headerRight} />
       </View>
 
-      {isStaff && (
-        <View style={styles.tabBar}>
+      {/* Everyone on the team sees both tabs: the Attendance list is the
+          whole team's names + status, read-only unless you can mark. */}
+      <View style={styles.tabBar}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'details' && styles.tabActive]}
             onPress={() => setActiveTab('details')}
@@ -1544,51 +1249,42 @@ export default function EventDetailScreen({ route, navigation }: any) {
             </Text>
           </TouchableOpacity>
         </View>
-      )}
 
-      {isStaff && activeTab === 'attendance' ? (
+      {activeTab === 'attendance' ? (
         <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
           {/* F1: the Attendance tab gets the SAME framed card as Details,
               header + detail rows only -- no answer control, no headcount, no
               reminders. It replaces the one-line `attBanner` strip, which
               repeated the date/type/time in its own format and could drift. */}
           {renderEventCard()}
-          <Text style={styles.attHeading}>Mark who showed up</Text>
-          {roster.length === 0 ? (
-            <Text style={styles.rosterEmptyText}>No players on this team</Text>
-          ) : (
-            roster.map((entry) => {
-              const busy = markingPlayerId === entry.player.id;
-              const badge = statusBadge(entry.status);
-              // Who supplied the status that WON, by name when we could
-              // resolve one. Suppressed on silence: "No reply · marked by
-              // parent" would read as a contradiction, even though a retracted
-              // answer is genuinely attributable.
-              const attribution =
-                entry.source && entry.status !== 'no_reply'
-                  ? entry.sourceName
-                    ? entry.source === 'coach'
-                      ? `marked by Coach ${entry.sourceName}`
-                      : `marked by ${entry.sourceName}`
-                    : SOURCE_LABEL[entry.source]
-                  : null;
+          <Text style={styles.attHeading}>
+            {canMark ? 'Mark who showed up' : 'Team responses'}
+          </Text>
+          {renderAttendanceState() ??
+            attendance.rows.map((row) => {
+              const busy = markingPlayerId === row.player_id;
+              const badge = statusBadge(row.status);
+              const coachStatus = coachMarks.get(row.player_id) ?? null;
+              // Source on every marked row; the marker's name only when the
+              // function returned it (staff / club admin callers).
+              const attribution = attributionLabel(row);
+              const isMine = myPlayerIds.includes(row.player_id);
               return (
-                <View key={entry.player.id} style={styles.attRow}>
+                <View key={row.player_id} style={styles.attRow}>
                   <PlayerAvatar
-                    photoUrl={entry.player.photo_url}
-                    jerseyNumber={entry.player.jersey_number}
-                    firstName={entry.player.first_name}
-                    lastName={entry.player.last_name}
+                    firstName={row.first_name}
+                    lastName={row.last_name}
                     size={40}
                     teamColor={(event as any).team?.color || '#5B7BB5'}
                   />
                   <View style={styles.attInfo}>
                     <Text style={styles.attName} numberOfLines={1}>
-                      {entry.player.first_name} {entry.player.last_name}
+                      {row.first_name} {row.last_name}
                     </Text>
-                    {entry.reason ? (
+                    {/* NULL unless the caller may see it -- enforced in SQL. */}
+                    {row.decline_reason ? (
                       <Text style={styles.attReason} numberOfLines={2}>
-                        “{entry.reason}”
+                        “{row.decline_reason}”
                       </Text>
                     ) : null}
                     {attribution ? (
@@ -1596,8 +1292,7 @@ export default function EventDetailScreen({ route, navigation }: any) {
                     ) : null}
                   </View>
 
-                  {/* What the family said. The buttons to the right are what the
-                      coach marks -- two different questions, so two controls. */}
+                  {/* The player's ONE status. Read-only for everyone. */}
                   <View
                     style={[
                       styles.attBadge,
@@ -1615,61 +1310,72 @@ export default function EventDetailScreen({ route, navigation }: any) {
                     )}
                   </View>
 
-                  {busy ? (
-                    <View style={styles.attControls}>
-                      <ActivityIndicator size="small" color="#8b5cf6" />
-                    </View>
-                  ) : (
-                    <View style={styles.attControls}>
-                      <TouchableOpacity
-                        style={[
-                          styles.attAbsentBtn,
-                          entry.coachStatus === 'absent' && styles.attAbsentBtnActive,
-                        ]}
-                        // Tapping the active mark clears it.
-                        onPress={() =>
-                          entry.coachStatus === 'absent'
-                            ? unmarkAttendance(entry.player.id)
-                            : markAttendance(entry.player.id, 'absent')
-                        }
-                        hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
-                      >
-                        <Text
+                  {canMark ? (
+                    busy ? (
+                      <View style={styles.attControls}>
+                        <ActivityIndicator size="small" color="#8b5cf6" />
+                      </View>
+                    ) : (
+                      <View style={styles.attControls}>
+                        <TouchableOpacity
                           style={[
-                            styles.attBtnText,
-                            entry.coachStatus === 'absent' && styles.attBtnTextActive,
+                            styles.attAbsentBtn,
+                            coachStatus === 'absent' && styles.attAbsentBtnActive,
                           ]}
+                          // Tapping the active mark clears it.
+                          onPress={() =>
+                            coachStatus === 'absent'
+                              ? unmarkAttendance(row.player_id)
+                              : markAttendance(row.player_id, 'absent')
+                          }
+                          hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
                         >
-                          ✗
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.attPresentBtn,
-                          entry.coachStatus === 'present' && styles.attPresentBtnActive,
-                        ]}
-                        onPress={() =>
-                          entry.coachStatus === 'present'
-                            ? unmarkAttendance(entry.player.id)
-                            : markAttendance(entry.player.id, 'present')
-                        }
-                        hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
-                      >
-                        <Text
+                          <Text
+                            style={[
+                              styles.attBtnText,
+                              coachStatus === 'absent' && styles.attBtnTextActive,
+                            ]}
+                          >
+                            ✗
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
                           style={[
-                            styles.attPresentText,
-                            entry.coachStatus === 'present' && styles.attBtnTextActive,
+                            styles.attPresentBtn,
+                            coachStatus === 'present' && styles.attPresentBtnActive,
                           ]}
+                          onPress={() =>
+                            coachStatus === 'present'
+                              ? unmarkAttendance(row.player_id)
+                              : markAttendance(row.player_id, 'present')
+                          }
+                          hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
                         >
-                          ✓
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
+                          <Text
+                            style={[
+                              styles.attPresentText,
+                              coachStatus === 'present' && styles.attBtnTextActive,
+                            ]}
+                          >
+                            ✓
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )
+                  ) : isMine && !isEventPast(event) ? (
+                    // Self-mark only: the viewer's own row (or each child's).
+                    <RsvpPill
+                      compact
+                      style={styles.attOwnPill}
+                      status={pillStatusFor(row.status)}
+                      disabled={rsvpLoading}
+                      onGoing={() => handleGoingTap(row)}
+                      onCantGo={() => setCantGoPlayerId(row.player_id)}
+                    />
+                  ) : null}
                 </View>
               );
-            })
-          )}
+            })}
           <View style={styles.bottomPadding} />
         </ScrollView>
       ) : (
@@ -1677,13 +1383,16 @@ export default function EventDetailScreen({ route, navigation }: any) {
           {/* Main Event Card */}
           {renderEventCard(detailsCardFooter)}
 
-          {/* Game entry - for game events */}
+          {/* Game entry -- whole team. Watch / View Match Summary are
+              read-only and shown to everyone; Start Match Center and Stats
+              Console are staff-only inside the component (canManage). */}
           {event.event_type === 'game' && event.team_id && (
             <View style={{ marginBottom: 16 }}>
               <GameEntryButton
                 eventId={event.id}
                 teamId={event.team_id}
                 eventType={event.event_type}
+                canManage={!!isStaff}
               />
             </View>
           )}
@@ -1724,25 +1433,26 @@ export default function EventDetailScreen({ route, navigation }: any) {
             </TouchableOpacity>
           )}
 
-          {/* Past notice, and the reason sheet the card's "Can't go" opens.
-              The two stacked reminder buttons that used to sit here are the
-              same handlers now rendered inside the card footer. */}
+          {/* Past notice. The reason sheet now lives at screen level, so
+              the Attendance tab's own-row pills can open it too. */}
           {isEventPast(event) ? (
             <View style={styles.pastEventNotice}>
               <Text style={styles.pastEventNoticeText}>This event has passed</Text>
             </View>
-          ) : (
-            <CantGoReasonModal
-              visible={cantGoModalVisible}
-              onClose={() => setCantGoModalVisible(false)}
-              onSkip={handleCantGoSkip}
-              onSubmit={handleCantGoSubmit}
-              submitting={rsvpLoading}
-            />
-          )}
+          ) : null}
 
         <View style={styles.bottomPadding} />
       </ScrollView>
+      )}
+
+      {!isEventPast(event) && (
+        <CantGoReasonModal
+          visible={cantGoPlayerId !== null}
+          onClose={() => setCantGoPlayerId(null)}
+          onSkip={handleCantGoSkip}
+          onSubmit={handleCantGoSubmit}
+          submitting={rsvpLoading}
+        />
       )}
 
       {/* Edit Event Modal */}
@@ -2010,11 +1720,36 @@ const styles = StyleSheet.create({
   headcountCount: {
     color: '#8b5cf6',
   },
-  rosterEmptyText: {
+  // Loading / failed / empty in place of the strip or the list. Text, not a
+  // spinner; Retry re-runs the one read.
+  attStateBox: {
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+  },
+  attStateText: {
     color: '#64748b',
     fontSize: 13,
     textAlign: 'center',
-    paddingVertical: 12,
+    paddingVertical: 4,
+  },
+  attRetryBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#3a4360',
+  },
+  attRetryText: {
+    color: '#a78bfa',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  // A parent/player's own row on the Attendance tab: the compact RSVP pill
+  // sits where staff see the ✓/✗ pair.
+  attOwnPill: {
+    flexShrink: 0,
+    marginLeft: 8,
   },
   rosterRow: {
     flexDirection: 'row',
@@ -2094,6 +1829,10 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   rsvpSection: {
+    gap: 14,
+  },
+  // One caption + pill per player the viewer answers for.
+  rsvpChild: {
     gap: 8,
   },
   rsvpLabel: {

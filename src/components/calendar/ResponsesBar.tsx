@@ -6,9 +6,10 @@ import { RSVP_TOKENS } from './RsvpPill';
  * Design "F1 -- one ticket" (Lu, Oct 26): the compact replacement for the
  * three big Responses numbers, now a row inside the event card.
  *
- * Same data as before -- the caller passes the resolver's own verdict counts
- * (`summarizeEffective`), so this cannot disagree with the Attendance tab. It
- * only draws: a count line, a 6pt stacked bar, and a legend.
+ * The caller passes the headcount from get_event_attendance (via
+ * useEventAttendance) -- the same rows the Attendance tab lists, so the two
+ * cannot disagree. It only draws: a count line, a 6pt stacked bar, and a
+ * legend. Loading / failed / empty states are drawn by the caller instead.
  *
  * Palette round 2 (Lu, Oct 26): going = brand purple, can't go = slate, no
  * reply = the near-black track showing through. No green, no red -- red is
@@ -28,10 +29,10 @@ export default function ResponsesBar({
   markedByCoach?: number;
 }) {
   const answered = going + cant;
-  // Bar denominator is the counted verdicts, not the roster: an answer from
-  // somebody no longer on the roster is still an answer, and dividing by the
-  // roster would push the segments past 100%.
-  const total = going + cant + noReply;
+  // Bar denominator is the roster. The function gives every active roster
+  // player exactly one status, so going + cant + noReply === rosterCount and
+  // the segments can never pass 100%. The max() is a guard, not a fudge.
+  const total = Math.max(rosterCount, going + cant + noReply);
   // Typed as a percentage literal so it satisfies RN's `DimensionValue`.
   const pct = (n: number): `${number}%` =>
     total > 0 ? `${(n / total) * 100}%` : '0%';
